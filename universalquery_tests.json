@@ -1,0 +1,121 @@
+{
+  "schema": "chess-query-v3",
+  "tests": [
+    {
+      "name": "01 - Initial position: kings at e1/e8, and NOT a white queen on e1",
+      "query": {
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "predicates": [
+          { "op": "at", "piece": { "ref": "Ke1" } },
+          { "op": "at", "piece": { "ref": "ke8" } },
+          { "op": "at", "piece": { "ref": "Qe1" }, "assert": false }
+        ]
+      }
+    },
+
+    {
+      "name": "02 - Mixed constraints + moves + constraints: e4 e5 Nf3 Nc6 then Nf3 attacks e5",
+      "query": {
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "predicates": [
+          { "op": "at", "piece": { "ref": "Ke1" } },
+          { "op": "move", "san": "e4" },
+          { "op": "at", "piece": { "ref": "Pe4" } },
+
+          { "op": "move", "san": "e5" },
+          { "op": "at", "piece": { "ref": "pe5" } },
+
+          { "op": "move", "san": "Nf3" },
+          { "op": "at", "piece": { "ref": "Nf3" } },
+
+          { "op": "move", "san": "Nc6" },
+          { "op": "attacks", "attacker": { "ref": "Nf3" }, "target": { "ref": "Ae5" } }
+        ]
+      }
+    },
+
+    {
+      "name": "03 - Move negation: from initial position, 'e5' is illegal for White (assert=false means illegal and not applied)",
+      "query": {
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "predicates": [
+          { "op": "move", "san": "e5", "assert": false },
+          { "op": "at", "piece": { "ref": "Pe2" } }
+        ]
+      }
+    },
+
+    {
+      "name": "04 - Attacks negation: after Nf3, Nf3 does NOT attack g1",
+      "query": {
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "predicates": [
+          { "op": "move", "san": "Nf3" },
+          { "op": "attacks", "attacker": { "ref": "Nf3" }, "target": { "ref": "Ag1" }, "assert": false }
+        ]
+      }
+    },
+
+    {
+      "name": "05 - Geometry fork (constructed): Ne5 attacks f7 and d7",
+      "query": {
+        "fen": "4k3/3pp3/8/4N3/8/8/8/4K3 w - - 0 1",
+        "predicates": [
+          {
+            "op": "geometry",
+            "attacker": { "ref": "Ne5" },
+            "targets": [{ "ref": "pf7" }, { "ref": "pd7" }]
+          }
+        ]
+      }
+    },
+
+    {
+      "name": "06 - Any-black-piece designator: x on e6 exists (a black knight) and it attacks d4",
+      "query": {
+        "fen": "4k3/8/4n3/8/8/8/8/4K3 b - - 0 1",
+        "predicates": [
+          { "op": "at", "piece": { "ref": "xe6" } },
+          { "op": "attacks", "attacker": { "ref": "xe6" }, "target": { "ref": "Ad4" } }
+        ]
+      }
+    },
+
+    {
+      "name": "07 - Greek Gift minimal as linear predicates: Bxh7+ Kxh7 Ng5+ then Ng5 attacks h7 and black king is on h7",
+      "query": {
+        "fen": "r1bq1rk1/ppp2ppp/2np1n2/4p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 1",
+        "predicates": [
+          { "op": "move", "san": "Bxh7+" },
+          { "op": "move", "san": "Kxh7" },
+          { "op": "move", "san": "Ng5+" },
+
+          { "op": "at", "piece": { "ref": "kh7" } },
+          { "op": "attacks", "attacker": { "ref": "Ng5" }, "target": { "ref": "xh7" } }
+        ]
+      }
+    },
+
+    {
+      "name": "08 - Initial constraints, move, constraints, move constraint, move: demonstrate 'mixing' for a developer doc",
+      "query": {
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "predicates": [
+          { "op": "at", "piece": { "ref": "Ke1" } },
+          { "op": "at", "piece": { "ref": "Qd1" } },
+
+          { "op": "move", "san": "d4" },
+          { "op": "at", "piece": { "ref": "Pd4" } },
+
+          { "op": "move", "san": "d5" },
+          { "op": "at", "piece": { "ref": "pd5" } },
+
+          { "op": "move", "san": "c4" },
+          { "op": "at", "piece": { "ref": "Pc4" } },
+
+          { "op": "attacks", "attacker": { "ref": "Pc4" }, "target": { "ref": "Ad5" }, "assert": true }
+        ]
+      }
+    }
+  ]
+}
