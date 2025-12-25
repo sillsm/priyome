@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/chess-query-v3.schema.json",
+  "title": "Chess Query v3 (linear predicates: at/attacks/geometry/move)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["predicates"],
+  "properties": {
+    "name": { "type": "string" },
+
+    "fen": {
+      "type": "string",
+      "description": "Optional starting position in standard FEN (uppercase = White, lowercase = Black)."
+    },
+
+    "predicates": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Linear list of predicates evaluated in order. move predicates mutate the position.",
+      "items": { "$ref": "#/$defs/Predicate" }
+    }
+  },
+
+  "$defs": {
+    "Square": { "type": "string", "pattern": "^[a-h][1-8]$" },
+
+    "PieceRefString": {
+      "type": "string",
+      "description": "Designator + square, e.g. Ne5, pf7, xh7, Ae4. FEN capitalization: uppercase=White, lowercase=Black. A/X any White; a/x any Black.",
+      "pattern": "^(?:[PNBRQKpnbrqk]|A|a|X|x)[a-h][1-8]$"
+    },
+
+    "PieceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref"],
+      "properties": {
+        "ref": { "$ref": "#/$defs/PieceRefString" }
+      }
+    },
+
+    "PredicateBase": {
+      "type": "object",
+      "properties": {
+        "assert": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true (default), predicate must hold. If false, predicate must NOT hold. For move: assert=false means the SAN must be illegal in the current position and no move is applied."
+        }
+      }
+    },
+
+    "AtPredicate": {
+      "allOf": [
+        { "$ref": "#/$defs/PredicateBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "piece"],
+          "properties": {
+            "op": { "const": "at" },
+            "assert": { "type": "boolean", "default": true },
+            "piece": { "$ref": "#/$defs/PieceRef" }
+          }
+        }
+      ]
+    },
+
+    "AttacksPredicate": {
+      "allOf": [
+        { "$ref": "#/$defs/PredicateBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "attacker", "target"],
+          "properties": {
+            "op": { "const": "attacks" },
+            "assert": { "type": "boolean", "default": true },
+            "attacker": { "$ref": "#/$defs/PieceRef" },
+            "target": { "$ref": "#/$defs/PieceRef" }
+          }
+        }
+      ]
+    },
+
+    "GeometryPredicate": {
+      "allOf": [
+        { "$ref": "#/$defs/PredicateBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "attacker", "targets"],
+          "properties": {
+            "op": { "const": "geometry" },
+            "assert": { "type": "boolean", "default": true },
+            "attacker": { "$ref": "#/$defs/PieceRef" },
+            "targets": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/PieceRef" }
+            }
+          }
+        }
+      ]
+    },
+
+    "MovePredicate": {
+      "allOf": [
+        { "$ref": "#/$defs/PredicateBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["op", "san"],
+          "properties": {
+            "op": { "const": "move" },
+            "assert": { "type": "boolean", "default": true },
+            "san": {
+              "type": "string",
+              "minLength": 1,
+              "description": "A single SAN move (e.g., e4, Nf3, Bxh7+, O-O). If assert=true, it must be legal and is applied. If assert=false, it must be illegal and is NOT applied."
+            }
+          }
+        }
+      ]
+    },
+
+    "Predicate": {
+      "oneOf": [
+        { "$ref": "#/$defs/AtPredicate" },
+        { "$ref": "#/$defs/AttacksPredicate" },
+        { "$ref": "#/$defs/GeometryPredicate" },
+        { "$ref": "#/$defs/MovePredicate" }
+      ]
+    }
+  }
+}
