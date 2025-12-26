@@ -1,3 +1,4 @@
+// chess_query.js
 import { Chess } from "chess.js";
 
 /**
@@ -5,55 +6,86 @@ import { Chess } from "chess.js";
  *
  * @param {string} fen
  * @param {object} queryJson
- * @returns {number} integer in [0, predicates.length]
+ * @param {object} [options]
+ * @param {boolean} [options.verbose=false]
+ *
+ * @returns {number|object}
+ *   - number if verbose=false
+ *   - { count, results[] } if verbose=true
  */
-export function countMatchedPreconditions(fen, queryJson) {
+export function countMatchedPreconditions(fen, queryJson, options = {}) {
   const chess = new Chess(fen);
-  const predicates = queryJson.predicates ?? [];
+  const predicates = queryJson?.predicates ?? [];
+  const verbose = options.verbose === true;
 
   let matched = 0;
+  const results = [];
 
-  for (const pred of predicates) {
-    if (predicateMatches(chess, pred)) {
-      matched++;
+  for (let i = 0; i < predicates.length; i++) {
+    const pred = predicates[i];
+    const { ok, reason } = predicateMatches(chess, pred);
+
+    if (ok) matched++;
+
+    if (verbose) {
+      results.push({
+        index: i,
+        predicate: pred,
+        matched: ok,
+        reason,
+      });
     }
   }
 
-  return matched;
+  return verbose ? { count: matched, results } : matched;
 }
 
 /* ---------------- helpers ---------------- */
 
 function predicateMatches(chess, pred) {
-  const assertValue = pred.assert !== false; // default true
+  const assertValue = pred?.assert !== false; // default true
 
-  let result = false;
+  let raw = false;
+  let reason = "";
 
-  switch (pred.op) {
+  switch (pred?.op) {
     case "at":
-      result = matchesAt(chess, pred.piece?.ref);
+      raw = matchesAt(chess, pred?.piece?.ref);
+      reason = raw
+        ? `piece ${pred.piece.ref} is on target square`
+        : `piece ${pred.piece?.ref} not on target square`;
       break;
 
     case "attacks":
-      result = matchesAttacks(
+      raw = matchesAttacks(
         chess,
-        pred.attacker?.ref,
-        pred.target?.ref
+        pred?.attacker?.ref,
+        pred?.target?.ref
       );
+      reason = raw
+        ? `${pred.attacker.ref} attacks ${pred.target.ref}`
+        : `${pred.attacker?.ref} does not attack ${pred.target?.ref}`;
       break;
 
     default:
-      result = false;
+      raw = false;
+      reason = `unknown op: ${pred?.op}`;
   }
 
-  return assertValue ? result : !result;
+  const ok = assertValue ? raw : !raw;
+
+  if (!assertValue) {
+    reason = `NOT (${reason})`;
+  }
+
+  return { ok, reason };
 }
 
 /**
  * pieceRef like "Bd3" or "ph7"
  */
 function matchesAt(chess, pieceRef) {
-  if (!pieceRef || pieceRef.length !== 3) return false;
+  if (typeof pieceRef !== "string" || pieceRef.length !== 3) return false;
 
   const pieceChar = pieceRef[0];
   const square = pieceRef.slice(1);
@@ -70,11 +102,17 @@ function matchesAt(chess, pieceRef) {
 /**
  * attackerRef like "Ng5"
  * targetRef like "ph7"
+ *
+ * Uses pseudo-legal moves (legal:false) to ignore side-to-move.
  */
 function matchesAttacks(chess, attackerRef, targetRef) {
-  if (!attackerRef || !targetRef) return false;
+  if (typeof attackerRef !== "string" || attackerRef.length !== 3) return false;
+  if (typeof targetRef !== "string" || targetRef.length !== 3) return false;
 
+  const attackerChar = attackerRef[0];
   const attackerSquare = attackerRef.slice(1);
+
+  const targetChar = targetRef[0];
   const targetSquare = targetRef.slice(1);
 
   const attacker = chess.get(attackerSquare);
@@ -82,25 +120,28 @@ function matchesAttacks(chess, attackerRef, targetRef) {
 
   if (!attacker || !target) return false;
 
-  // color sanity
+  // Validate ref matches board
   if (
-    attacker.color !== (isUpper(attackerRef[0]) ? "w" : "b") ||
-    target.color !== (isUpper(targetRef[0]) ? "w" : "b")
-  ) {
-    return false;
-  }
+    attacker.type !== attackerChar.toLowerCase() ||
+    attacker.color !== (isUpper(attackerChar) ? "w" : "b")
+  ) return false;
 
-  // chess.js: legal moves from square
+  if (
+    target.type !== targetChar.toLowerCase() ||
+    target.color !== (isUpper(targetChar) ? "w" : "b")
+  ) return false;
+
   const moves = chess.moves({
     square: attackerSquare,
     verbose: true,
+    legal: false, // critical
   });
 
   return moves.some(
-    m => m.to === targetSquare && m.captured
+    (m) => m.to === targetSquare && !!m.captured
   );
 }
 
 function isUpper(ch) {
-  return ch === ch.toUpperCase();
+  return ch >= "A" && ch <= "Z";
 }
