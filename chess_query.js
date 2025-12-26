@@ -9,9 +9,7 @@ import { Chess } from "chess.js";
  * @param {object} [options]
  * @param {boolean} [options.verbose=false]
  *
- * @returns {number|object}
- *   - number if verbose=false
- *   - { count, results[] } if verbose=true
+ * @returns {number}
  */
 export function countMatchedPreconditions(fen, queryJson, options = {}) {
   const chess = new Chess(fen);
@@ -19,71 +17,67 @@ export function countMatchedPreconditions(fen, queryJson, options = {}) {
   const verbose = options.verbose === true;
 
   let matched = 0;
-  const results = [];
 
-  for (let i = 0; i < predicates.length; i++) {
-    const pred = predicates[i];
-    const { ok, reason } = predicateMatches(chess, pred);
+  if (verbose) {
+    console.log("=== countMatchedPreconditions ===");
+    console.log("FEN:", fen);
+    console.log("Predicates:", predicates.length);
+    console.log("--------------------------------");
+  }
 
+  predicates.forEach((pred, i) => {
+    const assertValue = pred?.assert !== false;
+    let raw = false;
+    let detail = "";
+
+    switch (pred?.op) {
+      case "at":
+        raw = matchesAt(chess, pred?.piece?.ref);
+        detail = `at ${pred?.piece?.ref}`;
+        break;
+
+      case "attacks":
+        raw = matchesAttacks(
+          chess,
+          pred?.attacker?.ref,
+          pred?.target?.ref
+        );
+        detail = `attacks ${pred?.attacker?.ref} -> ${pred?.target?.ref}`;
+        break;
+
+      default:
+        raw = false;
+        detail = `unknown op ${pred?.op}`;
+    }
+
+    const ok = assertValue ? raw : !raw;
     if (ok) matched++;
 
     if (verbose) {
-      results.push({
-        index: i,
-        predicate: pred,
-        matched: ok,
-        reason,
-      });
+      console.log(
+        `[${i}]`,
+        detail,
+        "| raw:",
+        raw,
+        "| assert:",
+        assertValue,
+        "| final:",
+        ok ? "✔ MATCH" : "✘ FAIL"
+      );
     }
+  });
+
+  if (verbose) {
+    console.log("--------------------------------");
+    console.log(`Matched ${matched} / ${predicates.length}`);
+    console.log("================================\n");
   }
 
-  return verbose ? { count: matched, results } : matched;
+  return matched;
 }
 
 /* ---------------- helpers ---------------- */
 
-function predicateMatches(chess, pred) {
-  const assertValue = pred?.assert !== false; // default true
-
-  let raw = false;
-  let reason = "";
-
-  switch (pred?.op) {
-    case "at":
-      raw = matchesAt(chess, pred?.piece?.ref);
-      reason = raw
-        ? `piece ${pred.piece.ref} is on target square`
-        : `piece ${pred.piece?.ref} not on target square`;
-      break;
-
-    case "attacks":
-      raw = matchesAttacks(
-        chess,
-        pred?.attacker?.ref,
-        pred?.target?.ref
-      );
-      reason = raw
-        ? `${pred.attacker.ref} attacks ${pred.target.ref}`
-        : `${pred.attacker?.ref} does not attack ${pred.target?.ref}`;
-      break;
-
-    default:
-      raw = false;
-      reason = `unknown op: ${pred?.op}`;
-  }
-
-  const ok = assertValue ? raw : !raw;
-
-  if (!assertValue) {
-    reason = `NOT (${reason})`;
-  }
-
-  return { ok, reason };
-}
-
-/**
- * pieceRef like "Bd3" or "ph7"
- */
 function matchesAt(chess, pieceRef) {
   if (typeof pieceRef !== "string" || pieceRef.length !== 3) return false;
 
@@ -99,15 +93,12 @@ function matchesAt(chess, pieceRef) {
   );
 }
 
-/**
- * attackerRef like "Ng5"
- * targetRef like "ph7"
- *
- * Uses pseudo-legal moves (legal:false) to ignore side-to-move.
- */
 function matchesAttacks(chess, attackerRef, targetRef) {
-  if (typeof attackerRef !== "string" || attackerRef.length !== 3) return false;
-  if (typeof targetRef !== "string" || targetRef.length !== 3) return false;
+  if (typeof attackerRef !== "string" || typeof targetRef !== "string")
+    return false;
+
+  if (attackerRef.length !== 3 || targetRef.length !== 3)
+    return false;
 
   const attackerChar = attackerRef[0];
   const attackerSquare = attackerRef.slice(1);
@@ -120,7 +111,6 @@ function matchesAttacks(chess, attackerRef, targetRef) {
 
   if (!attacker || !target) return false;
 
-  // Validate ref matches board
   if (
     attacker.type !== attackerChar.toLowerCase() ||
     attacker.color !== (isUpper(attackerChar) ? "w" : "b")
@@ -131,14 +121,15 @@ function matchesAttacks(chess, attackerRef, targetRef) {
     target.color !== (isUpper(targetChar) ? "w" : "b")
   ) return false;
 
+  // Pseudo-legal moves: ignore side-to-move
   const moves = chess.moves({
     square: attackerSquare,
     verbose: true,
-    legal: false, // critical
+    legal: false
   });
 
   return moves.some(
-    (m) => m.to === targetSquare && !!m.captured
+    m => m.to === targetSquare && !!m.captured
   );
 }
 
