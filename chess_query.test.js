@@ -11,7 +11,7 @@ function assertEqual(actual, expected, message) {
 }
 
 function runTest({ name, fen, query, expected }) {
-  const got = countMatchedPreconditions(fen, query);
+  const got = countMatchedPreconditions(fen, query, true);
 
   assertEqual(
     got,
