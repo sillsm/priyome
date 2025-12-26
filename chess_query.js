@@ -1,1 +1,2 @@
+countMatchedPreconditions(fen, queryJson) -> integer
 
