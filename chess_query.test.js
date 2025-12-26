@@ -1,36 +1,33 @@
+// chess_query.zero.test.js
 import { countMatchedPreconditions } from "./chess_query.js";
 
-/* ---------------- minimal test harness ---------------- */
+/* ---------------- minimal zero-dep test harness ---------------- */
 
-function assert(cond, msg) {
-  if (!cond) throw new Error(msg);
-}
-
-function assertEqual(actual, expected, msg) {
+function assertEqual(actual, expected, message) {
   if (actual !== expected) {
-    throw new Error(`${msg}\n  expected: ${expected}\n  got: ${actual}`);
+    throw new Error(`${message}\n  expected: ${expected}\n  got: ${actual}`);
   }
 }
 
-function assertArrayEqual(actual, expected, msg) {
-  assert(
-    Array.isArray(actual) && Array.isArray(expected),
-    `${msg} (not arrays)`
-  );
+function runTest({ name, fen, query, expected }) {
+  // Verbose mode should "barf" to console but still return a number.
+  const got = countMatchedPreconditions(fen, query, { verbose: true });
 
+  assertEqual(got, expected, `❌ ${name}`);
+
+  // Bounds sanity
   assertEqual(
-    actual.length,
-    expected.length,
-    `${msg} (length mismatch)`
+    Number.isInteger(got),
+    true,
+    `❌ ${name} (result must be integer)`
   );
-
-  for (let i = 0; i < actual.length; i++) {
-    assertEqual(
-      actual[i],
-      expected[i],
-      `${msg} (index ${i})`
+  if (got < 0 || got > (query.predicates?.length ?? 0)) {
+    throw new Error(
+      `❌ ${name} (result out of range)\n  got: ${got}\n  range: 0..${query.predicates?.length ?? 0}`
     );
   }
+
+  console.log(`✅ ${name}`);
 }
 
 /* ---------------- Greek Gift query ---------------- */
@@ -41,65 +38,37 @@ const greekGiftQuery = {
     { op: "at", piece: { ref: "Bd3" } },
     { op: "at", piece: { ref: "Ng5" } },
     { op: "attacks", attacker: { ref: "Ng5" }, target: { ref: "ph7" } },
-    { op: "attacks", attacker: { ref: "Bd3" }, target: { ref: "ph7" } }
-  ]
+    { op: "attacks", attacker: { ref: "Bd3" }, target: { ref: "ph7" } },
+  ],
 };
 
-/* ---------------- test cases ---------------- */
+/* ---------------- table-driven cases ---------------- */
 
 const tests = [
   {
     name: "satisfied: Bd3 + Ng5 both attack h7",
     fen: "r1bqkbnr/pppppppp/2n5/6N1/8/3B4/PPPPPPPP/RNBQK2R b KQkq - 0 1",
-    expectedCount: 4,
-    expectedMatches: [true, true, true, true]
+    query: greekGiftQuery,
+    expected: 4,
   },
   {
     name: "not satisfied: knight not on g5",
     fen: "r1bqkbnr/pppppppp/2n5/8/8/3B1N2/PPPPPPPP/RNBQK2R b KQkq - 0 1",
-    expectedCount: 2,
-    expectedMatches: [true, false, false, true]
-  }
+    query: greekGiftQuery,
+    expected: 2,
+  },
 ];
 
 /* ---------------- runner ---------------- */
 
-console.log("Running chess_query verbose zero-dep tests...\n");
+console.log("Running chess_query zero-dep tests (verbose enabled)...\n");
 
 let passed = 0;
 
 for (const t of tests) {
   try {
-    const result = countMatchedPreconditions(
-      t.fen,
-      greekGiftQuery,
-      { verbose: true }
-    );
-
-    assert(
-      typeof result === "object",
-      "verbose mode must return an object"
-    );
-
-    const { count, results } = result;
-
-    assertEqual(
-      count,
-      t.expectedCount,
-      `❌ ${t.name} (count)`
-    );
-
-    const actualMatches = results.map(r => r.matched);
-
-    assertArrayEqual(
-      actualMatches,
-      t.expectedMatches,
-      `❌ ${t.name} (predicate matches)`
-    );
-
-    console.log(`✅ ${t.name}`);
+    runTest(t);
     passed++;
-
   } catch (err) {
     console.error(err.message);
   }
