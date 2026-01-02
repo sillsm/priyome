@@ -4174,6 +4174,9 @@ if (Module['wasmBinary']) wasmBinary = Module['wasmBinary'];
 
 // Begin runtime exports
   Module['requestFullscreen'] = requestFullscreen;
+  Module['FS'] = FS;
+  Module['callMain'] = callMain;
+
   // End runtime exports
   // Begin JS library exports
   // End JS library exports
