@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Mini Study (with Error Panel)</title>                 
+  <!-- chessboard.js (requires jQuery) -->
+
+ <link rel="stylesheet"
+      href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
+      integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
+      crossorigin="anonymous">
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"
+        integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2"
+        crossorigin="anonymous"></script>
+
+<script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"                                          integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
+        crossorigin="anonymous"></script>
+
+
+  <!-- chess.js UMD (global Chess) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.11.0/chess.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b0f14; --panel:#121824; --panel2:#0f1622; --text:#e8eef7; --muted:#9fb0c9;
+      --border:#223044; --accent:#60a5fa; --green:#22c55e; --radius:14px;
+      --shadow:0 10px 24px rgba(0,0,0,.35); --bad:#fb7185; --warn:#fbbf24;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    button{
+      border:1px solid rgba(34,48,68,.9);
+      background:#172234;
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+    }
+    button:hover{filter:brightness(1.08)}
+    button.on{border-color:rgba(34,197,94,.9); box-shadow:0 0 0 1px rgba(34,197,94,.25) inset;}
+    .topbar{
+      position:sticky; top:0; z-index:5;
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 14px;
+      background:rgba(11,15,20,.92); backdrop-filter: blur(10px);
+      border-bottom:1px solid rgba(34,48,68,.6);
+      gap:10px;
+    }
+    .brand{display:flex; align-items:center; gap:10px; font-weight:800; flex-wrap:wrap}
+    .pill{font-size:12px; color:var(--muted); border:1px solid rgba(34,48,68,.8); padding:3px 8px; border-radius:999px; background:rgba(18,24,36,.8)}
+    .actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; align-items:center}
+
+    .layout{
+      max-width:1240px; margin:0 auto; padding:14px;
+      display:grid; grid-template-columns: minmax(280px,560px) 1fr; gap:14px;
+    }
+    @media (max-width:980px){ .layout{grid-template-columns:1fr;} }
+
+    .card{
+      background: linear-gradient(180deg, rgba(18,24,36,.98), rgba(15,22,34,.98));
+      border:1px solid rgba(34,48,68,.85);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .head{
+      padding:10px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      border-bottom:1px solid rgba(34,48,68,.7);
+    }
+    .status{font-size:12px; color:var(--muted)}
+    .boardArea{position:relative; padding:12px;}
+    #board{width:100%;}
+    #overlay{position:absolute; inset:12px; pointer-events:none;}
+
+    .below{
+      padding:10px 12px 12px;
+      border-top:1px solid rgba(34,48,68,.7);
+      background:rgba(11,15,20,.25);
+      display:grid; gap:8px;
+    }
+    .fenRow{display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12px;}
+    .fenLabel{color:var(--muted); font-weight:800; letter-spacing:.2px}
+    .fenBox{
+      flex:1; padding:8px 10px; border-radius:12px;
+      border:1px solid rgba(34,48,68,.85);
+      background:rgba(15,22,34,.85);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      overflow:auto; white-space:nowrap;
+    }
+    .hint{font-size:12px; color:var(--muted); line-height:1.35}
+
+    .tabs{display:flex; gap:8px; padding:10px; border-bottom:1px solid rgba(34,48,68,.7); background:rgba(11,15,20,.15);}
+    .tab{
+      padding:8px 10px; border-radius:12px;
+      border:1px solid rgba(34,48,68,.8);
+      background:rgba(23,34,52,.7);
+      color:var(--muted);
+      font-weight:900; font-size:12px; cursor:pointer;
+    }
+    .tab.active{color:var(--text); border-color:rgba(96,165,250,.9); box-shadow:0 0 0 1px rgba(96,165,250,.25) inset;}
+    .pane{display:none; padding:12px; gap:10px; height:calc(100% - 48px); }
+    .pane.active{display:flex; flex-direction:column;}
+
+    .moves{overflow:auto; padding-right:4px;}
+    .moveRow{display:flex; gap:10px; padding:7px 8px; border-radius:12px;}
+    .moveRow:hover{background:rgba(255,255,255,.03);}
+    .mn{width:34px; color:var(--muted); text-align:right; padding-top:4px;}
+    .ply{display:flex; gap:8px; flex-wrap:wrap; flex:1;}
+    .ply button{padding:5px 8px; border-radius:12px; background:transparent; border:1px solid transparent; font-weight:700;}
+    .ply button:hover{border-color:rgba(34,48,68,.9); background:rgba(15,22,34,.55);}
+    .ply button.active{border-color:rgba(34,197,94,.9);}
+
+    textarea{
+      width:100%; min-height:80px; resize:vertical;
+      border-radius:12px; border:1px solid rgba(34,48,68,.85);
+      background:rgba(15,22,34,.85); color:var(--text);
+      padding:10px; outline:none;
+    }
+    textarea:focus{border-color:rgba(96,165,250,.9); box-shadow:0 0 0 3px rgba(96,165,250,.12);}
+
+    .gameList{overflow:auto; display:flex; flex-direction:column; gap:10px;}
+    .gameCard{
+      border:1px solid rgba(34,48,68,.85);
+      background:rgba(15,22,34,.6);
+      border-radius:14px;
+      padding:10px;
+      cursor:pointer;
+    }
+    .gameCard:hover{filter:brightness(1.06)}
+    .gameCard.active{border-color:rgba(96,165,250,.9); box-shadow:0 0 0 1px rgba(96,165,250,.22) inset;}
+    .gameTitle{font-weight:900; font-size:13px; margin-bottom:4px;}
+    .meta{font-size:12px; color:var(--muted); display:flex; gap:10px; flex-wrap:wrap;}
+
+    .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:11px;
+      padding:2px 6px;
+      border-radius:8px;
+      border:1px solid rgba(34,48,68,.8);
+      background: rgba(11,15,20,.45);
+      color: rgba(232,238,247,.85);
+    }
+
+    /* Error panel */
+    .errorCard{
+      margin:14px auto 0;
+      max-width:1240px;
+      border:1px solid rgba(251,113,133,.45);
+      background: rgba(127,29,29,.20);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .errorHead{
+      padding:10px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      border-bottom:1px solid rgba(251,113,133,.25);
+      font-weight:900;
+    }
+    .errorHead .left{display:flex; gap:10px; align-items:center}
+    .badgeBad{color:#fecdd3; border:1px solid rgba(251,113,133,.55); padding:3px 8px; border-radius:999px; font-size:12px; font-weight:900}
+    .errorBody{
+      padding:10px 12px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:12px;
+      white-space:pre-wrap;
+      color:#fecdd3;
+      max-height:240px;
+      overflow:auto;
+    }
+    .okLine{color:#bbf7d0}
+    .warnLine{color:#fde68a}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <span>Mini Study</span>
+      <span class="pill" id="studyPill">Mock Study • 3 games</span>
+      <span class="pill" id="gamePill">—</span>
+      <span class="pill" id="diagPill">diagnostics</span>
+    </div>
+    <div class="actions">
+      <button id="btnPrev">◀︎</button>
+      <button id="btnNext">▶︎</button>
+      <button id="btnFlip">Flip</button>
+      <button id="btnReset">Reset</button>
+
+      <button id="btnSquares">Squares</button>
+      <button id="btnArrows">Arrows</button>
+      <button id="btnClear">Clear</button>
+
+      <button id="btnExportGame">Export Game PGN</button>
+      <button id="btnExportStudy">Export Study PGN</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- Left: board -->
+    <div class="card">
+      <div class="head">
+        <div class="status" id="status">—</div>
+        <div class="status">Tool: <span id="toolStatus">none</span></div>
+      </div>
+      <div class="boardArea" id="boardArea">
+        <div id="board"></div>
+        <svg id="overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="below">
+        <div class="fenRow">
+          <span class="fenLabel">FEN</span>
+          <div class="fenBox" id="fenBox"></div>
+        </div>
+        <div class="hint" id="hint">
+          <b>Squares:</b> tap a square to toggle highlight.<br/>
+          <b>Arrows:</b> tap start square, then tap end square to toggle an arrow.<br/>
+          (Turn tool off to move pieces normally.)
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: moves + games -->
+    <div class="card" style="min-height:520px; display:flex; flex-direction:column;">
+      <div class="tabs">
+        <div class="tab active" id="tabMoves">Moves</div>
+        <div class="tab" id="tabGames">Games</div>
+      </div>
+
+      <div class="pane active" id="paneMoves" style="flex:1;">
+        <div class="hint">
+          Click a move to jump. Annotation is saved per ply and exported as <span class="kbd">{ comment }</span>.
+        </div>
+        <div class="moves" id="moves" style="flex:1;"></div>
+        <div>
+          <div class="hint" id="annoTitle">Annotation</div>
+          <textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
+        </div>
+      </div>
+
+      <div class="pane" id="paneGames" style="flex:1;">
+        <div class="hint">Mock CQL results / opening exploration list. Click to load.</div>
+        <div class="gameList" id="gameList" style="flex:1;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error panel -->
+  <div class="errorCard">
+    <div class="errorHead">
+      <div class="left">
+        <span>Errors & Diagnostics</span>
+        <span class="badgeBad" id="errCount">0</span>
+      </div>
+      <button id="btnClearErrors">Clear</button>
+    </div>
+    <div class="errorBody" id="errorLog"></div>
+  </div>
+
+<script>
+(() => {
+  // ---------- error logger ----------
+  const errorLog = document.getElementById('errorLog');
+  const errCount = document.getElementById('errCount');
+  let errorLines = [];
+
+  function logLine(kind, msg){
+    const ts = new Date().toISOString().slice(11,19);
+    const line = `[${ts}] ${kind}: ${msg}`;
+    errorLines.push(line);
+    errCount.textContent = String(errorLines.length);
+
+    const el = document.createElement('div');
+    el.textContent = line;
+    if (kind === 'OK') el.className = 'okLine';
+    if (kind === 'WARN') el.className = 'warnLine';
+    errorLog.appendChild(el);
+    errorLog.scrollTop = errorLog.scrollHeight;
+  }
+
+  window.addEventListener('error', (e) => {
+    const where = e.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
+    logLine('ERR', `${e.message}${where}`);
+  });
+
+  window.addEventListener('unhandledrejection', (e) => {
+    logLine('ERR', `Unhandled promise rejection: ${String(e.reason)}`);
+  });
+
+  document.getElementById('btnClearErrors').addEventListener('click', () => {
+    errorLines = [];
+    errCount.textContent = '0';
+    errorLog.innerHTML = '';
+    logLine('OK', 'Cleared error log.');
+  });
+
+  // ---------- dependency diagnostics ----------
+  function diag(){
+    // These checks will tell you exactly what's missing (CDN blocked etc.)
+    logLine('OK', `User-Agent: ${navigator.userAgent}`);
+
+    const haveJQ = (typeof window.jQuery !== 'undefined');
+    logLine(haveJQ ? 'OK' : 'ERR', `jQuery loaded: ${haveJQ}`);
+
+    const haveChessboard = (typeof window.Chessboard !== 'undefined');
+    logLine(haveChessboard ? 'OK' : 'ERR', `Chessboard loaded: ${haveChessboard}`);
+
+    const haveChess = (typeof window.Chess !== 'undefined');
+    logLine(haveChess ? 'OK' : 'ERR', `Chess (chess.js) loaded: ${haveChess}`);
+
+    // Verify piece sprite URL is reachable (often blocked)
+    const testImg = new Image();
+    testImg.onload = () => logLine('OK', 'Piece sprite reachable (wikipedia set).');
+    testImg.onerror = () => logLine('ERR', 'Piece sprite failed to load (CDN blocked?).');
+    testImg.src = 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/Wp.png';
+  }
+
+  // ---------- mock games ----------
+  const GAMES = [
+    {
+      id:"mock1", title:"Mock Game 1", opening:"English (mock)", result:"1-0",
+      pgn:`[Event "Mock Study"]
+[Site "Local"]
+[Date "2026.01.01"]
+[Round "1"]
+[White "lexspec"]
+[Black "mockbot"]
+[Result "1-0"]
+
+1. c4 e5 2. g3 Nf6 3. Bg2 Bc5 4. d3 O-O 5. Nc3 Re8 6. Nf3 c6 7. O-O d5 8. cxd5 cxd5 9. Bg5 Be6 10. Nxe5 1-0`
+    },
+    {
+      id:"mock2", title:"Mock Game 2", opening:"Caro-Kann (mock)", result:"0-1",
+      pgn:`[Event "Mock Study"]
+[Site "Local"]
+[Date "2026.01.01"]
+[Round "2"]
+[White "mockbot"]
+[Black "lexspec"]
+[Result "0-1"]
+
+1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1`
+    },
+    {
+      id:"mock3", title:"Mock Game 3", opening:"Ruy Lopez (mock)", result:"1/2-1/2",
+      pgn:`[Event "Mock Study"]
+[Site "Local"]
+[Date "2026.01.01"]
+[Round "3"]
+[White "lexspec"]
+[Black "mockbot"]
+[Result "1/2-1/2"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 1/2-1/2`
+    },
+  ];
+
+  // ---------- DOM ----------
+  const statusEl = document.getElementById('status');
+  const fenBox = document.getElementById('fenBox');
+  const movesEl = document.getElementById('moves');
+  const gameListEl = document.getElementById('gameList');
+  const gamePill = document.getElementById('gamePill');
+  const toolStatusEl = document.getElementById('toolStatus');
+  const annoTitleEl = document.getElementById('annoTitle');
+  const annoTextEl = document.getElementById('annoText');
+  const overlay = document.getElementById('overlay');
+
+  // ---------- state ----------
+  let board = null;
+  let orientation = 'white';
+  let currentGame = null;
+
+  let game = null;              // created only if Chess exists
+  let verboseHistory = [];
+  let activePly = 0;
+
+  const annotations = Object.create(null);
+  const drawings = Object.create(null);
+
+  function ensureStores(gameId){
+    if (!annotations[gameId]) annotations[gameId] = Object.create(null);
+    if (!drawings[gameId]) drawings[gameId] = { squares:Object.create(null), arrows:[] };
+  }
+
+  const Tool = { NONE:'none', SQUARES:'squares', ARROWS:'arrows' };
+  let tool = Tool.NONE;
+  let tapFrom = null;
+
+  function setTool(t){
+    tool = t;
+    tapFrom = null;
+    toolStatusEl.textContent = t;
+    document.getElementById('btnSquares').classList.toggle('on', t === Tool.SQUARES);
+    document.getElementById('btnArrows').classList.toggle('on', t === Tool.ARROWS);
+    logLine('OK', `Tool set to: ${t}`);
+  }
+
+  // ---------- overlay ----------
+  function clearOverlay(){ while(overlay.firstChild) overlay.removeChild(overlay.firstChild); }
+
+  function ensureDefs(){
+    let defs = overlay.querySelector('defs');
+    if (!defs){
+      defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+      overlay.appendChild(defs);
+    }
+    if (!overlay.querySelector('#arrowHead')){
+      const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
+      marker.setAttribute('id','arrowHead');
+      marker.setAttribute('markerWidth','6');
+      marker.setAttribute('markerHeight','6');
+      marker.setAttribute('refX','5.2');
+      marker.setAttribute('refY','3');
+      marker.setAttribute('orient','auto');
+      marker.setAttribute('markerUnits','strokeWidth');
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d','M0,0 L6,3 L0,6 Z');
+      path.setAttribute('fill','#22c55e');
+      marker.appendChild(path);
+      defs.appendChild(marker);
+    }
+  }
+
+  function squareToXY(sq){
+    const f = sq.charCodeAt(0)-97;
+    const r = parseInt(sq[1],10)-1;
+    if (orientation === 'white'){
+      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
+    } else {
+      return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
+    }
+  }
+
+  function drawSquare(sq){
+    const {x,y} = squareToXY(sq);
+    const size = 12.5;
+    const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', x - size/2);
+    rect.setAttribute('y', y - size/2);
+    rect.setAttribute('width', size);
+    rect.setAttribute('height', size);
+    rect.setAttribute('fill', '#22c55e');
+    rect.setAttribute('opacity', '0.18');
+    overlay.appendChild(rect);
+  }
+
+  function drawArrow(from,to){
+    const a = squareToXY(from), b = squareToXY(to);
+    const dx=b.x-a.x, dy=b.y-a.y;
+    const len=Math.hypot(dx,dy)||1;
+    const shrink=4;
+    const ux=dx/len, uy=dy/len;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', a.x);
+    line.setAttribute('y1', a.y);
+    line.setAttribute('x2', b.x - ux*shrink);
+    line.setAttribute('y2', b.y - uy*shrink);
+    line.setAttribute('stroke', '#22c55e');
+    line.setAttribute('stroke-width', '1.7');
+    line.setAttribute('opacity', '0.92');
+    line.setAttribute('marker-end', 'url(#arrowHead)');
+    overlay.appendChild(line);
+  }
+
+  function redrawDrawings(){
+    clearOverlay();
+    ensureDefs();
+    if (!currentGame) return;
+    const d = drawings[currentGame.id];
+    if (!d) return;
+    for (const sq of Object.keys(d.squares)){ if (d.squares[sq]) drawSquare(sq); }
+    for (const ar of d.arrows){ drawArrow(ar.from, ar.to); }
+  }
+
+  function toggleSquare(gameId,sq){
+    ensureStores(gameId);
+    drawings[gameId].squares[sq] = !drawings[gameId].squares[sq];
+    logLine('OK', `Square ${sq} => ${drawings[gameId].squares[sq] ? 'ON' : 'OFF'}`);
+  }
+
+  function toggleArrow(gameId,from,to){
+    if (from===to) return;
+    ensureStores(gameId);
+    const a = (from<to)?from:to;
+    const b = (from<to)?to:from;
+    const key = `${a}-${b}`;
+    const arr = drawings[gameId].arrows;
+    const idx = arr.findIndex(x => `${(x.from<x.to)?x.from:x.to}-${(x.from<x.to)?x.to:x.from}` === key);
+    if (idx>=0){
+      arr.splice(idx,1);
+      logLine('OK', `Arrow ${key} removed`);
+    } else {
+      arr.push({from:a,to:b});
+      logLine('OK', `Arrow ${key} added`);
+    }
+  }
+
+  function clearAll(gameId){
+    ensureStores(gameId);
+    drawings[gameId].squares = Object.create(null);
+    drawings[gameId].arrows = [];
+    logLine('OK', 'Cleared drawings.');
+  }
+
+  // ---------- tabs ----------
+  function setTab(which){
+    document.getElementById('tabMoves').classList.toggle('active', which==='moves');
+    document.getElementById('tabGames').classList.toggle('active', which==='games');
+    document.getElementById('paneMoves').classList.toggle('active', which==='moves');
+    document.getElementById('paneGames').classList.toggle('active', which==='games');
+    logLine('OK', `Tab: ${which}`);
+  }
+  document.getElementById('tabMoves').onclick = () => setTab('moves');
+  document.getElementById('tabGames').onclick = () => setTab('games');
+
+  // ---------- move list / nav ----------
+  function rebuildToPly(ply){
+    game.reset();
+    for (let i=0;i<ply;i++){
+      const mv = verboseHistory[i];
+      if (!mv) break;
+      game.move({from:mv.from,to:mv.to,promotion:mv.promotion||'q'});
+    }
+  }
+
+  function setStatus(){
+    let s = `${game.turn()==='w'?'White':'Black'} to move.`;
+    if (game.in_check()) s += ' (Check)';
+    if (game.game_over()){
+      if (game.in_checkmate()) s = `Checkmate. ${game.turn()==='w'?'Black':'White'} wins.`;
+      else if (game.in_draw()) s = 'Draw.';
+      else s = 'Game over.';
+    }
+    statusEl.textContent = s;
+  }
+
+  function setFen(){ fenBox.textContent = game.fen(); }
+
+  function renderMoves(){
+    movesEl.innerHTML = '';
+    const total = verboseHistory.length;
+    const rows = Math.ceil(total/2);
+
+    for (let m=0;m<rows;m++){
+      const row = document.createElement('div');
+      row.className = 'moveRow';
+
+      const mn = document.createElement('div');
+      mn.className='mn';
+      mn.textContent = `${m+1}.`;
+      row.appendChild(mn);
+
+      const ply = document.createElement('div');
+      ply.className='ply';
+
+      const wi = m*2;
+      const bi = m*2+1;
+
+      const wBtn = document.createElement('button');
+      wBtn.textContent = verboseHistory[wi]?.san || '';
+      wBtn.disabled = !verboseHistory[wi];
+      if (activePly === wi+1) wBtn.classList.add('active');
+      wBtn.onclick = () => jumpTo(wi+1);
+      ply.appendChild(wBtn);
+
+      const bBtn = document.createElement('button');
+      bBtn.textContent = verboseHistory[bi]?.san || '';
+      bBtn.disabled = !verboseHistory[bi];
+      if (activePly === bi+1) bBtn.classList.add('active');
+      bBtn.onclick = () => jumpTo(bi+1);
+      ply.appendChild(bBtn);
+
+      row.appendChild(ply);
+      movesEl.appendChild(row);
+    }
+  }
+
+  function updateAnnoUI(){
+    ensureStores(currentGame.id);
+    annoTitleEl.textContent = `Annotation (ply ${activePly}${activePly===0?' / start':''})`;
+    annoTextEl.value = annotations[currentGame.id][activePly] || '';
+  }
+
+  function jumpTo(ply){
+    activePly = Math.max(0, Math.min(ply, verboseHistory.length));
+    rebuildToPly(activePly);
+    board.position(game.fen(), false);
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    logLine('OK', `Jump to ply ${activePly}`);
+  }
+
+  // ---------- board callbacks ----------
+  function onDragStart(source, piece){
+    if (tool !== Tool.NONE) return false;
+    if (game.game_over()) return false;
+    if (activePly !== verboseHistory.length) return false;
+    if (game.turn()==='w' && piece.startsWith('b')) return false;
+    if (game.turn()==='b' && piece.startsWith('w')) return false;
+    return true;
+  }
+
+  function onDrop(source,target){
+    const mv = game.move({from:source,to:target,promotion:'q'});
+    if (!mv) return 'snapback';
+    verboseHistory = game.history({verbose:true});
+    activePly = verboseHistory.length;
+    setStatus(); setFen(); renderMoves(); updateAnnoUI();
+    logLine('OK', `Move: ${mv.san}`);
+  }
+
+  function onSnapEnd(){ board.position(game.fen(), false); }
+
+  // ---------- square detection ----------
+  function squareFromTarget(t){
+    const el = t.closest?.('div.square-55d63');
+    if (!el) return null;
+    const cls = Array.from(el.classList).find(c => c.startsWith('square-') && c.length===10);
+    return cls ? cls.replace('square-','') : null;
+  }
+
+  document.getElementById('boardArea').addEventListener('click', (e) => {
+    if (!currentGame) return;
+    if (tool === Tool.NONE) return;
+
+    const sq = squareFromTarget(e.target);
+    if (!sq) return;
+
+    if (tool === Tool.SQUARES){
+      toggleSquare(currentGame.id, sq);
+      redrawDrawings();
+      return;
+    }
+
+    if (tool === Tool.ARROWS){
+      if (!tapFrom){
+        tapFrom = sq;
+        logLine('OK', `Arrow start = ${sq} (tap destination)`);
+      } else {
+        toggleArrow(currentGame.id, tapFrom, sq);
+        tapFrom = null;
+        redrawDrawings();
+      }
+    }
+  });
+
+  // ---------- games list ----------
+  function renderGameList(){
+    gameListEl.innerHTML = '';
+    for (const g of GAMES){
+      const card = document.createElement('div');
+      card.className = 'gameCard' + (currentGame?.id === g.id ? ' active' : '');
+      card.innerHTML = `
+        <div class="gameTitle">${g.title}</div>
+        <div class="meta"><span class="kbd">${g.result}</span><span>${g.opening}</span></div>
+      `;
+      card.onclick = () => loadGame(g.id);
+      gameListEl.appendChild(card);
+    }
+  }
+
+  function loadGame(gameId){
+    const g = GAMES.find(x => x.id===gameId);
+    if (!g) return;
+
+    currentGame = g;
+    ensureStores(g.id);
+    gamePill.textContent = g.title;
+
+    game.reset();
+    const ok = game.load_pgn(g.pgn, {sloppy:true});
+    logLine(ok ? 'OK' : 'ERR', `load_pgn(${g.title}) => ${ok}`);
+
+    verboseHistory = game.history({verbose:true});
+    activePly = verboseHistory.length;
+
+    if (!board){
+      logLine('OK', 'Initializing Chessboard...');
+      board = Chessboard('board', {
+        draggable:true,
+        position: game.fen(),
+        pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+        onDragStart, onDrop, onSnapEnd
+      });
+      logLine('OK', 'Chessboard initialized.');
+    } else {
+      board.position(game.fen(), false);
+      logLine('OK', `Chessboard position updated.`);
+    }
+
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    renderGameList();
+  }
+
+  // ---------- export ----------
+  function downloadText(filename, text){
+    const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
+    logLine('OK', `Downloaded: ${filename}`);
+  }
+
+  function pgnWithComments(gameId, basePgn){
+    ensureStores(gameId);
+    const tmp = new Chess();
+    tmp.load_pgn(basePgn, {sloppy:true});
+    const headers = tmp.header();
+    const hist = tmp.history({verbose:true});
+    const ann = annotations[gameId] || {};
+
+    const headerLines = Object.keys(headers).map(k => `[${k} "${String(headers[k]).replaceAll('"','\\"')}"]`);
+    if (!headers.Result) headerLines.push(`[Result "*"]`);
+
+    const parts = [];
+    for (let i=0;i<hist.length;i++){
+      const ply = i+1;
+      const moveNo = Math.floor(i/2)+1;
+      const san = hist[i].san;
+      if (i%2===0) parts.push(`${moveNo}. ${san}`);
+      else parts.push(`${san}`);
+      const c = (ann[ply]||'').trim();
+      if (c) parts.push(`{ ${c.replace(/\s+/g,' ').trim()} }`);
+    }
+
+    const result = headers.Result || '*';
+    return `${headerLines.join('\\n')}\\n\\n${parts.join(' ')} ${result}`.trim();
+  }
+
+  document.getElementById('btnExportGame').onclick = () => {
+    if (!currentGame) return;
+    downloadText(`${currentGame.title.replace(/\\s+/g,'_')}.pgn`, pgnWithComments(currentGame.id, currentGame.pgn) + '\\n');
+  };
+  document.getElementById('btnExportStudy').onclick = () => {
+    const blocks = GAMES.map(g => pgnWithComments(g.id, g.pgn));
+    downloadText(`Mock_Study.pgn`, blocks.join('\\n\\n\\n') + '\\n');
+  };
+
+  // ---------- buttons ----------
+  document.getElementById('btnPrev').onclick = () => { if (game) jumpTo(activePly - 1); };
+  document.getElementById('btnNext').onclick = () => { if (game) jumpTo(activePly + 1); };
+
+  document.getElementById('btnFlip').onclick = () => {
+    if (!board) return;
+    board.flip();
+    orientation = (orientation==='white') ? 'black' : 'white';
+    redrawDrawings();
+    logLine('OK', `Flip => ${orientation}`);
+  };
+
+  document.getElementById('btnReset').onclick = () => {
+    if (!board || !game) return;
+    game.reset();
+    verboseHistory = [];
+    activePly = 0;
+    board.start(false);
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    logLine('OK', 'Reset line to start position.');
+  };
+
+  document.getElementById('btnSquares').onclick = () => setTool(tool===Tool.SQUARES ? Tool.NONE : Tool.SQUARES);
+  document.getElementById('btnArrows').onclick = () => setTool(tool===Tool.ARROWS ? Tool.NONE : Tool.ARROWS);
+  document.getElementById('btnClear').onclick = () => { if(currentGame){ clearAll(currentGame.id); redrawDrawings(); } };
+
+  annoTextEl.addEventListener('input', () => {
+    if (!currentGame) return;
+    ensureStores(currentGame.id);
+    annotations[currentGame.id][activePly] = annoTextEl.value;
+    logLine('OK', `Annotation saved for ply ${activePly} (${annoTextEl.value.length} chars)`);
+  });
+
+  window.addEventListener('resize', () => redrawDrawings());
+
+  // ---------- boot sequence with guards ----------
+  try {
+    diag();
+
+    if (typeof Chess === 'undefined') {
+      logLine('ERR', 'Chess is undefined. chess.js did not load (CDN blocked?).');
+      return;
+    }
+    if (typeof Chessboard === 'undefined') {
+      logLine('ERR', 'Chessboard is undefined. chessboard.js did not load (CDN blocked?), or jQuery missing.');
+      return;
+    }
+
+    game = new Chess();
+    setTool(Tool.NONE);
+    renderGameList();
+    loadGame('mock1');
+    logLine('OK', 'Boot complete.');
+  } catch (e) {
+    logLine('ERR', `Boot exception: ${e && e.stack ? e.stack : String(e)}`);
+  }
+})();
+</script>
+</body>
+</html>
