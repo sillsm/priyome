@@ -1,0 +1,235 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CQL Runner (two uploads)</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; padding: 16px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    label { min-width: 120px; }
+    input[type="text"] { width: min(980px, 100%); padding: 6px; }
+    input[type="file"] { padding: 6px; }
+    button { padding: 6px 10px; }
+    button:disabled { opacity: 0.5; }
+    #log { white-space: pre-wrap; background: #0b0f14; color: #e8eef7; padding: 12px; border-radius: 8px; min-height: 280px; }
+    .muted { opacity: 0.75; }
+    .hint { font-size: 12px; opacity: 0.75; }
+    .mono { font-family: inherit; }
+  </style>
+</head>
+<body>
+  <h1>CQL Runner</h1>
+
+  <div class="row">
+    <label for="cqlFile">CQL file:</label>
+    <input id="cqlFile" type="file" accept=".cql" />
+    <span id="cqlChosen" class="muted"></span>
+  </div>
+
+  <div class="row">
+    <label for="pgnFile">PGN file:</label>
+    <input id="pgnFile" type="file" accept=".pgn" />
+    <span id="pgnChosen" class="muted"></span>
+  </div>
+
+  <div class="row">
+    <label for="args">Args template:</label>
+    <input id="args" type="text" value="{cql} {pgn}" />
+  </div>
+  <div class="row hint">
+    <span>
+      Use placeholders: <span class="mono">{cql}</span> and <span class="mono">{pgn}</span>.
+      Example: <span class="mono">-q {cql} -game {pgn}</span>
+    </span>
+  </div>
+
+  <div class="row">
+    <button id="runBtn" disabled>Run</button>
+    <button id="clearBtn">Clear log</button>
+    <span id="status" class="muted">Loading wasm…</span>
+  </div>
+
+  <h3>Console</h3>
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const runBtn = document.getElementById('runBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const cqlInput = document.getElementById('cqlFile');
+    const pgnInput = document.getElementById('pgnFile');
+    const cqlChosen = document.getElementById('cqlChosen');
+    const pgnChosen = document.getElementById('pgnChosen');
+
+    function log(line) {
+      logEl.textContent += line + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(line);
+    }
+
+    function setStatus(s) {
+      statusEl.textContent = s;
+      log("[status] " + s);
+    }
+
+    function describeErr(e) {
+      if (e instanceof Error) return e.stack || e.message || String(e);
+      if (e && typeof e === "object") {
+        const parts = [];
+        for (const k of ["name","message","errno","code","path","stack"]) {
+          if (e[k] != null) parts.push(`${k}=${String(e[k])}`);
+        }
+        try { parts.push("json=" + JSON.stringify(e)); } catch {}
+        return parts.join(" | ") || "[object Object]";
+      }
+      return String(e);
+    }
+
+    window.addEventListener("error", (e) => {
+      log("[window.error] " + (e.message || e));
+      if (e.error) log("[window.error.detail] " + describeErr(e.error));
+    });
+
+    window.addEventListener("unhandledrejection", (e) => {
+      log("[unhandledrejection] " + describeErr(e.reason));
+    });
+
+    clearBtn.addEventListener("click", () => {
+      logEl.textContent = "";
+    });
+
+    function updateChosenLabels() {
+      cqlChosen.textContent = cqlInput.files?.[0] ? cqlInput.files[0].name : "";
+      pgnChosen.textContent = pgnInput.files?.[0] ? pgnInput.files[0].name : "";
+      // Enable run only if runtime is ready AND both files are chosen
+      const runtimeReady = (typeof Module !== "undefined" && Module && Module.__runtimeReady === true);
+      runBtn.disabled = !(runtimeReady && cqlInput.files?.[0] && pgnInput.files?.[0]);
+    }
+    cqlInput.addEventListener("change", updateChosenLabels);
+    pgnInput.addEventListener("change", updateChosenLabels);
+
+    // IMPORTANT: define Module BEFORE loading cql.js
+    window.Module = {
+      noInitialRun: true, // try to prevent auto-run; depends on your build
+      __runtimeReady: false,
+
+      setStatus,
+      print: (text) => log(String(text)),
+      printErr: (text) => log("[stderr] " + String(text)),
+      onAbort: (what) => log("[abort] " + String(what)),
+      locateFile: (path) => path, // assumes cql.wasm sits next to cql.js
+
+      onRuntimeInitialized: () => {
+        Module.__runtimeReady = true;
+        setStatus("Runtime initialized. Choose files to run.");
+        log("[info] Module.callMain is " + (typeof Module.callMain));
+        log("[info] Module.FS is " + (typeof Module.FS));
+        updateChosenLabels();
+      }
+    };
+
+    function fsEnsureDir(FS, path) {
+      const ap = FS.analyzePath(path);
+      if (!ap.exists) FS.mkdir(path);
+      const st = FS.stat(path);
+      if (!FS.isDir(st.mode)) throw new Error(`${path} exists but is not a directory`);
+    }
+
+    async function fileToUint8(file) {
+      const ab = await file.arrayBuffer();
+      return new Uint8Array(ab);
+    }
+
+    function buildArgvFromTemplate(tpl, cqlPath, pgnPath) {
+      // Replace placeholders
+      const replaced = tpl
+        .replaceAll("{cql}", cqlPath)
+        .replaceAll("{pgn}", pgnPath)
+        .trim();
+
+      if (!replaced) return [];
+
+      // Minimal whitespace split. If you need quoted args, tell me and I’ll swap in a quote-aware parser.
+      return replaced.split(/\s+/);
+    }
+
+    async function runOnce() {
+      runBtn.disabled = true;
+      try {
+        if (!Module || typeof Module.callMain !== "function") {
+          throw new Error("Module.callMain is not available. Make sure cql.js exports callMain onto Module.");
+        }
+        if (!Module.FS) {
+          throw new Error("Module.FS is not available. Make sure cql.js exports FS onto Module (and build includes filesystem support).");
+        }
+
+        const cqlFile = cqlInput.files?.[0];
+        const pgnFile = pgnInput.files?.[0];
+        if (!cqlFile) throw new Error("Pick a .cql file.");
+        if (!pgnFile) throw new Error("Pick a .pgn file.");
+
+        setStatus("Reading files…");
+        const [cqlBytes, pgnBytes] = await Promise.all([fileToUint8(cqlFile), fileToUint8(pgnFile)]);
+
+        setStatus("Writing files into Emscripten FS…");
+        const FS = Module.FS;
+
+        // Use our own working dir to avoid collisions
+        fsEnsureDir(FS, "/work");
+
+        const cqlPath = "/work/query.cql";
+        const pgnPath = "/work/game.pgn";
+
+        try {
+          FS.writeFile(cqlPath, cqlBytes);
+          FS.writeFile(pgnPath, pgnBytes);
+          log(`[FS] wrote ${cqlBytes.length} bytes to ${cqlPath}`);
+          log(`[FS] wrote ${pgnBytes.length} bytes to ${pgnPath}`);
+        } catch (e) {
+          log("[FS ERROR] " + describeErr(e));
+          throw e;
+        }
+
+        const tpl = document.getElementById("args").value;
+        const argv = buildArgvFromTemplate(tpl, cqlPath, pgnPath);
+
+        // Guardrail: ensure placeholders were actually used (otherwise you’ll run --help again)
+        if (!argv.includes(cqlPath) && !argv.some(a => a.includes(".cql"))) {
+          log("[warn] Your args template didn't include {cql}. Current template: " + JSON.stringify(tpl));
+        }
+        if (!argv.includes(pgnPath) && !argv.some(a => a.includes(".pgn"))) {
+          log("[warn] Your args template didn't include {pgn}. Current template: " + JSON.stringify(tpl));
+        }
+
+        setStatus("Running main(argv)…");
+        log("[argv] " + ["cql", ...argv].join(" "));
+
+        let rc;
+        try {
+          rc = Module.callMain(argv);
+          log("[exit] return code: " + rc);
+        } catch (e) {
+          log("[callMain exception] " + describeErr(e));
+          throw e;
+        }
+
+        setStatus("Done.");
+      } catch (e) {
+        log("[exception] " + describeErr(e));
+        setStatus("Error (see console).");
+      } finally {
+        updateChosenLabels();
+      }
+    }
+
+    runBtn.addEventListener("click", runOnce);
+
+    setStatus("Loading wasm… (if stuck, check DevTools Network for cql.wasm 404/CORS)");
+  </script>
+
+  <!-- Load emscripten output AFTER Module is defined -->
+  <script src="./cql.js"></script>
+</body>
+</html>
