@@ -47,11 +47,15 @@
   <div class="row">
     <button id="runBtn" disabled>Run</button>
     <button id="clearBtn">Clear log</button>
-    <span id="status" class="muted">Loading wasm…</span>
+    <span id="status" class="muted">Ready. Choose files.</span>
   </div>
 
   <h3>Console</h3>
   <div id="log"></div>
+
+  <!-- NEW: output.pgn archive -->
+  <h3>output.pgn history</h3>
+  <div id="outputs"></div>
 
   <script>
     const logEl = document.getElementById('log');
@@ -62,6 +66,7 @@
     const pgnInput = document.getElementById('pgnFile');
     const cqlChosen = document.getElementById('cqlChosen');
     const pgnChosen = document.getElementById('pgnChosen');
+    const outputsEl = document.getElementById('outputs');
 
     function log(line) {
       logEl.textContent += line + "\n";
@@ -103,119 +108,265 @@
     function updateChosenLabels() {
       cqlChosen.textContent = cqlInput.files?.[0] ? cqlInput.files[0].name : "";
       pgnChosen.textContent = pgnInput.files?.[0] ? pgnInput.files[0].name : "";
-      // Enable run only if runtime is ready AND both files are chosen
-      const runtimeReady = (typeof Module !== "undefined" && Module && Module.__runtimeReady === true);
-      runBtn.disabled = !(runtimeReady && cqlInput.files?.[0] && pgnInput.files?.[0]);
+      // Enable run only if both files are chosen (worker will load wasm each run)
+      runBtn.disabled = !(cqlInput.files?.[0] && pgnInput.files?.[0]);
     }
     cqlInput.addEventListener("change", updateChosenLabels);
     pgnInput.addEventListener("change", updateChosenLabels);
-
-    // IMPORTANT: define Module BEFORE loading cql.js
-    window.Module = {
-      noInitialRun: true, // try to prevent auto-run; depends on your build
-      __runtimeReady: false,
-
-      setStatus,
-      print: (text) => log(String(text)),
-      printErr: (text) => log("[stderr] " + String(text)),
-      onAbort: (what) => log("[abort] " + String(what)),
-      locateFile: (path) => path, // assumes cql.wasm sits next to cql.js
-
-      onRuntimeInitialized: () => {
-        Module.__runtimeReady = true;
-        setStatus("Runtime initialized. Choose files to run.");
-        log("[info] Module.callMain is " + (typeof Module.callMain));
-        log("[info] Module.FS is " + (typeof Module.FS));
-        updateChosenLabels();
-      }
-    };
-
-    function fsEnsureDir(FS, path) {
-      const ap = FS.analyzePath(path);
-      if (!ap.exists) FS.mkdir(path);
-      const st = FS.stat(path);
-      if (!FS.isDir(st.mode)) throw new Error(`${path} exists but is not a directory`);
-    }
 
     async function fileToUint8(file) {
       const ab = await file.arrayBuffer();
       return new Uint8Array(ab);
     }
 
-    function buildArgvFromTemplate(tpl, cqlPath, pgnPath) {
-      // Replace placeholders
-      const replaced = tpl
-        .replaceAll("{cql}", cqlPath)
-        .replaceAll("{pgn}", pgnPath)
-        .trim();
+    function appendOutputPgn(title, text) {
+      const d = document.createElement("details");
+      d.open = false; // collapsed by default
 
-      if (!replaced) return [];
+      const s = document.createElement("summary");
+      s.textContent = title;
 
-      // Minimal whitespace split. If you need quoted args, tell me and I’ll swap in a quote-aware parser.
-      return replaced.split(/\s+/);
+      const pre = document.createElement("pre");
+      pre.style.whiteSpace = "pre-wrap";
+      pre.style.margin = "10px 0 0 0";
+      pre.textContent = text;
+
+      d.appendChild(s);
+      d.appendChild(pre);
+      outputsEl.appendChild(d);
+    }
+
+    // NEW: one-shot worker per run (fresh wasm each click)
+    function makeWorker() {
+      const cqlJsUrl = new URL("./cql.js", window.location.href).href;
+      const baseUrl = new URL("./", window.location.href).href;
+
+      const workerSrc = `
+        let _ready = false;
+        let _Module = null;
+        let _running = false;
+
+        function post(type, payload) {
+          self.postMessage(Object.assign({ type }, payload || {}));
+        }
+
+        function describeErr(e) {
+          if (e instanceof Error) return e.stack || e.message || String(e);
+          if (e && typeof e === "object") {
+            const parts = [];
+            for (const k of ["name","message","errno","code","path","stack"]) {
+              if (e[k] != null) parts.push(k + "=" + String(e[k]));
+            }
+            try { parts.push("json=" + JSON.stringify(e)); } catch {}
+            return parts.join(" | ") || "[object Object]";
+          }
+          return String(e);
+        }
+
+        function fsEnsureDir(FS, path) {
+          const ap = FS.analyzePath(path);
+          if (!ap.exists) FS.mkdir(path);
+          const st = FS.stat(path);
+          if (!FS.isDir(st.mode)) throw new Error(path + " exists but is not a directory");
+        }
+
+        function buildArgvFromTemplate(tpl, cqlPath, pgnPath) {
+          const replaced = (tpl || "")
+            .replaceAll("{cql}", cqlPath)
+            .replaceAll("{pgn}", pgnPath)
+            .trim();
+          if (!replaced) return [];
+          return replaced.split(/\\s+/);
+        }
+
+        async function init(baseUrl, cqlJsUrl) {
+          if (_ready) return;
+
+          // IMPORTANT: define Module BEFORE loading cql.js
+          self.Module = {
+            noInitialRun: true,
+            __runtimeReady: false,
+            print: (text) => post("log", { line: String(text) }),
+            printErr: (text) => post("log", { line: "[stderr] " + String(text) }),
+            onAbort: (what) => post("log", { line: "[abort] " + String(what) }),
+            locateFile: (path) => new URL(path, baseUrl).href,
+            setStatus: (s) => post("status", { status: String(s) }),
+            onRuntimeInitialized: () => {
+              self.Module.__runtimeReady = true;
+              _ready = true;
+              _Module = self.Module;
+              post("status", { status: "Runtime initialized (worker)." });
+            }
+          };
+
+          try {
+            importScripts(cqlJsUrl);
+          } catch (e) {
+            post("fatal", { error: "Failed to importScripts(cql.js): " + describeErr(e) });
+            throw e;
+          }
+
+          // Wait for runtime init if needed
+          if (!_ready) {
+            // Emscripten typically calls onRuntimeInitialized soon after importScripts.
+            // Spin microtasks a bit to avoid racing if it's async in your build.
+            for (let i = 0; i < 200 && !_ready; i++) {
+              await new Promise(r => setTimeout(r, 10));
+            }
+          }
+
+          if (!_ready || !_Module || typeof _Module.callMain !== "function" || !_Module.FS) {
+            throw new Error("Runtime not ready (Module.callMain/Module.FS missing).");
+          }
+        }
+
+        async function run(payload) {
+          if (_running) throw new Error("Worker is already running.");
+          _running = true;
+
+          const { baseUrl, cqlJsUrl, cqlBytes, pgnBytes, argsTpl } = payload;
+
+          await init(baseUrl, cqlJsUrl);
+
+          const FS = _Module.FS;
+          fsEnsureDir(FS, "/work");
+
+          const cqlPath = "/work/query.cql";
+          const pgnPath = "/work/game.pgn";
+
+          post("status", { status: "Writing files into Emscripten FS…" });
+
+          FS.writeFile(cqlPath, new Uint8Array(cqlBytes));
+          FS.writeFile(pgnPath, new Uint8Array(pgnBytes));
+
+          post("log", { line: "[FS] wrote " + cqlBytes.byteLength + " bytes to " + cqlPath });
+          post("log", { line: "[FS] wrote " + pgnBytes.byteLength + " bytes to " + pgnPath });
+
+          const argv = buildArgvFromTemplate(argsTpl, cqlPath, pgnPath);
+          post("log", { line: "[argv] " + ["cql", ...argv].join(" ") });
+
+          post("status", { status: "Running main(argv)…" });
+
+          let rc = 0;
+          try {
+            rc = _Module.callMain(argv);
+            post("log", { line: "[exit] return code: " + rc });
+          } catch (e) {
+            post("log", { line: "[callMain exception] " + describeErr(e) });
+            throw e;
+          }
+
+          // Copy output.pgn BEFORE tearing down
+          let outText = null;
+          const candidates = ["/work/query-out.pgn", "/query-out.pgn", "query-out.pgn"];
+          for (const p of candidates) {
+            try {
+              const ap = FS.analyzePath(p);
+              if (ap.exists) {
+                const bytes = FS.readFile(p); // Uint8Array
+                outText = new TextDecoder("utf-8").decode(bytes);
+                break;
+              }
+            } catch {}
+          }
+
+          if (outText != null) {
+            post("output", { name: "output.pgn", text: outText });
+          } else {
+            post("output", { name: "output.pgn", text: "" , missing: true});
+          }
+
+          post("done", { rc });
+        }
+
+        self.onmessage = async (ev) => {
+          const msg = ev.data || {};
+          if (msg.type !== "run") return;
+
+          try {
+            await run(msg);
+          } catch (e) {
+            post("error", { error: describeErr(e) });
+          } finally {
+            // Tear down this worker after each run
+            try { self.close(); } catch {}
+          }
+        };
+      `;
+
+      const blob = new Blob([workerSrc], { type: "text/javascript" });
+      const url = URL.createObjectURL(blob);
+      const w = new Worker(url);
+      // Revoke the blob URL once the worker starts using it
+      URL.revokeObjectURL(url);
+
+      return { w, cqlJsUrl, baseUrl };
     }
 
     async function runOnce() {
       runBtn.disabled = true;
-      try {
-        if (!Module || typeof Module.callMain !== "function") {
-          throw new Error("Module.callMain is not available. Make sure cql.js exports callMain onto Module.");
-        }
-        if (!Module.FS) {
-          throw new Error("Module.FS is not available. Make sure cql.js exports FS onto Module (and build includes filesystem support).");
-        }
 
-        const cqlFile = cqlInput.files?.[0];
-        const pgnFile = pgnInput.files?.[0];
+      const cqlFile = cqlInput.files?.[0];
+      const pgnFile = pgnInput.files?.[0];
+
+      try {
         if (!cqlFile) throw new Error("Pick a .cql file.");
         if (!pgnFile) throw new Error("Pick a .pgn file.");
 
         setStatus("Reading files…");
-        const [cqlBytes, pgnBytes] = await Promise.all([fileToUint8(cqlFile), fileToUint8(pgnFile)]);
+        const [cqlBytesU8, pgnBytesU8] = await Promise.all([fileToUint8(cqlFile), fileToUint8(pgnFile)]);
 
-        setStatus("Writing files into Emscripten FS…");
-        const FS = Module.FS;
-
-        // Use our own working dir to avoid collisions
-        fsEnsureDir(FS, "/work");
-
-        const cqlPath = "/work/query.cql";
-        const pgnPath = "/work/game.pgn";
-
-        try {
-          FS.writeFile(cqlPath, cqlBytes);
-          FS.writeFile(pgnPath, pgnBytes);
-          log(`[FS] wrote ${cqlBytes.length} bytes to ${cqlPath}`);
-          log(`[FS] wrote ${pgnBytes.length} bytes to ${pgnPath}`);
-        } catch (e) {
-          log("[FS ERROR] " + describeErr(e));
-          throw e;
-        }
+        // Transfer ArrayBuffers to the worker (no copies)
+        const cqlBuf = cqlBytesU8.buffer;
+        const pgnBuf = pgnBytesU8.buffer;
 
         const tpl = document.getElementById("args").value;
-        const argv = buildArgvFromTemplate(tpl, cqlPath, pgnPath);
 
-        // Guardrail: ensure placeholders were actually used (otherwise you’ll run --help again)
-        if (!argv.includes(cqlPath) && !argv.some(a => a.includes(".cql"))) {
-          log("[warn] Your args template didn't include {cql}. Current template: " + JSON.stringify(tpl));
-        }
-        if (!argv.includes(pgnPath) && !argv.some(a => a.includes(".pgn"))) {
-          log("[warn] Your args template didn't include {pgn}. Current template: " + JSON.stringify(tpl));
-        }
+        setStatus("Starting worker…");
+        const { w, cqlJsUrl, baseUrl } = makeWorker();
 
-        setStatus("Running main(argv)…");
-        log("[argv] " + ["cql", ...argv].join(" "));
+        const startedAt = new Date();
+        const title = `Run ${startedAt.toLocaleString()} — ${cqlFile.name} + ${pgnFile.name}`;
 
-        let rc;
-        try {
-          rc = Module.callMain(argv);
-          log("[exit] return code: " + rc);
-        } catch (e) {
-          log("[callMain exception] " + describeErr(e));
-          throw e;
-        }
+        w.onmessage = (ev) => {
+          const m = ev.data || {};
+          if (m.type === "log") {
+            log(String(m.line || ""));
+          } else if (m.type === "status") {
+            statusEl.textContent = String(m.status || "");
+          } else if (m.type === "output") {
+            if (m.missing) {
+              log("[warn] output.pgn not found (empty entry added).");
+            } else {
+              log("[info] captured output.pgn (" + (m.text?.length || 0) + " chars)");
+            }
+            appendOutputPgn(title, String(m.text || ""));
+          } else if (m.type === "done") {
+            setStatus("Done.");
+          } else if (m.type === "error" || m.type === "fatal") {
+            log("[" + m.type + "] " + String(m.error || "unknown error"));
+            setStatus("Error (see console).");
+          }
+        };
 
-        setStatus("Done.");
+        w.onerror = (e) => {
+          log("[worker.error] " + (e.message || String(e)));
+          setStatus("Error (see console).");
+        };
+
+        setStatus("Running in worker…");
+        w.postMessage(
+          {
+            type: "run",
+            baseUrl,
+            cqlJsUrl,
+            cqlBytes: cqlBuf,
+            pgnBytes: pgnBuf,
+            argsTpl: tpl
+          },
+          [cqlBuf, pgnBuf]
+        );
+
       } catch (e) {
         log("[exception] " + describeErr(e));
         setStatus("Error (see console).");
@@ -226,10 +377,8 @@
 
     runBtn.addEventListener("click", runOnce);
 
-    setStatus("Loading wasm… (if stuck, check DevTools Network for cql.wasm 404/CORS)");
+    // initial
+    updateChosenLabels();
   </script>
-
-  <!-- Load emscripten output AFTER Module is defined -->
-  <script src="./cql.js"></script>
 </body>
 </html>
