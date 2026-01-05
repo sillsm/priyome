@@ -3,208 +3,313 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Mini Study (with Error Panel)</title>                 
+  <title>Priyome</title>
+
   <!-- chessboard.js (requires jQuery) -->
-
- <link rel="stylesheet"
-      href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
-      integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
-      crossorigin="anonymous">
-<script src="https://code.jquery.com/jquery-3.5.1.min.js"
-        integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2"
-        crossorigin="anonymous"></script>
-
-<script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"                                          integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
-        crossorigin="anonymous"></script>
-
+  <link rel="stylesheet"
+        href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
+        integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
+        crossorigin="anonymous">
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+          integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
+          integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
+          crossorigin="anonymous"></script>
 
   <!-- chess.js UMD (global Chess) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.11.0/chess.min.js"></script>
 
   <style>
     :root{
-      --bg:#0b0f14; --panel:#121824; --panel2:#0f1622; --text:#e8eef7; --muted:#9fb0c9;
-      --border:#223044; --accent:#60a5fa; --green:#22c55e; --radius:14px;
-      --shadow:0 10px 24px rgba(0,0,0,.35); --bad:#fb7185; --warn:#fbbf24;
+      --bg:#f6f7fb;
+      --panel:#ffffff;
+      --text:#0f172a;
+      --muted:#475569;
+      --border:#dbe3f0;
+      --accent:#2563eb;
+      --green:#16a34a;
+      --radius:14px;
+      --shadow:0 10px 22px rgba(15,23,42,.08);
+      --bad:#dc2626;
+      --warn:#d97706;
     }
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      overflow:hidden; /* no page scroll; panels scroll internally */
+    }
+
     button{
-      border:1px solid rgba(34,48,68,.9);
-      background:#172234;
+      border:1px solid var(--border);
+      background: #ffffff;
       color:var(--text);
       padding:10px 12px;
       border-radius:12px;
       cursor:pointer;
     }
-    button:hover{filter:brightness(1.08)}
-    button.on{border-color:rgba(34,197,94,.9); box-shadow:0 0 0 1px rgba(34,197,94,.25) inset;}
-    .topbar{
+    button:hover{filter:brightness(0.98)}
+    button.on{
+      border-color: rgba(22,163,74,.55);
+      box-shadow:0 0 0 1px rgba(22,163,74,.20) inset;
+    }
+
+    /* --- Collapsible hamburger top bar --- */
+    .topbarWrap{
       position:sticky; top:0; z-index:5;
+      background: rgba(246,247,251,.92);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--border);
+    }
+    .topbar{
       display:flex; align-items:center; justify-content:space-between;
       padding:12px 14px;
-      background:rgba(11,15,20,.92); backdrop-filter: blur(10px);
-      border-bottom:1px solid rgba(34,48,68,.6);
       gap:10px;
     }
-    .brand{display:flex; align-items:center; gap:10px; font-weight:800; flex-wrap:wrap}
-    .pill{font-size:12px; color:var(--muted); border:1px solid rgba(34,48,68,.8); padding:3px 8px; border-radius:999px; background:rgba(18,24,36,.8)}
-    .actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; align-items:center}
-
-    .layout{
-      max-width:1240px; margin:0 auto; padding:14px;
-      display:grid; grid-template-columns: minmax(280px,560px) 1fr; gap:14px;
+    .brand{
+      display:flex; align-items:center; gap:10px; font-weight:900;
+      min-width:0;
     }
-    @media (max-width:980px){ .layout{grid-template-columns:1fr;} }
+    .hamburger{
+      width:42px; height:42px;
+      display:grid; place-items:center;
+      font-size:18px;
+      padding:0;
+      flex:0 0 auto;
+    }
+    .brandTitle{font-size:16px; letter-spacing:.2px}
+    .pill{
+      font-size:12px;
+      color:var(--muted);
+      border:1px solid var(--border);
+      padding:3px 8px;
+      border-radius:999px;
+      background: rgba(37,99,235,.06);
+      white-space:nowrap;
+    }
+
+    .menu{
+      display:none;
+      padding:10px 14px 14px;
+      border-top:1px solid var(--border);
+      background: rgba(255,255,255,.75);
+    }
+    .menu.open{display:block;}
+    .actions{
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+    }
+
+    /* --- Layout: board is upper half; panels lower half --- */
+    .layout{
+      max-width:1240px;
+      margin:0 auto;
+      padding:14px;
+      height: calc(100vh - 60px);
+      display:grid;
+      grid-template-rows: 50vh 1fr;
+      gap:14px;
+      min-height:0;
+    }
+    @media (max-width:980px){
+      .layout{ padding:10px; grid-template-rows: 50vh 1fr; }
+    }
 
     .card{
-      background: linear-gradient(180deg, rgba(18,24,36,.98), rgba(15,22,34,.98));
-      border:1px solid rgba(34,48,68,.85);
+      background: var(--panel);
+      border:1px solid var(--border);
       border-radius:var(--radius);
       box-shadow:var(--shadow);
       overflow:hidden;
+      min-height:0;
     }
     .head{
       padding:10px 12px;
       display:flex; align-items:center; justify-content:space-between; gap:10px;
-      border-bottom:1px solid rgba(34,48,68,.7);
+      border-bottom:1px solid var(--border);
+      background: rgba(15,23,42,.02);
     }
     .status{font-size:12px; color:var(--muted)}
-    .boardArea{position:relative; padding:12px;}
+
+    .boardCard{ display:flex; flex-direction:column; min-height:0; }
+    .boardArea{
+      position:relative;
+      padding:12px;
+      flex:1;
+      min-height:0;
+    }
     #board{width:100%;}
     #overlay{position:absolute; inset:12px; pointer-events:none;}
 
     .below{
       padding:10px 12px 12px;
-      border-top:1px solid rgba(34,48,68,.7);
-      background:rgba(11,15,20,.25);
+      border-top:1px solid var(--border);
+      background: rgba(15,23,42,.02);
       display:grid; gap:8px;
     }
     .fenRow{display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12px;}
-    .fenLabel{color:var(--muted); font-weight:800; letter-spacing:.2px}
+    .fenLabel{color:var(--muted); font-weight:900; letter-spacing:.2px}
     .fenBox{
       flex:1; padding:8px 10px; border-radius:12px;
-      border:1px solid rgba(34,48,68,.85);
-      background:rgba(15,22,34,.85);
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.03);
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       overflow:auto; white-space:nowrap;
     }
     .hint{font-size:12px; color:var(--muted); line-height:1.35}
 
-    .tabs{display:flex; gap:8px; padding:10px; border-bottom:1px solid rgba(34,48,68,.7); background:rgba(11,15,20,.15);}
+    .tabs{
+      display:flex; gap:8px;
+      padding:10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+    }
     .tab{
       padding:8px 10px; border-radius:12px;
-      border:1px solid rgba(34,48,68,.8);
-      background:rgba(23,34,52,.7);
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
       color:var(--muted);
       font-weight:900; font-size:12px; cursor:pointer;
+      user-select:none;
     }
-    .tab.active{color:var(--text); border-color:rgba(96,165,250,.9); box-shadow:0 0 0 1px rgba(96,165,250,.25) inset;}
-    .pane{display:none; padding:12px; gap:10px; height:calc(100% - 48px); }
+    .tab.active{
+      color:var(--text);
+      border-color: rgba(37,99,235,.55);
+      box-shadow:0 0 0 1px rgba(37,99,235,.15) inset;
+      background: rgba(37,99,235,.06);
+    }
+
+    .rightCard{ min-height:0; display:flex; flex-direction:column; }
+
+    /* NEW: make the lower-half content itself scrollable if needed */
+    .pane{
+      display:none;
+      padding:12px;
+      gap:10px;
+      flex:1;               /* fill remaining height under tabs */
+      min-height:0;
+      overflow:auto;        /* IMPORTANT: allow scrolling inside pane */
+      -webkit-overflow-scrolling: touch;
+    }
     .pane.active{display:flex; flex-direction:column;}
 
-    .moves{overflow:auto; padding-right:4px;}
+    /* Ensure the moves list is scrollable but doesn't hide the annotation box */
+    .moves{overflow:auto; padding-right:4px; min-height:120px; flex:1;}
     .moveRow{display:flex; gap:10px; padding:7px 8px; border-radius:12px;}
-    .moveRow:hover{background:rgba(255,255,255,.03);}
+    .moveRow:hover{background:rgba(15,23,42,.03);}
     .mn{width:34px; color:var(--muted); text-align:right; padding-top:4px;}
     .ply{display:flex; gap:8px; flex-wrap:wrap; flex:1;}
-    .ply button{padding:5px 8px; border-radius:12px; background:transparent; border:1px solid transparent; font-weight:700;}
-    .ply button:hover{border-color:rgba(34,48,68,.9); background:rgba(15,22,34,.55);}
-    .ply button.active{border-color:rgba(34,197,94,.9);}
+    .ply button{
+      padding:5px 8px;
+      border-radius:12px;
+      background:transparent;
+      border:1px solid transparent;
+      font-weight:700;
+    }
+    .ply button:hover{border-color:var(--border); background:rgba(15,23,42,.03);}
+    .ply button.active{border-color:rgba(22,163,74,.55);}
 
     textarea{
-      width:100%; min-height:80px; resize:vertical;
-      border-radius:12px; border:1px solid rgba(34,48,68,.85);
-      background:rgba(15,22,34,.85); color:var(--text);
+      width:100%;
+      min-height:140px;     /* bigger so it's usable on mobile */
+      resize:vertical;
+      border-radius:12px; border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      color:var(--text);
       padding:10px; outline:none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
-    textarea:focus{border-color:rgba(96,165,250,.9); box-shadow:0 0 0 3px rgba(96,165,250,.12);}
+    textarea:focus{border-color:rgba(37,99,235,.55); box-shadow:0 0 0 3px rgba(37,99,235,.10);}
 
-    .gameList{overflow:auto; display:flex; flex-direction:column; gap:10px;}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .row label{min-width:120px; font-size:12px; color:var(--muted); font-weight:900}
+    input[type="file"]{padding:6px}
+    .smallBtn{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
+
+    .gameList{overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
     .gameCard{
-      border:1px solid rgba(34,48,68,.85);
-      background:rgba(15,22,34,.6);
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
       border-radius:14px;
       padding:10px;
       cursor:pointer;
     }
-    .gameCard:hover{filter:brightness(1.06)}
-    .gameCard.active{border-color:rgba(96,165,250,.9); box-shadow:0 0 0 1px rgba(96,165,250,.22) inset;}
+    .gameCard:hover{filter:brightness(0.99)}
+    .gameCard.active{border-color:rgba(37,99,235,.55); box-shadow:0 0 0 1px rgba(37,99,235,.12) inset;}
     .gameTitle{font-weight:900; font-size:13px; margin-bottom:4px;}
     .meta{font-size:12px; color:var(--muted); display:flex; gap:10px; flex-wrap:wrap;}
-
     .kbd{
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size:11px;
       padding:2px 6px;
       border-radius:8px;
-      border:1px solid rgba(34,48,68,.8);
-      background: rgba(11,15,20,.45);
-      color: rgba(232,238,247,.85);
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      color: rgba(15,23,42,.78);
     }
 
-    /* Error panel */
-    .errorCard{
-      margin:14px auto 0;
-      max-width:1240px;
-      border:1px solid rgba(251,113,133,.45);
-      background: rgba(127,29,29,.20);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow:hidden;
+    /* Errors tab console */
+    .errorTools{
+      display:flex; gap:8px; align-items:center; justify-content:space-between;
+      flex-wrap:wrap;
     }
-    .errorHead{
-      padding:10px 12px;
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      border-bottom:1px solid rgba(251,113,133,.25);
-      font-weight:900;
-    }
-    .errorHead .left{display:flex; gap:10px; align-items:center}
-    .badgeBad{color:#fecdd3; border:1px solid rgba(251,113,133,.55); padding:3px 8px; border-radius:999px; font-size:12px; font-weight:900}
     .errorBody{
       padding:10px 12px 12px;
+      border:1px solid rgba(220,38,38,.25);
+      background: rgba(220,38,38,.05);
+      border-radius: 12px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size:12px;
       white-space:pre-wrap;
-      color:#fecdd3;
-      max-height:240px;
+      color:#7f1d1d;
       overflow:auto;
+      min-height:160px;
+      flex:1;
     }
-    .okLine{color:#bbf7d0}
-    .warnLine{color:#fde68a}
+    .okLine{color:#166534}
+    .warnLine{color:#92400e}
   </style>
 </head>
+
 <body>
-  <div class="topbar">
-    <div class="brand">
-      <span>Mini Study</span>
-      <span class="pill" id="studyPill">Mock Study • 3 games</span>
-      <span class="pill" id="gamePill">—</span>
-      <span class="pill" id="diagPill">diagnostics</span>
+  <div class="topbarWrap">
+    <div class="topbar">
+      <div class="brand">
+        <button class="hamburger" id="btnHamburger" aria-label="Menu">☰</button>
+        <span class="brandTitle">Priyome</span>
+        <span class="pill" id="studyPill">Mock Study • 3 games</span>
+        <span class="pill" id="gamePill">—</span>
+      </div>
+      <div class="pill" id="diagPill">diagnostics</div>
     </div>
-    <div class="actions">
-      <button id="btnPrev">◀︎</button>
-      <button id="btnNext">▶︎</button>
-      <button id="btnFlip">Flip</button>
-      <button id="btnReset">Reset</button>
+    <div class="menu" id="menu">
+      <div class="actions">
+        <button id="btnPrev">◀︎</button>
+        <button id="btnNext">▶︎</button>
+        <button id="btnFlip">Flip</button>
+        <button id="btnReset">Reset</button>
 
-      <button id="btnSquares">Squares</button>
-      <button id="btnArrows">Arrows</button>
-      <button id="btnClear">Clear</button>
+        <button id="btnSquares">Squares</button>
+        <button id="btnArrows">Arrows</button>
+        <button id="btnClear">Clear</button>
 
-      <button id="btnExportGame">Export Game PGN</button>
-      <button id="btnExportStudy">Export Study PGN</button>
+        <button id="btnExportGame">Export Game PGN</button>
+        <button id="btnExportStudy">Export Study PGN</button>
+      </div>
     </div>
   </div>
 
   <div class="layout">
-    <!-- Left: board -->
-    <div class="card">
+    <!-- Top half: board -->
+    <div class="card boardCard">
       <div class="head">
         <div class="status" id="status">—</div>
         <div class="status">Tool: <span id="toolStatus">none</span></div>
       </div>
-      <div class="boardArea" id="boardArea">
+      <div class="boardArea" id="boardArea" tabindex="0" aria-label="Chessboard area">
         <div id="board"></div>
         <svg id="overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
       </div>
@@ -221,45 +326,92 @@
       </div>
     </div>
 
-    <!-- Right: moves + games -->
-    <div class="card" style="min-height:520px; display:flex; flex-direction:column;">
+    <!-- Lower half: tabs -->
+    <div class="card rightCard">
       <div class="tabs">
         <div class="tab active" id="tabMoves">Moves</div>
         <div class="tab" id="tabGames">Games</div>
+        <div class="tab" id="tabQuery">Query</div>
+        <div class="tab" id="tabErrors">Errors</div>
       </div>
 
-      <div class="pane active" id="paneMoves" style="flex:1;">
+      <div class="pane active" id="paneMoves">
         <div class="hint">
           Click a move to jump. Annotation is saved per ply and exported as <span class="kbd">{ comment }</span>.
         </div>
-        <div class="moves" id="moves" style="flex:1;"></div>
+        <div class="moves" id="moves"></div>
         <div>
           <div class="hint" id="annoTitle">Annotation</div>
           <textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
         </div>
       </div>
 
-      <div class="pane" id="paneGames" style="flex:1;">
-        <div class="hint">Mock CQL results / opening exploration list. Click to load.</div>
-        <div class="gameList" id="gameList" style="flex:1;"></div>
+      <div class="pane" id="paneGames">
+        <div class="hint">Games list. Click to load.</div>
+        <div class="gameList" id="gameList"></div>
       </div>
-    </div>
-  </div>
 
-  <!-- Error panel -->
-  <div class="errorCard">
-    <div class="errorHead">
-      <div class="left">
-        <span>Errors & Diagnostics</span>
-        <span class="badgeBad" id="errCount">0</span>
+      <!-- Query tab -->
+      <div class="pane" id="paneQuery">
+        <div class="hint">
+          Load <span class="kbd">.cql</span> and <span class="kbd">.pgn</span>. CQL becomes editable. Run executes <span class="kbd">/wasm/cql_runner.js</span>.
+          Discovered games from output are added to <b>Games</b>.
+        </div>
+
+        <div class="row">
+          <label for="qCqlFile">CQL file</label>
+          <input id="qCqlFile" type="file" accept=".cql"/>
+          <span class="kbd" id="qCqlName">—</span>
+        </div>
+
+        <div class="row">
+          <label for="qPgnFile">PGN file</label>
+          <input id="qPgnFile" type="file" accept=".pgn"/>
+          <span class="kbd" id="qPgnName">—</span>
+        </div>
+
+        <div class="row">
+          <label for="qArgv">Argv</label>
+          <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql"
+                 style="width:min(980px,100%); padding:8px 10px; border-radius:12px; border:1px solid var(--border); background:rgba(15,23,42,.02);"/>
+        </div>
+
+        <div class="row">
+          <label>CQL (editable)</label>
+          <span class="kbd">in-memory</span>
+        </div>
+        <textarea id="qCqlText" placeholder="CQL will load here; you can edit before running…"></textarea>
+
+        <div class="row">
+          <button class="smallBtn" id="qRun" disabled>Run Query</button>
+          <span class="hint" id="qStatus">Choose files to enable.</span>
+        </div>
       </div>
-      <button id="btnClearErrors">Clear</button>
+
+      <!-- Errors tab -->
+      <div class="pane" id="paneErrors">
+        <div class="errorTools">
+          <div class="hint">All logs and errors show here.</div>
+          <div class="row" style="margin-left:auto;">
+            <span class="kbd">Lines</span>
+            <span class="kbd" id="errCount">0</span>
+            <button class="smallBtn" id="btnClearErrors" type="button">Clear</button>
+          </div>
+        </div>
+        <div class="errorBody" id="errorLog"></div>
+      </div>
     </div>
-    <div class="errorBody" id="errorLog"></div>
   </div>
 
 <script>
 (() => {
+  // ---------- hamburger menu ----------
+  const btnHamburger = document.getElementById('btnHamburger');
+  const menu = document.getElementById('menu');
+  btnHamburger.addEventListener('click', () => {
+    menu.classList.toggle('open');
+  });
+
   // ---------- error logger ----------
   const errorLog = document.getElementById('errorLog');
   const errCount = document.getElementById('errCount');
@@ -297,9 +449,7 @@
 
   // ---------- dependency diagnostics ----------
   function diag(){
-    // These checks will tell you exactly what's missing (CDN blocked etc.)
     logLine('OK', `User-Agent: ${navigator.userAgent}`);
-
     const haveJQ = (typeof window.jQuery !== 'undefined');
     logLine(haveJQ ? 'OK' : 'ERR', `jQuery loaded: ${haveJQ}`);
 
@@ -309,7 +459,6 @@
     const haveChess = (typeof window.Chess !== 'undefined');
     logLine(haveChess ? 'OK' : 'ERR', `Chess (chess.js) loaded: ${haveChess}`);
 
-    // Verify piece sprite URL is reachable (often blocked)
     const testImg = new Image();
     testImg.onload = () => logLine('OK', 'Piece sprite reachable (wikipedia set).');
     testImg.onerror = () => logLine('ERR', 'Piece sprite failed to load (CDN blocked?).');
@@ -317,7 +466,7 @@
   }
 
   // ---------- mock games ----------
-  const GAMES = [
+  let GAMES = [
     {
       id:"mock1", title:"Mock Game 1", opening:"English (mock)", result:"1-0",
       pgn:`[Event "Mock Study"]
@@ -355,6 +504,7 @@
 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 1/2-1/2`
     },
   ];
+  const discoveredIds = new Set();
 
   // ---------- DOM ----------
   const statusEl = document.getElementById('status');
@@ -367,12 +517,22 @@
   const annoTextEl = document.getElementById('annoText');
   const overlay = document.getElementById('overlay');
 
+  // Query tab DOM
+  const qCqlFile = document.getElementById('qCqlFile');
+  const qPgnFile = document.getElementById('qPgnFile');
+  const qCqlName = document.getElementById('qCqlName');
+  const qPgnName = document.getElementById('qPgnName');
+  const qCqlText = document.getElementById('qCqlText');
+  const qArgv = document.getElementById('qArgv');
+  const qRun = document.getElementById('qRun');
+  const qStatus = document.getElementById('qStatus');
+
   // ---------- state ----------
   let board = null;
   let orientation = 'white';
   let currentGame = null;
 
-  let game = null;              // created only if Chess exists
+  let game = null;
   let verboseHistory = [];
   let activePly = 0;
 
@@ -387,6 +547,9 @@
   const Tool = { NONE:'none', SQUARES:'squares', ARROWS:'arrows' };
   let tool = Tool.NONE;
   let tapFrom = null;
+
+  // Only suppress navigation gestures while a piece is actively being dragged
+  let isDraggingPiece = false;
 
   function setTool(t){
     tool = t;
@@ -417,7 +580,7 @@
       marker.setAttribute('markerUnits','strokeWidth');
       const path = document.createElementNS('http://www.w3.org/2000/svg','path');
       path.setAttribute('d','M0,0 L6,3 L0,6 Z');
-      path.setAttribute('fill','#22c55e');
+      path.setAttribute('fill', '#16a34a');
       marker.appendChild(path);
       defs.appendChild(marker);
     }
@@ -441,8 +604,8 @@
     rect.setAttribute('y', y - size/2);
     rect.setAttribute('width', size);
     rect.setAttribute('height', size);
-    rect.setAttribute('fill', '#22c55e');
-    rect.setAttribute('opacity', '0.18');
+    rect.setAttribute('fill', '#16a34a');
+    rect.setAttribute('opacity', '0.16');
     overlay.appendChild(rect);
   }
 
@@ -458,7 +621,7 @@
     line.setAttribute('y1', a.y);
     line.setAttribute('x2', b.x - ux*shrink);
     line.setAttribute('y2', b.y - uy*shrink);
-    line.setAttribute('stroke', '#22c55e');
+    line.setAttribute('stroke', '#16a34a');
     line.setAttribute('stroke-width', '1.7');
     line.setAttribute('opacity', '0.92');
     line.setAttribute('marker-end', 'url(#arrowHead)');
@@ -507,14 +670,25 @@
 
   // ---------- tabs ----------
   function setTab(which){
-    document.getElementById('tabMoves').classList.toggle('active', which==='moves');
-    document.getElementById('tabGames').classList.toggle('active', which==='games');
-    document.getElementById('paneMoves').classList.toggle('active', which==='moves');
-    document.getElementById('paneGames').classList.toggle('active', which==='games');
+    const map = {
+      moves: ['tabMoves','paneMoves'],
+      games: ['tabGames','paneGames'],
+      query: ['tabQuery','paneQuery'],
+      errors:['tabErrors','paneErrors'],
+    };
+
+    for (const k of Object.keys(map)){
+      const [t,p] = map[k];
+      document.getElementById(t).classList.toggle('active', k===which);
+      document.getElementById(p).classList.toggle('active', k===which);
+    }
     logLine('OK', `Tab: ${which}`);
   }
-  document.getElementById('tabMoves').onclick = () => setTab('moves');
-  document.getElementById('tabGames').onclick = () => setTab('games');
+
+  document.getElementById('tabMoves').addEventListener('click', () => setTab('moves'));
+  document.getElementById('tabGames').addEventListener('click', () => setTab('games'));
+  document.getElementById('tabQuery').addEventListener('click', () => setTab('query'));
+  document.getElementById('tabErrors').addEventListener('click', () => setTab('errors'));
 
   // ---------- move list / nav ----------
   function rebuildToPly(ply){
@@ -599,11 +773,14 @@
     if (activePly !== verboseHistory.length) return false;
     if (game.turn()==='w' && piece.startsWith('b')) return false;
     if (game.turn()==='b' && piece.startsWith('w')) return false;
+
+    isDraggingPiece = true;
     return true;
   }
 
   function onDrop(source,target){
     const mv = game.move({from:source,to:target,promotion:'q'});
+    isDraggingPiece = false;
     if (!mv) return 'snapback';
     verboseHistory = game.history({verbose:true});
     activePly = verboseHistory.length;
@@ -611,7 +788,16 @@
     logLine('OK', `Move: ${mv.san}`);
   }
 
-  function onSnapEnd(){ board.position(game.fen(), false); }
+  function onSnapEnd(){
+    isDraggingPiece = false;
+    board.position(game.fen(), false);
+  }
+
+  document.addEventListener('touchmove', (e) => {
+    if (isDraggingPiece) e.preventDefault();
+  }, { passive:false });
+
+  window.addEventListener('mouseup', () => { isDraggingPiece = false; });
 
   // ---------- square detection ----------
   function squareFromTarget(t){
@@ -647,14 +833,20 @@
   });
 
   // ---------- games list ----------
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
   function renderGameList(){
     gameListEl.innerHTML = '';
     for (const g of GAMES){
       const card = document.createElement('div');
       card.className = 'gameCard' + (currentGame?.id === g.id ? ' active' : '');
       card.innerHTML = `
-        <div class="gameTitle">${g.title}</div>
-        <div class="meta"><span class="kbd">${g.result}</span><span>${g.opening}</span></div>
+        <div class="gameTitle">${escapeHtml(g.title)}</div>
+        <div class="meta"><span class="kbd">${escapeHtml(g.result || '*')}</span><span>${escapeHtml(g.opening || '')}</span></div>
       `;
       card.onclick = () => loadGame(g.id);
       gameListEl.appendChild(card);
@@ -684,9 +876,11 @@
         pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
         onDragStart, onDrop, onSnapEnd
       });
+      if (typeof board.resize === 'function') board.resize();
       logLine('OK', 'Chessboard initialized.');
     } else {
       board.position(game.fen(), false);
+      if (typeof board.resize === 'function') board.resize();
       logLine('OK', `Chessboard position updated.`);
     }
 
@@ -729,16 +923,16 @@
     }
 
     const result = headers.Result || '*';
-    return `${headerLines.join('\\n')}\\n\\n${parts.join(' ')} ${result}`.trim();
+    return `${headerLines.join('\n')}\n\n${parts.join(' ')} ${result}`.trim();
   }
 
   document.getElementById('btnExportGame').onclick = () => {
     if (!currentGame) return;
-    downloadText(`${currentGame.title.replace(/\\s+/g,'_')}.pgn`, pgnWithComments(currentGame.id, currentGame.pgn) + '\\n');
+    downloadText(`${currentGame.title.replace(/\s+/g,'_')}.pgn`, pgnWithComments(currentGame.id, currentGame.pgn) + '\n');
   };
   document.getElementById('btnExportStudy').onclick = () => {
     const blocks = GAMES.map(g => pgnWithComments(g.id, g.pgn));
-    downloadText(`Mock_Study.pgn`, blocks.join('\\n\\n\\n') + '\\n');
+    downloadText(`Study.pgn`, blocks.join('\n\n\n') + '\n');
   };
 
   // ---------- buttons ----------
@@ -759,6 +953,7 @@
     verboseHistory = [];
     activePly = 0;
     board.start(false);
+    if (typeof board.resize === 'function') board.resize();
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
     logLine('OK', 'Reset line to start position.');
   };
@@ -774,18 +969,174 @@
     logLine('OK', `Annotation saved for ply ${activePly} (${annoTextEl.value.length} chars)`);
   });
 
-  window.addEventListener('resize', () => redrawDrawings());
+  window.addEventListener('resize', () => {
+    redrawDrawings();
+    if (board && typeof board.resize === 'function') board.resize();
+  });
 
-  // ---------- boot sequence with guards ----------
+  // ---------- Query tab: lazy-load runner from /wasm/cql_runner.js ----------
+  function updateQueryUi(){
+    const haveCql = !!qCqlText.value.trim();
+    const havePgn = !!qPgnFile.files?.[0];
+    qRun.disabled = !(haveCql && havePgn);
+    qStatus.textContent = qRun.disabled ? "Choose PGN and provide CQL (file or edit box) to enable." : "Ready.";
+  }
+
+  qCqlFile.addEventListener('change', async () => {
+    const f = qCqlFile.files?.[0];
+    qCqlName.textContent = f ? f.name : "—";
+    if (!f) { updateQueryUi(); return; }
+    try{
+      const txt = await f.text();
+      qCqlText.value = txt;
+      logLine('OK', `Loaded CQL file (${txt.length} chars): ${f.name}`);
+    }catch(e){
+      logLine('ERR', `Failed reading CQL: ${String(e)}`);
+    }finally{
+      updateQueryUi();
+    }
+  });
+
+  qPgnFile.addEventListener('change', () => {
+    const f = qPgnFile.files?.[0];
+    qPgnName.textContent = f ? f.name : "—";
+    if (f) logLine('OK', `Selected PGN file: ${f.name}`);
+    updateQueryUi();
+  });
+
+  qCqlText.addEventListener('input', updateQueryUi);
+
+  async function fileToUint8(file) {
+    const ab = await file.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+  function textToUtf8Bytes(text){
+    return new TextEncoder().encode(text ?? "");
+  }
+
+  function parseHeaders(pgn){
+    const headers = {};
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    let m;
+    while ((m = headerRe.exec(pgn)) !== null){
+      headers[m[1]] = m[2];
+    }
+    return headers;
+  }
+  function splitMultiPgn(text){
+    const t = (text || "").trim();
+    if (!t) return [];
+    return t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
+  }
+
+  function addDiscoveredGamesFromPgn(multiPgnText){
+    const games = splitMultiPgn(multiPgnText);
+    if (!games.length){
+      logLine('WARN', 'No games found in output PGN.');
+      return 0;
+    }
+    let added = 0;
+    for (let i=0;i<games.length;i++){
+      const pgn = games[i];
+      const h = parseHeaders(pgn);
+      const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
+      const white = h.White || "?";
+      const black = h.Black || "?";
+      const date  = h.Date || "";
+      const res   = h.Result || "*";
+
+      const id = `disc:${(title+"|"+white+"|"+black+"|"+date).replace(/\s+/g,'_').slice(0,160)}`;
+      if (discoveredIds.has(id)) continue;
+      discoveredIds.add(id);
+
+      GAMES.unshift({
+        id,
+        title: `${title} — ${white} vs ${black}`,
+        opening: (h.Opening || "Discovered"),
+        result: res,
+        pgn
+      });
+      added++;
+    }
+    if (added){
+      logLine('OK', `Added ${added} discovered game(s) to Games tab.`);
+      renderGameList();
+    }
+    return added;
+  }
+
+  qRun.addEventListener('click', async () => {
+    try{
+      const pgnFile = qPgnFile.files?.[0];
+      if (!pgnFile) throw new Error("Pick a PGN file.");
+      const cqlText = qCqlText.value || "";
+      if (!cqlText.trim()) throw new Error("CQL is empty.");
+
+      qRun.disabled = true;
+      qStatus.textContent = "Running…";
+      logLine('OK', `Running query with argv: ${qArgv.value}`);
+
+      let runCqlWasm;
+      try{
+        const mod = await import('/wasm/cql_runner.js');
+        runCqlWasm = mod.runCqlWasm;
+        if (typeof runCqlWasm !== 'function') throw new Error("runCqlWasm export not found");
+      }catch(e){
+        throw new Error("Failed to load /wasm/cql_runner.js. " + String(e));
+      }
+
+      const cqlBytes = textToUtf8Bytes(cqlText);
+      const pgnBytes = await fileToUint8(pgnFile);
+
+      const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
+        onLog: (line) => {
+          const s = String(line);
+          if (s.startsWith("[stderr]")) logLine('WARN', s);
+          else logLine('OK', s);
+        }
+      });
+
+      const unsub = job.subscribe((j) => {
+        const st = j.status ? j.status() : {busy:0,total:1};
+        qStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "");
+        if (j.state === "done" || j.state === "error"){
+          unsub();
+          if (j.state === "error"){
+            logLine('ERR', `Query failed: ${j.error || "unknown error"}`);
+            setTab('errors');
+          } else {
+            logLine('OK', `Query done (rc=${String(j.rc)}). outputPgn=${j.outputPgn.length} chars`);
+            if (j.outputMissing) logLine('WARN', 'output.pgn not found by runner (empty output).');
+            if (j.outputPgn && j.outputPgn.trim()){
+              const added = addDiscoveredGamesFromPgn(j.outputPgn);
+              if (added > 0) setTab('games');
+            }
+          }
+          qRun.disabled = false;
+          updateQueryUi();
+        }
+      });
+
+    }catch(e){
+      logLine('ERR', `Run exception: ${e && e.stack ? e.stack : String(e)}`);
+      qRun.disabled = false;
+      updateQueryUi();
+      setTab('errors');
+    }
+  });
+
+  // ---------- boot ----------
   try {
     diag();
 
     if (typeof Chess === 'undefined') {
       logLine('ERR', 'Chess is undefined. chess.js did not load (CDN blocked?).');
+      setTab('errors');
       return;
     }
     if (typeof Chessboard === 'undefined') {
       logLine('ERR', 'Chessboard is undefined. chessboard.js did not load (CDN blocked?), or jQuery missing.');
+      setTab('errors');
       return;
     }
 
@@ -793,9 +1144,11 @@
     setTool(Tool.NONE);
     renderGameList();
     loadGame('mock1');
+    updateQueryUi();
     logLine('OK', 'Boot complete.');
   } catch (e) {
     logLine('ERR', `Boot exception: ${e && e.stack ? e.stack : String(e)}`);
+    setTab('errors');
   }
 })();
 </script>
