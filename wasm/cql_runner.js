@@ -50,7 +50,7 @@ let _busyWorkers = 0;    // incremented while job running
  * @param {Uint8Array} pgnBytes
  * @param {string} argvString  e.g. "-q /work/query.cql -game /work/game.pgn"
  * @param {Object} [opts]
- * @param {string} [opts.cqlJsUrl]  default "./cql.js"
+ * @param {string} [opts.cqlJsUrl]  default "./wasm/cql.js"
  * @param {string} [opts.baseUrl]   default "./"
  * @param {string} [opts.cqlPath]   default "/work/query.cql"
  * @param {string} [opts.pgnPath]   default "/work/game.pgn"
@@ -66,7 +66,7 @@ export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
   const job = createJob();
 
   // Options with defaults
-  const cqlJsUrl = opts.cqlJsUrl ?? new URL("./cql.js", window.location.href).href;
+  const cqlJsUrl = opts.cqlJsUrl ?? new URL("./wasm/cql.js", window.location.href).href;
   const baseUrl  = opts.baseUrl  ?? new URL("./", window.location.href).href;
 
   const cqlPath  = opts.cqlPath ?? "/work/query.cql";
@@ -309,7 +309,7 @@ function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) 
       try {
         importScripts(cqlJsUrl);
       } catch (e) {
-        post("fatal", { error: "Failed to importScripts(cql.js): " + describeErr(e) });
+        post("fatal", { error: "Failed to importScripts(/wasm/cql.js): " + describeErr(e) });
         throw e;
       }
 
