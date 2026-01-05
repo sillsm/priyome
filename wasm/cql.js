@@ -362,7 +362,7 @@ function abort(what) {
 var wasmBinaryFile;
 
 function findWasmBinary() {
-  return locateFile('cql.wasm');
+  return locateFile('./wasm/cql.wasm');
 }
 
 function getBinarySync(file) {
