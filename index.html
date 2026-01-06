@@ -801,18 +801,23 @@ function sizeBoardSquare(){
 
   function toggleArrow(gameId,from,to){
     if (from===to) return;
-    ensureStores(gameId);
-    const a = (from<to)?from:to;
-    const b = (from<to)?to:from;
-    const key = `${a}-${b}`;
-    const arr = drawings[gameId].arrows;
-    const idx = arr.findIndex(x => `${(x.from<x.to)?x.from:x.to}-${(x.from<x.to)?x.to:x.from}` === key);
-    if (idx>=0){
-      arr.splice(idx,1);
-      logLine('OK', `Arrow ${key} removed`);
+  ensureStores(gameId);
+
+  // undirected key for dedupe, but KEEP the original direction for drawing
+  const key = (from < to) ? `${from}-${to}` : `${to}-${from}`;
+  const arr = drawings[gameId].arrows;
+
+  const idx = arr.findIndex(x => {
+    const k = (x.from < x.to) ? `${x.from}-${x.to}` : `${x.to}-${x.from}`;
+    return k === key;
+  });
+
+    if (idx >= 0){
+    arr.splice(idx, 1);
+    logLine('OK', `Arrow ${key} removed`);
     } else {
-      arr.push({from:a,to:b});
-      logLine('OK', `Arrow ${key} added`);
+    arr.push({from, to}); // keep the direction the user tapped
+    logLine('OK', `Arrow ${from}->${to} added`);
     }
   }
 
@@ -1024,12 +1029,14 @@ function sizeBoardSquare(){
   window.addEventListener('mouseup', () => { isDraggingPiece = false; });
 
   // ---------- square detection ----------
-  function squareFromTarget(t){
-    const el = t.closest?.('div.square-55d63');
-    if (!el) return null;
-    const cls = Array.from(el.classList).find(c => c.startsWith('square-') && c.length===10);
-    return cls ? cls.replace('square-','') : null;
-  }
+
+function squareFromTarget(t){
+  const el = t.closest?.('div.square-55d63');
+  if (!el) return null;
+
+  const sqClass = Array.from(el.classList).find(c => /^square-[a-h][1-8]$/.test(c));
+  return sqClass ? sqClass.slice('square-'.length) : null;
+}
 
   document.getElementById('boardArea').addEventListener('click', (e) => {
     if (!currentGame) return;
