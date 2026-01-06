@@ -41,8 +41,8 @@
       background:var(--bg);
       color:var(--text);
       font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
-      overflow:auto;              /* CHANGED: allow page scroll to bottom */
-      padding-bottom:5vh;         /* CHANGED: tiny ~5% bottom margin */
+      overflow:auto;              /* allow page scroll to bottom */
+      padding-bottom:5vh;         /* tiny ~5% bottom margin */
     }
 
     button{
@@ -109,14 +109,17 @@
       max-width:1240px;
       margin:0 auto;
       padding:14px;
-      min-height: calc(100vh - 60px); /* CHANGED: was fixed height; now page can extend */
+      min-height: calc(100vh - 60px); /* let page grow if needed */
       display:grid;
-      grid-template-rows: 66vh 1fr;
+      grid-template-rows: 66vh 1fr;   /* desktop: more height for board */
       gap:14px;
       min-height:0;
     }
-    @media (max-width:500px){
-      .layout{ padding:10px; grid-template-rows: auto 1fr; }
+    @media (max-width:980px){
+      .layout{
+        padding:10px;
+        grid-template-rows: auto 1fr; /* mobile: board row grows to fit full-width square */
+      }
     }
 
     .card{
@@ -135,20 +138,34 @@
     }
     .status{font-size:12px; color:var(--muted)}
 
+    /* Tool color dots */
+    .toolDots{ display:inline-flex; gap:6px; margin-left:8px; vertical-align:middle; }
+    .dotBtn{
+      width:18px; height:18px; padding:0;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#fff;
+      display:grid; place-items:center;
+    }
+    .dotBtn.active{ box-shadow:0 0 0 2px rgba(37,99,235,.18); border-color: rgba(37,99,235,.55); }
+    .dot{ width:10px; height:10px; border-radius:999px; display:block; }
+    .dotG{ background:#16a34a; }
+    .dotR{ background:#dc2626; }
+    .dotB{ background:#2563eb; }
+    .dotY{ background:#d97706; }
+
     .boardCard{ display:flex; flex-direction:column; min-height:0; }
     .boardArea{
       position:relative;
       padding:12px;
       flex:1;
       min-height:0;
-
-      /* CHANGED: center the square board inside this area */
       display:flex;
       align-items:center;
       justify-content:center;
     }
 
-    /* CHANGED: square board wrapper; JS sets px size so it always stays square and maximal */
+    /* square board wrapper; JS sets px size so it always stays square and maximal */
     .boardWrap{
       position:relative;
       width:100%;
@@ -160,31 +177,23 @@
       width:100%;
       height:100%;
     }
-
-/* chessboard.js coordinate labels: smaller + corners (avoid overlapping pieces) */
-#board .notation-322f9{
-  font-size: 9px;
-  line-height: 1;
-  opacity: .70;
-  pointer-events: none;
-}
-
-/* file letters: keep bottom-left */
-#board .alpha-d2270{
-  left: 2px !important;
-  bottom: 2px !important;
-}
-
-/* rank numbers: keep top-right */
-#board .numeric-fc462{
-  right: 2px !important;
-  top: 2px !important;
-}
     #overlay{
       position:absolute;
       inset:0;
+      width:100%;
+      height:100%;
       pointer-events:none;
     }
+
+    /* chessboard.js coordinate labels: smaller + corners (avoid overlapping pieces) */
+    #board .notation-322f9{
+      font-size: 9px;
+      line-height: 1;
+      opacity: .70;
+      pointer-events: none;
+    }
+    #board .alpha-d2270{ left: 2px !important; bottom: 2px !important; }
+    #board .numeric-fc462{ right: 2px !important; top: 2px !important; }
 
     .below{
       padding:10px 12px 12px;
@@ -226,7 +235,6 @@
 
     .rightCard{ min-height:0; display:flex; flex-direction:column; }
 
-    /* NEW: make the lower-half content itself scrollable if needed */
     .pane{
       display:none;
       padding:12px;
@@ -238,20 +246,19 @@
     }
     .pane.active{display:flex; flex-direction:column;}
 
-    /* Ensure the moves list is scrollable but doesn't hide the annotation box */
     .moves{overflow:auto; padding-right:4px; min-height:120px; flex:1;}
 
-    /* CHANGED: improve move number column like lichess (gray paneled) */
+    /* Move numbers in a gray paneled column */
     .moveRow{
       display:flex;
       gap:10px;
-      padding:6px 6px;             /* slightly tighter -> more moves visible */
+      padding:6px 6px;
       border-radius:12px;
       align-items:flex-start;
     }
     .moveRow:hover{background:rgba(15,23,42,.03);}
     .mn{
-      width:44px;                  /* a bit wider for larger move numbers */
+      width:44px;
       color:var(--muted);
       text-align:right;
       padding:6px 8px;
@@ -272,7 +279,7 @@
     .ply button:hover{border-color:var(--border); background:rgba(15,23,42,.03);}
     .ply button.active{border-color:rgba(22,163,74,.55);}
 
-    /* CHANGED: inline PGN comments like lichess */
+    /* inline PGN comments + draw-tag comment pill */
     .cmt{
       display:inline-block;
       padding:2px 6px;
@@ -346,21 +353,18 @@
     .okLine{color:#166534}
     .warnLine{color:#92400e}
 
-    /* NEW: bottom card spacing/typography */
+    /* bottom card */
     .bottomWrap{
       max-width:1240px;
       margin:0 auto;
       padding:0 14px 0;
     }
-    .bottomCard .head{border-bottom:1px solid var(--border);}
     .bottomGrid{
       padding:12px;
       display:grid;
       gap:10px;
     }
-    .bottomGrid textarea{
-      min-height: 180px;
-    }
+    .bottomGrid textarea{ min-height:180px; }
   </style>
 </head>
 
@@ -397,24 +401,33 @@
     <div class="card boardCard">
       <div class="head">
         <div class="status" id="status">—</div>
-        <div class="status">Tool: <span id="toolStatus">none</span></div>
+        <div class="status">
+          Tool: <span id="toolStatus">none</span>
+          <span id="toolDots" class="toolDots" hidden>
+            <button class="dotBtn" data-color="G" title="Green" aria-label="Green"><span class="dot dotG"></span></button>
+            <button class="dotBtn" data-color="R" title="Red" aria-label="Red"><span class="dot dotR"></span></button>
+            <button class="dotBtn" data-color="B" title="Blue" aria-label="Blue"><span class="dot dotB"></span></button>
+            <button class="dotBtn" data-color="Y" title="Yellow" aria-label="Yellow"><span class="dot dotY"></span></button>
+          </span>
+        </div>
       </div>
+
       <div class="boardArea" id="boardArea" tabindex="0" aria-label="Chessboard area">
-        <!-- CHANGED: wrap board+overlay so overlay matches the square board size -->
         <div class="boardWrap" id="boardWrap">
           <div id="board"></div>
           <svg id="overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
         </div>
       </div>
+
       <div class="below">
         <div class="fenRow">
           <span class="fenLabel">FEN</span>
           <div class="fenBox" id="fenBox"></div>
         </div>
         <div class="hint" id="hint">
-          <b>Squares:</b> tap a square to toggle highlight.<br/>
-          <b>Arrows:</b> tap start square, then tap end square to toggle an arrow.<br/>
-          (Turn tool off to move pieces normally.)
+          <b>Squares:</b> tap a square to toggle highlight (colored).<br/>
+          <b>Arrows:</b> tap start square, then tap end square to toggle an arrow (colored).<br/>
+          Drawings are stored on the <b>current ply</b> and exported inline as <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span>.
         </div>
       </div>
     </div>
@@ -431,6 +444,7 @@
       <div class="pane active" id="paneMoves">
         <div class="hint">
           Click a move to jump. Annotation is saved per ply and exported as <span class="kbd">{ comment }</span>.
+          Drawings appear as <span class="kbd">{ [%csl ...] [%cal ...] }</span> on that ply.
         </div>
         <div class="moves" id="moves"></div>
         <div>
@@ -496,7 +510,7 @@
     </div>
   </div>
 
-  <!-- NEW: bottom card for position FEN + game PGN -->
+  <!-- Bottom card for position FEN + game PGN -->
   <div class="bottomWrap">
     <div class="card bottomCard">
       <div class="head">
@@ -508,7 +522,7 @@
           <span class="fenLabel">FEN</span>
           <div class="fenBox" id="fenBottom"></div>
         </div>
-        <div class="hint">PGN shown includes inline <span class="kbd">{ comments }</span> (imported + your annotations).</div>
+        <div class="hint">PGN shown includes inline <span class="kbd">{ comments }</span> and inline draw tags <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span> at the ply they belong to.</div>
         <textarea id="pgnBottom" readonly></textarea>
       </div>
     </div>
@@ -521,7 +535,6 @@
   const menu = document.getElementById('menu');
   btnHamburger.addEventListener('click', () => {
     menu.classList.toggle('open');
-    // CHANGED: board gets re-maximized after layout changes
     sizeBoardSquare();
     if (board && typeof board.resize === 'function') board.resize();
     redrawDrawings();
@@ -580,6 +593,16 @@
     testImg.src = 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/Wp.png';
   }
 
+  function colorHex(c){
+    switch(c){
+      case 'G': return '#16a34a';
+      case 'R': return '#dc2626';
+      case 'B': return '#2563eb';
+      case 'Y': return '#d97706';
+      default: return '#16a34a';
+    }
+  }
+
   // ---------- mock games ----------
   let GAMES = [
     {
@@ -628,11 +651,12 @@
   const gameListEl = document.getElementById('gameList');
   const gamePill = document.getElementById('gamePill');
   const toolStatusEl = document.getElementById('toolStatus');
+  const toolDotsEl = document.getElementById('toolDots');
   const annoTitleEl = document.getElementById('annoTitle');
   const annoTextEl = document.getElementById('annoText');
   const overlay = document.getElementById('overlay');
 
-  // NEW bottom card DOM
+  // Bottom card DOM
   const fenBottom = document.getElementById('fenBottom');
   const pgnBottom = document.getElementById('pgnBottom');
   const bottomMeta = document.getElementById('bottomMeta');
@@ -647,6 +671,10 @@
   const qRun = document.getElementById('qRun');
   const qStatus = document.getElementById('qStatus');
 
+  // Board sizing DOM
+  const boardArea = document.getElementById('boardArea');
+  const boardWrap = document.getElementById('boardWrap');
+
   // ---------- state ----------
   let board = null;
   let orientation = 'white';
@@ -656,21 +684,50 @@
   let verboseHistory = [];
   let activePly = 0;
 
+  // user annotations per ply
   const annotations = Object.create(null);
-  const drawings = Object.create(null);
 
-  // CHANGED: imported comments (from PGN) live here per game, but we merge them into annotations on load
-  const imported = Object.create(null); // imported[gameId] = {ply: comment}
+  // drawings PER PLY: drawings[gameId][plyStr] = { squares:{sq->color}, arrows:[{from,to,color}] }
+  const drawings = Object.create(null);
 
   function ensureStores(gameId){
     if (!annotations[gameId]) annotations[gameId] = Object.create(null);
-    if (!drawings[gameId]) drawings[gameId] = { squares:Object.create(null), arrows:[] };
-    if (!imported[gameId]) imported[gameId] = Object.create(null);
+    if (!drawings[gameId]) drawings[gameId] = Object.create(null);
+  }
+
+  function ensureDrawAt(gameId, ply){
+    ensureStores(gameId);
+    const key = String(ply);
+    if (!drawings[gameId][key]){
+      drawings[gameId][key] = { squares:Object.create(null), arrows:[] };
+    }
+    return drawings[gameId][key];
+  }
+
+  function currentDraw(){
+    if (!currentGame) return { squares:Object.create(null), arrows:[] };
+    return ensureDrawAt(currentGame.id, activePly);
   }
 
   const Tool = { NONE:'none', SQUARES:'squares', ARROWS:'arrows' };
   let tool = Tool.NONE;
   let tapFrom = null;
+
+  // Tool color
+  let toolColor = 'G'; // G,R,B,Y
+  function setToolColor(c){
+    toolColor = c;
+    document.querySelectorAll('.dotBtn').forEach(b => b.classList.toggle('active', b.dataset.color === c));
+    logLine('OK', `Tool color set to: ${c}`);
+  }
+  document.querySelectorAll('.dotBtn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setToolColor(btn.dataset.color);
+    });
+  });
+  setToolColor(toolColor);
 
   // Only suppress navigation gestures while a piece is actively being dragged
   let isDraggingPiece = false;
@@ -679,41 +736,37 @@
     tool = t;
     tapFrom = null;
     toolStatusEl.textContent = t;
+    toolDotsEl.hidden = (t === Tool.NONE);
+
     document.getElementById('btnSquares').classList.toggle('on', t === Tool.SQUARES);
     document.getElementById('btnArrows').classList.toggle('on', t === Tool.ARROWS);
     logLine('OK', `Tool set to: ${t}`);
   }
 
-  // ---------- board sizing (square, maximal) ----------
-  const boardArea = document.getElementById('boardArea');
-  const boardWrap = document.getElementById('boardWrap');
+  // ---------- board sizing (square, maximal; mobile full-width, desktop ~2/3 viewport) ----------
+  function sizeBoardSquare(){
+    const cs = getComputedStyle(boardArea);
+    const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
+    const padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
 
-function sizeBoardSquare(){
-  const cs = getComputedStyle(boardArea);
-  const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
-  const padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
+    const w = Math.max(0, boardArea.clientWidth - padX);
+    const h = Math.max(0, boardArea.clientHeight - padY);
 
-  const w = Math.max(0, boardArea.clientWidth - padX);
-  const h = Math.max(0, boardArea.clientHeight - padY);
+    const isMobile = window.matchMedia('(max-width: 980px)').matches;
 
-  const isMobile = window.matchMedia('(max-width: 980px)').matches;
+    let s;
+    if (isMobile){
+      s = Math.floor(w);
+      boardArea.style.minHeight = (s + padY) + 'px';
+    } else {
+      const target = Math.floor(window.innerWidth * (2/3));
+      s = Math.floor(Math.min(w, h, target));
+      boardArea.style.minHeight = '';
+    }
 
-  let s;
-  if (isMobile){
-    // mobile: board should be full card width; height grows to match
-    s = Math.floor(w);
-    // ensure the area can actually fit the square (page can scroll)
-    boardArea.style.minHeight = (s + padY) + 'px';
-  } else {
-    // desktop: target ~2/3 viewport width, but don't exceed available width/height
-    const target = Math.floor(window.innerWidth * (2/3));
-    s = Math.floor(Math.min(w, h, target));
-    boardArea.style.minHeight = ''; // reset any mobile override
+    boardWrap.style.width = s + 'px';
+    boardWrap.style.height = s + 'px';
   }
-
-  boardWrap.style.width = s + 'px';
-  boardWrap.style.height = s + 'px';
-}
 
   // ---------- overlay ----------
   function clearOverlay(){ while(overlay.firstChild) overlay.removeChild(overlay.firstChild); }
@@ -724,20 +777,22 @@ function sizeBoardSquare(){
       defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
       overlay.appendChild(defs);
     }
-    if (!overlay.querySelector('#arrowHead')){
-      const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
-      marker.setAttribute('id','arrowHead');
-      marker.setAttribute('markerWidth','6');
-      marker.setAttribute('markerHeight','6');
-      marker.setAttribute('refX','5.2');
-      marker.setAttribute('refY','3');
-      marker.setAttribute('orient','auto');
-      marker.setAttribute('markerUnits','strokeWidth');
-      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-      path.setAttribute('d','M0,0 L6,3 L0,6 Z');
-      path.setAttribute('fill', '#16a34a');
-      marker.appendChild(path);
-      defs.appendChild(marker);
+    for (const c of ['G','R','B','Y']){
+      if (!overlay.querySelector(`#arrowHead${c}`)){
+        const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
+        marker.setAttribute('id',`arrowHead${c}`);
+        marker.setAttribute('markerWidth','6');
+        marker.setAttribute('markerHeight','6');
+        marker.setAttribute('refX','5.2');
+        marker.setAttribute('refY','3');
+        marker.setAttribute('orient','auto');
+        marker.setAttribute('markerUnits','strokeWidth');
+        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d','M0,0 L6,3 L0,6 Z');
+        path.setAttribute('fill', colorHex(c));
+        marker.appendChild(path);
+        defs.appendChild(marker);
+      }
     }
   }
 
@@ -751,7 +806,7 @@ function sizeBoardSquare(){
     }
   }
 
-  function drawSquare(sq){
+  function drawSquare(sq, c){
     const {x,y} = squareToXY(sq);
     const size = 12.5;
     const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
@@ -759,12 +814,12 @@ function sizeBoardSquare(){
     rect.setAttribute('y', y - size/2);
     rect.setAttribute('width', size);
     rect.setAttribute('height', size);
-    rect.setAttribute('fill', '#16a34a');
+    rect.setAttribute('fill', colorHex(c));
     rect.setAttribute('opacity', '0.16');
     overlay.appendChild(rect);
   }
 
-  function drawArrow(from,to){
+  function drawArrow(from, to, c){
     const a = squareToXY(from), b = squareToXY(to);
     const dx=b.x-a.x, dy=b.y-a.y;
     const len=Math.hypot(dx,dy)||1;
@@ -776,10 +831,10 @@ function sizeBoardSquare(){
     line.setAttribute('y1', a.y);
     line.setAttribute('x2', b.x - ux*shrink);
     line.setAttribute('y2', b.y - uy*shrink);
-    line.setAttribute('stroke', '#16a34a');
+    line.setAttribute('stroke', colorHex(c));
     line.setAttribute('stroke-width', '1.7');
     line.setAttribute('opacity', '0.92');
-    line.setAttribute('marker-end', 'url(#arrowHead)');
+    line.setAttribute('marker-end', `url(#arrowHead${c})`);
     overlay.appendChild(line);
   }
 
@@ -787,45 +842,150 @@ function sizeBoardSquare(){
     clearOverlay();
     ensureDefs();
     if (!currentGame) return;
-    const d = drawings[currentGame.id];
-    if (!d) return;
-    for (const sq of Object.keys(d.squares)){ if (d.squares[sq]) drawSquare(sq); }
-    for (const ar of d.arrows){ drawArrow(ar.from, ar.to); }
-  }
 
-  function toggleSquare(gameId,sq){
-    ensureStores(gameId);
-    drawings[gameId].squares[sq] = !drawings[gameId].squares[sq];
-    logLine('OK', `Square ${sq} => ${drawings[gameId].squares[sq] ? 'ON' : 'OFF'}`);
-  }
-
-  function toggleArrow(gameId,from,to){
-    if (from===to) return;
-  ensureStores(gameId);
-
-  // undirected key for dedupe, but KEEP the original direction for drawing
-  const key = (from < to) ? `${from}-${to}` : `${to}-${from}`;
-  const arr = drawings[gameId].arrows;
-
-  const idx = arr.findIndex(x => {
-    const k = (x.from < x.to) ? `${x.from}-${x.to}` : `${x.to}-${x.from}`;
-    return k === key;
-  });
-
-    if (idx >= 0){
-    arr.splice(idx, 1);
-    logLine('OK', `Arrow ${key} removed`);
-    } else {
-    arr.push({from, to}); // keep the direction the user tapped
-    logLine('OK', `Arrow ${from}->${to} added`);
+    const d = currentDraw();
+    for (const sq of Object.keys(d.squares)){
+      const c = d.squares[sq];
+      if (c) drawSquare(sq, c);
+    }
+    for (const ar of d.arrows){
+      drawArrow(ar.from, ar.to, ar.color || 'G');
     }
   }
 
+  // ---------- PGN draw-tags helpers ----------
+  function buildCslTag(d){
+    const items = Object.keys(d.squares || {}).sort().map(sq => `${d.squares[sq]}${sq}`);
+    return items.length ? `[%csl ${items.join(',')}]` : '';
+  }
+  function buildCalTag(d){
+    const items = (d.arrows || []).map(a => `${a.color || 'G'}${a.from}${a.to}`);
+    return items.length ? `[%cal ${items.join(',')}]` : '';
+  }
+
+  function drawTagsCommentFor(gameId, ply){
+    const d = drawings[gameId]?.[String(ply)];
+    if (!d) return '';
+    const csl = buildCslTag(d);
+    const cal = buildCalTag(d);
+    const tags = [csl, cal].filter(Boolean).join(' ');
+    return tags ? `{ ${tags} }` : '';
+  }
+
+  // Parse draw-tags from PGN comments and attach them to the CURRENT ply (0 for pre-move comments)
+  function parseDrawTagsByPlyFromPgn(pgn){
+    const out = Object.create(null); // plyStr -> {squares, arrows}
+
+    const body = String(pgn || "")
+      .replace(/\r/g,'')
+      .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
+      .trim();
+
+    let ply = 0;
+    const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
+    let m;
+
+    while ((m = re.exec(body)) !== null){
+      const tok = m[0];
+
+      if (tok.startsWith('{')){
+        const txt = tok.slice(1,-1);
+
+        const cslM = txt.match(/\[%csl\s+([^\]]+)\]/);
+        const calM = txt.match(/\[%cal\s+([^\]]+)\]/);
+
+        if (cslM || calM){
+          const key = String(ply);
+          if (!out[key]) out[key] = { squares:Object.create(null), arrows:[] };
+
+          if (cslM){
+            for (const part of cslM[1].split(/[\s,]+/).map(s=>s.trim()).filter(Boolean)){
+              const c = part[0], sq = part.slice(1);
+              if (/^[GRBY]$/.test(c) && /^[a-h][1-8]$/.test(sq)) out[key].squares[sq] = c;
+            }
+          }
+          if (calM){
+            for (const part of calM[1].split(/[\s,]+/).map(s=>s.trim()).filter(Boolean)){
+              const c = part[0];
+              const rest = part.slice(1);
+              const from = rest.slice(0,2), to = rest.slice(2,4);
+              if (/^[GRBY]$/.test(c) && /^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)){
+                out[key].arrows.push({from,to,color:c});
+              }
+            }
+          }
+        }
+        continue;
+      }
+
+      if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
+
+      // treat any other token as a move token (good enough for "sloppy" PGN)
+      ply++;
+    }
+
+    return out;
+  }
+
+  function syncDrawingsToPgn(){
+    updateBottomCard();
+    renderMoves(); // so the tag pills show immediately in the Moves list too
+  }
+
+  // ---------- toggles (per current ply) ----------
+  function toggleSquare(gameId, sq){
+    const d = ensureDrawAt(gameId, activePly);
+    const cur = d.squares[sq];
+    if (cur === toolColor){
+      delete d.squares[sq];
+      logLine('OK', `Square ${sq} removed @ ply ${activePly}`);
+    } else {
+      d.squares[sq] = toolColor;
+      logLine('OK', `Square ${sq} => ${toolColor} @ ply ${activePly}`);
+    }
+    redrawDrawings();
+    syncDrawingsToPgn();
+  }
+
+  function toggleArrow(gameId, from, to){
+    if (from === to) return;
+
+    const d = ensureDrawAt(gameId, activePly);
+
+    // undirected key for dedupe, but keep direction
+    const key = (from < to) ? `${from}-${to}` : `${to}-${from}`;
+    const arr = d.arrows;
+
+    const idx = arr.findIndex(x => {
+      const k = (x.from < x.to) ? `${x.from}-${x.to}` : `${x.to}-${x.from}`;
+      return k === key;
+    });
+
+    if (idx >= 0){
+      if ((arr[idx].color || 'G') === toolColor){
+        arr.splice(idx, 1);
+        logLine('OK', `Arrow ${from}->${to} removed @ ply ${activePly}`);
+      } else {
+        arr[idx] = { from, to, color: toolColor };
+        logLine('OK', `Arrow ${from}->${to} recolored to ${toolColor} @ ply ${activePly}`);
+      }
+    } else {
+      arr.push({ from, to, color: toolColor });
+      logLine('OK', `Arrow ${from}->${to} added (${toolColor}) @ ply ${activePly}`);
+    }
+
+    redrawDrawings();
+    syncDrawingsToPgn();
+  }
+
   function clearAll(gameId){
-    ensureStores(gameId);
-    drawings[gameId].squares = Object.create(null);
-    drawings[gameId].arrows = [];
-    logLine('OK', 'Cleared drawings.');
+    const d = ensureDrawAt(gameId, activePly);
+    d.squares = Object.create(null);
+    d.arrows = [];
+    logLine('OK', `Cleared drawings @ ply ${activePly}.`);
+    redrawDrawings();
+    syncDrawingsToPgn();
   }
 
   // ---------- tabs ----------
@@ -877,45 +1037,38 @@ function sizeBoardSquare(){
     fenBottom.textContent = f;
   }
 
-  // CHANGED: parse PGN comments { ... } and map them to ply index (1-based)
-  function parsePgnCommentsByPly(pgn){
-    const map = Object.create(null);
-    const body = String(pgn || "").replace(/\r/g,'').replace(/^\s*\[[^\]]+\]\s*$/gm,'').trim();
-    if (!body) return map;
-
-    let ply = 0;
-    // Tokenize: we only care about move numbers, comments, and SAN-ish tokens.
-    const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
-    let m;
-    while ((m = re.exec(body)) !== null){
-      const tok = m[0];
-
-      if (tok.startsWith('{')){
-        const c = tok.slice(1,-1).trim();
-        if (c && ply > 0){
-          map[ply] = (map[ply] ? (map[ply] + ' ' + c) : c);
-        }
-        continue;
-      }
-      if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
-      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
-
-      // likely a SAN token
-      ply++;
-    }
-    return map;
-  }
-
-  function mergedComment(gameId, ply){
+  function mergedUserComment(gameId, ply){
     ensureStores(gameId);
-    const a = (annotations[gameId] && annotations[gameId][ply]) ? String(annotations[gameId][ply]).trim() : "";
-    return a;
+    return (annotations[gameId] && annotations[gameId][ply]) ? String(annotations[gameId][ply]).trim() : "";
   }
 
   function renderMoves(){
     movesEl.innerHTML = '';
+    if (!currentGame) return;
+
     const total = verboseHistory.length;
     const rows = Math.ceil(total/2);
+
+    // Show start-position drawing tags (ply 0) if any, at top
+    const startTag = drawTagsCommentFor(currentGame.id, 0);
+    if (startTag){
+      const row = document.createElement('div');
+      row.className = 'moveRow';
+      const mn = document.createElement('div');
+      mn.className='mn';
+      mn.textContent = '0.';
+      row.appendChild(mn);
+
+      const ply = document.createElement('div');
+      ply.className='ply';
+      const s = document.createElement('span');
+      s.className = 'cmt';
+      s.textContent = startTag;
+      ply.appendChild(s);
+
+      row.appendChild(ply);
+      movesEl.appendChild(row);
+    }
 
     for (let m=0;m<rows;m++){
       const row = document.createElement('div');
@@ -939,8 +1092,15 @@ function sizeBoardSquare(){
       wBtn.onclick = () => jumpTo(wi+1);
       ply.appendChild(wBtn);
 
-      // CHANGED: inline comment after white move
-      const wc = mergedComment(currentGame.id, wi+1);
+      const wTag = drawTagsCommentFor(currentGame.id, wi+1);
+      if (wTag){
+        const s = document.createElement('span');
+        s.className = 'cmt';
+        s.textContent = wTag;
+        ply.appendChild(s);
+      }
+
+      const wc = mergedUserComment(currentGame.id, wi+1);
       if (wc){
         const s = document.createElement('span');
         s.className = 'cmt';
@@ -955,8 +1115,15 @@ function sizeBoardSquare(){
       bBtn.onclick = () => jumpTo(bi+1);
       ply.appendChild(bBtn);
 
-      // CHANGED: inline comment after black move
-      const bc = mergedComment(currentGame.id, bi+1);
+      const bTag = drawTagsCommentFor(currentGame.id, bi+1);
+      if (bTag){
+        const s = document.createElement('span');
+        s.className = 'cmt';
+        s.textContent = bTag;
+        ply.appendChild(s);
+      }
+
+      const bc = mergedUserComment(currentGame.id, bi+1);
       if (bc){
         const s = document.createElement('span');
         s.className = 'cmt';
@@ -1028,15 +1195,13 @@ function sizeBoardSquare(){
 
   window.addEventListener('mouseup', () => { isDraggingPiece = false; });
 
-  // ---------- square detection ----------
-
-function squareFromTarget(t){
-  const el = t.closest?.('div.square-55d63');
-  if (!el) return null;
-
-  const sqClass = Array.from(el.classList).find(c => /^square-[a-h][1-8]$/.test(c));
-  return sqClass ? sqClass.slice('square-'.length) : null;
-}
+  // ---------- square detection (FIXED) ----------
+  function squareFromTarget(t){
+    const el = t.closest?.('div.square-55d63');
+    if (!el) return null;
+    const sqClass = Array.from(el.classList).find(c => /^square-[a-h][1-8]$/.test(c));
+    return sqClass ? sqClass.slice('square-'.length) : null;
+  }
 
   document.getElementById('boardArea').addEventListener('click', (e) => {
     if (!currentGame) return;
@@ -1047,7 +1212,6 @@ function squareFromTarget(t){
 
     if (tool === Tool.SQUARES){
       toggleSquare(currentGame.id, sq);
-      redrawDrawings();
       return;
     }
 
@@ -1058,7 +1222,6 @@ function squareFromTarget(t){
       } else {
         toggleArrow(currentGame.id, tapFrom, sq);
         tapFrom = null;
-        redrawDrawings();
       }
     }
   });
@@ -1092,17 +1255,8 @@ function squareFromTarget(t){
     ensureStores(g.id);
     gamePill.textContent = g.title;
 
-    // CHANGED: import existing PGN comments and preserve them by merging into annotations
-    const importedMap = parsePgnCommentsByPly(g.pgn);
-    imported[g.id] = importedMap;
-
-    // Merge imported comments into annotations (but do not overwrite user edits)
-    for (const k of Object.keys(importedMap)){
-      const ply = parseInt(k,10);
-      if (!annotations[g.id][ply] || !String(annotations[g.id][ply]).trim()){
-        annotations[g.id][ply] = importedMap[ply];
-      }
-    }
+    // NEW: load per-ply draw tags from PGN into drawings[gameId][ply]
+    drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
 
     game.reset();
     const ok = game.load_pgn(g.pgn, {sloppy:true});
@@ -1111,7 +1265,6 @@ function squareFromTarget(t){
     verboseHistory = game.history({verbose:true});
     activePly = verboseHistory.length;
 
-    // CHANGED: size the square before init/resize so chessboard renders correctly
     sizeBoardSquare();
 
     if (!board){
@@ -1122,7 +1275,6 @@ function squareFromTarget(t){
         pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
         onDragStart, onDrop, onSnapEnd
       });
-      sizeBoardSquare();
       if (typeof board.resize === 'function') board.resize();
       logLine('OK', 'Chessboard initialized.');
     } else {
@@ -1160,12 +1312,24 @@ function squareFromTarget(t){
     if (!headers.Result) headerLines.push(`[Result "*"]`);
 
     const parts = [];
+
+    // If there are tags on ply 0 (pre-move), emit them before moves
+    const pre = drawTagsCommentFor(gameId, 0);
+    if (pre) parts.push(pre);
+
     for (let i=0;i<hist.length;i++){
       const ply = i+1;
       const moveNo = Math.floor(i/2)+1;
       const san = hist[i].san;
+
       if (i%2===0) parts.push(`${moveNo}. ${san}`);
       else parts.push(`${san}`);
+
+      // NEW: drawings inline at this ply
+      const tagCmt = drawTagsCommentFor(gameId, ply);
+      if (tagCmt) parts.push(tagCmt);
+
+      // user annotation at this ply
       const c = (ann[ply]||'').trim();
       if (c) parts.push(`{ ${c.replace(/\s+/g,' ').trim()} }`);
     }
@@ -1201,7 +1365,6 @@ function squareFromTarget(t){
     verboseHistory = [];
     activePly = 0;
     board.start(false);
-    sizeBoardSquare();
     if (typeof board.resize === 'function') board.resize();
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
     updateBottomCard();
@@ -1210,13 +1373,14 @@ function squareFromTarget(t){
 
   document.getElementById('btnSquares').onclick = () => setTool(tool===Tool.SQUARES ? Tool.NONE : Tool.SQUARES);
   document.getElementById('btnArrows').onclick = () => setTool(tool===Tool.ARROWS ? Tool.NONE : Tool.ARROWS);
-  document.getElementById('btnClear').onclick = () => { if(currentGame){ clearAll(currentGame.id); redrawDrawings(); } };
+  document.getElementById('btnClear').onclick = () => { if(currentGame){ clearAll(currentGame.id); } };
 
   annoTextEl.addEventListener('input', () => {
     if (!currentGame) return;
     ensureStores(currentGame.id);
     annotations[currentGame.id][activePly] = annoTextEl.value;
     updateBottomCard();
+    renderMoves();
     logLine('OK', `Annotation saved for ply ${activePly} (${annoTextEl.value.length} chars)`);
   });
 
@@ -1396,11 +1560,10 @@ function squareFromTarget(t){
     setTool(Tool.NONE);
     renderGameList();
 
-    // CHANGED: size square before first render
     sizeBoardSquare();
     loadGame('mock1');
-
     updateQueryUi();
+
     logLine('OK', 'Boot complete.');
   } catch (e) {
     logLine('ERR', `Boot exception: ${e && e.stack ? e.stack : String(e)}`);
