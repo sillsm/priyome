@@ -1,9 +1,11 @@
 // evals.js
 // Manual registry of eval functions.
 // Designed to be loaded via: import('./evals.js')
-// Exports:                                                    //   - EVALS (named)
+// Exports:
+//   - EVALS (named)
 //   - default (same array)
-//                                                             // Depends only on chess.js (module) at ./third_party/chess.js
+//
+// Depends only on chess.js (module) at ./third_party/chess.js
 // and provides VERY VERBOSE logging via an optional ctx argument.
 //
 // Each eval entry: { id, name, description, run(pgn, ctx?) -> string | {pgn, meta?} }
@@ -12,24 +14,37 @@ import { Chess } from "./third_party/chess.js";
 
 /* -----------------------------
  * Logging / string utils
- * ----------------------------- */                            
-function nowStamp() {                                            const d = new Date();
+ * ----------------------------- */
+
+function nowStamp() {
+  const d = new Date();
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");           const da = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
   return `${y}.${m}.${da}`;
-}                                                              
-function safeString(v) {                                         if (v === undefined) return "undefined";
+}
+
+function safeString(v) {
+  if (v === undefined) return "undefined";
   if (v === null) return "null";
   if (typeof v === "string") return v;
-  try {                                                            return JSON.stringify(v, null, 2);
-  } catch {                                                        return String(v);
-  }                                                            }
-                                                               function clip(s, max) {
-  const t = String(s ?? "");                                     if (t.length <= max) return t;
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
+function clip(s, max) {
+  const t = String(s ?? "");
+  if (t.length <= max) return t;
   return t.slice(0, max) + `\n… (${t.length - max} more chars)`;
-}                                                              
-function logLine(ctx, level, msg) {                              if (!ctx) return;
-  const s = String(msg);                                         if (level === "warn") ctx.warn ? ctx.warn(s) : ctx.log?.(s);
+}
+
+function logLine(ctx, level, msg) {
+  if (!ctx) return;
+  const s = String(msg);
+  if (level === "warn") ctx.warn ? ctx.warn(s) : ctx.log?.(s);
   else if (level === "err") ctx.err ? ctx.err(s) : ctx.log?.(s);
   else ctx.log?.(s);
 }
@@ -45,7 +60,8 @@ function escapeCommentBody(s) {
   return String(s ?? "")
     .replace(/\r/g, "")
     .replace(/\{/g, "(")
-    .replace(/\}/g, ")")                                           .trim();
+    .replace(/\}/g, ")")
+    .trim();
 }
 
 /* -----------------------------
@@ -54,7 +70,9 @@ function escapeCommentBody(s) {
 
 function hasHeader(pgn, key) {
   const re = new RegExp(`^\\[${key}\\s+"[^"]*"\\]\\s*$`, "m");
-  return re.test(pgn);                                         }                                                              
+  return re.test(pgn);
+}
+
 function ensureHeaders(pgn, extraHeaders = {}) {
   let txt = String(pgn ?? "").replace(/\r/g, "");
 
@@ -65,7 +83,8 @@ function ensureHeaders(pgn, extraHeaders = {}) {
       `[Site "Local"]\n` +
       `[Date "${nowStamp()}"]\n` +
       `[Round "?"]\n` +
-      `[White "?"]\n` +                                              `[Black "?"]\n` +
+      `[White "?"]\n` +
+      `[Black "?"]\n` +
       `[Result "*"]\n\n`;
     txt = block + txt.trim();
   }
@@ -73,9 +92,12 @@ function ensureHeaders(pgn, extraHeaders = {}) {
   if (!hasHeader(txt, "Result")) {
     const idx = txt.indexOf("\n\n");
     if (idx >= 0) txt = txt.slice(0, idx) + `\n[Result "*"]` + txt.slice(idx);
-    else txt = `[Result "*"]\n` + txt;                           }
-                                                                 for (const [k, v0] of Object.entries(extraHeaders)) {
-    const v = String(v0).replaceAll('"', '\\"');                   const line = `[${k} "${v}"]`;
+    else txt = `[Result "*"]\n` + txt;
+  }
+
+  for (const [k, v0] of Object.entries(extraHeaders)) {
+    const v = String(v0).replaceAll('"', '\\"');
+    const line = `[${k} "${v}"]`;
     const re = new RegExp(`^\\[${k}\\s+"[^"]*"\\]\\s*$`, "m");
     if (re.test(txt)) txt = txt.replace(re, line);
     else {
@@ -83,7 +105,8 @@ function ensureHeaders(pgn, extraHeaders = {}) {
       if (idx >= 0) txt = txt.slice(0, idx) + `\n${line}` + txt.slice(idx);
       else txt = line + "\n" + txt;
     }
-  }                                                            
+  }
+
   txt = txt.replace(/\n{3,}/g, "\n\n");
   if (!/\n\n/.test(txt)) txt += "\n\n";
   return txt.trimEnd() + "\n";
@@ -91,8 +114,10 @@ function ensureHeaders(pgn, extraHeaders = {}) {
 
 function stripEndResultToken(pgn) {
   return String(pgn ?? "")
-    .replace(/\s+(1-0|0-1|1\/2-1\/2|\*)\s*$/, "")                  .trim();
-}                                                              
+    .replace(/\s+(1-0|0-1|1\/2-1\/2|\*)\s*$/, "")
+    .trim();
+}
+
 function ensureTrailingResult(pgn) {
   let txt = String(pgn ?? "").trim();
   if (/(1-0|0-1|1\/2-1\/2|\*)\s*$/.test(txt)) return txt + "\n";
@@ -172,7 +197,8 @@ function tryLoadPgn(chess, pgn, opts = {}) {
   if (!hasMovetext) return true;        // empty game is still parseable
   return histLen > 0;                    // must have loaded at least one ply
 }
-                                                               /* -----------------------------
+
+/* -----------------------------
  * Chess geometry helpers (human-ish)
  * ----------------------------- */
 
@@ -213,49 +239,81 @@ function rayClear(ff, fr, tf, tr, board) {
     if (!inBounds(f, r)) return false;
     const row = 7 - r;
     if (board[row][f]) return false;
-    f += stepF;                                                    r += stepR;
+    f += stepF;
+    r += stepR;
   }
   return true;
-}                                                              
+}
+
 function pieceAttacksSquare(fromSq, type, color, targetSq, board) {
-  const ff = fileIndex(fromSq),                                    fr = rankIndex(fromSq);
+  const ff = fileIndex(fromSq),
+    fr = rankIndex(fromSq);
   const tf = fileIndex(targetSq),
     tr = rankIndex(targetSq);
-  const df = tf - ff,                                              dr = tr - fr;
-                                                                 if (type === "p") {
-    const dir = color === "w" ? 1 : -1;                            return dr === dir && (df === 1 || df === -1);
-  }                                                              if (type === "n") {
-    const a = Math.abs(df),                                          b = Math.abs(dr);
-    return (a === 1 && b === 2) || (a === 2 && b === 1);         }
+  const df = tf - ff,
+    dr = tr - fr;
+
+  if (type === "p") {
+    const dir = color === "w" ? 1 : -1;
+    return dr === dir && (df === 1 || df === -1);
+  }
+  if (type === "n") {
+    const a = Math.abs(df),
+      b = Math.abs(dr);
+    return (a === 1 && b === 2) || (a === 2 && b === 1);
+  }
   if (type === "k") return Math.abs(df) <= 1 && Math.abs(dr) <= 1;
-                                                                 const isDiag = Math.abs(df) === Math.abs(dr) && df !== 0;
+
+  const isDiag = Math.abs(df) === Math.abs(dr) && df !== 0;
   const isOrtho = (df === 0 && dr !== 0) || (dr === 0 && df !== 0);
-                                                                 if (type === "b") return isDiag && rayClear(ff, fr, tf, tr, board);
-  if (type === "r") return isOrtho && rayClear(ff, fr, tf, tr, board);                                                          if (type === "q") return (isDiag || isOrtho) && rayClear(ff, fr, tf, tr, board);                                            
-  return false;                                                }
-                                                               function countAttackers(chess, targetSq, color) {
-  const board = chess.board();                                   let count = 0;
-                                                                 for (let r = 0; r < 8; r++) {
-    for (let f = 0; f < 8; f++) {                                    const row = 7 - r;
-      const p = board[row][f];                                       if (!p) continue;
-      if (p.color !== color) continue;                         
-      const fromSq = sqOf(f, r);                                     if (pieceAttacksSquare(fromSq, p.type, p.color, targetSq, board)) count++;                                                  }
-  }                                                              return count;
-}                                                              
-function listMinors(chess, color) {                              const board = chess.board();
-  const out = [];                                                for (let r = 0; r < 8; r++) {
+
+  if (type === "b") return isDiag && rayClear(ff, fr, tf, tr, board);
+  if (type === "r") return isOrtho && rayClear(ff, fr, tf, tr, board);
+  if (type === "q") return (isDiag || isOrtho) && rayClear(ff, fr, tf, tr, board);
+
+  return false;
+}
+
+function countAttackers(chess, targetSq, color) {
+  const board = chess.board();
+  let count = 0;
+
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const row = 7 - r;
+      const p = board[row][f];
+      if (!p) continue;
+      if (p.color !== color) continue;
+
+      const fromSq = sqOf(f, r);
+      if (pieceAttacksSquare(fromSq, p.type, p.color, targetSq, board)) count++;
+    }
+  }
+  return count;
+}
+
+function listMinors(chess, color) {
+  const board = chess.board();
+  const out = [];
+  for (let r = 0; r < 8; r++) {
     for (let f = 0; f < 8; f++) {
       const p = board[r][f];
       if (!p) continue;
       if (p.color !== color) continue;
       if (p.type !== "n" && p.type !== "b") continue;
-      const sq = FILES[f] + String(8 - r);                           out.push({ type: p.type, color: p.color, square: sq });
-    }                                                            }
+      const sq = FILES[f] + String(8 - r);
+      out.push({ type: p.type, color: p.color, square: sq });
+    }
+  }
   out.sort((a, b) => a.square.localeCompare(b.square) || a.type.localeCompare(b.type));
-  return out;                                                  }
-                                                               function squareOccupiedByOwn(chess, sq, color) {
-  const p = chess.get(sq);                                       return !!p && p.color === color;
-}                                                              
+  return out;
+}
+
+function squareOccupiedByOwn(chess, sq, color) {
+  const p = chess.get(sq);
+  return !!p && p.color === color;
+}
+
 function knightMobility(chess, sq, color) {
   const f = fileIndex(sq);
   const r = rankIndex(sq);
@@ -277,26 +335,38 @@ function knightMobility(chess, sq, color) {
 function bishopMobility(chess, sq, color) {
   const board = chess.board();
   const dirs = [
-    [1, 1],[1, -1],[-1, 1],[-1, -1],                             ];
+    [1, 1],[1, -1],[-1, 1],[-1, -1],
+  ];
   let total = 0;
   for (const [df, dr] of dirs) {
     let f = fileIndex(sq) + df;
-    let r = rankIndex(sq) + dr;                                    while (inBounds(f, r)) {                                         const row = 7 - r;
+    let r = rankIndex(sq) + dr;
+    while (inBounds(f, r)) {
+      const row = 7 - r;
       const p = board[row][f];
       if (p) {
-        if (p.color !== color) total += 1;                             break;
-      }                                                              total += 1;
-      f += df;                                                       r += dr;
+        if (p.color !== color) total += 1;
+        break;
+      }
+      total += 1;
+      f += df;
+      r += dr;
     }
   }
-  return total;                                                }
+  return total;
+}
 
-function countOwnPawnsOnColor(chess, color, colorName) {         const board = chess.board();
-  let n = 0;                                                     for (let r = 0; r < 8; r++) {
-    for (let f = 0; f < 8; f++) {                                    const p = board[r][f];
+function countOwnPawnsOnColor(chess, color, colorName) {
+  const board = chess.board();
+  let n = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const p = board[r][f];
       if (!p) continue;
-      if (p.color !== color) continue;                               if (p.type !== "p") continue;
-      const sq = FILES[f] + String(8 - r);                           if (squareColorName(sq) === colorName) n++;
+      if (p.color !== color) continue;
+      if (p.type !== "p") continue;
+      const sq = FILES[f] + String(8 - r);
+      if (squareColorName(sq) === colorName) n++;
     }
   }
   return n;
@@ -345,25 +415,30 @@ async function pieceTradesEval(inputPgn, ctx) {
 
   logLine(ctx, ok ? "ok" : "err", `EVAL/piecetrades: input parse ok? ${ok}`);
   logLine(ctx, "ok", `EVAL/piecetrades: input history length = ${check.history().length}`);
-                                                                 if (!ok) {
+
+  if (!ok) {
     let fb =
       `[Event "Evaluated (piecetrades) • PARSE FAILURE"]\n` +
-      `[Site "?"]\n` +                                               `[Date "${nowStamp()}"]\n` +
+      `[Site "?"]\n` +
+      `[Date "${nowStamp()}"]\n` +
       `[Round "-"]\n` +
       `[White "?"]\n` +
       `[Black "?"]\n` +
-      `[Result "*"]\n\n` +                                           `{ piecetrades: could not parse input PGN. Here is the first 800 chars of the input so you can debug:\n` +
+      `[Result "*"]\n\n` +
+      `{ piecetrades: could not parse input PGN. Here is the first 800 chars of the input so you can debug:\n` +
       `${escapeCommentBody(clip(base, 800))}\n}\n` +
       `1. e4 e5 { [%csl Ye4] } *\n`;
     fb = ensureTrailingResult(fb);
     logBlock(ctx, "err", "piecetrades/fallback_output", fb, 2500);
     return fb;
-  }                                                            
+  }
+
   const START_PLY = 10;
 
   const noRes = stripEndResultToken(base);
   const { headers, moves } = splitHeadersAndMovetext(noRes);
-                                                                 logBlock(ctx, "ok", "piecetrades/headers", headers, 1200);
+
+  logBlock(ctx, "ok", "piecetrades/headers", headers, 1200);
   logBlock(ctx, "ok", "piecetrades/movetext_pre", moves, 2000);
 
   const tokens = tokenizeMovetext(moves);
@@ -371,20 +446,27 @@ async function pieceTradesEval(inputPgn, ctx) {
 
   const replay = new Chess();
   // load again for verbose history
-  tryLoadPgn(replay, noRes, { sloppy: true });                   const hist = replay.history({ verbose: true });
+  tryLoadPgn(replay, noRes, { sloppy: true });
+  const hist = replay.history({ verbose: true });
   logLine(ctx, "ok", `EVAL/piecetrades: total plies=${hist.length}`);
-                                                                 const walk = new Chess();
+
+  const walk = new Chess();
   const injections = Object.create(null);
 
-  for (let i = 0; i < hist.length; i++) {                          const ply = i + 1;
-    const mv = hist[i];                                            const san = mv.san;
+  for (let i = 0; i < hist.length; i++) {
+    const ply = i + 1;
+    const mv = hist[i];
+    const san = mv.san;
 
-    const played = walk.move(san, { sloppy: true });               if (!played) {                                                   logLine(ctx, "err", `EVAL/piecetrades: failed to replay ply=${ply} san=${san}. stopping.`);
+    const played = walk.move(san, { sloppy: true });
+    if (!played) {
+      logLine(ctx, "err", `EVAL/piecetrades: failed to replay ply=${ply} san=${san}. stopping.`);
       break;
     }
 
     if (ply < START_PLY) continue;
-                                                                   const report = evaluateMinorPiecesPosition(walk, { ply });
+
+    const report = evaluateMinorPiecesPosition(walk, { ply });
     const cslTag = report.csl.length ? `[%csl ${report.csl.join(",")}]` : "";
     const tags = [cslTag].filter(Boolean).join(" ");
 
@@ -392,7 +474,8 @@ async function pieceTradesEval(inputPgn, ctx) {
       `piecetrades: after ${ply % 2 ? "White" : "Black"} played ${san} (ply ${ply})`,
       ``,
       `You are looking at all minor pieces (bishops + knights) RIGHT NOW and asking:`,
-      `  "If a trade happens soon, which minor piece would I be happiest to trade off, and which do I want to keep?"`,              ``,
+      `  "If a trade happens soon, which minor piece would I be happiest to trade off, and which do I want to keep?"`,
+      ``,
       `We color each minor piece square: GREEN=strong/keep, YELLOW=okay, RED=liability/likely trade target.`,
       ``,
       ...report.lines,
@@ -400,24 +483,34 @@ async function pieceTradesEval(inputPgn, ctx) {
       `Draw tags: ${tags || "(none)"}`,
     ].join("\n");
 
-    const comment = `{ ${escapeCommentBody(expl)} ${tags} }`.replace(/\s+\}/, " }");                                              (injections[ply] ??= []).push(comment);
+    const comment = `{ ${escapeCommentBody(expl)} ${tags} }`.replace(/\s+\}/, " }");
+    (injections[ply] ??= []).push(comment);
 
     logLine(ctx, "ok", `EVAL/piecetrades: injected @ ply=${ply} san=${san} cslItems=${report.csl.length}`);
   }
 
-  const rebuiltMoves = rebuildMovetextWithInsertions(tokens, injections);                                                       logBlock(ctx, "ok", "piecetrades/movetext_post", rebuiltMoves, 2500);                                                                                                                        let final = headers + "\n\n" + rebuiltMoves;
+  const rebuiltMoves = rebuildMovetextWithInsertions(tokens, injections);
+  logBlock(ctx, "ok", "piecetrades/movetext_post", rebuiltMoves, 2500);
+
+  let final = headers + "\n\n" + rebuiltMoves;
 
   if (!/\[%csl\s+[^\]]+\]/.test(final)) {
     logLine(ctx, "warn", `EVAL/piecetrades: output has no [%csl ...]; inserting a tiny start tag`);
-    final = insertDrawTagsNearStart(final, `[%csl Ye4]`);        }
-                                                                 final = ensureTrailingResult(final);
+    final = insertDrawTagsNearStart(final, `[%csl Ye4]`);
+  }
+
+  final = ensureTrailingResult(final);
 
   const fin = new Chess();
-  const finOk = tryLoadPgn(fin, final, { sloppy: true });        logLine(ctx, finOk ? "ok" : "err", `EVAL/piecetrades: output parse ok? ${finOk}`);
-  logLine(ctx, "ok", `EVAL/piecetrades: output history length = ${fin.history().length}`);                                      logBlock(ctx, finOk ? "ok" : "err", "piecetrades/output", final, 6000);                                                     
+  const finOk = tryLoadPgn(fin, final, { sloppy: true });
+  logLine(ctx, finOk ? "ok" : "err", `EVAL/piecetrades: output parse ok? ${finOk}`);
+  logLine(ctx, "ok", `EVAL/piecetrades: output history length = ${fin.history().length}`);
+  logBlock(ctx, finOk ? "ok" : "err", "piecetrades/output", final, 6000);
+
   return final;
 }
-                                                               function evaluateMinorPiecesPosition(chess, { ply }) {
+
+function evaluateMinorPiecesPosition(chess, { ply }) {
   const lines = [];
   const csl = [];
 
@@ -431,11 +524,15 @@ async function pieceTradesEval(inputPgn, ctx) {
   lines.push(`  (2) Attacked right now (tension)`);
   lines.push(`  (3) "Stable square" proxy (defended and not heavily challenged)`);
   lines.push(`  (4) Bad bishop proxy (many own pawns on bishop's color)`);
-  lines.push(`  (5) Knight on rim`);                             lines.push(`  (6) Mobility proxy (cheap activity: attacked squares)`);
+  lines.push(`  (5) Knight on rim`);
+  lines.push(`  (6) Mobility proxy (cheap activity: attacked squares)`);
 
-  lines.push(``);                                                lines.push(`WHITE minors:`);
-                                                                 for (const p of wMin) {
-    const r = scoreOneMinor(chess, p);                             lines.push(...formatOneMinorVerbose(p, r));
+  lines.push(``);
+  lines.push(`WHITE minors:`);
+
+  for (const p of wMin) {
+    const r = scoreOneMinor(chess, p);
+    lines.push(...formatOneMinorVerbose(p, r));
     csl.push(`${r.color}${p.square}`);
   }
 
@@ -443,4 +540,134 @@ async function pieceTradesEval(inputPgn, ctx) {
   lines.push(`BLACK minors:`);
 
   for (const p of bMin) {
-    const r = scoreOneMinor(chess, p);                             lines.push(...fo
+    const r = scoreOneMinor(chess, p);
+    lines.push(...formatOneMinorVerbose(p, r));
+    csl.push(`${r.color}${p.square}`);
+  }
+
+  const uniq = [...new Set(csl)];
+  uniq.sort((a, b) => a.slice(1).localeCompare(b.slice(1)) || a[0].localeCompare(b[0]));
+  return { lines, csl: uniq };
+}
+
+function formatOneMinorVerbose(piece, r) {
+  const side = piece.color === "w" ? "White" : "Black";
+  const name = piece.type === "n" ? "Knight" : "Bishop";
+  const lines = [];
+  lines.push(`- ${side} ${name} @ ${piece.square}: COLOR=${r.colorName} (score=${r.score})`);
+  for (const s of r.reasons) lines.push(`    • ${s}`);
+  return lines;
+}
+
+function scoreOneMinor(chess, piece) {
+  const reasons = [];
+  let score = 0;
+
+  const color = piece.color;
+  const opp = color === "w" ? "b" : "w";
+  const sq = piece.square;
+
+  const oppAtt = countAttackers(chess, sq, opp);
+  const myDef = countAttackers(chess, sq, color);
+
+  if (oppAtt >= myDef + 1) {
+    score -= 4;
+    reasons.push(`LOOSE: attacked ${oppAtt}, defended ${myDef} ⇒ tactical liability; opponent can often force trades/wins.`);
+  } else {
+    reasons.push(`Not loose: attacked ${oppAtt}, defended ${myDef}.`);
+  }
+
+  if (oppAtt > 0) {
+    score -= 1;
+    reasons.push(`TENSION: currently attacked ⇒ trades can happen naturally.`);
+  } else {
+    score += 1;
+    reasons.push(`No direct pressure ⇒ opponent must spend time to trade it.`);
+  }
+
+  if (myDef >= 1 && oppAtt <= 1) {
+    score += 2;
+    reasons.push(`STABLE: defended (≥1) and not heavily challenged ⇒ piece can "stick" and keep influence.`);
+  } else {
+    reasons.push(`Not stable by this test (def=${myDef}, att=${oppAtt}).`);
+  }
+
+  if (piece.type === "b") {
+    const bc = squareColorName(sq);
+    const pawns = countOwnPawnsOnColor(chess, color, bc);
+    if (pawns >= 5) {
+      score -= 2;
+      reasons.push(`BAD BISHOP: own pawns on ${bc} squares=${pawns} ⇒ bishop may be restricted.`);
+    } else {
+      score += 1;
+      reasons.push(`Bishop scope looks OK: own pawns on bishop-color=${pawns} (lower is better).`);
+    }
+  }
+
+  if (piece.type === "n") {
+    if (isEdgeSquare(sq)) {
+      score -= 2;
+      reasons.push(`RIM KNIGHT: edge square reduces options; often a target or needs time to reroute.`);
+    } else {
+      score += 1;
+      reasons.push(`Knight not on rim (usually more flexible).`);
+    }
+  }
+
+  let mob = 0;
+  if (piece.type === "n") mob = knightMobility(chess, sq, color);
+  else mob = bishopMobility(chess, sq, color);
+
+  if (mob >= 6) {
+    score += 2;
+    reasons.push(`MOBILITY: attacks ${mob} squares ⇒ active; opponent may prefer to trade it.`);
+  } else if (mob >= 3) {
+    reasons.push(`MOBILITY: attacks ${mob} squares ⇒ average.`);
+  } else {
+    score -= 1;
+    reasons.push(`MOBILITY: attacks ${mob} squares ⇒ cramped; candidate to trade/improve.`);
+  }
+
+  let colorTag = "Y";
+  let colorName = "YELLOW";
+  if (score >= 2) {
+    colorTag = "G";
+    colorName = "GREEN";
+  } else if (score <= -2) {
+    colorTag = "R";
+    colorName = "RED";
+  }
+
+  if (colorTag === "R") {
+    reasons.push(`TRADE PREDICTION: opponent is usually happy to exchange this minor if possible.`);
+  } else if (colorTag === "G") {
+    reasons.push(`TRADE PREDICTION: avoid trading this unless you win something concrete or improve structure.`);
+  } else {
+    reasons.push(`TRADE PREDICTION: depends—compare resulting pawn structure + remaining minors.`);
+  }
+
+  return { score, color: colorTag, colorName, reasons };
+}
+
+/* -----------------------------
+ * Exports: registry
+ * ----------------------------- */
+
+export const EVALS = [
+  {
+    id: "mock",
+    name: "Mock minor-piece heuristic (verbose)",
+    description:
+      'Returns a loadable PGN with [%csl]/[%cal] tags + a couple comments. Logs input/output via ctx.',
+    run: mockMinorPieceEval,
+  },
+  {
+    id: "piecetrades",
+    name: "Piece trades tutor (VERY verbose, from move 5)",
+    description:
+      "From move 5 onward, colors every minor piece square (G/Y/R) using human-countable features and explains why in PGN comments.",
+    run: pieceTradesEval,
+  },
+];
+
+export default EVALS;
