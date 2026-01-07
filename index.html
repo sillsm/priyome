@@ -1,12 +1,10 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta charset="utf-8"/>                                        <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Priyome</title>
 
-  <!-- chessboard.js (requires jQuery) -->
-  <link rel="stylesheet"
+  <!-- chessboard.js (requires jQuery) -->                       <link rel="stylesheet"
         href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
         integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
         crossorigin="anonymous">
@@ -15,10 +13,11 @@
           crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
           integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
-          crossorigin="anonymous"></script>
-
+          crossorigin="anonymous"></script>                    
   <!-- chess.js UMD (global Chess) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.11.0/chess.min.js"></script>
+  <!-- NOTE: crossorigin added so you don't get "Script error." without stack -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.11.0/chess.min.js"
+          crossorigin="anonymous"></script>
 
   <style>
     :root{
@@ -61,7 +60,7 @@
 
     /* --- Collapsible hamburger top bar --- */
     .topbarWrap{
-      position:sticky; top:0; z-index:5;
+      position:sticky; top:0; z-index:50;
       background: rgba(246,247,251,.92);
       backdrop-filter: blur(10px);
       border-bottom:1px solid var(--border);
@@ -353,6 +352,20 @@
     .okLine{color:#166534}
     .warnLine{color:#92400e}
 
+    /* Eval list */
+    .evalList{display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
+    .evalCard{
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      border-radius:14px;
+      padding:10px;
+    }
+    .evalTop{display:flex; align-items:flex-start; justify-content:space-between; gap:10px;}
+    .evalName{font-weight:900; font-size:13px;}
+    .evalDesc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.35}
+    .evalBtns{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
+    .evalBtns button{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
+
     /* bottom card */
     .bottomWrap{
       max-width:1240px;
@@ -365,6 +378,45 @@
       gap:10px;
     }
     .bottomGrid textarea{ min-height:180px; }
+
+    /* --- Import PGN modal --- */
+    .modalBackdrop{
+      position:fixed;
+      inset:0;
+      background: rgba(15,23,42,.45);
+      backdrop-filter: blur(6px);
+      display:none;
+      z-index:999;
+      padding:14px;
+    }
+    .modalBackdrop.open{display:grid; place-items:center;}
+    .modal{
+      width:min(980px, 100%);
+      height:min(84vh, 860px);
+      background: var(--panel);
+      border:1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 20px 60px rgba(15,23,42,.22);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+    }
+    .modalHead{
+      padding:12px 14px;
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background: rgba(15,23,42,.02);
+    }
+    .modalBody{
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      flex:1;
+      min-height:0;
+    }
+    #importPgnText{ flex:1; min-height:0; }
   </style>
 </head>
 
@@ -389,6 +441,8 @@
         <button id="btnSquares">Squares</button>
         <button id="btnArrows">Arrows</button>
         <button id="btnClear">Clear</button>
+
+        <button id="btnImportPgn">Import PGN</button>
 
         <button id="btnExportGame">Export Game PGN</button>
         <button id="btnExportStudy">Export Study PGN</button>
@@ -438,6 +492,7 @@
         <div class="tab active" id="tabMoves">Moves</div>
         <div class="tab" id="tabGames">Games</div>
         <div class="tab" id="tabQuery">Query</div>
+        <div class="tab" id="tabEvals">Evals</div>
         <div class="tab" id="tabErrors">Errors</div>
       </div>
 
@@ -495,6 +550,22 @@
         </div>
       </div>
 
+      <!-- Evals tab -->
+      <div class="pane" id="paneEvals">
+        <div class="hint">
+          Evals are loaded from <span class="kbd">./evals.js</span>. Click <b>Run</b> to evaluate the <b>current game</b>.
+          Output is added as a new game (and smoke-checked with chess.js first).
+          <br/>This tab logs <b>full</b> input/output previews to the error logger.
+        </div>
+
+        <div class="row">
+          <button class="smallBtn" id="btnReloadEvals" type="button">Reload evals.js</button>
+          <span class="kbd" id="evalsStatus">—</span>
+        </div>
+
+        <div class="evalList" id="evalList"></div>
+      </div>
+
       <!-- Errors tab -->
       <div class="pane" id="paneErrors">
         <div class="errorTools">
@@ -524,6 +595,25 @@
         </div>
         <div class="hint">PGN shown includes inline <span class="kbd">{ comments }</span> and inline draw tags <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span> at the ply they belong to.</div>
         <textarea id="pgnBottom" readonly></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import PGN modal -->
+  <div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Import PGN">
+      <div class="modalHead">
+        <div class="status"><b>Import PGN</b> <span class="pill">paste one or more games</span></div>
+        <div class="row">
+          <button class="smallBtn" id="btnImportCancel" type="button">Cancel</button>
+          <button class="smallBtn" id="btnImportAdd" type="button">Add to Games</button>
+        </div>
+      </div>
+      <div class="modalBody">
+        <div class="hint">
+          Paste PGN here. Multiple games are supported if each game starts with <span class="kbd">[Event "…"]</span>.
+        </div>
+        <textarea id="importPgnText" placeholder='[Event "Example"]&#10;...'></textarea>
       </div>
     </div>
   </div>
@@ -559,13 +649,30 @@
     errorLog.scrollTop = errorLog.scrollHeight;
   }
 
+  function logBlock(kind, title, value, max=2000){
+    const s = (value === undefined) ? 'undefined'
+          : (value === null) ? 'null'
+          : (typeof value === 'string') ? value
+          : (() => { try { return JSON.stringify(value, null, 2); } catch { return String(value); } })();
+
+    const clipped = (s.length > max) ? (s.slice(0, max) + `\n… (${s.length-max} more chars)`) : s;
+    logLine(kind, `${title} (${s.length} chars)\n${clipped}`);
+  }
+
+  function logStack(kind, prefix, e){
+    const msg = e && e.stack ? e.stack : String(e);
+    logLine(kind, `${prefix}${msg}`);
+  }
+
+  // Better browser error hooks (try to include stacks)
   window.addEventListener('error', (e) => {
     const where = e.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
-    logLine('ERR', `${e.message}${where}`);
+    const detail = (e.error && e.error.stack) ? `\n${e.error.stack}` : '';
+    logLine('ERR', `${e.message || 'Error'}${where}${detail}`);
   });
 
   window.addEventListener('unhandledrejection', (e) => {
-    logLine('ERR', `Unhandled promise rejection: ${String(e.reason)}`);
+    logLine('ERR', `Unhandled promise rejection: ${String(e.reason && e.reason.stack ? e.reason.stack : e.reason)}`);
   });
 
   document.getElementById('btnClearErrors').addEventListener('click', () => {
@@ -644,6 +751,11 @@
   ];
   const discoveredIds = new Set();
 
+  // ---------- eval registry ----------
+  let EVALS_REGISTRY = [];
+  const evalListEl = document.getElementById('evalList');
+  const evalsStatusEl = document.getElementById('evalsStatus');
+
   // ---------- DOM ----------
   const statusEl = document.getElementById('status');
   const fenBox = document.getElementById('fenBox');
@@ -674,6 +786,13 @@
   // Board sizing DOM
   const boardArea = document.getElementById('boardArea');
   const boardWrap = document.getElementById('boardWrap');
+
+  // Import modal DOM
+  const importModalBackdrop = document.getElementById('importModalBackdrop');
+  const importPgnText = document.getElementById('importPgnText');
+  const btnImportCancel = document.getElementById('btnImportCancel');
+  const btnImportAdd = document.getElementById('btnImportAdd');
+  const btnImportPgn = document.getElementById('btnImportPgn');
 
   // ---------- state ----------
   let board = null;
@@ -736,7 +855,7 @@
     tool = t;
     tapFrom = null;
     toolStatusEl.textContent = t;
-    toolDotsEl.hidden = (t === Tool.NONE);
+    toolDotsEl.hidden = (t === Tool.NONE); // hide colors unless arrow/square tool selected
 
     document.getElementById('btnSquares').classList.toggle('on', t === Tool.SQUARES);
     document.getElementById('btnArrows').classList.toggle('on', t === Tool.ARROWS);
@@ -928,6 +1047,49 @@
     return out;
   }
 
+// Parse PGN comments by ply.
+// - keeps normal comment text as annotations[ply]
+// - ignores/strips draw-tags [%csl] / [%cal] from the saved text
+function parseCommentsByPlyFromPgn(pgn){
+  const out = Object.create(null); // plyStr -> "comment text"
+
+  const body = String(pgn || "")
+    .replace(/\r/g,'')
+    .replace(/^\s*\[[^\]]+\]\s*$/gm,'') // strip headers
+    .trim();
+
+  let ply = 0;
+  const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
+  let m;
+
+  while ((m = re.exec(body)) !== null){
+    const tok = m[0];
+
+    if (tok.startsWith('{')){
+      let txt = tok.slice(1,-1);
+
+      // Remove draw-tags from comment text (they are handled elsewhere)
+      txt = txt.replace(/\[%csl\s+[^\]]+\]/g, '').replace(/\[%cal\s+[^\]]+\]/g, '');
+      txt = txt.replace(/\s+/g,' ').trim();
+
+      if (txt){
+        const key = String(ply);
+        out[key] = out[key] ? (out[key] + ' ' + txt).trim() : txt;
+      }
+      continue;
+    }
+
+    if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
+    if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
+
+    // any other token: treat as move token (sloppy OK)
+    ply++;
+  }
+
+  return out;
+}
+
+
   function syncDrawingsToPgn(){
     updateBottomCard();
     renderMoves(); // so the tag pills show immediately in the Moves list too
@@ -994,6 +1156,7 @@
       moves: ['tabMoves','paneMoves'],
       games: ['tabGames','paneGames'],
       query: ['tabQuery','paneQuery'],
+      evals: ['tabEvals','paneEvals'],
       errors:['tabErrors','paneErrors'],
     };
 
@@ -1008,6 +1171,7 @@
   document.getElementById('tabMoves').addEventListener('click', () => setTab('moves'));
   document.getElementById('tabGames').addEventListener('click', () => setTab('games'));
   document.getElementById('tabQuery').addEventListener('click', () => setTab('query'));
+  document.getElementById('tabEvals').addEventListener('click', () => setTab('evals'));
   document.getElementById('tabErrors').addEventListener('click', () => setTab('errors'));
 
   // ---------- move list / nav ----------
@@ -1195,7 +1359,7 @@
 
   window.addEventListener('mouseup', () => { isDraggingPiece = false; });
 
-  // ---------- square detection (FIXED) ----------
+  // ---------- square detection ----------
   function squareFromTarget(t){
     const el = t.closest?.('div.square-55d63');
     if (!el) return null;
@@ -1255,12 +1419,33 @@
     ensureStores(g.id);
     gamePill.textContent = g.title;
 
-    // NEW: load per-ply draw tags from PGN into drawings[gameId][ply]
-    drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
+    // load per-ply draw tags from PGN into drawings[gameId][ply]
+    // Load draw-tags + normal comments from PGN into per-ply stores.
+// (This makes imported games + eval-added games show comments in the UI.)
+drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
+
+const parsedComments = parseCommentsByPlyFromPgn(g.pgn);
+// Only overwrite if empty-ish, so user edits don't get nuked on reload.
+const existing = annotations[g.id] || Object.create(null);
+const existingKeys = Object.keys(existing);
+if (existingKeys.length === 0){
+  annotations[g.id] = parsedComments;
+} else {
+  // merge: keep existing; fill missing from PGN
+  for (const k of Object.keys(parsedComments)){
+    if (!existing[k]) existing[k] = parsedComments[k];
+  }
+  annotations[g.id] = existing;
+}
+
 
     game.reset();
     const ok = game.load_pgn(g.pgn, {sloppy:true});
     logLine(ok ? 'OK' : 'ERR', `load_pgn(${g.title}) => ${ok}`);
+    if (!ok){
+      logBlock('ERR', `PGN that failed load_pgn(${g.title})`, g.pgn, 20000);
+      setTab('errors');
+    }
 
     verboseHistory = game.history({verbose:true});
     activePly = verboseHistory.length;
@@ -1325,7 +1510,7 @@
       if (i%2===0) parts.push(`${moveNo}. ${san}`);
       else parts.push(`${san}`);
 
-      // NEW: drawings inline at this ply
+      // drawings inline at this ply
       const tagCmt = drawTagsCommentFor(gameId, ply);
       if (tagCmt) parts.push(tagCmt);
 
@@ -1390,6 +1575,104 @@
     if (board && typeof board.resize === 'function') board.resize();
   });
 
+  // ---------- Import PGN modal ----------
+  function openImportModal(){
+    importModalBackdrop.classList.add('open');
+    importModalBackdrop.setAttribute('aria-hidden','false');
+    importPgnText.value = '';
+    setTimeout(() => importPgnText.focus(), 0);
+    logLine('OK', 'Opened Import PGN modal.');
+  }
+  function closeImportModal(){
+    importModalBackdrop.classList.remove('open');
+    importModalBackdrop.setAttribute('aria-hidden','true');
+    logLine('OK', 'Closed Import PGN modal.');
+  }
+
+  btnImportPgn.addEventListener('click', () => openImportModal());
+  btnImportCancel.addEventListener('click', () => closeImportModal());
+  importModalBackdrop.addEventListener('click', (e) => {
+    if (e.target === importModalBackdrop) closeImportModal();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && importModalBackdrop.classList.contains('open')) closeImportModal();
+  });
+
+  function parseHeaders(pgn){
+    const headers = {};
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    let m;
+    while ((m = headerRe.exec(pgn)) !== null){
+      headers[m[1]] = m[2];
+    }
+    return headers;
+  }
+
+  function splitMultiPgn(text){
+    const t = (text || "").trim();
+    if (!t) return [];
+    // split before [Event ...] blocks
+    const parts = t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
+    // if user pasted one game without [Event], keep as one block
+    return parts.length ? parts : [t];
+  }
+
+  function addGamesFromText(multiPgnText, sourceLabel){
+    const blocks = splitMultiPgn(multiPgnText);
+    let added = 0;
+    for (let i=0;i<blocks.length;i++){
+      const pgn = blocks[i].trim();
+      if (!pgn) continue;
+
+      // Smoke-check with chess.js before adding
+      const tmp = new Chess();
+      const ok = tmp.load_pgn(pgn, {sloppy:true});
+      logLine(ok ? 'OK' : 'ERR', `Import smoke load_pgn(block ${i+1}) => ${ok}`);
+      if (!ok){
+        logBlock('ERR', `Import block ${i+1} PGN (failed)`, pgn, 20000);
+        continue;
+      }
+
+      const h = parseHeaders(pgn);
+      const title = h.Event ? h.Event : `Imported Game ${i+1}`;
+      const white = h.White || "?";
+      const black = h.Black || "?";
+      const date  = h.Date || "";
+      const res   = h.Result || "*";
+
+      const id = `${sourceLabel}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+      GAMES.unshift({
+        id,
+        title: `${title} — ${white} vs ${black}`,
+        opening: (h.Opening || sourceLabel),
+        result: res,
+        pgn
+      });
+      added++;
+    }
+    if (added){
+      logLine('OK', `Imported ${added} game(s) into Games tab.`);
+      renderGameList();
+      document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
+    }
+    return added;
+  }
+
+  btnImportAdd.addEventListener('click', () => {
+    const txt = importPgnText.value || '';
+    if (!txt.trim()){
+      logLine('WARN', 'Import PGN: empty input.');
+      return;
+    }
+    const added = addGamesFromText(txt, 'import');
+    if (added > 0){
+      closeImportModal();
+      setTab('games');
+    } else {
+      setTab('errors');
+    }
+  });
+
   // ---------- Query tab: lazy-load runner from /wasm/cql_runner.js ----------
   function updateQueryUi(){
     const haveCql = !!qCqlText.value.trim();
@@ -1430,21 +1713,6 @@
     return new TextEncoder().encode(text ?? "");
   }
 
-  function parseHeaders(pgn){
-    const headers = {};
-    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
-    let m;
-    while ((m = headerRe.exec(pgn)) !== null){
-      headers[m[1]] = m[2];
-    }
-    return headers;
-  }
-  function splitMultiPgn(text){
-    const t = (text || "").trim();
-    if (!t) return [];
-    return t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
-  }
-
   function addDiscoveredGamesFromPgn(multiPgnText){
     const games = splitMultiPgn(multiPgnText);
     if (!games.length){
@@ -1477,6 +1745,7 @@
     if (added){
       logLine('OK', `Added ${added} discovered game(s) to Games tab.`);
       renderGameList();
+      document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
     }
     return added;
   }
@@ -1541,6 +1810,142 @@
     }
   });
 
+  // ---------- Evals tab ----------
+  async function loadEvals(){
+    evalsStatusEl.textContent = 'loading…';
+    try{
+      // cache-bust so edits to evals.js reload without hard refresh
+      const mod = await import(`./evals.js?ts=${Date.now()}`);
+      const list = Array.isArray(mod.EVALS) ? mod.EVALS : (Array.isArray(mod.default) ? mod.default : []);
+      EVALS_REGISTRY = list.filter(e => e && typeof e.id === 'string' && typeof e.run === 'function');
+
+      evalsStatusEl.textContent = `${EVALS_REGISTRY.length} eval(s)`;
+      logLine('OK', `Loaded evals from ./evals.js: ${EVALS_REGISTRY.map(e=>e.id).join(', ') || '(none)'}`);
+      renderEvalList();
+    }catch(e){
+      evalsStatusEl.textContent = 'load failed';
+      logStack('ERR', 'Failed to load ./evals.js: ', e);
+      renderEvalList();
+      setTab('errors');
+    }
+  }
+
+  function renderEvalList(){
+    evalListEl.innerHTML = '';
+    if (!EVALS_REGISTRY.length){
+      const d = document.createElement('div');
+      d.className = 'hint';
+      d.textContent = 'No evals registered. Check ./evals.js exports EVALS (or default) and each entry has {id, run()}.';
+      evalListEl.appendChild(d);
+      return;
+    }
+
+    for (const entry of EVALS_REGISTRY){
+      const card = document.createElement('div');
+      card.className = 'evalCard';
+
+      const name = entry.name || entry.id;
+      const desc = entry.description || '';
+
+      card.innerHTML = `
+        <div class="evalTop">
+          <div style="min-width:0;">
+            <div class="evalName">${escapeHtml(name)} <span class="kbd">${escapeHtml(entry.id)}</span></div>
+            <div class="evalDesc">${escapeHtml(desc)}</div>
+          </div>
+          <div class="evalBtns">
+            <button type="button" data-run="${escapeHtml(entry.id)}">Run</button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('button[data-run]').addEventListener('click', () => runEval(entry));
+      evalListEl.appendChild(card);
+    }
+  }
+
+  async function runEval(entry){
+    try{
+      if (!currentGame) throw new Error('No current game selected.');
+      if (typeof Chess === 'undefined') throw new Error('Chess is undefined (chess.js missing).');
+
+      const evalId = entry.id;
+      logLine('OK', `Running eval "${evalId}" on: ${currentGame.title}`);
+
+      // what we pass in
+      const inputPgn = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
+      logBlock('OK', `EVAL/${evalId} INPUT PGN`, inputPgn, 8000);
+
+      // ctx logger (full verbosity)
+      const ctx = {
+        log:  (s) => logLine('OK',   `EVAL/${evalId}: ${String(s)}`),
+        warn: (s) => logLine('WARN', `EVAL/${evalId}: ${String(s)}`),
+        err:  (s) => logLine('ERR',  `EVAL/${evalId}: ${String(s)}`),
+      };
+
+      let res;
+      try{
+        ctx.log('calling eval function…');
+        res = (entry.run.length >= 2) ? await entry.run(inputPgn, ctx) : await entry.run(inputPgn);
+        ctx.log('eval function returned');
+      }catch(e){
+        logStack('ERR', `Eval run failed (threw): `, e);
+        setTab('errors');
+        return;
+      }
+
+      logBlock('OK', `EVAL/${evalId} RAW RETURN`, res, 8000);
+
+      const outPgn =
+        (typeof res === 'string') ? res :
+        (res && typeof res.pgn === 'string') ? res.pgn :
+        '';
+
+      logBlock('OK', `EVAL/${evalId} OUTPUT PGN`, outPgn, 12000);
+
+      if (!outPgn.trim()) throw new Error(`Eval "${evalId}" returned empty output PGN.`);
+
+      // SMOKE CHECK: does chess.js accept the output?
+      const tmp = new Chess();
+      const ok = tmp.load_pgn(outPgn, {sloppy:true});
+      logLine(ok ? 'OK' : 'ERR', `EVAL/${evalId} smoke load_pgn(output) => ${ok}`);
+      if (!ok){
+        logBlock('ERR', `EVAL/${evalId} OUTPUT PGN (FULL; failed smoke)`, outPgn, 50000);
+        setTab('errors');
+        return;
+      }
+
+      // Build metadata for the new game
+      const h = parseHeaders(outPgn);
+      const titleBase = currentGame.title;
+      const title = `Evaluated (${evalId}) • ${titleBase}`;
+      const resTok = h.Result || '*';
+
+      const newId = `eval:${evalId}:${currentGame.id}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+
+      GAMES.unshift({
+        id: newId,
+        title,
+        opening: `Eval: ${entry.name || evalId}`,
+        result: resTok,
+        pgn: outPgn
+      });
+
+      document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
+      renderGameList();
+      logLine('OK', `Eval added as new game: ${title}`);
+
+      // switch to Games so you can click it immediately
+      setTab('games');
+
+    }catch(e){
+      logStack('ERR', 'Eval run failed: ', e);
+      setTab('errors');
+    }
+  }
+
+  document.getElementById('btnReloadEvals').addEventListener('click', () => loadEvals());
+
   // ---------- boot ----------
   try {
     diag();
@@ -1563,6 +1968,7 @@
     sizeBoardSquare();
     loadGame('mock1');
     updateQueryUi();
+    loadEvals();
 
     logLine('OK', 'Boot complete.');
   } catch (e) {
