@@ -6,7 +6,7 @@
 //   - default (same array)
 //
 // Depends only on chess.js (module) at ./third_party/chess.js
-// and provides VERY VERBOSE logging via an optional ctx argument.
+// Provides VERY VERBOSE logging via an optional ctx argument.
 //
 // Each eval entry: { id, name, description, run(pgn, ctx?) -> string | {pgn, meta?} }
 
@@ -57,6 +57,7 @@ function logBlock(ctx, level, title, value, max = 2000) {
 }
 
 function escapeCommentBody(s) {
+  // PGN comment bodies cannot contain unmatched braces.
   return String(s ?? "")
     .replace(/\r/g, "")
     .replace(/\{/g, "(")
@@ -177,25 +178,22 @@ function insertDrawTagsNearStart(pgn, tags) {
 }
 
 /* -----------------------------
- * IMPORTANT FIX: chess.js loadPgn() return value
- * Some builds return undefined on success.
- * So we treat "parse ok" as:
- *   - no exception thrown AND
- *   - (movetext empty OR history().length > 0)
+ * IMPORTANT FIX:
+ * chess.js loadPgn() return value varies by build (often undefined on success).
+ * So "parse ok" = "didn't throw" AND (movetext empty OR history().length > 0).
  * ----------------------------- */
 
 function tryLoadPgn(chess, pgn, opts = {}) {
   try {
-    // Do NOT trust the return value.
-    chess.loadPgn(pgn, opts);
+    chess.loadPgn(pgn, opts); // do not trust return value
   } catch {
     return false;
   }
   const { moves } = splitHeadersAndMovetext(stripEndResultToken(pgn));
   const hasMovetext = /\S/.test(moves);
   const histLen = chess.history().length;
-  if (!hasMovetext) return true;        // empty game is still parseable
-  return histLen > 0;                    // must have loaded at least one ply
+  if (!hasMovetext) return true;
+  return histLen > 0;
 }
 
 /* -----------------------------
@@ -412,7 +410,6 @@ async function pieceTradesEval(inputPgn, ctx) {
 
   const check = new Chess();
   const ok = tryLoadPgn(check, base, { sloppy: true });
-
   logLine(ctx, ok ? "ok" : "err", `EVAL/piecetrades: input parse ok? ${ok}`);
   logLine(ctx, "ok", `EVAL/piecetrades: input history length = ${check.history().length}`);
 
@@ -445,7 +442,6 @@ async function pieceTradesEval(inputPgn, ctx) {
   logLine(ctx, "ok", `EVAL/piecetrades: tokenized movetext tokens=${tokens.length}`);
 
   const replay = new Chess();
-  // load again for verbose history
   tryLoadPgn(replay, noRes, { sloppy: true });
   const hist = replay.history({ verbose: true });
   logLine(ctx, "ok", `EVAL/piecetrades: total plies=${hist.length}`);
@@ -658,7 +654,7 @@ export const EVALS = [
     id: "mock",
     name: "Mock minor-piece heuristic (verbose)",
     description:
-      'Returns a loadable PGN with [%csl]/[%cal] tags + a couple comments. Logs input/output via ctx.',
+      "Returns a loadable PGN with [%csl]/[%cal] tags + a couple comments. Logs input/output via ctx.",
     run: mockMinorPieceEval,
   },
   {
