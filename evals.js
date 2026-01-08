@@ -178,7 +178,6 @@ function insertDrawTagsNearStart(pgn, tags) {
 }
 
 /* -----------------------------
- * IMPORTANT FIX:
  * chess.js loadPgn() return value varies by build (often undefined on success).
  * So "parse ok" = "didn't throw" AND (movetext empty OR history().length > 0).
  * ----------------------------- */
@@ -370,189 +369,12 @@ function countOwnPawnsOnColor(chess, color, colorName) {
   return n;
 }
 
-/* -----------------------------
- * Eval: mock (kept)
- * ----------------------------- */
-
-async function mockMinorPieceEval(inputPgn, ctx) {
-  logLine(ctx, "ok", `EVAL/mock: start`);
-  logBlock(ctx, "ok", "mock/input", inputPgn, 2500);
-
-  let out = ensureHeaders(inputPgn, {
-    Event: "Evaluated (mock)",
-    Annotator: "Priyome eval: mockMinorPiece",
-  });
-
-  out = stripEndResultToken(out);
-  out = insertDrawTagsNearStart(out, `[%csl Re4,Yd4] [%cal Ge2e4]`);
-
-  out = out.replace(/(1\.\s*\S+)(\s+)/, `$1 { mock: develop minors; avoid rim knights }$2`);
-  out = out.replace(/(2\.\s*\S+(?:\s+\S+)?)/, `$1 { mock: before trading minors, ask who gains activity/structure }`);
-
-  out = ensureTrailingResult(out);
-
-  logBlock(ctx, "ok", "mock/output", out, 4000);
-  return out;
-}
-
-/* -----------------------------
- * Eval: piecetrades (fixed)
- * ----------------------------- */
-
-async function pieceTradesEval(inputPgn, ctx) {
-  logLine(ctx, "ok", `EVAL/piecetrades: start`);
-  logBlock(ctx, "ok", "piecetrades/input", inputPgn, 2800);
-
-  let base = ensureHeaders(inputPgn, {
-    Event: "Evaluated (piecetrades)",
-    Annotator: "Priyome eval: piecetrades",
-  });
-
-  const check = new Chess();
-  const ok = tryLoadPgn(check, base, { sloppy: true });
-  logLine(ctx, ok ? "ok" : "err", `EVAL/piecetrades: input parse ok? ${ok}`);
-  logLine(ctx, "ok", `EVAL/piecetrades: input history length = ${check.history().length}`);
-
-  if (!ok) {
-    let fb =
-      `[Event "Evaluated (piecetrades) • PARSE FAILURE"]\n` +
-      `[Site "?"]\n` +
-      `[Date "${nowStamp()}"]\n` +
-      `[Round "-"]\n` +
-      `[White "?"]\n` +
-      `[Black "?"]\n` +
-      `[Result "*"]\n\n` +
-      `{ piecetrades: could not parse input PGN. Here is the first 800 chars of the input so you can debug:\n` +
-      `${escapeCommentBody(clip(base, 800))}\n}\n` +
-      `1. e4 e5 { [%csl Ye4] } *\n`;
-    fb = ensureTrailingResult(fb);
-    logBlock(ctx, "err", "piecetrades/fallback_output", fb, 2500);
-    return fb;
-  }
-
-  const START_PLY = 10;
-
-  const noRes = stripEndResultToken(base);
-  const { headers, moves } = splitHeadersAndMovetext(noRes);
-
-  logBlock(ctx, "ok", "piecetrades/headers", headers, 1200);
-  logBlock(ctx, "ok", "piecetrades/movetext_pre", moves, 2000);
-
-  const tokens = tokenizeMovetext(moves);
-  logLine(ctx, "ok", `EVAL/piecetrades: tokenized movetext tokens=${tokens.length}`);
-
-  const replay = new Chess();
-  tryLoadPgn(replay, noRes, { sloppy: true });
-  const hist = replay.history({ verbose: true });
-  logLine(ctx, "ok", `EVAL/piecetrades: total plies=${hist.length}`);
-
-  const walk = new Chess();
-  const injections = Object.create(null);
-
-  for (let i = 0; i < hist.length; i++) {
-    const ply = i + 1;
-    const mv = hist[i];
-    const san = mv.san;
-
-    const played = walk.move(san, { sloppy: true });
-    if (!played) {
-      logLine(ctx, "err", `EVAL/piecetrades: failed to replay ply=${ply} san=${san}. stopping.`);
-      break;
-    }
-
-    if (ply < START_PLY) continue;
-
-    const report = evaluateMinorPiecesPosition(walk, { ply });
-    const cslTag = report.csl.length ? `[%csl ${report.csl.join(",")}]` : "";
-    const tags = [cslTag].filter(Boolean).join(" ");
-
-    const expl = [
-      `piecetrades: after ${ply % 2 ? "White" : "Black"} played ${san} (ply ${ply})`,
-      ``,
-      `You are looking at all minor pieces (bishops + knights) RIGHT NOW and asking:`,
-      `  "If a trade happens soon, which minor piece would I be happiest to trade off, and which do I want to keep?"`,
-      ``,
-      `We color each minor piece square: GREEN=strong/keep, YELLOW=okay, RED=liability/likely trade target.`,
-      ``,
-      ...report.lines,
-      ``,
-      `Draw tags: ${tags || "(none)"}`,
-    ].join("\n");
-
-    const comment = `{ ${escapeCommentBody(expl)} ${tags} }`.replace(/\s+\}/, " }");
-    (injections[ply] ??= []).push(comment);
-
-    logLine(ctx, "ok", `EVAL/piecetrades: injected @ ply=${ply} san=${san} cslItems=${report.csl.length}`);
-  }
-
-  const rebuiltMoves = rebuildMovetextWithInsertions(tokens, injections);
-  logBlock(ctx, "ok", "piecetrades/movetext_post", rebuiltMoves, 2500);
-
-  let final = headers + "\n\n" + rebuiltMoves;
-
-  if (!/\[%csl\s+[^\]]+\]/.test(final)) {
-    logLine(ctx, "warn", `EVAL/piecetrades: output has no [%csl ...]; inserting a tiny start tag`);
-    final = insertDrawTagsNearStart(final, `[%csl Ye4]`);
-  }
-
-  final = ensureTrailingResult(final);
-
-  const fin = new Chess();
-  const finOk = tryLoadPgn(fin, final, { sloppy: true });
-  logLine(ctx, finOk ? "ok" : "err", `EVAL/piecetrades: output parse ok? ${finOk}`);
-  logLine(ctx, "ok", `EVAL/piecetrades: output history length = ${fin.history().length}`);
-  logBlock(ctx, finOk ? "ok" : "err", "piecetrades/output", final, 6000);
-
-  return final;
-}
-
-function evaluateMinorPiecesPosition(chess, { ply }) {
-  const lines = [];
-  const csl = [];
-
-  const wMin = listMinors(chess, "w");
-  const bMin = listMinors(chess, "b");
-
-  lines.push(`Position snapshot: side-to-move=${chess.turn() === "w" ? "White" : "Black"}; ply=${ply}`);
-  lines.push(`Minor pieces on board: White=${wMin.length}  Black=${bMin.length}`);
-  lines.push(`Features used (priority order):`);
-  lines.push(`  (1) Loose / under-defended (catastrophic)`);
-  lines.push(`  (2) Attacked right now (tension)`);
-  lines.push(`  (3) "Stable square" proxy (defended and not heavily challenged)`);
-  lines.push(`  (4) Bad bishop proxy (many own pawns on bishop's color)`);
-  lines.push(`  (5) Knight on rim`);
-  lines.push(`  (6) Mobility proxy (cheap activity: attacked squares)`);
-
-  lines.push(``);
-  lines.push(`WHITE minors:`);
-
-  for (const p of wMin) {
-    const r = scoreOneMinor(chess, p);
-    lines.push(...formatOneMinorVerbose(p, r));
-    csl.push(`${r.color}${p.square}`);
-  }
-
-  lines.push(``);
-  lines.push(`BLACK minors:`);
-
-  for (const p of bMin) {
-    const r = scoreOneMinor(chess, p);
-    lines.push(...formatOneMinorVerbose(p, r));
-    csl.push(`${r.color}${p.square}`);
-  }
-
-  const uniq = [...new Set(csl)];
-  uniq.sort((a, b) => a.slice(1).localeCompare(b.slice(1)) || a[0].localeCompare(b[0]));
-  return { lines, csl: uniq };
-}
-
-function formatOneMinorVerbose(piece, r) {
-  const side = piece.color === "w" ? "White" : "Black";
-  const name = piece.type === "n" ? "Knight" : "Bishop";
-  const lines = [];
-  lines.push(`- ${side} ${name} @ ${piece.square}: COLOR=${r.colorName} (score=${r.score})`);
-  for (const s of r.reasons) lines.push(`    • ${s}`);
-  return lines;
+function tagToName(tag) {
+  if (tag === "G") return "GREEN";
+  if (tag === "Y") return "YELLOW";
+  if (tag === "R") return "RED";
+  if (tag === "-") return "UNKNOWN";
+  return String(tag);
 }
 
 function scoreOneMinor(chess, piece) {
@@ -566,6 +388,7 @@ function scoreOneMinor(chess, piece) {
   const oppAtt = countAttackers(chess, sq, opp);
   const myDef = countAttackers(chess, sq, color);
 
+  // (1) Loose / under-defended (catastrophic-ish)
   if (oppAtt >= myDef + 1) {
     score -= 4;
     reasons.push(`LOOSE: attacked ${oppAtt}, defended ${myDef} ⇒ tactical liability; opponent can often force trades/wins.`);
@@ -573,6 +396,7 @@ function scoreOneMinor(chess, piece) {
     reasons.push(`Not loose: attacked ${oppAtt}, defended ${myDef}.`);
   }
 
+  // (2) Tension / trade pressure
   if (oppAtt > 0) {
     score -= 1;
     reasons.push(`TENSION: currently attacked ⇒ trades can happen naturally.`);
@@ -581,6 +405,7 @@ function scoreOneMinor(chess, piece) {
     reasons.push(`No direct pressure ⇒ opponent must spend time to trade it.`);
   }
 
+  // (3) Stable square proxy
   if (myDef >= 1 && oppAtt <= 1) {
     score += 2;
     reasons.push(`STABLE: defended (≥1) and not heavily challenged ⇒ piece can "stick" and keep influence.`);
@@ -588,6 +413,7 @@ function scoreOneMinor(chess, piece) {
     reasons.push(`Not stable by this test (def=${myDef}, att=${oppAtt}).`);
   }
 
+  // (4) Bad bishop proxy
   if (piece.type === "b") {
     const bc = squareColorName(sq);
     const pawns = countOwnPawnsOnColor(chess, color, bc);
@@ -600,6 +426,7 @@ function scoreOneMinor(chess, piece) {
     }
   }
 
+  // (5) Rim knight
   if (piece.type === "n") {
     if (isEdgeSquare(sq)) {
       score -= 2;
@@ -610,6 +437,7 @@ function scoreOneMinor(chess, piece) {
     }
   }
 
+  // (6) Mobility proxy
   let mob = 0;
   if (piece.type === "n") mob = knightMobility(chess, sq, color);
   else mob = bishopMobility(chess, sq, color);
@@ -642,7 +470,296 @@ function scoreOneMinor(chess, piece) {
     reasons.push(`TRADE PREDICTION: depends—compare resulting pawn structure + remaining minors.`);
   }
 
-  return { score, color: colorTag, colorName, reasons };
+  return { score, colorTag, colorName, reasons };
+}
+
+/* -----------------------------
+ * Eval: mock (kept)
+ * ----------------------------- */
+
+async function mockMinorPieceEval(inputPgn, ctx) {
+  logLine(ctx, "ok", `EVAL/mock: start`);
+  logBlock(ctx, "ok", "mock/input", inputPgn, 2500);
+
+  let out = ensureHeaders(inputPgn, {
+    Event: "Evaluated (mock)",
+    Annotator: "Priyome eval: mockMinorPiece",
+  });
+
+  out = stripEndResultToken(out);
+  out = insertDrawTagsNearStart(out, `[%csl Re4,Yd4] [%cal Ge2e4]`);
+
+  out = out.replace(/(1\.\s*\S+)(\s+)/, `$1 { mock: develop minors; avoid rim knights }$2`);
+  out = out.replace(/(2\.\s*\S+(?:\s+\S+)?)/, `$1 { mock: before trading minors, ask who gains activity/structure }`);
+
+  out = ensureTrailingResult(out);
+
+  logBlock(ctx, "ok", "mock/output", out, 4000);
+  return out;
+}
+
+/* -----------------------------
+ * Eval: piecetrades (UPDATED per your rule)
+ *
+ * ONLY stored state across plies:
+ *   - "fen-style" piece id (e.g. B1, B2, N1, N2, b1, b2, n1, n2)
+ *   - last known color for that piece
+ *
+ * Identity is tracked by move replay:
+ *   - When a minor moves: find which ID sits on "from", move it to "to".
+ *   - When a piece is captured on "to": remove any tracked minor on that square.
+ *
+ * Coloring behavior:
+ *   - Compute eval color each ply for each *alive* tracked minor.
+ *   - If eval color changed from last color, update stored color and emit rationale.
+ *   - If not changed, keep last color (even though eval was recomputed).
+ *
+ * Tag output behavior:
+ *   - Emit [%csl ...] every move from START_PLY onward.
+ *   - The order is deterministic by ID order to avoid rendering weirdness.
+ * ----------------------------- */
+
+async function pieceTradesEval(inputPgn, ctx) {
+  logLine(ctx, "ok", `EVAL/piecetrades: start`);
+  logBlock(ctx, "ok", "piecetrades/input", inputPgn, 2800);
+
+  let base = ensureHeaders(inputPgn, {
+    Event: "Evaluated (piecetrades)",
+    Annotator: "Priyome eval: piecetrades",
+  });
+
+  const check = new Chess();
+  const ok = tryLoadPgn(check, base, { sloppy: true });
+  logLine(ctx, ok ? "ok" : "err", `EVAL/piecetrades: input parse ok? ${ok}`);
+  logLine(ctx, "ok", `EVAL/piecetrades: input history length = ${check.history().length}`);
+
+  if (!ok) {
+    let fb =
+      `[Event "Evaluated (piecetrades) • PARSE FAILURE"]\n` +
+      `[Site "?"]\n` +
+      `[Date "${nowStamp()}"]\n` +
+      `[Round "-"]\n` +
+      `[White "?"]\n` +
+      `[Black "?"]\n` +
+      `[Result "*"]\n\n` +
+      `{ piecetrades: could not parse input PGN. First 800 chars:\n` +
+      `${escapeCommentBody(clip(base, 800))}\n}\n` +
+      `1. e4 e5 { [%csl Ye4] } *\n`;
+    fb = ensureTrailingResult(fb);
+    logBlock(ctx, "err", "piecetrades/fallback_output", fb, 2500);
+    return fb;
+  }
+
+  const START_PLY = 10; // move 5 (after black's 5th)
+
+  const noRes = stripEndResultToken(base);
+  const { headers, moves } = splitHeadersAndMovetext(noRes);
+  const tokens = tokenizeMovetext(moves);
+
+  const tmp = new Chess();
+  tryLoadPgn(tmp, noRes, { sloppy: true });
+  const hist = tmp.history({ verbose: true });
+
+  const walk = new Chess();
+
+  // Injected comments/tags (strings) at a given ply.
+  const injections = Object.create(null);
+
+  // Tracked state:
+  // id -> { id, color, type, square, lastColorTag }
+  const tracked = new Map();
+
+  // Helpers to find tracked piece by square
+  function findTrackedBySquare(sq) {
+    for (const p of tracked.values()) {
+      if (p.square === sq) return p;
+    }
+    return null;
+  }
+
+  // Deterministic ID order (keeps [%csl] stable)
+  const ID_ORDER = ["N1", "N2", "B1", "B2", "n1", "n2", "b1", "b2"];
+
+  function idsInOrder() {
+    return ID_ORDER.filter((id) => tracked.has(id));
+  }
+
+  function initTrackedFromPosition(chess) {
+    // Assign IDs based on *starting position squares* for minors.
+    // White: N1,N2,B1,B2 ; Black: n1,n2,b1,b2
+    const wMin = listMinors(chess, "w");
+    const bMin = listMinors(chess, "b");
+
+    // Stable assignment: by type group then by square
+    const wN = wMin.filter((p) => p.type === "n").sort((a, b) => a.square.localeCompare(b.square));
+    const wB = wMin.filter((p) => p.type === "b").sort((a, b) => a.square.localeCompare(b.square));
+    const bN = bMin.filter((p) => p.type === "n").sort((a, b) => a.square.localeCompare(b.square));
+    const bB = bMin.filter((p) => p.type === "b").sort((a, b) => a.square.localeCompare(b.square));
+
+    const put = (id, p) => {
+      if (!p) return;
+      tracked.set(id, { id, color: p.color, type: p.type, square: p.square, lastColorTag: "Y" });
+    };
+
+    put("N1", wN[0]);
+    put("N2", wN[1]);
+    put("B1", wB[0]);
+    put("B2", wB[1]);
+
+    put("n1", bN[0]);
+    put("n2", bN[1]);
+    put("b1", bB[0]);
+    put("b2", bB[1]);
+
+    logLine(ctx, "ok", `EVAL/piecetrades: initialized tracked minors: ${idsInOrder().join(", ")}`);
+    for (const id of idsInOrder()) {
+      const p = tracked.get(id);
+      logLine(ctx, "ok", `EVAL/piecetrades: ${id} => ${p.type} ${p.color} @ ${p.square} (initial color ${p.lastColorTag})`);
+    }
+  }
+
+  // Emit assumptions only once: on the first ply we produce any rationale.
+  let emittedAssumptions = false;
+
+  function addAssumptionsComment(ply, san) {
+    if (emittedAssumptions) return;
+    emittedAssumptions = true;
+    const body = [
+      "piecetrades: first rationale emission",
+      `position after ${ply % 2 ? "White" : "Black"} played ${san} (ply ${ply})`,
+      "",
+      "Assumptions (stated once):",
+      "• No engine calculation.",
+      "• Human-countable features only: attacked/defended, stability, mobility, rim-knight, bad-bishop proxy.",
+      "• Colors are a trade desirability hint: GREEN=keep, YELLOW=depends, RED=trade target.",
+      "• Only persistent state across plies is piece-ID and last-known color.",
+    ].join("\n");
+    (injections[ply] ??= []).push(`{ ${escapeCommentBody(body)} }`);
+  }
+
+  function makeCslFromTracked() {
+    // Use stored lastColorTag and current squares, in stable ID order.
+    const parts = [];
+    for (const id of idsInOrder()) {
+      const p = tracked.get(id);
+      if (!p || !p.square) continue;
+      parts.push(`${p.lastColorTag}${p.square}`);
+    }
+    return parts;
+  }
+
+  // Initialize tracked minors at initial position (ply 0)
+  initTrackedFromPosition(walk);
+
+  // Run through moves, updating tracked squares via replay, and evaluating every ply.
+  for (let i = 0; i < hist.length; i++) {
+    const ply = i + 1;
+    const mv = hist[i];
+
+    const beforeFen = walk.fen();
+
+    // Apply move on the main board
+    const played = walk.move(mv.san, { sloppy: true });
+    if (!played) {
+      logLine(ctx, "err", `EVAL/piecetrades: failed to replay ply=${ply} san=${mv.san}. stopping.`);
+      break;
+    }
+
+    // Update tracked identity/state based on "from/to" squares
+    // 1) Captures: remove tracked minor if it was sitting on "to" before move.
+    //    (For en-passant, chess.js uses to-square of capture; we only care about minors anyway.)
+    if (mv.captured) {
+      const capSq = mv.to;
+      const victim = findTrackedBySquare(capSq);
+      if (victim) {
+        tracked.delete(victim.id);
+        logLine(ctx, "ok", `EVAL/piecetrades: captured tracked minor ${victim.id} on ${capSq} at ply ${ply}`);
+      }
+    }
+
+    // 2) Moves: if mover is a minor we track, update its square.
+    //    We find by FROM square in the pre-move tracked state.
+    if (mv.piece === "n" || mv.piece === "b") {
+      const mover = (() => {
+        for (const p of tracked.values()) {
+          if (p.square === mv.from && p.type === mv.piece && p.color === mv.color) return p;
+        }
+        return null;
+      })();
+      if (mover) {
+        mover.square = mv.to;
+      } else {
+        // This can happen if the piece was never in our tracked set (e.g., promoted bishop/knight),
+        // or if it was already captured in our tracked model. We ignore by design.
+        logLine(ctx, "warn", `EVAL/piecetrades: mover minor not found in tracked set: ${mv.color}${mv.piece} ${mv.from}->${mv.to} (ply ${ply})`);
+      }
+    }
+
+    // Start emitting only from START_PLY
+    if (ply < START_PLY) continue;
+
+    // Evaluate each alive tracked minor, BUT only change stored color if eval changed.
+    const changedIds = [];
+
+    for (const id of idsInOrder()) {
+      const p = tracked.get(id);
+      if (!p) continue;
+
+      const evalPiece = { type: p.type, color: p.color, square: p.square };
+      const s = scoreOneMinor(walk, evalPiece);
+
+      const prev = p.lastColorTag;
+      const next = s.colorTag;
+
+      if (prev !== next) {
+        p.lastColorTag = next;
+        changedIds.push({ id, from: prev, to: next, score: s.score, colorName: s.colorName, reasons: s.reasons, meta: { ...p } });
+      }
+    }
+
+    // ALWAYS emit a coloring tag comment each move
+    const cslItems = makeCslFromTracked();
+    const cslTag = cslItems.length ? `[%csl ${cslItems.join(",")}]` : `[%csl ]`;
+    (injections[ply] ??= []).push(`{ ${cslTag} }`);
+
+    // Emit rationale only when any stored colors changed
+    if (changedIds.length) {
+      addAssumptionsComment(ply, mv.san);
+
+      for (const ch of changedIds) {
+        const sideName = ch.meta.color === "w" ? "White" : "Black";
+        const pieceName = ch.meta.type === "n" ? "Knight" : "Bishop";
+
+        const lines = [];
+        lines.push(`${ch.id} (${sideName} ${pieceName} @ ${ch.meta.square}) went from ${tagToName(ch.from)} to ${tagToName(ch.to)} (score=${ch.score})`);
+        for (const r of ch.reasons) lines.push(`• ${r}`);
+
+        (injections[ply] ??= []).push(`{ ${escapeCommentBody(lines.join("\n"))} }`);
+      }
+
+      logLine(ctx, "ok", `EVAL/piecetrades: colors changed @ ply=${ply} san=${mv.san}: ${changedIds.map(x => `${x.id}:${x.from}->${x.to}`).join(", ")}`);
+    }
+  }
+
+  let finalMoves = rebuildMovetextWithInsertions(tokens, injections);
+  let final = headers + "\n\n" + finalMoves;
+
+  // Guarantee at least one [%csl ...] somewhere
+  if (!/\[%csl\s+[^\]]*\]/.test(final)) {
+    logLine(ctx, "warn", `EVAL/piecetrades: output missing [%csl]; inserting tiny start tag`);
+    final = insertDrawTagsNearStart(final, `[%csl Ye4]`);
+  }
+
+  final = ensureTrailingResult(final);
+
+  // Sanity parse
+  const fin = new Chess();
+  const finOk = tryLoadPgn(fin, final, { sloppy: true });
+  logLine(ctx, finOk ? "ok" : "err", `EVAL/piecetrades: output parse ok? ${finOk}`);
+  logLine(ctx, "ok", `EVAL/piecetrades: output history length = ${fin.history().length}`);
+  logBlock(ctx, finOk ? "ok" : "err", "piecetrades/output", final, 6000);
+
+  return final;
 }
 
 /* -----------------------------
@@ -659,9 +776,9 @@ export const EVALS = [
   },
   {
     id: "piecetrades",
-    name: "Piece trades tutor (VERY verbose, from move 5)",
+    name: "Piece trades tutor (ID-based state; colors update only when eval changes)",
     description:
-      "From move 5 onward, colors every minor piece square (G/Y/R) using human-countable features and explains why in PGN comments.",
+      'Tracks minors by IDs like "B1/B2/N1/N2" and "b1/b2/n1/n2". Recomputes eval every ply, but only changes stored color (and emits rationale) when that ID’s eval color changes.',
     run: pieceTradesEval,
   },
 ];
