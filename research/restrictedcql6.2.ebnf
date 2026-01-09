@@ -1,0 +1,122 @@
+(* ============================================================
+   CQL Restricted Subset Grammar (EBNF)
+   ASCII only.  One statement per line is recommended.
+   This grammar is intentionally narrow to match the “allowed subset”.
+   ============================================================ *)
+
+Program        ::= "cql()" NL { NL | Block } ;
+
+Block          ::= InitialBlock | FindBlock ;
+
+InitialBlock   ::= "initial" WS? "{" NL { WS? PieceDecl NL } WS? "}" NL ;
+
+PieceDecl      ::= "piece" WS Ident WS? "=" WS? PieceDesignator ;
+
+(* PieceDesignator is a piece letter + square, e.g. Nb1, Bc1, ng8 *)
+PieceDesignator ::= PieceChar Square ;
+
+FindBlock      ::= "find" WS "all" WS "quiet" WS? "{" NL
+                   { WS? FindStmt NL }
+                   WS? "}" NL ;
+
+FindStmt       ::= Constraint
+                 | Assign
+                 | IfChain
+                 | CommentStmt
+                 | Empty ;
+
+Empty          ::= "" ;
+
+(* ------------------------------------------------------------
+   Constraints (top-level filters in find block)
+   ------------------------------------------------------------ *)
+Constraint     ::= "wtm"
+                 | "btm"
+                 | "movenumber" WS? CompOp WS? Number ;
+
+(* ------------------------------------------------------------
+   Assignment statements (strictly limited)
+   ------------------------------------------------------------ *)
+Assign         ::= Ident WS? "=" WS? AssignRhs ;
+
+AssignRhs      ::= String
+                 | Number
+                 | Ident
+                 | PieceVar                (* e.g., sq = white_knight_1; extracts square *)
+                 | MobilityCount
+                 | AttackCount ;
+
+PieceVar       ::= Ident ;                 (* convention: must refer to a piece variable declared in initial *)
+
+MobilityCount  ::= "(" "move" WS "legal" WS "from" WS Ident WS "count" ")" ;
+
+AttackCount    ::= "#(" Attacker WS "attacks" WS Ident ")" ;
+
+Attacker       ::= "A" | "a" ;
+
+(* ------------------------------------------------------------
+   Conditionals (ONLY this format)
+   ------------------------------------------------------------ *)
+IfChain        ::= IfStmt { NL WS? ElseIfStmt } [ NL WS? ElseStmt ] ;
+
+IfStmt         ::= "if" WS? "(" Condition ")" WS "then" WS BlockBody ;
+ElseIfStmt     ::= "else" WS "if" WS? "(" Condition ")" WS "then" WS BlockBody ;
+ElseStmt       ::= "else" WS BlockBody ;
+
+BlockBody      ::= "{" NL { WS? Assign NL } WS? "}" ;
+
+(* ------------------------------------------------------------
+   Conditions (boolean only; no expression-if)
+   ------------------------------------------------------------ *)
+Condition      ::= OrExpr ;
+
+OrExpr         ::= AndExpr { WS "or" WS AndExpr } ;
+AndExpr        ::= Atom { WS "and" WS Atom } ;
+
+Atom           ::= "(" Condition ")"
+                 | Compare
+                 | DarkTest ;
+
+Compare        ::= Value WS? CompOp WS? Value ;
+
+CompOp         ::= ">=" | "<=" | "==" | "!=" | ">" | "<" ;
+
+Value          ::= Number
+                 | Ident
+                 | MobilityCount
+                 | AttackCount ;
+
+DarkTest       ::= "dark" WS Ident ;       (* only used as: if (dark squareVar) then {...} else {...} *)
+
+(* ------------------------------------------------------------
+   Comments/output (ONLY comment(...))
+   Concatenation is by adjacency of parts, not '+' or '+='.
+   ------------------------------------------------------------ *)
+CommentStmt    ::= "comment" WS? "(" CommentParts ")" ;
+
+CommentParts   ::= CommentPart { WS? CommentPart } ;
+
+CommentPart    ::= String | Number | Ident ;
+
+(* ------------------------------------------------------------
+   Lexical tokens
+   ------------------------------------------------------------ *)
+Ident          ::= Letter { Letter | Digit | "_" } ;
+
+Square         ::= File Rank ;
+File           ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" ;
+Rank           ::= "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" ;
+
+PieceChar      ::= "P" | "N" | "B" | "R" | "Q" | "K"
+                 | "p" | "n" | "b" | "r" | "q" | "k" ;
+
+Number         ::= Digit { Digit } ;
+
+String         ::= "\"" { StringChar } "\"" ;
+StringChar     ::= ? any ASCII char except " and newline, with escapes as needed ? ;
+
+Letter         ::= "A"…"Z" | "a"…"z" ;
+Digit          ::= "0"…"9" ;
+
+WS             ::= { " " | "\t" } ;
+NL             ::= "\n" | "\r\n" ;
