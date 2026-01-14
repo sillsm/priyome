@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>                                        
+  <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Priyome</title>
   <link href="./favicon.svg" rel="icon">
 
-  <!-- chessboard.js (requires jQuery) -->                       <link rel="stylesheet"
+  <!-- chessboard.js (requires jQuery) -->
+  <link rel="stylesheet"
         href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
         integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
         crossorigin="anonymous">
@@ -15,9 +16,8 @@
           crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
           integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
-          crossorigin="anonymous"></script>                    
+          crossorigin="anonymous"></script>
   <!-- chess.js UMD (global Chess) -->
-  <!-- NOTE: crossorigin added so you don't get "Script error." without stack -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.11.0/chess.min.js"
           crossorigin="anonymous"></script>
 
@@ -42,8 +42,8 @@
       background:var(--bg);
       color:var(--text);
       font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
-      overflow:auto;              /* allow page scroll to bottom */
-      padding-bottom:5vh;         /* tiny ~5% bottom margin */
+      overflow:auto;
+      padding-bottom:5vh;
     }
 
     button{
@@ -110,16 +110,16 @@
       max-width:1240px;
       margin:0 auto;
       padding:14px;
-      min-height: calc(100vh - 60px); /* let page grow if needed */
+      min-height: calc(100vh - 60px);
       display:grid;
-      grid-template-rows: 66vh 1fr;   /* desktop: more height for board */
+      grid-template-rows: auto 1fr; /* FIX: let board card size itself */
       gap:14px;
       min-height:0;
     }
     @media (max-width:980px){
       .layout{
         padding:10px;
-        grid-template-rows: auto 1fr; /* mobile: board row grows to fit full-width square */
+        grid-template-rows: auto 1fr;
       }
     }
 
@@ -128,7 +128,7 @@
       border:1px solid var(--border);
       border-radius:var(--radius);
       box-shadow:var(--shadow);
-      overflow:hidden;
+      overflow:hidden; /* IMPORTANT: prevent board overflow past card */
       min-height:0;
     }
     .head{
@@ -159,11 +159,11 @@
     .boardArea{
       position:relative;
       padding:12px;
-      flex:1;
-      min-height:0;
+      flex:0 0 auto;         /* FIX: we size this explicitly via JS */
       display:flex;
       align-items:center;
       justify-content:center;
+      overflow:hidden;       /* FIX: never overflow past card */
     }
 
     /* square board wrapper; JS sets px size so it always stays square and maximal */
@@ -171,8 +171,8 @@
       position:relative;
       width:100%;
       height:100%;
-      max-width:100%;
-      max-height:100%;
+      max-width:800px;       /* FIX: cap to 800x800 */
+      max-height:800px;
     }
     #board{
       width:100%;
@@ -186,7 +186,7 @@
       pointer-events:none;
     }
 
-    /* chessboard.js coordinate labels: smaller + corners (avoid overlapping pieces) */
+    /* chessboard.js coordinate labels */
     #board .notation-322f9{
       font-size: 9px;
       line-height: 1;
@@ -212,6 +212,33 @@
       overflow:auto; white-space:nowrap;
     }
     .hint{font-size:12px; color:var(--muted); line-height:1.35}
+
+    /* NEW: nav row under the game (replaces FEN under the board) */
+    .navRow{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .navRow .smallBtn{
+      padding:8px 10px;
+      border-radius:10px;
+      font-size:12px;
+      font-weight:900;
+    }
+    .navMeta{
+      font-size:12px;
+      color:var(--muted);
+      padding:6px 8px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.03);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space:nowrap;
+      overflow:auto;
+      flex:1;
+      min-width:240px;
+    }
 
     .tabs{
       display:flex; gap:8px;
@@ -247,19 +274,30 @@
     }
     .pane.active{display:flex; flex-direction:column;}
 
-    .moves{overflow:auto; padding-right:4px; min-height:120px; flex:1;}
-
-    /* Move numbers in a gray paneled column */
-    .moveRow{
+    /* FIX: moves list horizontal */
+    .moves{
+      overflow:auto;
+      padding-right:4px;
+      min-height:120px;
+      flex:1;
       display:flex;
-      gap:10px;
+      flex-wrap:wrap;
+      gap:8px;
+      align-content:flex-start;
+    }
+
+    .moveRow{
+      display:inline-flex;   /* FIX: horizontal “tiles” instead of vertical rows */
+      gap:8px;
       padding:6px 6px;
       border-radius:12px;
       align-items:flex-start;
+      background: rgba(15,23,42,.01);
+      border:1px solid rgba(15,23,42,.04);
     }
     .moveRow:hover{background:rgba(15,23,42,.03);}
     .mn{
-      width:44px;
+      width:auto;            /* FIX: don't force a big column */
       color:var(--muted);
       text-align:right;
       padding:6px 8px;
@@ -267,20 +305,21 @@
       background: rgba(15,23,42,.04);
       border:1px solid rgba(15,23,42,.06);
       flex:0 0 auto;
+      white-space:nowrap;
     }
 
-    .ply{display:flex; gap:8px; flex-wrap:wrap; flex:1;}
+    .ply{display:flex; gap:6px; flex-wrap:wrap; flex:1;}
     .ply button{
       padding:5px 8px;
       border-radius:12px;
       background:transparent;
       border:1px solid transparent;
       font-weight:700;
+      white-space:nowrap;
     }
     .ply button:hover{border-color:var(--border); background:rgba(15,23,42,.03);}
     .ply button.active{border-color:rgba(22,163,74,.55);}
 
-    /* inline PGN comments + draw-tag comment pill */
     .cmt{
       display:inline-block;
       padding:2px 6px;
@@ -435,8 +474,7 @@
     </div>
     <div class="menu" id="menu">
       <div class="actions">
-        <button id="btnPrev">◀︎</button>
-        <button id="btnNext">▶︎</button>
+        <!-- MOVED: Prev/Next removed from hamburger per request -->
         <button id="btnFlip">Flip</button>
         <button id="btnReset">Reset</button>
 
@@ -454,8 +492,8 @@
 
   <div class="layout">
     <!-- Top half: board -->
-    <div class="card boardCard">
-      <div class="head">
+    <div class="card boardCard" id="boardCard">
+      <div class="head" id="boardHead">
         <div class="status" id="status">—</div>
         <div class="status">
           Tool: <span id="toolStatus">none</span>
@@ -475,11 +513,14 @@
         </div>
       </div>
 
-      <div class="below">
-        <div class="fenRow">
-          <span class="fenLabel">FEN</span>
-          <div class="fenBox" id="fenBox"></div>
+      <div class="below" id="boardBelow">
+        <!-- NEW: nav buttons below game (replacing the FEN row under the board) -->
+        <div class="navRow">
+          <button class="smallBtn" id="btnPrev" type="button">◀︎</button>
+          <button class="smallBtn" id="btnNext" type="button">▶︎</button>
+          <div class="navMeta" id="fenBox"></div>
         </div>
+
         <div class="hint" id="hint">
           <b>Squares:</b> tap a square to toggle highlight (colored).<br/>
           <b>Arrows:</b> tap start square, then tap end square to toggle an arrow (colored).<br/>
@@ -666,7 +707,6 @@
     logLine(kind, `${prefix}${msg}`);
   }
 
-  // Better browser error hooks (try to include stacks)
   window.addEventListener('error', (e) => {
     const where = e.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
     const detail = (e.error && e.error.stack) ? `\n${e.error.stack}` : '';
@@ -788,6 +828,9 @@
   // Board sizing DOM
   const boardArea = document.getElementById('boardArea');
   const boardWrap = document.getElementById('boardWrap');
+  const boardCard = document.getElementById('boardCard');
+  const boardHead = document.getElementById('boardHead');
+  const boardBelow = document.getElementById('boardBelow');
 
   // Import modal DOM
   const importModalBackdrop = document.getElementById('importModalBackdrop');
@@ -808,7 +851,7 @@
   // user annotations per ply
   const annotations = Object.create(null);
 
-  // drawings PER PLY: drawings[gameId][plyStr] = { squares:{sq->color}, arrows:[{from,to,color}] }
+  // drawings PER PLY
   const drawings = Object.create(null);
 
   function ensureStores(gameId){
@@ -857,36 +900,43 @@
     tool = t;
     tapFrom = null;
     toolStatusEl.textContent = t;
-    toolDotsEl.hidden = (t === Tool.NONE); // hide colors unless arrow/square tool selected
+    toolDotsEl.hidden = (t === Tool.NONE);
 
     document.getElementById('btnSquares').classList.toggle('on', t === Tool.SQUARES);
     document.getElementById('btnArrows').classList.toggle('on', t === Tool.ARROWS);
     logLine('OK', `Tool set to: ${t}`);
   }
 
-  // ---------- board sizing (square, maximal; mobile full-width, desktop ~2/3 viewport) ----------
+  // ---------- board sizing (square, fills card width; max 800; tries for >=70vh; no overflow) ----------
   function sizeBoardSquare(){
     const cs = getComputedStyle(boardArea);
     const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
     const padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
 
-    const w = Math.max(0, boardArea.clientWidth - padX);
-    const h = Math.max(0, boardArea.clientHeight - padY);
+    const wAvail = Math.max(0, boardArea.clientWidth - padX);
 
-    const isMobile = window.matchMedia('(max-width: 980px)').matches;
+    const maxS = 800;
+    const minS = Math.floor(window.innerHeight * 0.70);
 
-    let s;
-    if (isMobile){
-      s = Math.floor(w);
-      boardArea.style.minHeight = (s + padY) + 'px';
-    } else {
-      const target = Math.floor(window.innerWidth * (2/3));
-      s = Math.floor(Math.min(w, h, target));
-      boardArea.style.minHeight = '';
-    }
+    // Primary: fill width up to 800
+    let s = Math.floor(Math.min(maxS, wAvail));
 
+    // Try to honor 70vh minimum without overflowing the card width
+    if (s < minS) s = Math.floor(Math.min(wAvail, minS));
+
+    // Set square size
     boardWrap.style.width = s + 'px';
     boardWrap.style.height = s + 'px';
+
+    // Resize the enclosing card so it hugs the board (no giant empty tray)
+    const headH = boardHead ? boardHead.offsetHeight : 0;
+    const belowH = boardBelow ? boardBelow.offsetHeight : 0;
+
+    // Ensure boardArea has exactly enough height for the square + its padding
+    boardArea.style.height = (s + padY) + 'px';
+
+    // Let the card size naturally; but on some browsers, explicitly setting min-height helps avoid overflow glitches
+    boardCard.style.minHeight = (headH + (s + padY) + belowH) + 'px';
   }
 
   // ---------- overlay ----------
@@ -993,10 +1043,8 @@
     return tags ? `{ ${tags} }` : '';
   }
 
-  // Parse draw-tags from PGN comments and attach them to the CURRENT ply (0 for pre-move comments)
   function parseDrawTagsByPlyFromPgn(pgn){
-    const out = Object.create(null); // plyStr -> {squares, arrows}
-
+    const out = Object.create(null);
     const body = String(pgn || "")
       .replace(/\r/g,'')
       .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
@@ -1011,7 +1059,6 @@
 
       if (tok.startsWith('{')){
         const txt = tok.slice(1,-1);
-
         const cslM = txt.match(/\[%csl\s+([^\]]+)\]/);
         const calM = txt.match(/\[%cal\s+([^\]]+)\]/);
 
@@ -1041,63 +1088,51 @@
 
       if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
       if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
-
-      // treat any other token as a move token (good enough for "sloppy" PGN)
       ply++;
     }
 
     return out;
   }
 
-// Parse PGN comments by ply.
-// - keeps normal comment text as annotations[ply]
-// - ignores/strips draw-tags [%csl] / [%cal] from the saved text
-function parseCommentsByPlyFromPgn(pgn){
-  const out = Object.create(null); // plyStr -> "comment text"
+  function parseCommentsByPlyFromPgn(pgn){
+    const out = Object.create(null);
+    const body = String(pgn || "")
+      .replace(/\r/g,'')
+      .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
+      .trim();
 
-  const body = String(pgn || "")
-    .replace(/\r/g,'')
-    .replace(/^\s*\[[^\]]+\]\s*$/gm,'') // strip headers
-    .trim();
+    let ply = 0;
+    const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
+    let m;
 
-  let ply = 0;
-  const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
-  let m;
+    while ((m = re.exec(body)) !== null){
+      const tok = m[0];
 
-  while ((m = re.exec(body)) !== null){
-    const tok = m[0];
+      if (tok.startsWith('{')){
+        let txt = tok.slice(1,-1);
+        txt = txt.replace(/\[%csl\s+[^\]]+\]/g, '').replace(/\[%cal\s+[^\]]+\]/g, '');
+        txt = txt.replace(/\s+/g,' ').trim();
 
-    if (tok.startsWith('{')){
-      let txt = tok.slice(1,-1);
-
-      // Remove draw-tags from comment text (they are handled elsewhere)
-      txt = txt.replace(/\[%csl\s+[^\]]+\]/g, '').replace(/\[%cal\s+[^\]]+\]/g, '');
-      txt = txt.replace(/\s+/g,' ').trim();
-
-      if (txt){
-        const key = String(ply);
-        out[key] = out[key] ? (out[key] + ' ' + txt).trim() : txt;
+        if (txt){
+          const key = String(ply);
+          out[key] = out[key] ? (out[key] + ' ' + txt).trim() : txt;
+        }
+        continue;
       }
-      continue;
+
+      if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
+      ply++;
     }
 
-    if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
-    if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
-
-    // any other token: treat as move token (sloppy OK)
-    ply++;
+    return out;
   }
-
-  return out;
-}
-
 
   function syncDrawingsToPgn(){
     updateBottomCard();
-    renderMoves(); // so the tag pills show immediately in the Moves list too
+    renderMoves();
   }
 
-  // ---------- toggles (per current ply) ----------
   function toggleSquare(gameId, sq){
     const d = ensureDrawAt(gameId, activePly);
     const cur = d.squares[sq];
@@ -1114,10 +1149,7 @@ function parseCommentsByPlyFromPgn(pgn){
 
   function toggleArrow(gameId, from, to){
     if (from === to) return;
-
     const d = ensureDrawAt(gameId, activePly);
-
-    // undirected key for dedupe, but keep direction
     const key = (from < to) ? `${from}-${to}` : `${to}-${from}`;
     const arr = d.arrows;
 
@@ -1215,7 +1247,6 @@ function parseCommentsByPlyFromPgn(pgn){
     const total = verboseHistory.length;
     const rows = Math.ceil(total/2);
 
-    // Show start-position drawing tags (ply 0) if any, at top
     const startTag = drawTagsCommentFor(currentGame.id, 0);
     if (startTag){
       const row = document.createElement('div');
@@ -1421,25 +1452,19 @@ function parseCommentsByPlyFromPgn(pgn){
     ensureStores(g.id);
     gamePill.textContent = g.title;
 
-    // load per-ply draw tags from PGN into drawings[gameId][ply]
-    // Load draw-tags + normal comments from PGN into per-ply stores.
-// (This makes imported games + eval-added games show comments in the UI.)
-drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
+    drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
 
-const parsedComments = parseCommentsByPlyFromPgn(g.pgn);
-// Only overwrite if empty-ish, so user edits don't get nuked on reload.
-const existing = annotations[g.id] || Object.create(null);
-const existingKeys = Object.keys(existing);
-if (existingKeys.length === 0){
-  annotations[g.id] = parsedComments;
-} else {
-  // merge: keep existing; fill missing from PGN
-  for (const k of Object.keys(parsedComments)){
-    if (!existing[k]) existing[k] = parsedComments[k];
-  }
-  annotations[g.id] = existing;
-}
-
+    const parsedComments = parseCommentsByPlyFromPgn(g.pgn);
+    const existing = annotations[g.id] || Object.create(null);
+    const existingKeys = Object.keys(existing);
+    if (existingKeys.length === 0){
+      annotations[g.id] = parsedComments;
+    } else {
+      for (const k of Object.keys(parsedComments)){
+        if (!existing[k]) existing[k] = parsedComments[k];
+      }
+      annotations[g.id] = existing;
+    }
 
     game.reset();
     const ok = game.load_pgn(g.pgn, {sloppy:true});
@@ -1499,8 +1524,6 @@ if (existingKeys.length === 0){
     if (!headers.Result) headerLines.push(`[Result "*"]`);
 
     const parts = [];
-
-    // If there are tags on ply 0 (pre-move), emit them before moves
     const pre = drawTagsCommentFor(gameId, 0);
     if (pre) parts.push(pre);
 
@@ -1512,11 +1535,9 @@ if (existingKeys.length === 0){
       if (i%2===0) parts.push(`${moveNo}. ${san}`);
       else parts.push(`${san}`);
 
-      // drawings inline at this ply
       const tagCmt = drawTagsCommentFor(gameId, ply);
       if (tagCmt) parts.push(tagCmt);
 
-      // user annotation at this ply
       const c = (ann[ply]||'').trim();
       if (c) parts.push(`{ ${c.replace(/\s+/g,' ').trim()} }`);
     }
@@ -1613,9 +1634,7 @@ if (existingKeys.length === 0){
   function splitMultiPgn(text){
     const t = (text || "").trim();
     if (!t) return [];
-    // split before [Event ...] blocks
     const parts = t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
-    // if user pasted one game without [Event], keep as one block
     return parts.length ? parts : [t];
   }
 
@@ -1626,7 +1645,6 @@ if (existingKeys.length === 0){
       const pgn = blocks[i].trim();
       if (!pgn) continue;
 
-      // Smoke-check with chess.js before adding
       const tmp = new Chess();
       const ok = tmp.load_pgn(pgn, {sloppy:true});
       logLine(ok ? 'OK' : 'ERR', `Import smoke load_pgn(block ${i+1}) => ${ok}`);
@@ -1639,7 +1657,6 @@ if (existingKeys.length === 0){
       const title = h.Event ? h.Event : `Imported Game ${i+1}`;
       const white = h.White || "?";
       const black = h.Black || "?";
-      const date  = h.Date || "";
       const res   = h.Result || "*";
 
       const id = `${sourceLabel}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -1675,7 +1692,7 @@ if (existingKeys.length === 0){
     }
   });
 
-  // ---------- Query tab: lazy-load runner from /wasm/cql_runner.js ----------
+  // ---------- Query tab ----------
   function updateQueryUi(){
     const haveCql = !!qCqlText.value.trim();
     const havePgn = !!qPgnFile.files?.[0];
@@ -1816,7 +1833,6 @@ if (existingKeys.length === 0){
   async function loadEvals(){
     evalsStatusEl.textContent = 'loading…';
     try{
-      // cache-bust so edits to evals.js reload without hard refresh
       const mod = await import(`./evals.js?ts=${Date.now()}`);
       const list = Array.isArray(mod.EVALS) ? mod.EVALS : (Array.isArray(mod.default) ? mod.default : []);
       EVALS_REGISTRY = list.filter(e => e && typeof e.id === 'string' && typeof e.run === 'function');
@@ -1874,11 +1890,9 @@ if (existingKeys.length === 0){
       const evalId = entry.id;
       logLine('OK', `Running eval "${evalId}" on: ${currentGame.title}`);
 
-      // what we pass in
       const inputPgn = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
       logBlock('OK', `EVAL/${evalId} INPUT PGN`, inputPgn, 8000);
 
-      // ctx logger (full verbosity)
       const ctx = {
         log:  (s) => logLine('OK',   `EVAL/${evalId}: ${String(s)}`),
         warn: (s) => logLine('WARN', `EVAL/${evalId}: ${String(s)}`),
@@ -1907,7 +1921,6 @@ if (existingKeys.length === 0){
 
       if (!outPgn.trim()) throw new Error(`Eval "${evalId}" returned empty output PGN.`);
 
-      // SMOKE CHECK: does chess.js accept the output?
       const tmp = new Chess();
       const ok = tmp.load_pgn(outPgn, {sloppy:true});
       logLine(ok ? 'OK' : 'ERR', `EVAL/${evalId} smoke load_pgn(output) => ${ok}`);
@@ -1917,7 +1930,6 @@ if (existingKeys.length === 0){
         return;
       }
 
-      // Build metadata for the new game
       const h = parseHeaders(outPgn);
       const titleBase = currentGame.title;
       const title = `Evaluated (${evalId}) • ${titleBase}`;
@@ -1936,8 +1948,6 @@ if (existingKeys.length === 0){
       document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
       renderGameList();
       logLine('OK', `Eval added as new game: ${title}`);
-
-      // switch to Games so you can click it immediately
       setTab('games');
 
     }catch(e){
