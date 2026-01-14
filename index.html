@@ -163,7 +163,8 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      overflow:hidden;       /* FIX: never overflow past card */
+      overflow:hidden;
+      /* FIX: never overflow past card */
     }
 
     /* square board wrapper; JS sets px size so it always stays square and maximal */
@@ -171,7 +172,8 @@
       position:relative;
       width:100%;
       height:100%;
-      max-width:800px;       /* FIX: cap to 800x800 */
+      max-width:800px;
+      /* FIX: cap to 800x800 */
       max-height:800px;
     }
     #board{
@@ -240,11 +242,30 @@
       min-width:240px;
     }
 
+    /* NEW: query-setup action row under navRow (shown only in setup mode) */
+    .setupRow{
+      display:none;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .setupRow.open{ display:flex; }
+    .setupRow .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:11px;
+      padding:2px 6px;
+      border-radius:8px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      color: rgba(15,23,42,.78);
+    }
+
     .tabs{
       display:flex; gap:8px;
       padding:10px;
       border-bottom:1px solid var(--border);
       background: rgba(15,23,42,.02);
+      flex-wrap:wrap;
     }
     .tab{
       padding:8px 10px; border-radius:12px;
@@ -458,6 +479,107 @@
       min-height:0;
     }
     #importPgnText{ flex:1; min-height:0; }
+
+    /* ---------------- Priyomes pane ---------------- */
+    .priyomesGrid{
+      display:grid;
+      grid-template-columns: 3fr 1fr; /* left ~75%, right ~25% */
+      gap:12px;
+      min-height:0;
+      flex:1;
+    }
+    @media (max-width:980px){
+      .priyomesGrid{
+        grid-template-columns: 1fr; /* stack on mobile */
+      }
+    }
+
+    .prLeftCard, .prRightCard{
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      border-radius:14px;
+      padding:10px;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .prList{
+      flex:1;
+      min-height:0;
+      overflow:auto; /* IMPORTANT: scroll within Priyomes */
+      -webkit-overflow-scrolling: touch;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding-right:4px;
+    }
+
+    .prRow{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+
+    .prItem{
+      border:1px solid var(--border);
+      background:#fff;
+      border-radius:14px;
+      padding:10px;
+      display:grid;
+      grid-template-columns: auto 1fr;
+      gap:10px;
+      align-items:start;
+    }
+
+    .prItem.active{
+      border-color: rgba(37,99,235,.55);
+      box-shadow:0 0 0 1px rgba(37,99,235,.12) inset;
+    }
+
+    .small-board{
+      width: 120px;
+      height: 120px;
+      border-radius:12px;
+      overflow:hidden;
+      border:1px solid rgba(15,23,42,.08);
+      background:#fff;
+      flex:0 0 auto;
+    }
+    @media (max-width:520px){
+      .small-board{
+        width: 96px;
+        height: 96px;
+      }
+    }
+
+    .prTitle{
+      font-weight:900;
+      font-size:13px;
+      margin-bottom:4px;
+    }
+    .prSub{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+    .prControls{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    select{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:9px 10px;
+      background:#fff;
+      color:var(--text);
+      font-size:12px;
+      font-weight:800;
+    }
   </style>
 </head>
 
@@ -514,11 +636,19 @@
       </div>
 
       <div class="below" id="boardBelow">
-        <!-- NEW: nav buttons below game (replacing the FEN row under the board) -->
+        <!-- nav buttons below game -->
         <div class="navRow">
           <button class="smallBtn" id="btnPrev" type="button">◀︎</button>
           <button class="smallBtn" id="btnNext" type="button">▶︎</button>
           <div class="navMeta" id="fenBox"></div>
+        </div>
+
+        <!-- shown only during query-setup mode -->
+        <div class="setupRow" id="setupRow">
+          <span class="kbd">Query setup mode</span>
+          <button class="smallBtn" id="btnAddPriyome" type="button">Add</button>
+          <button class="smallBtn" id="btnCancelPriyome" type="button">Cancel</button>
+          <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
         </div>
 
         <div class="hint" id="hint">
@@ -533,6 +663,7 @@
     <div class="card rightCard">
       <div class="tabs">
         <div class="tab active" id="tabMoves">Moves</div>
+        <div class="tab" id="tabPriyomes">Priyomes</div>
         <div class="tab" id="tabGames">Games</div>
         <div class="tab" id="tabQuery">Query</div>
         <div class="tab" id="tabEvals">Evals</div>
@@ -548,6 +679,40 @@
         <div>
           <div class="hint" id="annoTitle">Annotation</div>
           <textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
+        </div>
+      </div>
+
+      <!-- Priyomes tab -->
+      <div class="pane" id="panePriyomes">
+        <div class="hint">
+          Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board; click <b>Add</b> under the board to save.
+        </div>
+
+        <div class="priyomesGrid">
+          <div class="prLeftCard">
+            <div class="prRow">
+              <div class="status"><b>Patterns</b></div>
+              <div class="hint" id="prSelHint" style="margin-left:auto;">Tap a card to select.</div>
+            </div>
+            <div class="prList" id="prList"></div>
+          </div>
+
+          <div class="prRightCard">
+            <div class="status"><b>Database</b></div>
+            <select id="dbSelect" aria-label="Database select">
+              <option value="all">all</option>
+              <option value="fischer">Fischer</option>
+            </select>
+
+            <div class="prControls">
+              <button class="smallBtn" id="btnPriyomesSearch" type="button">Search</button>
+              <button class="smallBtn" id="btnPriyomesNew" type="button">New Query</button>
+            </div>
+
+            <div class="hint" id="prRightHint">
+              Search is a stub (no backend wired yet). New Query turns the main board into a setup tool.
+            </div>
+          </div>
         </div>
       </div>
 
@@ -671,6 +836,7 @@
     sizeBoardSquare();
     if (board && typeof board.resize === 'function') board.resize();
     redrawDrawings();
+    resizeMiniBoards();
   });
 
   // ---------- error logger ----------
@@ -753,10 +919,12 @@
   }
 
   // ---------- mock games ----------
+  // IMPORTANT: chess.js 0.11 is picky. Use proper PGN formatting: header lines + blank line + moves.
   let GAMES = [
     {
       id:"mock1", title:"Mock Game 1", opening:"English (mock)", result:"1-0",
-      pgn:`[Event "Mock Study"]
+      pgn:
+`[Event "Mock Study"]
 [Site "Local"]
 [Date "2026.01.01"]
 [Round "1"]
@@ -768,7 +936,8 @@
     },
     {
       id:"mock2", title:"Mock Game 2", opening:"Caro-Kann (mock)", result:"0-1",
-      pgn:`[Event "Mock Study"]
+      pgn:
+`[Event "Mock Study"]
 [Site "Local"]
 [Date "2026.01.01"]
 [Round "2"]
@@ -780,7 +949,8 @@
     },
     {
       id:"mock3", title:"Mock Game 3", opening:"Ruy Lopez (mock)", result:"1/2-1/2",
-      pgn:`[Event "Mock Study"]
+      pgn:
+`[Event "Mock Study"]
 [Site "Local"]
 [Date "2026.01.01"]
 [Round "3"]
@@ -839,6 +1009,17 @@
   const btnImportAdd = document.getElementById('btnImportAdd');
   const btnImportPgn = document.getElementById('btnImportPgn');
 
+  // Priyomes DOM
+  const prListEl = document.getElementById('prList');
+  const dbSelectEl = document.getElementById('dbSelect');
+  const btnPriyomesSearch = document.getElementById('btnPriyomesSearch');
+  const btnPriyomesNew = document.getElementById('btnPriyomesNew');
+
+  // Setup mode DOM
+  const setupRow = document.getElementById('setupRow');
+  const btnAddPriyome = document.getElementById('btnAddPriyome');
+  const btnCancelPriyome = document.getElementById('btnCancelPriyome');
+
   // ---------- state ----------
   let board = null;
   let orientation = 'white';
@@ -853,6 +1034,13 @@
 
   // drawings PER PLY
   const drawings = Object.create(null);
+
+  // Priyomes patterns
+  const PRIYOMES = [];
+  let selectedPriyomeId = null;
+
+  // mini boards
+  const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
 
   function ensureStores(gameId){
     if (!annotations[gameId]) annotations[gameId] = Object.create(null);
@@ -896,6 +1084,9 @@
   // Only suppress navigation gestures while a piece is actively being dragged
   let isDraggingPiece = false;
 
+  // Query setup mode (free placement / trash / spare pieces)
+  let isQuerySetupMode = false;
+
   function setTool(t){
     tool = t;
     tapFrom = null;
@@ -907,7 +1098,7 @@
     logLine('OK', `Tool set to: ${t}`);
   }
 
-  // ---------- board sizing (square, fills card width; max 800; tries for >=70vh; no overflow) ----------
+  // ---------- board sizing ----------
   function sizeBoardSquare(){
     const cs = getComputedStyle(boardArea);
     const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
@@ -924,18 +1115,13 @@
     // Try to honor 70vh minimum without overflowing the card width
     if (s < minS) s = Math.floor(Math.min(wAvail, minS));
 
-    // Set square size
     boardWrap.style.width = s + 'px';
     boardWrap.style.height = s + 'px';
 
-    // Resize the enclosing card so it hugs the board (no giant empty tray)
     const headH = boardHead ? boardHead.offsetHeight : 0;
     const belowH = boardBelow ? boardBelow.offsetHeight : 0;
 
-    // Ensure boardArea has exactly enough height for the square + its padding
     boardArea.style.height = (s + padY) + 'px';
-
-    // Let the card size naturally; but on some browsers, explicitly setting min-height helps avoid overflow glitches
     boardCard.style.minHeight = (headH + (s + padY) + belowH) + 'px';
   }
 
@@ -1187,11 +1373,12 @@
   // ---------- tabs ----------
   function setTab(which){
     const map = {
-      moves: ['tabMoves','paneMoves'],
-      games: ['tabGames','paneGames'],
-      query: ['tabQuery','paneQuery'],
-      evals: ['tabEvals','paneEvals'],
-      errors:['tabErrors','paneErrors'],
+      moves:    ['tabMoves','paneMoves'],
+      priyomes: ['tabPriyomes','panePriyomes'],
+      games:    ['tabGames','paneGames'],
+      query:    ['tabQuery','paneQuery'],
+      evals:    ['tabEvals','paneEvals'],
+      errors:   ['tabErrors','paneErrors'],
     };
 
     for (const k of Object.keys(map)){
@@ -1200,9 +1387,15 @@
       document.getElementById(p).classList.toggle('active', k===which);
     }
     logLine('OK', `Tab: ${which}`);
+
+    if (which === 'priyomes'){
+      // ensure mini boards are sized once visible
+      setTimeout(() => { renderPriyomes(); resizeMiniBoards(); }, 0);
+    }
   }
 
   document.getElementById('tabMoves').addEventListener('click', () => setTab('moves'));
+  document.getElementById('tabPriyomes').addEventListener('click', () => setTab('priyomes'));
   document.getElementById('tabGames').addEventListener('click', () => setTab('games'));
   document.getElementById('tabQuery').addEventListener('click', () => setTab('query'));
   document.getElementById('tabEvals').addEventListener('click', () => setTab('evals'));
@@ -1360,6 +1553,12 @@
 
   // ---------- board callbacks ----------
   function onDragStart(source, piece){
+    // In setup mode, allow dragging any piece freely
+    if (isQuerySetupMode) {
+      isDraggingPiece = true;
+      return true;
+    }
+
     if (tool !== Tool.NONE) return false;
     if (game.game_over()) return false;
     if (activePly !== verboseHistory.length) return false;
@@ -1371,6 +1570,13 @@
   }
 
   function onDrop(source,target){
+    // Setup mode: just accept the drop; keep board state (no chess.js validation)
+    if (isQuerySetupMode){
+      isDraggingPiece = false;
+      // Allow trashing pieces
+      return;
+    }
+
     const mv = game.move({from:source,to:target,promotion:'q'});
     isDraggingPiece = false;
     if (!mv) return 'snapback';
@@ -1383,7 +1589,9 @@
 
   function onSnapEnd(){
     isDraggingPiece = false;
-    board.position(game.fen(), false);
+    if (!isQuerySetupMode){
+      board.position(game.fen(), false);
+    }
   }
 
   document.addEventListener('touchmove', (e) => {
@@ -1402,6 +1610,7 @@
 
   document.getElementById('boardArea').addEventListener('click', (e) => {
     if (!currentGame) return;
+    if (isQuerySetupMode) return; // setup mode is for piece placement only
     if (tool === Tool.NONE) return;
 
     const sq = squareFromTarget(e.target);
@@ -1444,9 +1653,26 @@
     }
   }
 
+  function ensureMainBoard(){
+    if (board) return;
+
+    logLine('OK', 'Initializing Chessboard...');
+    board = Chessboard('board', {
+      draggable:true,
+      position: game.fen(),
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+      onDragStart, onDrop, onSnapEnd
+    });
+    if (typeof board.resize === 'function') board.resize();
+    logLine('OK', 'Chessboard initialized.');
+  }
+
   function loadGame(gameId){
     const g = GAMES.find(x => x.id===gameId);
     if (!g) return;
+
+    // leaving setup mode when loading games
+    if (isQuerySetupMode) setQuerySetupMode(false);
 
     currentGame = g;
     ensureStores(g.id);
@@ -1472,28 +1698,18 @@
     if (!ok){
       logBlock('ERR', `PGN that failed load_pgn(${g.title})`, g.pgn, 20000);
       setTab('errors');
+      return;
     }
 
     verboseHistory = game.history({verbose:true});
     activePly = verboseHistory.length;
 
     sizeBoardSquare();
+    ensureMainBoard();
 
-    if (!board){
-      logLine('OK', 'Initializing Chessboard...');
-      board = Chessboard('board', {
-        draggable:true,
-        position: game.fen(),
-        pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
-        onDragStart, onDrop, onSnapEnd
-      });
-      if (typeof board.resize === 'function') board.resize();
-      logLine('OK', 'Chessboard initialized.');
-    } else {
-      board.position(game.fen(), false);
-      if (typeof board.resize === 'function') board.resize();
-      logLine('OK', `Chessboard position updated.`);
-    }
+    board.position(game.fen(), false);
+    if (typeof board.resize === 'function') board.resize();
+    logLine('OK', `Chessboard position updated.`);
 
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
     updateBottomCard();
@@ -1556,8 +1772,8 @@
   };
 
   // ---------- buttons ----------
-  document.getElementById('btnPrev').onclick = () => { if (game) jumpTo(activePly - 1); };
-  document.getElementById('btnNext').onclick = () => { if (game) jumpTo(activePly + 1); };
+  document.getElementById('btnPrev').onclick = () => { if (game && !isQuerySetupMode) jumpTo(activePly - 1); };
+  document.getElementById('btnNext').onclick = () => { if (game && !isQuerySetupMode) jumpTo(activePly + 1); };
 
   document.getElementById('btnFlip').onclick = () => {
     if (!board) return;
@@ -1569,6 +1785,14 @@
 
   document.getElementById('btnReset').onclick = () => {
     if (!board || !game) return;
+
+    if (isQuerySetupMode){
+      // reset to empty in setup mode
+      board.position('8/8/8/8/8/8/8/8', false);
+      logLine('OK', 'Setup mode: cleared board.');
+      return;
+    }
+
     game.reset();
     verboseHistory = [];
     activePly = 0;
@@ -1579,12 +1803,19 @@
     logLine('OK', 'Reset line to start position.');
   };
 
-  document.getElementById('btnSquares').onclick = () => setTool(tool===Tool.SQUARES ? Tool.NONE : Tool.SQUARES);
-  document.getElementById('btnArrows').onclick = () => setTool(tool===Tool.ARROWS ? Tool.NONE : Tool.ARROWS);
-  document.getElementById('btnClear').onclick = () => { if(currentGame){ clearAll(currentGame.id); } };
+  document.getElementById('btnSquares').onclick = () => {
+    if (isQuerySetupMode) return;
+    setTool(tool===Tool.SQUARES ? Tool.NONE : Tool.SQUARES);
+  };
+  document.getElementById('btnArrows').onclick = () => {
+    if (isQuerySetupMode) return;
+    setTool(tool===Tool.ARROWS ? Tool.NONE : Tool.ARROWS);
+  };
+  document.getElementById('btnClear').onclick = () => { if(currentGame && !isQuerySetupMode){ clearAll(currentGame.id); } };
 
   annoTextEl.addEventListener('input', () => {
     if (!currentGame) return;
+    if (isQuerySetupMode) return;
     ensureStores(currentGame.id);
     annotations[currentGame.id][activePly] = annoTextEl.value;
     updateBottomCard();
@@ -1596,6 +1827,7 @@
     sizeBoardSquare();
     redrawDrawings();
     if (board && typeof board.resize === 'function') board.resize();
+    resizeMiniBoards();
   });
 
   // ---------- Import PGN modal ----------
@@ -1958,6 +2190,302 @@
 
   document.getElementById('btnReloadEvals').addEventListener('click', () => loadEvals());
 
+  // ---------------- Priyomes ----------------
+  function addPriyome(def){
+    // def: {id,title,subtitle,fen,miniSquares?,miniArrows?}
+    PRIYOMES.push(def);
+  }
+
+  function buildGreekGift(){
+    // Position: black king castled; pawns on f7 g7 h7; white bishop+queen aimed at h7.
+    // We'll use a simple illustrative setup (not claiming it's legal from a real game).
+    const fen = "rnbq1rk1/pppp1ppp/8/4p3/4P3/2N2B2/PPPP1PPP/R2QK2R w KQ - 0 1";
+
+    addPriyome({
+      id: "gg",
+      title: "Greek Gift",
+      subtitle: "Idea: Bxh7+ and Qxh7+ (illustration)",
+      fen,
+      arrows: [
+        {from:"f3", to:"h5", color:"G"}, // bishop line suggestion (rough)
+        {from:"d1", to:"h5", color:"G"}, // queen line suggestion (rough)
+      ],
+      // In the mini-board overlay we will draw arrows to h7 more explicitly
+      miniArrows: [
+        {from:"f3", to:"h5", color:"G"},
+        {from:"d1", to:"h5", color:"G"},
+        {from:"f3", to:"h7", color:"G"},
+        {from:"d1", to:"h5", color:"G"},
+      ],
+      miniSquares: {
+        "h7":"G"
+      }
+    });
+  }
+
+  function renderPriyomes(){
+    prListEl.innerHTML = '';
+    if (!PRIYOMES.length){
+      const d = document.createElement('div');
+      d.className = 'hint';
+      d.textContent = 'No priyomes yet.';
+      prListEl.appendChild(d);
+      return;
+    }
+
+    for (const p of PRIYOMES){
+      const item = document.createElement('div');
+      item.className = 'prItem' + (selectedPriyomeId === p.id ? ' active' : '');
+      const boardId = `mini_${p.id}`;
+      item.innerHTML = `
+        <div>
+          <div id="${boardId}" class="small-board" aria-label="${escapeHtml(p.title)} mini board"></div>
+        </div>
+        <div>
+          <div class="prTitle">${escapeHtml(p.title)}</div>
+          <div class="prSub">${escapeHtml(p.subtitle || '')}</div>
+          <div class="prSub" style="margin-top:6px;">
+            <span class="kbd">DB</span> <span class="kbd">${escapeHtml(dbSelectEl.value)}</span>
+          </div>
+        </div>
+      `;
+      item.addEventListener('click', () => {
+        selectedPriyomeId = p.id;
+        renderPriyomes();
+        setTimeout(() => { resizeMiniBoards(); }, 0);
+      });
+      prListEl.appendChild(item);
+
+      // init mini board after it's in DOM
+      setTimeout(() => initMiniBoard(boardId, p), 0);
+    }
+  }
+
+  function initMiniBoard(elId, pr){
+    const el = document.getElementById(elId);
+    if (!el) return;
+
+    // already exists?
+    if (miniBoards.has(elId)) return;
+
+    // ensure fixed size from CSS; chessboardjs reads container size at init
+    const b = Chessboard(elId, {
+      draggable: false,
+      position: pr.fen,
+      orientation: 'white',
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+      showNotation: false
+    });
+
+    miniBoards.set(elId, { board: b, pr });
+    // draw a tiny overlay (SVG) for arrows/squares
+    attachMiniOverlay(el, pr);
+  }
+
+  function attachMiniOverlay(containerEl, pr){
+    // Avoid duplicates
+    if (containerEl.querySelector('svg[data-mini-overlay="1"]')) return;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('data-mini-overlay','1');
+    svg.style.position = 'absolute';
+    svg.style.inset = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.pointerEvents = 'none';
+    svg.setAttribute('viewBox','0 0 100 100');
+    svg.setAttribute('preserveAspectRatio','none');
+
+    // container needs position:relative; chessboardjs uses internal div, so we wrap with relative by styling here
+    containerEl.style.position = 'relative';
+    containerEl.appendChild(svg);
+
+    const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+    svg.appendChild(defs);
+
+    for (const c of ['G','R','B','Y']){
+      const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
+      marker.setAttribute('id',`miniArrowHead_${containerEl.id}_${c}`);
+      marker.setAttribute('markerWidth','6');
+      marker.setAttribute('markerHeight','6');
+      marker.setAttribute('refX','5.2');
+      marker.setAttribute('refY','3');
+      marker.setAttribute('orient','auto');
+      marker.setAttribute('markerUnits','strokeWidth');
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d','M0,0 L6,3 L0,6 Z');
+      path.setAttribute('fill', colorHex(c));
+      marker.appendChild(path);
+      defs.appendChild(marker);
+    }
+
+    function sqToXY(sq){
+      const f = sq.charCodeAt(0)-97;
+      const r = parseInt(sq[1],10)-1;
+      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
+    }
+
+    function drawMiniSquare(sq, c){
+      const {x,y} = sqToXY(sq);
+      const size = 12.5;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x', x - size/2);
+      rect.setAttribute('y', y - size/2);
+      rect.setAttribute('width', size);
+      rect.setAttribute('height', size);
+      rect.setAttribute('fill', colorHex(c));
+      rect.setAttribute('opacity', '0.16');
+      svg.appendChild(rect);
+    }
+
+    function drawMiniArrow(from,to,c){
+      const a = sqToXY(from), b = sqToXY(to);
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const len=Math.hypot(dx,dy)||1;
+      const shrink=4;
+      const ux=dx/len, uy=dy/len;
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1', a.x);
+      line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x - ux*shrink);
+      line.setAttribute('y2', b.y - uy*shrink);
+      line.setAttribute('stroke', colorHex(c));
+      line.setAttribute('stroke-width', '1.7');
+      line.setAttribute('opacity', '0.92');
+      line.setAttribute('marker-end', `url(#miniArrowHead_${containerEl.id}_${c})`);
+      svg.appendChild(line);
+    }
+
+    // render overlays
+    const sqs = pr.miniSquares || {};
+    for (const k of Object.keys(sqs)){
+      drawMiniSquare(k, sqs[k]);
+    }
+    const ars = pr.miniArrows || pr.arrows || [];
+    for (const a of ars){
+      drawMiniArrow(a.from, a.to, a.color || 'G');
+    }
+  }
+
+  function resizeMiniBoards(){
+    // chessboardjs sometimes needs resize after being shown / after layout changes
+    for (const {board} of miniBoards.values()){
+      if (board && typeof board.resize === 'function') board.resize();
+    }
+  }
+
+  btnPriyomesSearch.addEventListener('click', () => {
+    const sel = PRIYOMES.find(p => p.id === selectedPriyomeId);
+    const db = dbSelectEl.value;
+    logLine('OK', `Priyomes Search (stub): priyome=${sel ? sel.title : '(none)'} db=${db}`);
+  });
+
+  dbSelectEl.addEventListener('change', () => {
+    // update labels
+    if (document.getElementById('panePriyomes').classList.contains('active')) renderPriyomes();
+  });
+
+  function setQuerySetupMode(on){
+    isQuerySetupMode = !!on;
+
+    // turn off drawing tools while in setup mode
+    if (isQuerySetupMode){
+      setTool(Tool.NONE);
+    }
+
+    setupRow.classList.toggle('open', isQuerySetupMode);
+
+    if (!board){
+      ensureMainBoard();
+    }
+
+    if (isQuerySetupMode){
+      // allow free placement:
+      // - chessboard.js supports dropOffBoard:'trash'
+      // - sparePieces:true lets users add pieces
+      // Re-init board with sparePieces enabled (minimal & reliable)
+      try {
+        // If chessboard.js supports destroy
+        if (board && typeof board.destroy === 'function') board.destroy();
+      } catch {}
+
+      board = Chessboard('board', {
+        draggable: true,
+        dropOffBoard: 'trash',
+        sparePieces: true,
+        position: '8/8/8/8/8/8/8/8',
+        pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+        onDragStart, onDrop, onSnapEnd
+      });
+      if (typeof board.resize === 'function') board.resize();
+
+      logLine('OK', 'Entered query setup mode (sparePieces + trash).');
+    } else {
+      // restore normal board bound to current chess.js game position
+      try {
+        if (board && typeof board.destroy === 'function') board.destroy();
+      } catch {}
+
+      board = Chessboard('board', {
+        draggable:true,
+        position: game ? game.fen() : 'start',
+        pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+        onDragStart, onDrop, onSnapEnd
+      });
+      if (typeof board.resize === 'function') board.resize();
+
+      // refresh overlays
+      redrawDrawings();
+      logLine('OK', 'Exited query setup mode.');
+    }
+
+    // keep sizing stable
+    sizeBoardSquare();
+    setTimeout(() => { if (board && typeof board.resize === 'function') board.resize(); }, 0);
+  }
+
+  btnPriyomesNew.addEventListener('click', () => {
+    setQuerySetupMode(true);
+    // stay on Priyomes tab; user configures on main board above.
+    logLine('OK', 'New Query: setup mode enabled on main board.');
+  });
+
+  btnCancelPriyome.addEventListener('click', () => {
+    setQuerySetupMode(false);
+  });
+
+  btnAddPriyome.addEventListener('click', () => {
+    if (!isQuerySetupMode || !board) return;
+
+    const posFen = board.fen ? board.fen() : null;
+    // chessboard.js v1.0 provides board.fen() in API; if unavailable, fall back to current game fen
+    const fen = (typeof posFen === 'string' && posFen.trim()) ? posFen : (game ? game.fen() : '8/8/8/8/8/8/8/8');
+
+    const id = `custom_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    addPriyome({
+      id,
+      title: `Custom ${PRIYOMES.filter(p => p.id.startsWith('custom_')).length + 1}`,
+      subtitle: 'User-created position',
+      fen,
+      miniArrows: [],
+      miniSquares: {}
+    });
+
+    selectedPriyomeId = id;
+    setQuerySetupMode(false);
+    setTab('priyomes');
+
+    // scroll list to bottom and re-render
+    renderPriyomes();
+    setTimeout(() => {
+      prListEl.scrollTop = prListEl.scrollHeight;
+      resizeMiniBoards();
+    }, 0);
+
+    logLine('OK', `Added new Priyome: ${id}`);
+  });
+
   // ---------- boot ----------
   try {
     diag();
@@ -1975,18 +2503,28 @@
 
     game = new Chess();
     setTool(Tool.NONE);
+
+    // build Priyomes list
+    buildGreekGift();
+    selectedPriyomeId = 'gg';
+
     renderGameList();
 
     sizeBoardSquare();
     loadGame('mock1');
+
     updateQueryUi();
     loadEvals();
+
+    // initial priyomes render (hidden until tab opened; still fine)
+    renderPriyomes();
 
     logLine('OK', 'Boot complete.');
   } catch (e) {
     logLine('ERR', `Boot exception: ${e && e.stack ? e.stack : String(e)}`);
     setTab('errors');
   }
+
 })();
 </script>
 </body>
