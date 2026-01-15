@@ -18,8 +18,7 @@
           integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
           crossorigin="anonymous"></script>
   <!-- chess.js UMD (global Chess) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.11.0/chess.min.js"
-          crossorigin="anonymous"></script>
+  <!-- imported below as a module in main script. Pinned to version 1.4.0 -->
 
   <style>
     :root{
@@ -826,7 +825,8 @@
     </div>
   </div>
 
-<script>
+<script type="module">
+  import { Chess } from "./third_party/chess.js";
 (() => {
   // ---------- hamburger menu ----------
   const btnHamburger = document.getElementById('btnHamburger');
@@ -899,7 +899,7 @@
     const haveChessboard = (typeof window.Chessboard !== 'undefined');
     logLine(haveChessboard ? 'OK' : 'ERR', `Chessboard loaded: ${haveChessboard}`);
 
-    const haveChess = (typeof window.Chess !== 'undefined');
+    const haveChess = (typeof new Chess() !== 'undefined');
     logLine(haveChess ? 'OK' : 'ERR', `Chess (chess.js) loaded: ${haveChess}`);
 
     const testImg = new Image();
@@ -1424,10 +1424,10 @@ function sizeBoardSquare(){
 
   function setStatus(){
     let s = `${game.turn()==='w'?'White':'Black'} to move.`;
-    if (game.in_check()) s += ' (Check)';
-    if (game.game_over()){
-      if (game.in_checkmate()) s = `Checkmate. ${game.turn()==='w'?'Black':'White'} wins.`;
-      else if (game.in_draw()) s = 'Draw.';
+    if (game.inCheck()) s += ' (Check)';
+    if (game.isGameOver()){
+      if (game.isCheckmate()) s = `Checkmate. ${game.turn()==='w'?'Black':'White'} wins.`;
+      else if (game.isDraw()) s = 'Draw.';
       else s = 'Game over.';
     }
     statusEl.textContent = s;
@@ -1571,7 +1571,7 @@ function sizeBoardSquare(){
     }
 
     if (tool !== Tool.NONE) return false;
-    if (game.game_over()) return false;
+    if (game.isGameOver()) return false;
     if (activePly !== verboseHistory.length) return false;
     if (game.turn()==='w' && piece.startsWith('b')) return false;
     if (game.turn()==='b' && piece.startsWith('w')) return false;
@@ -1704,12 +1704,13 @@ function sizeBoardSquare(){
     }
 
     game.reset();
-    const ok = game.load_pgn(g.pgn, {sloppy:true});
-    logLine(ok ? 'OK' : 'ERR', `load_pgn(${g.title}) => ${ok}`);
-    if (!ok){
-      logBlock('ERR', `PGN that failed load_pgn(${g.title})`, g.pgn, 20000);
-      setTab('errors');
-      return;
+    const tmp = new Chess();
+    try {
+        game.loadPgn(g.pgn);
+      } catch (e) {
+        logLine(e);
+        console.error(e);
+        setTab('errors');
     }
 
     verboseHistory = game.history({verbose:true});
@@ -1742,7 +1743,14 @@ function sizeBoardSquare(){
   function pgnWithComments(gameId, basePgn){
     ensureStores(gameId);
     const tmp = new Chess();
-    tmp.load_pgn(basePgn, {sloppy:true});
+    try {
+        tmp.loadPgn(basePgn);
+      } catch (e) {
+        logLine(e);
+        console.error(e);
+        setTab('errors');
+    }
+    
     const headers = tmp.header();
     const hist = tmp.history({verbose:true});
     const ann = annotations[gameId] || {};
@@ -1889,15 +1897,18 @@ function sizeBoardSquare(){
       if (!pgn) continue;
 
       const tmp = new Chess();
-      const ok = tmp.load_pgn(pgn, {sloppy:true});
-      logLine(ok ? 'OK' : 'ERR', `Import smoke load_pgn(block ${i+1}) => ${ok}`);
-      if (!ok){
-        logBlock('ERR', `Import block ${i+1} PGN (failed)`, pgn, 20000);
-        continue;
+      try {
+        tmp.loadPgn(pgn);
+      } catch (e) {
+        logLine(e)
+        console.error(e)
       }
-
+      
+      logLine(tmp.ascii());
+  
       const h = parseHeaders(pgn);
       const title = h.Event ? h.Event : `Imported Game ${i+1}`;
+      logLine('Reached here')
       const white = h.White || "?";
       const black = h.Black || "?";
       const res   = h.Result || "*";
@@ -2165,12 +2176,12 @@ function sizeBoardSquare(){
       if (!outPgn.trim()) throw new Error(`Eval "${evalId}" returned empty output PGN.`);
 
       const tmp = new Chess();
-      const ok = tmp.load_pgn(outPgn, {sloppy:true});
-      logLine(ok ? 'OK' : 'ERR', `EVAL/${evalId} smoke load_pgn(output) => ${ok}`);
-      if (!ok){
-        logBlock('ERR', `EVAL/${evalId} OUTPUT PGN (FULL; failed smoke)`, outPgn, 50000);
+      try {
+        tmp.loadPgn(outPgn);
+      } catch (e) {
+        logLine(e);
+        console.error(e);
         setTab('errors');
-        return;
       }
 
       const h = parseHeaders(outPgn);
