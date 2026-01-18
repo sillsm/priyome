@@ -639,7 +639,6 @@
         <div class="navRow">
           <button class="smallBtn" id="btnPrev" type="button">◀︎</button>
           <button class="smallBtn" id="btnNext" type="button">▶︎</button>
-          <div class="navMeta" id="fenBox"></div>
         </div>
 
         <!-- shown only during query-setup mode -->
@@ -647,6 +646,8 @@
           <span class="kbd">Query setup mode</span>
           <button class="smallBtn" id="btnAddPriyome" type="button">Add</button>
           <button class="smallBtn" id="btnCancelPriyome" type="button">Cancel</button>
+          <button class="smallBtn" id="btnSetupImportPgn" type="button">Import from PGN</button>
+          <input id="setupPgnFile" type="file" accept=".pgn" hidden />
           <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
         </div>
 
@@ -1019,6 +1020,8 @@
   const setupRow = document.getElementById('setupRow');
   const btnAddPriyome = document.getElementById('btnAddPriyome');
   const btnCancelPriyome = document.getElementById('btnCancelPriyome');
+  const btnSetupImportPgn = document.getElementById('btnSetupImportPgn');
+  const setupPgnFile = document.getElementById('setupPgnFile');
 
   // ---------- state ----------
   let board = null;
@@ -1039,8 +1042,63 @@
   const PRIYOMES = [];
   let selectedPriyomeId = null;
 
+  // Setup-mode import (PGN -> fen + optional cqlref)
+  let setupImportedCqlRef = null;
+  let setupImportedPgnTitle = null;
+
   // mini boards
   const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
+  let setupImportedMiniSquares = null;
+  let setupImportedMiniArrows  = null;
+
+  // ---------- Manifests (edit these paths to match your repo) ----------
+  // name -> URL for CQL file
+  const CQL_MANIFEST = {
+    // "b7_sac": "./cql/b7_sac.cql",
+    "weakd4" : "./cql/weakd4.cql"
+  };
+
+  // db key -> URL for PGN database
+  const PGN_MANIFEST = {
+    // "all": "./pgn/all.pgn",
+    "fischer": "./pgn/Fischer.pgn"
+  };
+
+  const _cqlCache = new Map(); // name -> text
+  const _pgnCache = new Map(); // db -> Uint8Array
+
+  async function fetchTextCached(url, cache){
+    if (cache.has(url)) return cache.get(url);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
+    const txt = await res.text();
+    cache.set(url, txt);
+    return txt;
+  }
+
+  async function loadCqlByRef(name){
+    if (!name) return null;
+    const url = CQL_MANIFEST[name];
+    if (!url) throw new Error(`Unknown cqlref="${name}" (not in CQL_MANIFEST)`);
+    const txt = await fetchTextCached(url, _cqlCache);
+    qCqlName.textContent = `(manifest) ${name}`;
+    qCqlText.value = txt;
+    updateQueryUi();
+    return txt;
+  }
+
+  async function getPgnBytesForDb(dbKey){
+    const url = PGN_MANIFEST[dbKey];
+    if (!url) return null;
+    if (_pgnCache.has(dbKey)) return _pgnCache.get(dbKey);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
+    const ab = await res.arrayBuffer();
+    const bytes = new Uint8Array(ab);
+    _pgnCache.set(dbKey, bytes);
+    return bytes;
+  }
+
 
   function ensureStores(gameId){
     if (!annotations[gameId]) annotations[gameId] = Object.create(null);
@@ -1435,7 +1493,7 @@ function sizeBoardSquare(){
 
   function setFen(){
     const f = game.fen();
-    fenBox.textContent = f;
+    if (fenBox) fenBox.textContent = f;
     fenBottom.textContent = f;
   }
 
@@ -1889,6 +1947,61 @@ function sizeBoardSquare(){
     return parts.length ? parts : [t];
   }
 
+
+  // ---------- Setup-mode: Import from PGN  ----------
+  btnSetupImportPgn.addEventListener('click', () => {
+    if (!isQuerySetupMode) return;
+    setupPgnFile.value = '';
+    setupPgnFile.click();
+  });
+
+  setupPgnFile.addEventListener('change', async () => {
+    if (!isQuerySetupMode) return;
+    const f = setupPgnFile.files?.[0];
+    if (!f) return;
+    try{
+      const text = await f.text();
+      const blocks = splitMultiPgn(text);
+      if (!blocks.length) throw new Error('No PGN game found.');
+      const pgn = blocks[0];
+
+      const tagsByPly = parseDrawTagsByPlyFromPgn(pgn);
+      const d0 = tagsByPly["0"];               // tags before the first move
+      setupImportedMiniSquares = d0?.squares || null;
+      setupImportedMiniArrows  = d0?.arrows  || null;
+
+      const h = parseHeaders(pgn);
+
+      setupImportedCqlRef = null;
+      for (const k of Object.keys(h)){
+        if (k.toLowerCase() === 'cqlref') setupImportedCqlRef = h[k];
+      }
+      if (setupImportedCqlRef && !CQL_MANIFEST[setupImportedCqlRef]){
+        throw new Error(`PGN cqlref="${setupImportedCqlRef}" not found in CQL_MANIFEST`);
+      }
+
+      let fen = null;
+      if ((h.SetUp === '1' || h.SetUp === 'true') && h.FEN){
+        fen = h.FEN;
+      } else {
+        const tmp = new Chess();
+        tmp.loadPgn(pgn);
+        fen = tmp.fen();
+      }
+
+      board.position(fen, false);
+      setupImportedPgnTitle = h.Event || f.name;
+      setupHint.innerHTML = `Imported <b>${escapeHtml(setupImportedPgnTitle)}</b>` +
+        (setupImportedCqlRef ? ` • cqlref=<span class="kbd">${escapeHtml(setupImportedCqlRef)}</span>` : '');
+      logLine('OK', `Setup import: applied fen; cqlref=${setupImportedCqlRef || '(none)'}`);
+    }catch(e){
+      setupImportedCqlRef = null;
+      setupImportedPgnTitle = null;
+      logStack('ERR', 'Setup import failed: ', e);
+      setTab('errors');
+    }
+  });
+
   function addGamesFromText(multiPgnText, sourceLabel){
     const blocks = splitMultiPgn(multiPgnText);
     let added = 0;
@@ -1949,9 +2062,18 @@ function sizeBoardSquare(){
   // ---------- Query tab ----------
   function updateQueryUi(){
     const haveCql = !!qCqlText.value.trim();
-    const havePgn = !!qPgnFile.files?.[0];
-    qRun.disabled = !(haveCql && havePgn);
-    qStatus.textContent = qRun.disabled ? "Choose PGN and provide CQL (file or edit box) to enable." : "Ready.";
+    const haveUploadedPgn = !!qPgnFile.files?.[0];
+    const haveManifestPgn = !!PGN_MANIFEST[dbSelectEl.value];
+
+    qRun.disabled = !(haveCql && (haveUploadedPgn || haveManifestPgn));
+
+    if (!haveCql){
+      qStatus.textContent = "Provide CQL (file or edit box) to enable.";
+    } else if (!(haveUploadedPgn || haveManifestPgn)){
+      qStatus.textContent = "Choose a PGN upload or select a DB with a manifest PGN.";
+    } else {
+      qStatus.textContent = haveUploadedPgn ? "Ready (upload)." : `Ready (manifest: ${dbSelectEl.value}).`;
+    }
   }
 
   qCqlFile.addEventListener('change', async () => {
@@ -2025,10 +2147,19 @@ function sizeBoardSquare(){
 
   qRun.addEventListener('click', async () => {
     try{
-      const pgnFile = qPgnFile.files?.[0];
-      if (!pgnFile) throw new Error("Pick a PGN file.");
       const cqlText = qCqlText.value || "";
       if (!cqlText.trim()) throw new Error("CQL is empty.");
+
+      let pgnBytes = null;
+      const pgnFile = qPgnFile.files?.[0];
+      if (pgnFile){
+        pgnBytes = await fileToUint8(pgnFile);
+      } else {
+        const db = dbSelectEl.value;
+        pgnBytes = await getPgnBytesForDb(db);
+        if (!pgnBytes) throw new Error(`No uploaded PGN and no PGN manifest for db="${db}"`);
+        qPgnName.textContent = `(manifest) ${db}`;
+      }
 
       qRun.disabled = true;
       qStatus.textContent = "Running…";
@@ -2044,8 +2175,6 @@ function sizeBoardSquare(){
       }
 
       const cqlBytes = textToUtf8Bytes(cqlText);
-      const pgnBytes = await fileToUint8(pgnFile);
-
       const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
         onLog: (line) => {
           const s = String(line);
@@ -2272,10 +2401,20 @@ function sizeBoardSquare(){
           </div>
         </div>
       `;
-      item.addEventListener('click', () => {
+      item.addEventListener('click', async () => {
         selectedPriyomeId = p.id;
         renderPriyomes();
         setTimeout(() => { resizeMiniBoards(); }, 0);
+
+        if (p.cqlref){
+          try{
+            await loadCqlByRef(p.cqlref);
+            logLine('OK', `Loaded CQL via cqlref=${p.cqlref}`);
+          }catch(e){
+            logStack('ERR', `Failed loading cqlref=${p.cqlref}: `, e);
+            setTab('errors');
+          }
+        }
       });
       prListEl.appendChild(item);
 
@@ -2398,15 +2537,25 @@ function sizeBoardSquare(){
     }
   }
 
-  btnPriyomesSearch.addEventListener('click', () => {
-    const sel = PRIYOMES.find(p => p.id === selectedPriyomeId);
-    const db = dbSelectEl.value;
-    logLine('OK', `Priyomes Search (stub): priyome=${sel ? sel.title : '(none)'} db=${db}`);
+  btnPriyomesSearch.addEventListener('click', async () => {
+    // behave like "Run Query"
+    setTab('query');
+
+    // let the tab switch/layout settle so disabled state is correct
+    setTimeout(() => {
+      if (qRun.disabled) {
+        logLine('WARN', 'Cannot run: Query is not ready (missing CQL or PGN).');
+        return;
+      }
+      qRun.click(); // triggers the existing Run Query handler
+    }, 0);
   });
+
 
   dbSelectEl.addEventListener('change', () => {
     // update labels
     if (document.getElementById('panePriyomes').classList.contains('active')) renderPriyomes();
+    updateQueryUi();
   });
 
   function setQuerySetupMode(on){
@@ -2469,6 +2618,12 @@ function sizeBoardSquare(){
   }
 
   btnPriyomesNew.addEventListener('click', () => {
+    setupImportedCqlRef = null;
+    setupImportedPgnTitle = null;
+    setupImportedMiniSquares = null;
+    setupImportedMiniArrows  = null;
+ 
+    setupHint.innerHTML = 'Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.';
     setQuerySetupMode(true);
     // stay on Priyomes tab; user configures on main board above.
     logLine('OK', 'New Query: setup mode enabled on main board.');
@@ -2489,10 +2644,11 @@ function sizeBoardSquare(){
     addPriyome({
       id,
       title: `Custom ${PRIYOMES.filter(p => p.id.startsWith('custom_')).length + 1}`,
-      subtitle: 'User-created position',
+      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created position',
       fen,
-      miniArrows: [],
-      miniSquares: {}
+      cqlref: setupImportedCqlRef || null,
+      miniSquares: setupImportedMiniSquares || {},
+      miniArrows:  setupImportedMiniArrows  || [],
     });
 
     selectedPriyomeId = id;
