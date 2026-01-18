@@ -1090,6 +1090,11 @@
     "fischer": "./pgn/Fischer.pgn"
   };
 
+  // priyomes 
+  const PRIYOME_PGN_MANIFEST = {
+  default: "./priyomes/priyomes.pgn"
+};
+
   const _cqlCache = new Map(); // name -> text
   const _pgnCache = new Map(); // db -> Uint8Array
 
@@ -1112,6 +1117,57 @@
     updateQueryUi();
     return txt;
   }
+
+  async function loadPriyomesFromPgn(url){
+  const text = await fetchTextCached(url, _pgnCache);
+  const games = splitMultiPgn(text);
+
+  const priyomes = [];
+
+  for (const pgn of games){
+    const headers = parseHeaders(pgn);
+
+    // REQUIRED: stable identifier
+    const id = crypto.randomUUID();
+
+    // Position
+    let fen;
+    if (headers.SetUp === "1" && headers.FEN){
+      fen = headers.FEN;
+    } else {
+      const g = new Chess();
+      g.loadPgn(pgn);
+      fen = g.fen();
+    }
+
+    // Optional overlays
+    const tagsByPly = parseDrawTagsByPlyFromPgn(pgn);
+    const d0 = tagsByPly["0"] || {};
+
+    priyomes.push({
+      id,
+      title: headers.Event || "Priyome",
+      subtitle: headers.Description || "",
+      fen,
+      cqlref: headers.cqlref || headers.CQLRef || null,
+      miniSquares: d0.squares || {},
+      miniArrows:  d0.arrows  || [],
+      _pgn: pgn          // keep raw PGN if you want
+    });
+  }
+
+  return priyomes;
+  }
+
+  (async () => {
+  const url = PRIYOME_PGN_MANIFEST.default;
+  const loaded = await loadPriyomesFromPgn(url);
+
+  PRIYOMES.length = 0;
+  PRIYOMES.push(...loaded);
+
+  renderPriyomes();
+})();
 
   async function getPgnBytesForDb(dbKey){
     const url = PGN_MANIFEST[dbKey];
