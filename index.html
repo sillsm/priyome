@@ -700,10 +700,6 @@
       </div>
 
       <div class="pane active" id="paneMoves">
-        <div class="hint">
-          Click a move to jump. Annotation is saved per ply and exported as <span class="kbd">{ comment }</span>.
-          Drawings appear as <span class="kbd">{ [%csl ...] [%cal ...] }</span> on that ply.
-        </div>
         <div class="moves" id="moves"></div>
         <div>
           <div class="hint" id="annoTitle">Annotation</div>
@@ -1256,12 +1252,20 @@ function sizeBoardSquare(){
   const inPiecesMode =
     (typeof isQuerySetupMode !== 'undefined' && isQuerySetupMode);
 
+  const stacked = window.innerWidth < 1100; // below desktop side-by-side breakpoint
+
   // Max width cap: 800 normally, 600 in pieces mode
   const maxS = inPiecesMode ? 600 : 800;
-  const minS = Math.floor(window.innerHeight * 0.70);
+  const minS = stacked ? 0 : Math.floor(window.innerHeight * 0.70);
 
   let s = Math.floor(Math.min(maxS, wAvail));
   if (s < minS) s = Math.floor(Math.min(wAvail, minS));
+
+  // When stacked, keep at least 35% viewport height for moves panel
+  if (stacked){
+    const maxByHeight = Math.floor(window.innerHeight * 0.65);
+    s = Math.min(s, maxByHeight);
+  }
 
   // In pieces mode, height is 30% bigger than width
   const h = inPiecesMode ? Math.floor(s * 1.3) : s;
