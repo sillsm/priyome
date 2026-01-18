@@ -73,6 +73,9 @@
       padding:12px 14px;
       gap:10px;
     }
+    .nav--hidden{ transform: translateY(-100%); opacity: 0; pointer-events: none; }
+    .nav--shown { transform: translateY(0); opacity: 1; }
+    .topbar{ will-change: transform; }
     .brand{
       display:flex; align-items:center; gap:10px; font-weight:900;
       min-width:0;
@@ -864,6 +867,34 @@
     redrawDrawings();
     resizeMiniBoards();
   });
+
+  // ---------- UI Change listeners ----------
+let __isResizing = false;
+let __resizeT = null;
+
+window.addEventListener('resize', () => {
+  __isResizing = true;
+  clearTimeout(__resizeT);
+  __resizeT = setTimeout(() => { __isResizing = false; }, 200);
+
+  // force navbar visible immediately during resize
+  showTopbar(true); // implement as below
+}, { passive: true });
+
+window.addEventListener('scroll', () => {
+  if (__isResizing) return;
+  onScrollHideShowNav(); // your existing logic
+}, { passive: true });
+
+function showTopbar(force){
+  const bar = document.querySelector('.topbar'); // adjust selector
+  if (!bar) return;
+  bar.classList.add('nav--shown');
+  bar.classList.remove('nav--hidden');
+  if (force) bar.style.transition = 'none';
+  requestAnimationFrame(() => { if (force) bar.style.transition = ''; });
+}
+
 
   // ---------- error logger ----------
   const errorLog = document.getElementById('errorLog');
