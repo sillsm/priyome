@@ -771,13 +771,11 @@ async function pieceTradesEval(inputPgn, ctx) {
   final = ensureTrailingResult(final);
 
   // Sanity parse
-  let finOK = true;
-  let fin = new Chess();
   const {ok : finOK, game : fin} = SanitizedLoadPgn(final);
   check = loadedGame;
-  logLine(ctx, finOk ? "ok" : "err", `EVAL/piecetrades: output parse ok? ${finOk}`);
+  logLine(ctx, finOK ? "ok" : "err", `EVAL/piecetrades: output parse ok? ${finOK}`);
   logLine(ctx, "ok", `EVAL/piecetrades: output history length = ${fin.history().length}`);
-  logBlock(ctx, finOk ? "ok" : "err", "piecetrades/output", final, 6000);
+  logBlock(ctx, finOK ? "ok" : "err", "piecetrades/output", final, 6000);
 
   return final;
 }
