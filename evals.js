@@ -549,7 +549,7 @@ async function pieceTradesEval(inputPgn, ctx) {
     Annotator: "Priyome eval: piecetrades",
   });
 
-  
+  let check = new Chess();  
   const {ok, game : check} = SanitizedLoadPgn(check, base);
 
   if (!ok) {
