@@ -550,7 +550,8 @@ async function pieceTradesEval(inputPgn, ctx) {
   });
 
   let check = new Chess();  
-  const {ok, game : check} = SanitizedLoadPgn(check, base);
+  const {ok, game : loadedGame} = SanitizedLoadPgn(base);
+  check = loadedGame;
 
   if (!ok) {
     let fb =
