@@ -771,6 +771,8 @@ async function pieceTradesEval(inputPgn, ctx) {
   final = ensureTrailingResult(final);
 
   // Sanity parse
+  let finOK = true;
+  let fin = new Chess();
   const {ok : finOK, game : fin} = SanitizedLoadPgn(final);
   check = loadedGame;
   logLine(ctx, finOk ? "ok" : "err", `EVAL/piecetrades: output parse ok? ${finOk}`);
