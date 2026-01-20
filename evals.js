@@ -182,17 +182,38 @@ function insertDrawTagsNearStart(pgn, tags) {
  * So "parse ok" = "didn't throw" AND (movetext empty OR history().length > 0).
  * ----------------------------- */
 
-function tryLoadPgn(chess, pgn, opts = {}) {
-  try {
-    chess.loadPgn(pgn, opts); // do not trust return value
-  } catch {
-    return false;
+  // All PGN should be loaded through this function
+  // to manage edge cases in chess.js 1.4.0
+  function SanitizedLoadPgn(pgnText) {
+  const raw = String(pgnText || "").replace(/\r/g, "");
+
+  // Merge adjacent brace-comments: "{a} {b}" -> "{a\n\nb}" (repeat until stable).
+  // This preserves the intent of "engine comment" + "human comment" as paragraphs.
+  function mergeAdjacentBraceComments(s) {
+    let out = s;
+    for (let i = 0; i < 200; i++) {
+      const next = out.replace(
+        /\{\s*([\s\S]*?)\s*\}\s*\{\s*([\s\S]*?)\s*\}/g,
+        "{ $1\n\n$2 }"
+      );
+      if (next === out) break;
+      out = next;
+    }
+    return out;
   }
-  const { moves } = splitHeadersAndMovetext(stripEndResultToken(pgn));
-  const hasMovetext = /\S/.test(moves);
-  const histLen = chess.history().length;
-  if (!hasMovetext) return true;
-  return histLen > 0;
+
+  const sanitized = mergeAdjacentBraceComments(raw);
+
+  let game = new Chess();
+  let ok = true;
+
+  try {
+    game.loadPgn(sanitized);
+  } catch (e) {
+    ok = false;
+    return {ok, game};
+  }
+    return  {ok, game};
 }
 
 /* -----------------------------
@@ -528,10 +549,8 @@ async function pieceTradesEval(inputPgn, ctx) {
     Annotator: "Priyome eval: piecetrades",
   });
 
-  const check = new Chess();
-  const ok = tryLoadPgn(check, base, { sloppy: true });
-  logLine(ctx, ok ? "ok" : "err", `EVAL/piecetrades: input parse ok? ${ok}`);
-  logLine(ctx, "ok", `EVAL/piecetrades: input history length = ${check.history().length}`);
+  
+  const {ok, game : check} = SanitzedLoadPgn(check, base);
 
   if (!ok) {
     let fb =
