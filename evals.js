@@ -550,7 +550,7 @@ async function pieceTradesEval(inputPgn, ctx) {
   });
 
   
-  const {ok, game : check} = SanitzedLoadPgn(check, base);
+  const {ok, game : check} = SanitizedLoadPgn(check, base);
 
   if (!ok) {
     let fb =
@@ -575,9 +575,7 @@ async function pieceTradesEval(inputPgn, ctx) {
   const { headers, moves } = splitHeadersAndMovetext(noRes);
   const tokens = tokenizeMovetext(moves);
 
-  const tmp = new Chess();
-  tryLoadPgn(tmp, noRes, { sloppy: true });
-  const hist = tmp.history({ verbose: true });
+  const hist = check.history({ verbose: true });
 
   const walk = new Chess();
 
