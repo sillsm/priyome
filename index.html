@@ -1124,6 +1124,40 @@ function showTopbar(force){
   default: "./priyomes/priyomes.pgn"
 };
 
+  // All PGN should be loaded through this function
+  // to manage edge cases in chess.js 1.4.0
+  function SanitizedLoadPgn(pgnText) {
+  const raw = String(pgnText || "").replace(/\r/g, "");
+
+  // Merge adjacent brace-comments: "{a} {b}" -> "{a\n\nb}" (repeat until stable).
+  // This preserves the intent of "engine comment" + "human comment" as paragraphs.
+  function mergeAdjacentBraceComments(s) {
+    let out = s;
+    for (let i = 0; i < 200; i++) {
+      const next = out.replace(
+        /\{\s*([\s\S]*?)\s*\}\s*\{\s*([\s\S]*?)\s*\}/g,
+        "{ $1\n\n$2 }"
+      );
+      if (next === out) break;
+      out = next;
+    }
+    return out;
+  }
+
+  const sanitized = mergeAdjacentBraceComments(raw);
+
+  const game = new Chess();
+  ok = true
+  try {
+    game.loadPgn(sanitized);
+  } catch (e) {
+    ok = false
+    return {ok, game};
+  }
+    return  {ok, game};
+}
+
+
   const _cqlCache = new Map(); // name -> text
   const _pgnCache = new Map(); // db -> Uint8Array
 
