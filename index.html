@@ -1119,7 +1119,7 @@ function showTopbar(force){
     "fischer": "./pgn/Fischer.pgn"
   };
 
-  // priyomes 
+  // priyomes
   const PRIYOME_PGN_MANIFEST = {
   default: "./priyomes/priyomes.pgn"
 };
@@ -1146,12 +1146,13 @@ function showTopbar(force){
 
   const sanitized = mergeAdjacentBraceComments(raw);
 
-  const game = new Chess();
-  ok = true
+  let game = new Chess();
+  let ok = true;
+
   try {
     game.loadPgn(sanitized);
   } catch (e) {
-    ok = false
+    ok = false;
     return {ok, game};
   }
     return  {ok, game};
@@ -1198,8 +1199,8 @@ function showTopbar(force){
     if (headers.SetUp === "1" && headers.FEN){
       fen = headers.FEN;
     } else {
-      const g = new Chess();
-      g.loadPgn(pgn);
+      const { ok, g } = SanitizedLoadPgn(pgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in loadpr');
       fen = g.fen();
     }
 
@@ -1921,14 +1922,10 @@ function sizeBoardSquare(){
     }
 
     game.reset();
-    const tmp = new Chess();
-    try {
-        game.loadPgn(g.pgn);
-      } catch (e) {
-        logLine(e);
-        console.error(e);
-        setTab('errors');
-    }
+
+    const { ok, game : gg } = SanitizedLoadPgn(g.pgn);
+    if (!ok) throw new Error('SanitizedLoadPgn err in loadgame');
+    game = gg;
 
     verboseHistory = game.history({verbose:true});
     activePly = verboseHistory.length;
@@ -1977,8 +1974,9 @@ function sizeBoardSquare(){
 
   // 3) Parse moves ONCE via chess.js to get a reliable mainline history.
   // We use chess.js only for move parsing/history, not for PGN/header output.
-  const tmp = new Chess();
-  tmp.loadPgn(raw, { sloppy: true });
+  const {ok, game : tmp } = SanitizedLoadPgn(raw);
+  if (!ok) throw new Error('SanitizedLoadPgn err in pgnwithcomments');
+
   const hist = tmp.history({ verbose: true });
 
   // 4) Rebuild movetext while injecting:
@@ -2165,8 +2163,8 @@ function sizeBoardSquare(){
       if ((h.SetUp === '1' || h.SetUp === 'true') && h.FEN){
         fen = h.FEN;
       } else {
-        const tmp = new Chess();
-        tmp.loadPgn(pgn);
+         const { ok, game : tmp } = SanitizedLoadPgn(pgn);
+         if (!ok) throw new Error('SanitizedLoadPgn err in SetupPgnFile');
         fen = tmp.fen();
       }
 
@@ -2190,16 +2188,11 @@ function sizeBoardSquare(){
       const pgn = blocks[i].trim();
       if (!pgn) continue;
 
-      const tmp = new Chess();
-      try {
-        tmp.loadPgn(pgn);
-      } catch (e) {
-        logLine(e)
-        console.error(e)
-      }
-      
+      const { ok, game: tmp } = SanitizedLoadPgn(pgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in addGamesFromText');
+
       logLine(tmp.ascii());
-  
+
       const h = parseHeaders(pgn);
       const title = h.Event ? h.Event : `Imported Game ${i+1}`;
       logLine('Reached here')
@@ -2485,14 +2478,8 @@ function sizeBoardSquare(){
 
       if (!outPgn.trim()) throw new Error(`Eval "${evalId}" returned empty output PGN.`);
 
-      const tmp = new Chess();
-      try {
-        tmp.loadPgn(outPgn);
-      } catch (e) {
-        logLine(e);
-        console.error(e);
-        setTab('errors');
-      }
+      const { ok, game: tmp } = SanitizedLoadPgn(outPgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in runeval');
 
       const h = parseHeaders(outPgn);
       const titleBase = currentGame.title;
@@ -2803,7 +2790,7 @@ function sizeBoardSquare(){
     setupImportedPgnTitle = null;
     setupImportedMiniSquares = null;
     setupImportedMiniArrows  = null;
- 
+
     setupHint.innerHTML = 'Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.';
     setQuerySetupMode(true);
     // stay on Priyomes tab; user configures on main board above.
