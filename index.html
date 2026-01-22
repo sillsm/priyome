@@ -2319,6 +2319,26 @@ function sizeBoardSquare(){
     return added;
   }
 
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const mod = await import('./wasm/cql_runner.js');
+    if (typeof mod.ensureWarmPool !== 'function') throw new Error('ensureWarmPool export not found');
+    logLine('OK', 'Warming wasm pool (2 workers)…');
+    await mod.ensureWarmPool({
+      onLog: (line) => logLine('OK', String(line)),
+    });
+    logLine('OK', 'Wasm pool warm: primary+standby ready (2/2).');
+  } catch (e) {
+    logLine('WARN', 'Warm-up failed; will warm on demand. ' + String(e && e.stack ? e.stack : e));
+  }
+});
+
+let _runnerModPromise = null;
+async function getRunnerMod() {
+  if (!_runnerModPromise) _runnerModPromise = import('./wasm/cql_runner.js');
+  return _runnerModPromise;
+}
+
   qRun.addEventListener('click', async () => {
     try{
       const cqlText = qCqlText.value || "";
@@ -2339,14 +2359,10 @@ function sizeBoardSquare(){
       qStatus.textContent = "Running…";
       logLine('OK', `Running query with argv: ${qArgv.value}`);
 
-      let runCqlWasm;
-      try{
-        const mod = await import('./wasm/cql_runner.js');
-        runCqlWasm = mod.runCqlWasm;
-        if (typeof runCqlWasm !== 'function') throw new Error("runCqlWasm export not found");
-      }catch(e){
-        throw new Error("Failed to load ./wasm/cql_runner.js. " + String(e));
-      }
+      const mod = await getRunnerMod();
+      const runCqlWasm = mod.runCqlWasm;
+      if (typeof runCqlWasm !== 'function') throw new Error("runCqlWasm export not found");
+ 
 
       const cqlBytes = textToUtf8Bytes(cqlText);
       const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
