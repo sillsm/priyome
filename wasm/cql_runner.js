@@ -1,21 +1,114 @@
 // cql_runner.js
 //
-// Public API: runCqlWasm(cqlBytes, pgnBytes, argvString, opts?)
+// Public API:
+//   - ensureWarmPool(opts?) -> Promise<void>
+//   - runCqlWasm(cqlBytes, pgnBytes, argvString, opts?) -> job
 //
+// IMPORTANT BEHAVIOR (to avoid warm->run instability):
+//   - Warm workers NEVER run queries. They only import/initialize the wasm runtime,
+//     confirm readiness, then exit.
+//   - Query runs ALWAYS happen in a fresh one-shot worker.
+//   - "Warm pool of 2" is implemented as 2 warm-tokens, maintained by spawning warmers.
 //
-// Design goals:
-// - Single, documented public API entry point.
-// - Non-blocking: returns a "job" immediately and fills it in via worker messages.
-// - Ready for a future worker pool: job.status() reports engaged/total.
-// - Keeps HTML dumb: HTML just calls the API and renders job updates.
-//
-// Notes:
-// - This file currently uses "one-shot worker per job" (like your current HTML).
-// - Later you can replace spawnWorker() with a pooled worker manager without changing
-//   the runCqlWasm signature or the job shape.
+// This gives you fast startup without reusing a warmed runtime for actual execution.
 
-let _totalWorkers = 1;   // pool size (future). Right now: conceptual 1
-let _busyWorkers = 0;    // incremented while job running
+let _totalWorkers = 2;   // displayed "pool size" (warm tokens)
+let _busyWorkers = 0;    // number of active RUN workers (not warmers)
+
+// --------------------
+// Warm token pool
+// --------------------
+
+let _warmTokens = 0;                 // 0..2
+let _warmEnsuringPromise = null;     // ensureWarmPool in-flight
+let _warmTopupPromise = null;        // top-up in-flight
+
+/**
+ * Ensure we have 2 warm tokens (i.e., we recently compiled/initialized twice).
+ * Warmers exit after readiness confirmation.
+ *
+ * @param {Object} [opts]
+ * @param {string} [opts.cqlJsUrl] default "./wasm/cql.js"
+ * @param {string} [opts.baseUrl]  default "./"
+ * @param {(line:string)=>void} [opts.onLog]
+ */
+export async function ensureWarmPool(opts = {}) {
+  if (_warmTokens >= 2) return;
+  if (_warmEnsuringPromise) return _warmEnsuringPromise;
+
+  const cqlJsUrl = opts.cqlJsUrl ?? new URL("./wasm/cql.js", window.location.href).href;
+  const baseUrl  = opts.baseUrl  ?? new URL("./", window.location.href).href;
+
+  _warmEnsuringPromise = (async () => {
+    await topUpWarmTokens({ baseUrl, cqlJsUrl, onLog: opts.onLog }, /*forceAwait*/ true);
+  })().finally(() => {
+    _warmEnsuringPromise = null;
+  });
+
+  return _warmEnsuringPromise;
+}
+
+function maybeTopUpWarmTokensSoon(opts = {}) {
+  // Fire-and-forget top-up; don't spam parallel warmers.
+  topUpWarmTokens(opts, /*forceAwait*/ false).catch(() => {});
+}
+
+async function topUpWarmTokens({ baseUrl, cqlJsUrl, onLog } = {}, forceAwait) {
+  if (_warmTokens >= 2) return;
+  if (_warmTopupPromise) return forceAwait ? _warmTopupPromise : undefined;
+
+  _warmTopupPromise = (async () => {
+    while (_warmTokens < 2) {
+      await runWarmOnce({ baseUrl, cqlJsUrl, onLog });
+      _warmTokens++;
+      if (typeof onLog === "function") onLog(`[warm] token ${_warmTokens}/2 ready`);
+    }
+  })().finally(() => {
+    _warmTopupPromise = null;
+  });
+
+  return forceAwait ? _warmTopupPromise : undefined;
+}
+
+function runWarmOnce({ baseUrl, cqlJsUrl, onLog } = {}) {
+  return new Promise((resolve, reject) => {
+    const { worker, terminate } = spawnWorker({ baseUrl, cqlJsUrl });
+
+    const cleanup = () => {
+      worker.removeEventListener("message", onMsg);
+      worker.removeEventListener("error", onErr);
+      try { terminate(); } catch {}
+    };
+
+    const onMsg = (ev) => {
+      const m = ev.data || {};
+      if (m.type === "log" && typeof onLog === "function") onLog(String(m.line ?? ""));
+      if (m.type === "status" && typeof onLog === "function") onLog("[status] " + String(m.status ?? ""));
+      if (m.type === "ready") {
+        cleanup();
+        resolve();
+      } else if (m.type === "fatal" || m.type === "error") {
+        const err = new Error(String(m.error ?? "warm failed"));
+        cleanup();
+        reject(err);
+      }
+    };
+
+    const onErr = (e) => {
+      cleanup();
+      reject(e);
+    };
+
+    worker.addEventListener("message", onMsg);
+    worker.addEventListener("error", onErr);
+
+    worker.postMessage({ type: "warm", baseUrl, cqlJsUrl });
+  });
+}
+
+// --------------------
+// Job implementation
+// --------------------
 
 /**
  * @typedef {Object} CqlJob
@@ -30,34 +123,12 @@ let _busyWorkers = 0;    // incremented while job running
  * @property {string} outputPgn
  * @property {string|null} error
  * @property {boolean} outputMissing
- * @property {string[]} events  // simple event log, optional to render
+ * @property {string[]} events
  * @property {(fn: (job: CqlJob) => void) => () => void} subscribe
  * @property {() => {busy:number,total:number}} status
  * @property {() => void} cancel
  */
 
-/**
- * Run the CQL wasm binary inside a Web Worker, passing bytes for:
- *  - CQL query file
- *  - PGN input file
- * and the *full argv string* you want passed to the wasm main
- * (it will be split on whitespace inside the worker).
- *
- * The function returns immediately with a mutable job object. The job fields
- * are updated as messages arrive.
- *
- * @param {Uint8Array} cqlBytes
- * @param {Uint8Array} pgnBytes
- * @param {string} argvString  e.g. "-q /work/query.cql -game /work/game.pgn"
- * @param {Object} [opts]
- * @param {string} [opts.cqlJsUrl]  default "./wasm/cql.js"
- * @param {string} [opts.baseUrl]   default "./"
- * @param {string} [opts.cqlPath]   default "/work/query.cql"
- * @param {string} [opts.pgnPath]   default "/work/game.pgn"
- * @param {string[]} [opts.outputCandidates] default ["/work/query-out.pgn","/query-out.pgn","query-out.pgn"]
- * @param {(line:string, job:CqlJob)=>void} [opts.onLog] optional streaming callback
- * @returns {CqlJob}
- */
 export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
   if (!(cqlBytes instanceof Uint8Array)) throw new Error("cqlBytes must be Uint8Array");
   if (!(pgnBytes instanceof Uint8Array)) throw new Error("pgnBytes must be Uint8Array");
@@ -65,7 +136,6 @@ export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
 
   const job = createJob();
 
-  // Options with defaults
   const cqlJsUrl = opts.cqlJsUrl ?? new URL("./wasm/cql.js", window.location.href).href;
   const baseUrl  = opts.baseUrl  ?? new URL("./", window.location.href).href;
 
@@ -78,19 +148,13 @@ export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
     "query-out.pgn"
   ];
 
-  // Transfer ArrayBuffers to worker (zero-copy)
-  // IMPORTANT: we copy to fresh buffers so callers can reuse their Uint8Array safely
-  // without being detached by postMessage transfer.
-  const cqlBuf = cqlBytes.slice().buffer;
-  const pgnBuf = pgnBytes.slice().buffer;
+  // Decrement a warm token if available (purely for accounting/logging).
+  // This does NOT affect correctness; it just drives top-up behavior.
+  if (_warmTokens > 0) _warmTokens--;
 
-  const { worker, terminate } = spawnWorker({
-    baseUrl,
-    cqlJsUrl,
-    cqlPath,
-    pgnPath,
-    outputCandidates
-  });
+  const { worker, terminate } = spawnWorker({ baseUrl, cqlJsUrl });
+
+  let _posted = false;
 
   job.cancel = () => {
     if (job.state === "done" || job.state === "error") return;
@@ -99,9 +163,12 @@ export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
     job.endedAt = Date.now();
     job.events.push("[cancel] cancelled by user");
     notify(job);
-    terminate();
-    // release busy marker if needed
+
+    try { terminate(); } catch {}
     if (_busyWorkers > 0) _busyWorkers--;
+
+    // top-up warm tokens after cancellation
+    maybeTopUpWarmTokensSoon({ baseUrl, cqlJsUrl });
   };
 
   _busyWorkers++;
@@ -115,10 +182,8 @@ export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
     switch (m.type) {
       case "log": {
         const line = String(m.line ?? "");
-        // Stream to stdout vs stderr (worker tags stderr lines already)
         if (line.startsWith("[stderr] ")) job.stderr += line.slice(9) + "\n";
         else job.stdout += line + "\n";
-
         job.events.push("[log] " + line);
         if (typeof opts.onLog === "function") opts.onLog(line, job);
         notify(job);
@@ -151,15 +216,12 @@ export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
         break;
       }
       case "status": {
-        // optional; we keep it as an event for observability
         job.events.push("[status] " + String(m.status ?? ""));
         notify(job);
         break;
       }
-      default: {
-        // ignore unknown message types
+      default:
         break;
-      }
     }
   };
 
@@ -172,7 +234,11 @@ export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
     cleanup();
   };
 
-  // Kick it off
+  // Post run
+  const cqlBuf = cqlBytes.slice().buffer;
+  const pgnBuf = pgnBytes.slice().buffer;
+
+  _posted = true;
   worker.postMessage(
     {
       type: "run",
@@ -191,9 +257,13 @@ export function runCqlWasm(cqlBytes, pgnBytes, argvString, opts = {}) {
   return job;
 
   function cleanup() {
-    terminate();
+    try { terminate(); } catch {}
+
     if (_busyWorkers > 0) _busyWorkers--;
     notify(job);
+
+    // After any run completes, top up warm tokens back to 2.
+    maybeTopUpWarmTokensSoon({ baseUrl, cqlJsUrl });
   }
 }
 
@@ -219,7 +289,6 @@ function createJob() {
     events: [],
     subscribe(fn) {
       subs.add(fn);
-      // immediate initial call
       try { fn(job); } catch {}
       return () => subs.delete(fn);
     },
@@ -249,7 +318,7 @@ function randomId() {
 // Worker implementation
 // --------------------
 
-function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) {
+function spawnWorker({ baseUrl, cqlJsUrl }) {
   const workerSrc = `
     let _ready = false;
     let _Module = null;
@@ -282,8 +351,6 @@ function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) 
     function splitArgv(argvString) {
       const s = (argvString || "").trim();
       if (!s) return [];
-      // Simple split on whitespace. If you later need quoting rules,
-      // replace this with a small shell-like tokenizer.
       return s.split(/\\s+/);
     }
 
@@ -309,7 +376,7 @@ function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) 
       try {
         importScripts(cqlJsUrl);
       } catch (e) {
-        post("fatal", { error: "Failed to importScripts(/wasm/cql.js): " + describeErr(e) });
+        post("fatal", { error: "Failed to importScripts(cql.js): " + describeErr(e) });
         throw e;
       }
 
@@ -322,6 +389,14 @@ function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) 
       if (!_ready || !_Module || typeof _Module.callMain !== "function" || !_Module.FS) {
         throw new Error("Runtime not ready (Module.callMain/Module.FS missing).");
       }
+    }
+
+    async function warm(payload) {
+      const { baseUrl, cqlJsUrl } = payload;
+      await init(baseUrl, cqlJsUrl);
+      post("ready", { ok: true });
+      // Warm worker exits immediately (no reuse).
+      try { self.close(); } catch {}
     }
 
     async function run(payload) {
@@ -357,7 +432,7 @@ function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) 
         throw e;
       }
 
-      // Copy output before teardown
+      // Copy output
       let outText = null;
       for (const p of (outputCandidates || [])) {
         try {
@@ -377,18 +452,24 @@ function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) 
       }
 
       post("done", { rc });
+
+      // One-shot run worker exits.
+      try { self.close(); } catch {}
     }
 
     self.onmessage = async (ev) => {
       const msg = ev.data || {};
-      if (msg.type !== "run") return;
+      if (msg.type !== "warm" && msg.type !== "run") return;
 
       try {
+        if (msg.type === "warm") {
+          await warm(msg);
+          return;
+        }
         await run(msg);
       } catch (e) {
         post("error", { error: describeErr(e) });
-      } finally {
-        // One-shot worker per run
+        // One-shot semantics: exit on failure too.
         try { self.close(); } catch {}
       }
     };
@@ -397,6 +478,7 @@ function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) 
   const blob = new Blob([workerSrc], { type: "text/javascript" });
   const url = URL.createObjectURL(blob);
   const worker = new Worker(url);
+  // Revoke after creation; worker already has the script.
   URL.revokeObjectURL(url);
 
   const terminate = () => {
@@ -404,4 +486,4 @@ function spawnWorker({ baseUrl, cqlJsUrl, cqlPath, pgnPath, outputCandidates }) 
   };
 
   return { worker, terminate };
-      }
+}
