@@ -33,6 +33,23 @@ function arrowFromToColor(color fromSq toSq){
   }
 }
 
+function colorEnclosingRay($s1 $s2){
+  $edges = enclosingedges($s1 $s2)
+
+  $from = []
+  $to = []
+
+  square sq in $edges {
+    if $from == [] then
+      $from = sq
+    else
+      $to = sq
+}
+
+
+arrowFromToColor("Y" $from $to)
+}
+
 find all quiet {
   arrow_comment = ""
 
@@ -41,19 +58,7 @@ find all quiet {
     square t in [KQBNR]
       if (t != s) then {
         if (ray(s t)) then {
-$edges = enclosingedges(s t)
-
-$from = []
-$to = []
-
-square sq in $edges {
-  if $from == [] then
-    $from = sq
-  else
-    $to = sq
-}
-
-arrowFromToColor("Y" $from $to)
+          colorEnclosingRay(s t)
         }
       }
 
@@ -62,7 +67,7 @@ arrowFromToColor("Y" $from $to)
     square v in [kqbnr]
       if (v != u) then {
         if (ray(u v)) then {
-          arrowFromToColor("Y" u v)
+          colorEnclosingRay(u v)
         }
       }
 
