@@ -800,6 +800,10 @@
         </div>
 
         <div class="evalList" id="evalList"></div>
+         <div class="hint" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+         CQL evals
+         </div>
+<div class="evalList" id="cqlEvalList"></div>
       </div>
 
       <!-- Errors tab -->
@@ -1022,6 +1026,7 @@ function showTopbar(force){
   // ---------- eval registry ----------
   let EVALS_REGISTRY = [];
   const evalListEl = document.getElementById('evalList');
+  const cqlEvalListEl = document.getElementById('cqlEvalList');
   const evalsStatusEl = document.getElementById('evalsStatus');
 
   // ---------- DOM ----------
@@ -1101,6 +1106,10 @@ function showTopbar(force){
   let setupImportedCqlRef = null;
   let setupImportedPgnTitle = null;
 
+  // Query Pgn input
+  // when set, Query runs against these bytes (e.g., current game)
+  let qPgnBytesOverride = null; 
+
   // mini boards
   const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
   let setupImportedMiniSquares = null;
@@ -1123,6 +1132,14 @@ function showTopbar(force){
   const PRIYOME_PGN_MANIFEST = {
   default: "./priyomes/priyomes.pgn"
 };
+
+// name -> { url, description } for *Evals tab* CQL evals list
+  const CQL_EVAL_MANIFEST = {
+    naivealignments: {
+      url: "./cql/naivealignments.cql",
+      description: "Naive alignments."
+    }
+  };
 
   // All PGN should be loaded through this function
   // to manage edge cases in chess.js 1.4.0
@@ -2238,15 +2255,18 @@ function sizeBoardSquare(){
     const haveCql = !!qCqlText.value.trim();
     const haveUploadedPgn = !!qPgnFile.files?.[0];
     const haveManifestPgn = !!PGN_MANIFEST[dbSelectEl.value];
+    const haveOverridePgn = !!qPgnBytesOverride;
 
-    qRun.disabled = !(haveCql && (haveUploadedPgn || haveManifestPgn));
+    qRun.disabled = !(haveCql && (haveUploadedPgn || haveManifestPgn || haveOverridePgn));
 
     if (!haveCql){
       qStatus.textContent = "Provide CQL (file or edit box) to enable.";
-    } else if (!(haveUploadedPgn || haveManifestPgn)){
-      qStatus.textContent = "Choose a PGN upload or select a DB with a manifest PGN.";
+    } else if (!(haveUploadedPgn || haveManifestPgn || haveOverridePgn)){
+      qStatus.textContent = "Choose a PGN upload, select a DB with a manifest PGN, or run from current game.";
     } else {
-      qStatus.textContent = haveUploadedPgn ? "Ready (upload)." : `Ready (manifest: ${dbSelectEl.value}).`;
+      qStatus.textContent = haveUploadedPgn ? "Ready (upload)."
+        : haveOverridePgn ? "Ready (current game)."
+        : `Ready (manifest: ${dbSelectEl.value}).`;
     }
   }
 
@@ -2267,10 +2287,12 @@ function sizeBoardSquare(){
 
   qPgnFile.addEventListener('change', () => {
     const f = qPgnFile.files?.[0];
+    if (f) qPgnBytesOverride = null; // user explicitly chose a file; override off
     qPgnName.textContent = f ? f.name : "—";
     if (f) logLine('OK', `Selected PGN file: ${f.name}`);
     updateQueryUi();
   });
+
 
   qCqlText.addEventListener('input', updateQueryUi);
 
@@ -2345,14 +2367,19 @@ async function getRunnerMod() {
       if (!cqlText.trim()) throw new Error("CQL is empty.");
 
       let pgnBytes = null;
-      const pgnFile = qPgnFile.files?.[0];
-      if (pgnFile){
-        pgnBytes = await fileToUint8(pgnFile);
+
+      if (qPgnBytesOverride){
+        pgnBytes = qPgnBytesOverride;
       } else {
-        const db = dbSelectEl.value;
-        pgnBytes = await getPgnBytesForDb(db);
-        if (!pgnBytes) throw new Error(`No uploaded PGN and no PGN manifest for db="${db}"`);
-        qPgnName.textContent = `(manifest) ${db}`;
+        const pgnFile = qPgnFile.files?.[0];
+        if (pgnFile){
+          pgnBytes = await fileToUint8(pgnFile);
+        } else {
+          const db = dbSelectEl.value;
+          pgnBytes = await getPgnBytesForDb(db);
+          if (!pgnBytes) throw new Error(`No uploaded PGN and no PGN manifest for db="${db}"`);
+          qPgnName.textContent = `(manifest) ${db}`;
+          }
       }
 
       qRun.disabled = true;
@@ -2413,6 +2440,7 @@ async function getRunnerMod() {
       evalsStatusEl.textContent = `${EVALS_REGISTRY.length} eval(s)`;
       logLine('OK', `Loaded evals from ./evals.js: ${EVALS_REGISTRY.map(e=>e.id).join(', ') || '(none)'}`);
       renderEvalList();
+      renderCqlEvalList();
     }catch(e){
       evalsStatusEl.textContent = 'load failed';
       logStack('ERR', 'Failed to load ./evals.js: ', e);
@@ -2454,6 +2482,80 @@ async function getRunnerMod() {
       evalListEl.appendChild(card);
     }
   }
+
+  function renderCqlEvalList(){
+  if (!cqlEvalListEl) return;
+
+  cqlEvalListEl.innerHTML = '';
+
+  const entries = Object.entries(CQL_EVAL_MANIFEST || {});
+  if (!entries.length){
+    const d = document.createElement('div');
+    d.className = 'hint';
+    d.textContent = 'No CQL evals.';
+    cqlEvalListEl.appendChild(d);
+    return;
+  }
+
+  for (const [ref, meta] of entries){
+    const url  = meta?.url || '';
+    const desc = meta?.description || '';
+
+    const card = document.createElement('div');
+    card.className = 'evalCard';
+
+    card.innerHTML = `
+      <div class="evalTop">
+        <div style="min-width:0;">
+          <div class="evalName">
+            ${escapeHtml(ref)} <span class="kbd">.cql</span>
+          </div>
+          <div class="evalDesc">
+            ${escapeHtml(desc)}
+          </div>
+        </div>
+        <div class="evalBtns">
+          <button type="button" data-cqlref="${escapeHtml(ref)}">Run</button>
+        </div>
+      </div>
+    `;
+
+    card.querySelector('button[data-cqlref]')
+      .addEventListener('click', () => runCqlEvalFromManifest(ref));
+
+    cqlEvalListEl.appendChild(card);
+  }
+}
+
+
+async function runCqlEvalFromManifest(ref){
+  try{
+    if (!currentGame) throw new Error('No current game selected.');
+
+    const meta = CQL_EVAL_MANIFEST[ref];
+    if (!meta) throw new Error(`CQL_EVAL_MANIFEST missing ref="${ref}"`);
+
+    const url = meta.url;
+    if (!url) throw new Error(`CQL_EVAL_MANIFEST["${ref}"].url missing`);
+
+    const cql = await fetchTextCached(url, _cqlCache);
+
+    qCqlText.value = cql;
+    qCqlName.textContent = `(eval) ${ref}`;
+
+    const inputPgn = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
+    qPgnBytesOverride = textToUtf8Bytes(inputPgn);
+    qPgnFile.value = '';
+    qPgnName.textContent = '(current game)';
+
+    updateQueryUi();
+    setTab('query');
+    qRun.click();
+  }catch(e){
+    logStack('ERR', `CQL eval "${ref}" failed: `, e);
+    setTab('errors');
+  }
+}
 
   async function runEval(entry){
     try{
