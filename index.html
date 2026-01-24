@@ -2304,7 +2304,7 @@ function sizeBoardSquare(){
     return new TextEncoder().encode(text ?? "");
   }
 
-  function addDiscoveredGamesFromPgn(multiPgnText){
+  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
     const games = splitMultiPgn(multiPgnText);
     if (!games.length){
       logLine('WARN', 'No games found in output PGN.');
@@ -2320,7 +2320,8 @@ function sizeBoardSquare(){
       const date  = h.Date || "";
       const res   = h.Result || "*";
 
-      const id = `disc:${(title+"|"+white+"|"+black+"|"+date).replace(/\s+/g,'_').slice(0,160)}`;
+      const id = `disc:${(sourceKey+"|"+title+"|"+white+"|"+black+"|"+date).replace(/\s+/g,'_').slice(0,200)}`;
+
       if (discoveredIds.has(id)) continue;
       discoveredIds.add(id);
 
@@ -2382,6 +2383,11 @@ async function getRunnerMod() {
           }
       }
 
+      const sourceKey =
+       qPgnBytesOverride ? `game:${currentGame?.id || 'unknown'}`
+       : (pgnFile ? `upload:${pgnFile.name}` : `db:${dbSelectEl.value}`);
+
+
       qRun.disabled = true;
       qStatus.textContent = "Running…";
       logLine('OK', `Running query with argv: ${qArgv.value}`);
@@ -2412,7 +2418,7 @@ async function getRunnerMod() {
             logLine('OK', `Query done (rc=${String(j.rc)}). outputPgn=${j.outputPgn.length} chars`);
             if (j.outputMissing) logLine('WARN', 'output.pgn not found by runner (empty output).');
             if (j.outputPgn && j.outputPgn.trim()){
-              const added = addDiscoveredGamesFromPgn(j.outputPgn);
+              const added = addDiscoveredGamesFromPgn(j.outputPgn, sourceKey);
               if (added > 0) setTab('games');
             }
           }
