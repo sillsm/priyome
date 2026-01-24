@@ -1688,7 +1688,7 @@ function sizeBoardSquare(){
     return (annotations[gameId] && annotations[gameId][ply]) ? String(annotations[gameId][ply]).trim() : "";
   }
 
- function renderMoves(){
+function renderMoves(){
   movesEl.innerHTML = '';
   if (!currentGame) return;
 
@@ -1703,7 +1703,7 @@ function sizeBoardSquare(){
     const b = document.createElement('button');
     b.className = 'plyBtn' + (activePly === ply ? ' active' : '');
     b.textContent = mv.san || '?';
-    b.onclick = () => gotoPly(ply);
+    b.onclick = () => gotoPly(ply); // gotoPly should alias to jumpTo
     return b;
   }
 
@@ -1743,13 +1743,18 @@ function sizeBoardSquare(){
     movesEl.appendChild(row);
   }
 
-  // Auto-scroll active ply into view (lichess-like)
+  // Auto-scroll active ply inside the moves panel ONLY (do not scroll page)
   const active = movesEl.querySelector('button.plyBtn.active');
   if (active){
-    active.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const scroller = movesEl;
+    const top =
+      active.offsetTop
+      - scroller.clientHeight / 2
+      + active.clientHeight / 2;
+
+    scroller.scrollTo({ top, behavior: 'smooth' });
   }
 }
-
 
   function updateAnnoUI(){
     ensureStores(currentGame.id);
