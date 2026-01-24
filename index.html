@@ -111,29 +111,32 @@
 
     /* --- Layout: board is upper half; panels lower half --- */
     .layout{
-      max-width:1240px;
-      margin:0 auto;
-      padding:14px;
-      min-height: calc(100vh - 60px);
-      display:grid;
-      grid-template-rows: auto 1fr; /* FIX: let board card size itself */
-      gap:14px;
-      min-height:0;
-    }
-    @media (max-width:980px){
-      .layout{
-        padding:10px;
-        grid-template-rows: auto 1fr;
-      }
-    }
+  max-width:1240px;
+  margin:0 auto;
+  padding:14px;
+  height: calc(100vh - 60px);     /* NEW: viewport-anchored */
+  display:grid;
+  grid-template-rows: 3fr 2fr;    /* NEW: board ~60%, panel ~40% */
+  gap:14px;
+  min-height:0;
+}
+@media (max-width:980px){
+  .layout{
+    padding:10px;
+    height: calc(100vh - 60px);   /* keep */
+    grid-template-rows: 3fr 2fr;  /* keep */
+  }
+}
+
 
 @media (min-width: 1100px){
   .layout{
-    max-width: none;                 /* allow full-width */
-    grid-template-columns: 1fr 420px;/* right card column */
+    max-width: none;
+    height: calc(100vh - 60px);     /* NEW */
+    grid-template-columns: 1fr 420px;
     grid-template-rows: 1fr;
     align-items: stretch;
-    min-height: calc(100vh - 60px);
+    min-height:0;
   }
 
   .moves{
@@ -188,15 +191,17 @@
 
     .boardCard{ display:flex; flex-direction:column; min-height:0; }
     .boardArea{
-      position:relative;
-      padding:12px;
-      flex:0 0 auto;         /* FIX: we size this explicitly via JS */
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      overflow:hidden;
-      /* FIX: never overflow past card */
-    }
+  position:relative;
+  padding:12px;
+  flex:1 1 auto;              /* CHANGED (was 0 0 auto) */
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+  .boardCard{ height: 100%; }          /* ensures it stretches to the layout row */
+  .boardArea{ flex: 1 1 auto; }
+
 
     /* square board wrapper; JS sets px size so it always stays square and maximal */
     .boardWrap{
@@ -327,63 +332,73 @@
     .pane.active{display:flex; flex-direction:column;}
 
     /* FIX: moves list horizontal */
-    .moves{
-      overflow:auto;
-      padding-right:4px;
-      min-height:120px;
-      flex:1;
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      align-content:flex-start;
-    }
+    /* Moves list: lichess-like table */
+.moves{
+  overflow:auto;
+  padding-right:4px;
+  min-height:120px;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  align-content:stretch;
+}
 
-    .moveRow{
-      display:inline-flex;   /* FIX: horizontal “tiles” instead of vertical rows */
-      gap:8px;
-      padding:6px 6px;
-      border-radius:12px;
-      align-items:flex-start;
-      background: rgba(15,23,42,.01);
-      border:1px solid rgba(15,23,42,.04);
-    }
-    .moveRow:hover{background:rgba(15,23,42,.03);}
-    .mn{
-      width:auto;            /* FIX: don't force a big column */
-      color:var(--muted);
-      text-align:right;
-      padding:6px 8px;
-      border-radius:10px;
-      background: rgba(15,23,42,.04);
-      border:1px solid rgba(15,23,42,.06);
-      flex:0 0 auto;
-      white-space:nowrap;
-    }
+.moveRow{
+  display:grid;
+  grid-template-columns: 42px 1fr 1fr; /* move#, white, black */
+  gap:8px;
+  padding:4px 2px;
+  align-items:start;
+  border-radius:10px;
+}
 
-    .ply{display:flex; gap:6px; flex-wrap:wrap; flex:1;}
-    .ply button{
-      padding:5px 8px;
-      border-radius:12px;
-      background:transparent;
-      border:1px solid transparent;
-      font-weight:700;
-      white-space:nowrap;
-    }
-    .ply button:hover{border-color:var(--border); background:rgba(15,23,42,.03);}
-    .ply button.active{border-color:rgba(22,163,74,.55);}
+.moveRow:hover{ background: rgba(15,23,42,.02); }
 
-    .cmt{
-      display:inline-block;
-      padding:2px 6px;
-      border-radius:10px;
-      border:1px solid rgba(15,23,42,.08);
-      background: rgba(15,23,42,.03);
-      color: rgba(15,23,42,.72);
-      font-size:12px;
-      line-height:1.25;
-      max-width: 100%;
-      white-space: normal;
-    }
+.mn{
+  color:var(--muted);
+  text-align:right;
+  padding:6px 8px;
+  border-radius:10px;
+  background: rgba(15,23,42,.04);
+  border:1px solid rgba(15,23,42,.06);
+  white-space:nowrap;
+}
+
+.plyBtn{
+  width:100%;
+  text-align:left;
+  padding:6px 10px;
+  border-radius:10px;
+  background:transparent;
+  border:1px solid transparent;
+  font-weight:700;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.plyBtn:hover{ border-color:var(--border); background:rgba(15,23,42,.03); }
+.plyBtn.active{ border-color:rgba(22,163,74,.55); box-shadow:0 0 0 1px rgba(22,163,74,.15) inset; }
+
+.moveCmt{
+  grid-column: 2 / 4; /* spans under white+black */
+  margin-top:2px;
+}
+
+.cmt{
+  display:block;
+  padding:4px 8px;
+  border-radius:10px;
+  border:1px solid rgba(15,23,42,.08);
+  background: rgba(15,23,42,.03);
+  color: rgba(15,23,42,.72);
+  font-size:12px;
+  line-height:1.25;
+  white-space:normal;
+}
+
+
 
     textarea{
       width:100%;
@@ -1108,7 +1123,7 @@ function showTopbar(force){
 
   // Query Pgn input
   // when set, Query runs against these bytes (e.g., current game)
-  let qPgnBytesOverride = null; 
+  let qPgnBytesOverride = null;
 
   // mini boards
   const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
@@ -1345,7 +1360,7 @@ function sizeBoardSquare(){
 
   // When stacked, keep at least 35% viewport height for moves panel
   if (stacked){
-    const maxByHeight = Math.floor(window.innerHeight * 0.65);
+    const maxByHeight = Math.floor(window.innerHeight * 0.60);
     s = Math.min(s, maxByHeight);
   }
 
@@ -1673,98 +1688,68 @@ function sizeBoardSquare(){
     return (annotations[gameId] && annotations[gameId][ply]) ? String(annotations[gameId][ply]).trim() : "";
   }
 
-  function renderMoves(){
-    movesEl.innerHTML = '';
-    if (!currentGame) return;
+ function renderMoves(){
+  movesEl.innerHTML = '';
+  if (!currentGame) return;
 
-    const total = verboseHistory.length;
-    const rows = Math.ceil(total/2);
+  const total = verboseHistory.length;
+  const rows = Math.ceil(total / 2);
 
-    const startTag = drawTagsCommentFor(currentGame.id, 0);
-    if (startTag){
-      const row = document.createElement('div');
-      row.className = 'moveRow';
-      const mn = document.createElement('div');
-      mn.className='mn';
-      mn.textContent = '0.';
-      row.appendChild(mn);
+  function mkBtn(idx){
+    const mv = verboseHistory[idx];
+    if (!mv) return null;
 
-      const ply = document.createElement('div');
-      ply.className='ply';
-      const s = document.createElement('span');
-      s.className = 'cmt';
-      s.textContent = startTag;
-      ply.appendChild(s);
-
-      row.appendChild(ply);
-      movesEl.appendChild(row);
-    }
-
-    for (let m=0;m<rows;m++){
-      const row = document.createElement('div');
-      row.className = 'moveRow';
-
-      const mn = document.createElement('div');
-      mn.className='mn';
-      mn.textContent = `${m+1}.`;
-      row.appendChild(mn);
-
-      const ply = document.createElement('div');
-      ply.className='ply';
-
-      const wi = m*2;
-      const bi = m*2+1;
-
-      const wBtn = document.createElement('button');
-      wBtn.textContent = verboseHistory[wi]?.san || '';
-      wBtn.disabled = !verboseHistory[wi];
-      if (activePly === wi+1) wBtn.classList.add('active');
-      wBtn.onclick = () => jumpTo(wi+1);
-      ply.appendChild(wBtn);
-
-      const wTag = drawTagsCommentFor(currentGame.id, wi+1);
-      if (wTag){
-        const s = document.createElement('span');
-        s.className = 'cmt';
-        s.textContent = wTag;
-        ply.appendChild(s);
-      }
-
-      const wc = mergedUserComment(currentGame.id, wi+1);
-      if (wc){
-        const s = document.createElement('span');
-        s.className = 'cmt';
-        s.textContent = `{ ${wc} }`;
-        ply.appendChild(s);
-      }
-
-      const bBtn = document.createElement('button');
-      bBtn.textContent = verboseHistory[bi]?.san || '';
-      bBtn.disabled = !verboseHistory[bi];
-      if (activePly === bi+1) bBtn.classList.add('active');
-      bBtn.onclick = () => jumpTo(bi+1);
-      ply.appendChild(bBtn);
-
-      const bTag = drawTagsCommentFor(currentGame.id, bi+1);
-      if (bTag){
-        const s = document.createElement('span');
-        s.className = 'cmt';
-        s.textContent = bTag;
-        ply.appendChild(s);
-      }
-
-      const bc = mergedUserComment(currentGame.id, bi+1);
-      if (bc){
-        const s = document.createElement('span');
-        s.className = 'cmt';
-        s.textContent = `{ ${bc} }`;
-        ply.appendChild(s);
-      }
-
-      row.appendChild(ply);
-      movesEl.appendChild(row);
-    }
+    const ply = idx + 1; // activePly counts half-moves applied
+    const b = document.createElement('button');
+    b.className = 'plyBtn' + (activePly === ply ? ' active' : '');
+    b.textContent = mv.san || '?';
+    b.onclick = () => gotoPly(ply);
+    return b;
   }
+
+  for (let r = 0; r < rows; r++){
+    const wIdx = r * 2;
+    const bIdx = wIdx + 1;
+
+    const row = document.createElement('div');
+    row.className = 'moveRow';
+
+    const mn = document.createElement('div');
+    mn.className = 'mn';
+    mn.textContent = (r + 1) + '.';
+    row.appendChild(mn);
+
+    const wBtn = mkBtn(wIdx);
+    const bBtn = mkBtn(bIdx);
+
+    row.appendChild(wBtn ? wBtn : document.createElement('div'));
+    row.appendChild(bBtn ? bBtn : document.createElement('div'));
+
+    // Show ONLY regular comments (no [%cal]/[%csl] directives)
+    const wC = wBtn ? mergedUserComment(currentGame.id, wIdx + 1) : '';
+    const bC = bBtn ? mergedUserComment(currentGame.id, bIdx + 1) : '';
+    const combined = [wC, bC].filter(Boolean).join(' • ').trim();
+
+    if (combined){
+      const cWrap = document.createElement('div');
+      cWrap.className = 'moveCmt';
+      const c = document.createElement('div');
+      c.className = 'cmt';
+      c.textContent = combined;
+      cWrap.appendChild(c);
+      row.appendChild(cWrap);
+    }
+
+    movesEl.appendChild(row);
+  }
+
+  // Auto-scroll active ply into view (lichess-like)
+  const active = movesEl.querySelector('button.plyBtn.active');
+  if (active){
+    active.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }
+}
+
 
   function updateAnnoUI(){
     ensureStores(currentGame.id);
@@ -1790,6 +1775,12 @@ function sizeBoardSquare(){
     updateBottomCard();
     logLine('OK', `Jump to ply ${activePly}`);
   }
+
+// compatibility: older/newer UI code calls gotoPly()
+function gotoPly(ply){
+  jumpTo(ply);
+}
+
 
   // ---------- board callbacks ----------
   function onDragStart(source, piece){
@@ -2396,7 +2387,7 @@ async function getRunnerMod() {
       const mod = await getRunnerMod();
       const runCqlWasm = mod.runCqlWasm;
       if (typeof runCqlWasm !== 'function') throw new Error("runCqlWasm export not found");
- 
+
 
       const cqlBytes = textToUtf8Bytes(cqlText);
       const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
