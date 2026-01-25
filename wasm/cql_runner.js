@@ -381,7 +381,7 @@ function spawnWorker({ baseUrl, cqlJsUrl }) {
       }
 
       if (!_ready) {
-        for (let i = 0; i < 200 && !_ready; i++) {
+        for (let i = 0; i < 600 && !_ready; i++) {
           await new Promise(r => setTimeout(r, 10));
         }
       }
