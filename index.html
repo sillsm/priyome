@@ -33,6 +33,9 @@
       --shadow:0 10px 22px rgba(15,23,42,.08);
       --bad:#dc2626;
       --warn:#d97706;
+    
+      --nav-h: 60px;
+      --top-band: 80vh;
     }
     *{box-sizing:border-box}
     html, body { height: 100%; }
@@ -109,53 +112,35 @@
       display:flex; gap:8px; flex-wrap:wrap; align-items:center;
     }
 
-    /* --- Layout: board is upper half; panels lower half --- */
+        /* --- Layout: mimic layout.html (P1+P2 always visible; P3 peeks below) --- */
     .layout{
-  max-width:1240px;
-  margin:0 auto;
-  padding:14px;
-  height: calc(100vh - 60px);     /* NEW: viewport-anchored */
-  display:grid;
-  grid-template-rows: 3fr 2fr;    /* NEW: board ~60%, panel ~40% */
-  gap:14px;
-  min-height:0;
-}
-@media (max-width:980px){
-  .layout{
-    padding:10px;
-    height: calc(100vh - 60px);   /* keep */
-    grid-template-rows: 3fr 2fr;  /* keep */
-  }
-}
+      max-width:1240px;
+      margin:0 auto;
+      padding:14px;
+      min-height: calc(100vh - var(--nav-h));
+      display:grid;
+      gap:14px;
+      grid-template-columns: 1fr;
+      grid-template-rows: 60vh 40vh auto; /* mobile default */
+      align-items: stretch;
+    }
 
+    /* WIDE MODE */
+    @media (min-width: 900px){
+      .layout{
+        max-width: none;
+        grid-template-columns: 3fr 1fr;
+        grid-template-rows: var(--top-band) auto;
+      }
+      #boardCard{ grid-column: 1; grid-row: 1; }
+      .rightCard{ grid-column: 2; grid-row: 1; }
+      #bottomCard{ grid-column: 1 / span 2; grid-row: 2; }
+    }
 
-@media (min-width: 1100px){
-  .layout{
-    max-width: none;
-    height: calc(100vh - 60px);     /* NEW */
-    grid-template-columns: 1fr 420px;
-    grid-template-rows: 1fr;
-    align-items: stretch;
-    min-height:0;
-  }
-
-  .moves{
-    display:flex;
-    flex-direction:column;
-    flex-wrap:nowrap;
-    gap:6px;
-    align-content:stretch;
-  }
-  .moveRow{
-    display:flex;
-    width:100%;
-  }
-
-  .bottomWrap{
-     max-width: none;
-  }
-}
-
+    /* keep spacing comfortable on smaller widths */
+    @media (max-width: 980px){
+      .layout{ padding:10px; }
+    }
 
     .card{
       background: var(--panel);
@@ -473,19 +458,7 @@
     .evalDesc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.35}
     .evalBtns{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
     .evalBtns button{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
-
     /* bottom card */
-    .bottomWrap{
-      max-width:1240px;
-      margin:0 auto;
-      padding:0 14px 0;
-    }
-    .bottomGrid{
-      padding:12px;
-      display:grid;
-      gap:10px;
-    }
-    .bottomGrid textarea{ min-height:180px; }
 
     /* --- Import PGN modal --- */
     .modalBackdrop{
@@ -638,7 +611,6 @@
         <span class="pill" id="studyPill">Mock Study • 3 games</span>
         <span class="pill" id="gamePill">—</span>
       </div>
-      <div class="pill" id="diagPill">diagnostics</div>
     </div>
     <div class="menu" id="menu">
       <div class="actions">
@@ -698,11 +670,6 @@
           <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
         </div>
 
-        <div class="hint" id="hint">
-          <b>Squares:</b> tap a square to toggle highlight (colored).<br/>
-          <b>Arrows:</b> tap start square, then tap end square to toggle an arrow (colored).<br/>
-          Drawings are stored on the <b>current ply</b> and exported inline as <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span>.
-        </div>
       </div>
     </div>
 
@@ -834,11 +801,9 @@
         <div class="errorBody" id="errorLog"></div>
       </div>
     </div>
-  </div>
 
   <!-- Bottom card for position FEN + game PGN -->
-  <div class="bottomWrap">
-    <div class="card bottomCard">
+  <div class="card bottomCard" id="bottomCard">
       <div class="head">
         <div class="status">Position FEN & Game PGN</div>
         <div class="status" id="bottomMeta">—</div>
@@ -852,6 +817,7 @@
         <textarea id="pgnBottom" readonly></textarea>
       </div>
     </div>
+
   </div>
 
   <!-- Import PGN modal -->
@@ -886,33 +852,6 @@
     redrawDrawings();
     resizeMiniBoards();
   });
-
-  // ---------- UI Change listeners ----------
-let __isResizing = false;
-let __resizeT = null;
-
-window.addEventListener('resize', () => {
-  __isResizing = true;
-  clearTimeout(__resizeT);
-  __resizeT = setTimeout(() => { __isResizing = false; }, 200);
-
-  // force navbar visible immediately during resize
-  showTopbar(true); // implement as below
-}, { passive: true });
-
-window.addEventListener('scroll', () => {
-  if (__isResizing) return;
-}, { passive: true });
-
-function showTopbar(force){
-  const bar = document.querySelector('.topbar'); // adjust selector
-  if (!bar) return;
-  bar.classList.add('nav--shown');
-  bar.classList.remove('nav--hidden');
-  if (force) bar.style.transition = 'none';
-  requestAnimationFrame(() => { if (force) bar.style.transition = ''; });
-}
-
 
   // ---------- error logger ----------
   const errorLog = document.getElementById('errorLog');
@@ -1046,7 +985,6 @@ function showTopbar(force){
 
   // ---------- DOM ----------
   const statusEl = document.getElementById('status');
-  const fenBox = document.getElementById('fenBox');
   const movesEl = document.getElementById('moves');
   const gameListEl = document.getElementById('gameList');
   const gamePill = document.getElementById('gamePill');
@@ -1336,49 +1274,49 @@ function showTopbar(force){
 
   // ---------- board sizing ----------
 function sizeBoardSquare(){
+  // layout.html-style sizing: board fills available panel space while staying square
+  const areaRect = boardArea.getBoundingClientRect();
   const cs = getComputedStyle(boardArea);
-  const padX =
-    (parseFloat(cs.paddingLeft)  || 0) +
-    (parseFloat(cs.paddingRight) || 0);
-  const padY =
-    (parseFloat(cs.paddingTop)   || 0) +
-    (parseFloat(cs.paddingBottom)|| 0);
 
-  const wAvail = Math.max(0, boardArea.clientWidth - padX);
+  const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
+  const padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
 
-  const inPiecesMode =
-    (typeof isQuerySetupMode !== 'undefined' && isQuerySetupMode);
+  const availW = Math.max(0, areaRect.width  - padX);
+  const availH = Math.max(0, areaRect.height - padY);
 
-  const stacked = window.innerWidth < 1100; // below desktop side-by-side breakpoint
+  const inPiecesMode = !!isQuerySetupMode;
+  const maxSide = inPiecesMode ? 600 : 800;
 
-  // Max width cap: 800 normally, 600 in pieces mode
-  const maxS = inPiecesMode ? 600 : 800;
-  const minS = stacked ? 0 : Math.floor(window.innerHeight * 0.70);
+  let side;
+  let height;
 
-  let s = Math.floor(Math.min(maxS, wAvail));
-  if (s < minS) s = Math.floor(Math.min(wAvail, minS));
-
-  // When stacked, keep at least 35% viewport height for moves panel
-  if (stacked){
-    const maxByHeight = Math.floor(window.innerHeight * 0.60);
-    s = Math.min(s, maxByHeight);
+  if (inPiecesMode){
+    // Keep the "pieces mode" taller board, but ensure it fits in the panel.
+    side = Math.floor(Math.min(maxSide, availW, availH / 1.3));
+    height = Math.floor(side * 1.3);
+  } else {
+    side = Math.floor(Math.min(maxSide, availW, availH));
+    height = side;
   }
 
-  // In pieces mode, height is 30% bigger than width
-  const h = inPiecesMode ? Math.floor(s * 1.3) : s;
-
-  boardWrap.style.width  = s + 'px';
-  boardWrap.style.height = h + 'px';
-
-  // Ensure container & card grow to fit the taller board
-  boardArea.style.height = (h + padY) + 'px';
-
-  const headH  = boardHead  ? boardHead.offsetHeight  : 0;
-  const belowH = boardBelow ? boardBelow.offsetHeight : 0;
-
-  boardCard.style.minHeight =
-    (headH + h + padY + belowH) + 'px';
+  boardWrap.style.width  = side + 'px';
+  boardWrap.style.height = height + 'px';
 }
+
+  // Use ResizeObserver to keep the board sized like layout.html
+  let _boardRO = null;
+  function ensureBoardRO(){
+    if (_boardRO) return;
+    if (typeof ResizeObserver === 'undefined') return;
+    _boardRO = new ResizeObserver(() => {
+      sizeBoardSquare();
+      if (board && typeof board.resize === 'function') board.resize();
+      redrawDrawings();
+      resizeMiniBoards();
+    });
+    _boardRO.observe(boardArea);
+  }
+
 
   // ---------- overlay ----------
   function clearOverlay(){ while(overlay.firstChild) overlay.removeChild(overlay.firstChild); }
@@ -1678,9 +1616,7 @@ function sizeBoardSquare(){
   }
 
   function setFen(){
-    const f = game.fen();
-    if (fenBox) fenBox.textContent = f;
-    fenBottom.textContent = f;
+    const f = game.fen();    fenBottom.textContent = f;
   }
 
   function mergedUserComment(gameId, ply){
@@ -1907,7 +1843,13 @@ function gotoPly(ply){
     });
     if (typeof board.resize === 'function') board.resize();
     logLine('OK', 'Chessboard initialized.');
-  }
+  
+
+    ensureBoardRO();
+    sizeBoardSquare();
+    if (board && typeof board.resize === 'function') board.resize();
+    redrawDrawings();
+}
 
   function loadGame(gameId){
     const g = GAMES.find(x => x.id===gameId);
