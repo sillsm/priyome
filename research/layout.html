@@ -7,15 +7,9 @@
 
   <!-- chessboard.js (requires jQuery) -->
   <link rel="stylesheet"
-        href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
-        integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
-        crossorigin="anonymous">
-  <script src="https://code.jquery.com/jquery-3.5.1.min.js"
-          integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2"
-          crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
-          integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
-          crossorigin="anonymous"></script>
+        href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
 
   <style>
     :root{
@@ -31,10 +25,9 @@
       --shadow: 0 10px 30px rgba(0,0,0,.25);
       --nav-h: 44px;
 
-      /* sizing */
-      --top-band: 80vh;          /* wide mode: top area height */
-      /* Remove board max so it can fill panel 1 as much as possible */
-      --board-gap: 12px;
+      --top-band: 80vh;
+      --p1-bar-h: 10px;
+      --p1-bar-bg: rgba(156,163,175,.45);
     }
 
     *{ box-sizing: border-box; }
@@ -46,7 +39,6 @@
       color: var(--text);
     }
 
-    /* Slim navbar */
     .nav{
       position: sticky;
       top: 0;
@@ -55,26 +47,8 @@
       align-items: center;
       padding: 0 14px;
       background: rgba(7,10,20,.65);
-      backdrop-filter: blur(8px);
       border-bottom: 1px solid rgba(229,231,235,.1);
       z-index: 10;
-    }
-    .brand{ font-size: 14px; font-weight: 600; }
-    .nav-spacer{ flex: 1; }
-    .hamburger{
-      width: 34px; height: 30px;
-      border-radius: 10px;
-      border: 1px solid rgba(229,231,235,.14);
-      background: rgba(15,23,42,.55);
-      display: grid; place-items: center;
-      cursor: pointer;
-    }
-    .hamburger span{
-      display: block;
-      width: 16px; height: 2px;
-      background: rgba(229,231,235,.9);
-      margin: 3px 0;
-      border-radius: 999px;
     }
 
     .wrap{
@@ -93,10 +67,9 @@
       overflow: hidden;
     }
 
-    /* Panel 1: no title/text; board should fill as much as possible */
+    /* PANEL 1 — unchanged sizing */
     .p1{
-      display: grid;
-      align-content: stretch;
+      position: relative;
     }
 
     .board-center{
@@ -106,9 +79,55 @@
       height: 100%;
     }
 
-    /* chessboard.js host; JS sets width in px */
     .boardHost{
       width: 100%;
+    }
+
+    /* Overlay bars (layout-neutral) */
+    .p1-bar{
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: var(--p1-bar-h);
+      background: var(--p1-bar-bg);
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      font-size: 10px;
+      user-select: none;
+    }
+    .p1-bar.top{
+      top: 0;
+      color: #ffffff;
+      font-weight: 500;
+      letter-spacing: .3px;
+    }
+    .p1-bar.bottom{
+      bottom: 0;
+    }
+
+    /* Bottom nav buttons */
+    .nav-btns{
+      display: flex;
+      gap: 10px;
+    }
+    .nav-btn{
+      width: 16px;
+      height: 10px;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,.85);
+      color: #000;
+      font-size: 10px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .nav-btn:active{
+      transform: translateY(0.5px);
     }
 
     /* WIDE MODE */
@@ -116,16 +135,12 @@
       .wrap{
         grid-template-columns: 3fr 1fr;
         grid-template-rows: var(--top-band) auto;
-        align-content: start;
       }
       .p1{ grid-column: 1; grid-row: 1; }
       .p2{ grid-column: 2; grid-row: 1; }
       .p3{ grid-column: 1 / span 2; grid-row: 2; }
 
-      .p1, .p2{
-        min-height: var(--top-band);
-        height: auto;
-      }
+      .p1, .p2{ min-height: var(--top-band); }
     }
 
     /* MOBILE MODE */
@@ -133,81 +148,90 @@
       .wrap{
         grid-template-columns: 1fr;
         grid-template-rows: 60vh 40vh auto;
-        align-content: start;
       }
-
-      .p1{ min-height: 60vh; height: auto; }
-      .p2{ min-height: 40vh; height: auto; }
+      .p1{ min-height: 60vh; }
+      .p2{ min-height: 40vh; }
       .p3{ min-height: 60vh; }
+    }
+
+    .card h2{
+      margin: 0 0 10px 0;
+      font-size: 15px;
+    }
+    .card p{
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--muted);
     }
   </style>
 </head>
+
 <body>
-  <header class="nav">
-    <div class="brand">Priyome Mock</div>
-    <div class="nav-spacer"></div>
-    <button class="hamburger" aria-label="Menu" title="Menu">
-      <div aria-hidden="true">
-        <span></span><span></span><span></span>
+<header class="nav">
+  <div class="brand">Priyome Mock</div>
+</header>
+
+<main class="wrap">
+
+  <!-- PANEL 1 -->
+  <section class="card p1">
+    <div class="p1-bar top">
+      tool text
+    </div>
+
+    <div class="p1-bar bottom">
+      <div class="nav-btns">
+        <div class="nav-btn">&lt;</div>
+        <div class="nav-btn">&gt;</div>
       </div>
-    </button>
-  </header>
+    </div>
 
-  <main class="wrap">
-    <section class="card p1">
-      <div class="board-center">
-        <div id="board1" class="boardHost"></div>
-      </div>
-    </section>
+    <div class="board-center">
+      <div id="board1" class="boardHost"></div>
+    </div>
+  </section>
 
-    <section class="card p2">
-      <h2 style="margin:0 0 10px 0;font-size:15px;letter-spacing:.2px;">Panel 2</h2>
-      <p style="margin:0;font-size:14px;line-height:1.45;color:var(--muted);">
-        Proin porttitor, orci nec nonummy molestie, enim est eleifend mi, non fermentum diam nisl sit amet erat. Duis
-        arcu massa, scelerisque vitae, consequat in, pretium a, enim. Pellentesque congue.
-      </p>
-    </section>
+  <section class="card p2">
+    <h2>Panel 2</h2>
+    <p>Proin porttitor, orci nec nonummy molestie.</p>
+  </section>
 
-    <section class="card p3">
-      <h2 style="margin:0 0 10px 0;font-size:15px;letter-spacing:.2px;">Panel 3</h2>
-      <p style="margin:0;font-size:14px;line-height:1.45;color:var(--muted);">
-        Integer rutrum, orci vestibulum ullamcorper ultricies, lacus quam ultricies odio, vitae placerat pede sem sit
-        amet enim. Aliquam erat volutpat. Nam dui mi, tincidunt quis, accumsan porttitor, facilisis luctus, metus.
-      </p>
-    </section>
-  </main>
+  <section class="card p3">
+    <h2>Panel 3</h2>
+    <p>Integer rutrum, orci vestibulum ullamcorper ultricies.</p>
+  </section>
 
-  <script>
-    const boardEl = document.getElementById('board1');
-    const p1 = document.querySelector('.p1');
-    const board1 = Chessboard('board1', 'start');
+</main>
 
-    function sizeBoardFillPanel1() {
-      if (!p1 || !boardEl) return;
+<script>
+  const boardEl = document.getElementById('board1');
+  const p1 = document.querySelector('.p1');
+  const board1 = Chessboard('board1', 'start');
 
-      // Inner box of panel 1, minus padding => available space for square
-      const rect = p1.getBoundingClientRect();
-      const cs = getComputedStyle(p1);
+  function sizeBoardFillPanel1() {
+    const rect = p1.getBoundingClientRect();
+    const cs = getComputedStyle(p1);
 
-      const padLeft = parseFloat(cs.paddingLeft) || 0;
-      const padRight = parseFloat(cs.paddingRight) || 0;
-      const padTop = parseFloat(cs.paddingTop) || 0;
-      const padBottom = parseFloat(cs.paddingBottom) || 0;
+    const padLeft = parseFloat(cs.paddingLeft) || 0;
+    const padRight = parseFloat(cs.paddingRight) || 0;
+    const padTop = parseFloat(cs.paddingTop) || 0;
+    const padBottom = parseFloat(cs.paddingBottom) || 0;
 
-      const availW = Math.max(0, rect.width  - padLeft - padRight);
-      const availH = Math.max(0, rect.height - padTop - padBottom);
+    const availW = rect.width - padLeft - padRight;
+    const availH = rect.height - padTop - padBottom;
 
-      const side = Math.floor(Math.min(availW, availH));
+    const side = Math.floor(Math.min(availW, availH));
+    boardEl.style.width = side + 'px';
+    board1.resize();
+  }
 
-      boardEl.style.width = side + 'px';
-      board1.resize();
-    }
+  const ro = new ResizeObserver(sizeBoardFillPanel1);
+  ro.observe(p1);
 
-    const ro = new ResizeObserver(sizeBoardFillPanel1);
-    ro.observe(p1);
+  requestAnimationFrame(sizeBoardFillPanel1);
+  window.addEventListener('load', () => requestAnimationFrame(sizeBoardFillPanel1));
+</script>
 
-    requestAnimationFrame(sizeBoardFillPanel1);
-    window.addEventListener('load', () => requestAnimationFrame(sizeBoardFillPanel1));
-  </script>
 </body>
 </html>
