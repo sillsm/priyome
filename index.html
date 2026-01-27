@@ -458,7 +458,17 @@
     .evalDesc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.35}
     .evalBtns{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
     .evalBtns button{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
+    
     /* bottom card */
+    .bottomGrid{
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      min-height:0;
+    }
+    /* ensure bottom FEN row aligns with other cards */
+    #bottomCard .fenRow{ margin:0; }
 
     /* --- Import PGN modal --- */
     .modalBackdrop{
@@ -1046,6 +1056,48 @@
   ensureStudy('Default', ['mock1','mock2','mock3']);
 
 
+  // Boot: load default studies from ./pgn/Study.pgn (if present)
+  async function bootLoadDefaultStudies(){
+    try{
+      const url = STUDY_MANIFEST?.default;
+      if (!url) return;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
+      const txt = await res.text();
+      const parts = splitMultiPgn(txt);
+      if (!parts.length){
+        logLine('WARN', `Study.pgn loaded but contained no games: ${url}`);
+        return;
+      }
+
+      const ids = [];
+      for (let i=0;i<parts.length;i++){
+        const pgn = parts[i].trim();
+        if (!pgn) continue;
+        const h = parseHeaders(pgn);
+        const title = h.Event ? h.Event : `Study Game ${i+1}`;
+        const id = `boot:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+        GAMES.unshift({ id, title, opening:'Study.pgn', result:(h.Result||'*'), pgn });
+        ids.push(id);
+      }
+
+      // Replace the Default study's games with the boot list.
+      ensureStudy('Default', []);
+      STUDIES['Default'].gameIds = [];
+      ensureStudy('Default', ids);
+
+      setCurrentStudy('Default');
+      logLine('OK', `Boot loaded ${ids.length} game(s) from ${url} into study "Default".`);
+      renderGameList();
+      document.getElementById('studyPill').textContent = `Default • ${ids.length} games`;
+    }catch(e){
+      logStack('WARN', 'Boot study load failed (continuing with mocks): ', e);
+    }
+  }
+
+
+
+
   const discoveredIds = new Set();
 
   // ---------- eval registry ----------
@@ -1156,6 +1208,15 @@
   const PRIYOME_PGN_MANIFEST = {
   default: "./priyomes/priyomes.pgn"
 };
+
+
+  // studies: PGN file that seeds default studies on boot
+  const STUDY_MANIFEST = {
+    default: "./pgn/Study.pgn"
+  };
+
+  // kick off boot load (non-blocking for UI)
+  bootLoadDefaultStudies();
 
 // name -> { url, description } for *Evals tab* CQL evals list
   const CQL_EVAL_MANIFEST = {
@@ -2297,9 +2358,11 @@ function gotoPly(ply){
     }
   });
 
+  
   function addGamesFromText(multiPgnText, sourceLabel){
     const blocks = splitMultiPgn(multiPgnText);
     let added = 0;
+    const ids = [];
     for (let i=0;i<blocks.length;i++){
       const pgn = blocks[i].trim();
       if (!pgn) continue;
@@ -2307,11 +2370,8 @@ function gotoPly(ply){
       const { ok, game: tmp } = SanitizedLoadPgn(pgn);
       if (!ok) throw new Error('SanitizedLoadPgn err in addGamesFromText');
 
-      logLine(tmp.ascii());
-
       const h = parseHeaders(pgn);
       const title = h.Event ? h.Event : `Imported Game ${i+1}`;
-      logLine('Reached here')
       const white = h.White || "?";
       const black = h.Black || "?";
       const res   = h.Result || "*";
@@ -2324,14 +2384,20 @@ function gotoPly(ply){
         result: res,
         pgn
       });
+      ids.push(id);
       added++;
     }
+
     if (added){
-      logLine('OK', `Imported ${added} game(s) into Games tab.`);
+      // IMPORTANT: import output should land in the current active study
+      ensureStudy(currentStudyName, ids);
+      setCurrentStudy(currentStudyName);
+
+      logLine('OK', `Imported ${added} game(s) into active study "${currentStudyName}".`);
       renderGameList();
       document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
     }
-    return added;
+    return { added, ids };
   }
 
   btnImportAdd.addEventListener('click', () => {
@@ -2340,7 +2406,7 @@ function gotoPly(ply){
       logLine('WARN', 'Import PGN: empty input.');
       return;
     }
-    const added = addGamesFromText(txt, 'import');
+    const { added } = addGamesFromText(txt, 'import');
     if (added > 0){
       closeImportModal();
       setTab('games');
@@ -2722,6 +2788,10 @@ async function runCqlEvalFromManifest(ref){
         result: resTok,
         pgn: outPgn
       });
+      // IMPORTANT: eval output should land in the current active study
+      ensureStudy(currentStudyName, [newId]);
+      setCurrentStudy(currentStudyName);
+
 
       document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
       renderGameList();
