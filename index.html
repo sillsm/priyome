@@ -665,6 +665,7 @@
           <span class="kbd">Query setup mode</span>
           <button class="smallBtn" id="btnAddPriyome" type="button">Add</button>
           <button class="smallBtn" id="btnCancelPriyome" type="button">Cancel</button>
+          <button class="smallBtn" id="btnPlayFromHere" type="button">Play from here</button>
           <button class="smallBtn" id="btnSetupImportPgn" type="button">Import from PGN</button>
           <input id="setupPgnFile" type="file" accept=".pgn" hidden />
           <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
@@ -727,15 +728,21 @@
       </div>
 
       <div class="pane" id="paneGames">
-        <div class="hint">Games list. Click to load.</div>
-        <div class="gameList" id="gameList"></div>
+        <div class="hint">Studies list. Click to load.</div>
+        
+        <div class="row" style="gap:8px; align-items:center; margin: 8px 0 10px;">
+          <label class="kbd" for="studySelect">Study</label>
+          <select id="studySelect" class="smallSelect" style="flex:1; min-width:0;"></select>
+          <button class="smallBtn" id="btnNewStudy" type="button">New Study</button>
+        </div>
+<div class="gameList" id="gameList"></div>
       </div>
 
       <!-- Query tab -->
       <div class="pane" id="paneQuery">
         <div class="hint">
           Load <span class="kbd">.cql</span> and <span class="kbd">.pgn</span>. CQL becomes editable. Run executes <span class="kbd">/wasm/cql_runner.js</span>.
-          Discovered games from output are added to <b>Games</b>.
+          Discovered games from output are added to <b>Studies</b>.
         </div>
 
         <div class="row">
@@ -975,6 +982,70 @@
 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 1/2-1/2`
     },
   ];
+  // ---------- studies ----------
+  // A Study is just a list of game ids (subset of GAMES).
+  const STUDIES = Object.create(null); // name -> { name, gameIds:[], loaded:true }
+  let currentStudyName = 'Default';
+
+  function todayYMD(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${dd}`;
+  }
+  function uniqStudyName(base){
+    let name = base;
+    let n = 2;
+    while (STUDIES[name]) name = `${base} (${n++})`;
+    return name;
+  }
+  function ensureStudy(name, gameIds=[]){
+    if (!STUDIES[name]) STUDIES[name] = { name, gameIds: [], loaded:true };
+    const s = STUDIES[name];
+    for (const id of gameIds){
+      if (id && !s.gameIds.includes(id)) s.gameIds.push(id);
+    }
+    return s;
+  }
+  function currentStudy(){ return STUDIES[currentStudyName] || ensureStudy(currentStudyName, []); }
+
+  function getStudyGames(){
+    const ids = currentStudy().gameIds || [];
+    const map = new Map(GAMES.map(g => [g.id, g]));
+    const out = [];
+    for (const id of ids){
+      const g = map.get(id);
+      if (g) out.push(g);
+    }
+    return out;
+  }
+
+  function renderStudySelect(){
+    const sel = document.getElementById('studySelect');
+    if (!sel) return;
+    const names = Object.keys(STUDIES).sort((a,b)=>a.localeCompare(b));
+    sel.innerHTML = '';
+    for (const n of names){
+      const opt = document.createElement('option');
+      opt.value = n;
+      opt.textContent = n;
+      if (n === currentStudyName) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  function setCurrentStudy(name){
+    currentStudyName = name;
+    ensureStudy(name, []);
+    renderStudySelect();
+    renderGameList();
+    document.getElementById('gamePill').textContent = `Study • ${currentStudy().gameIds.length} games`;
+  }
+
+  // init Default with first three mock games (if present)
+  ensureStudy('Default', ['mock1','mock2','mock3']);
+
+
   const discoveredIds = new Set();
 
   // ---------- eval registry ----------
@@ -1231,6 +1302,11 @@
   }
 
   function currentDraw(){
+    // In setup mode, drawings apply to the setup position (ply 0).
+    if (isQuerySetupMode){
+      const gid = setupDraftId || setupDraftDrawId;
+      return ensureDrawAt(gid, 0);
+    }
     if (!currentGame) return { squares:Object.create(null), arrows:[] };
     return ensureDrawAt(currentGame.id, activePly);
   }
@@ -1260,6 +1336,88 @@
 
   // Query setup mode (free placement / trash / spare pieces)
   let isQuerySetupMode = false;
+
+  // Setup-draft game (for query setup mode)
+  let setupDraftId = null;                 // game id once created
+  const setupDraftDrawId = '__setup__';    // temp drawings bucket before game exists
+
+  function boardObjToFen(posObj){
+    const files = 'abcdefgh';
+    const ranks = [];
+    for (let r=8;r>=1;r--){
+      let row = '';
+      let empties = 0;
+      for (let f=0;f<8;f++){
+        const sq = files[f] + r;
+        const p = posObj[sq];
+        if (!p){ empties++; continue; }
+        if (empties){ row += String(empties); empties = 0; }
+        const c = p[0]; // w/b
+        const t = p[1]; // P,N,B,R,Q,K
+        row += (c === 'w') ? t : t.toLowerCase();
+      }
+      if (empties) row += String(empties);
+      ranks.push(row || '8');
+    }
+    return ranks.join('/') + ' w - - 0 1';
+  }
+
+  function buildSetupPgn(fen, title){
+    const nm = (title || 'Untitled Setup').replace(/"/g, "'");
+    return `[Event "${nm}"]
+[Site "Local"]
+[Date "${todayYMD()}"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "*"]
+[SetUp "1"]
+[FEN "${fen}"]
+
+*`;
+  }
+
+  function updateSetupPreview(){
+    if (!isQuerySetupMode || !board) return null;
+    const fen = boardObjToFen(board.position());
+    const pgn = buildSetupPgn(fen, `Setup ${todayYMD()}`);
+
+    // Live preview in the bottom card (FEN + PGN) during setup mode
+    if (fenBottom) fenBottom.textContent = fen;
+    if (pgnBottom) pgnBottom.value = pgn;
+    if (bottomMeta) bottomMeta.textContent = 'Setup preview';
+
+    return { fen, pgn };
+  }
+
+  function ensureSetupDraftGame(){
+    const prev = updateSetupPreview();
+    if (!prev) return null;
+    if (setupDraftId) return setupDraftId;
+
+    const title = prompt('Name this game (you can rename later):', `Setup ${todayYMD()}`) || `Setup ${todayYMD()}`;
+    const pgn = buildSetupPgn(prev.fen, title);
+    const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+
+    GAMES.unshift({ id:newId, title, opening:'Setup', result:'*', pgn });
+
+    // carry drawings made in setup mode, if any
+    if (drawings[setupDraftDrawId]){
+      drawings[newId] = JSON.parse(JSON.stringify(drawings[setupDraftDrawId]));
+    }
+
+    ensureStudy(currentStudyName, [newId]);
+    setCurrentStudy(currentStudyName);
+
+    setupDraftId = newId;
+    return newId;
+  }
+
+  function clearSetupDraftTemp(){
+    setupDraftId = null;
+    drawings[setupDraftDrawId] = null;
+  }
+
 
   function setTool(t){
     tool = t;
@@ -1770,6 +1928,7 @@ function gotoPly(ply){
     if (!isQuerySetupMode){
       board.position(game.fen(), false);
     }
+    if (isQuerySetupMode) updateSetupPreview();
   }
 
   document.addEventListener('touchmove', (e) => {
@@ -1788,7 +1947,8 @@ function gotoPly(ply){
 
   document.getElementById('boardArea').addEventListener('click', (e) => {
     if (!currentGame) return;
-    if (isQuerySetupMode) return; // setup mode is for piece placement only
+    // In setup mode, allow squares/arrows too (but don't interfere with dragging)
+    if (isQuerySetupMode && isDraggingPiece) return;
     if (tool === Tool.NONE) return;
 
     const sq = squareFromTarget(e.target);
@@ -1819,14 +1979,14 @@ function gotoPly(ply){
 
   function renderGameList(){
     gameListEl.innerHTML = '';
-    for (const g of GAMES){
+    for (const g of getStudyGames()){
       const card = document.createElement('div');
       card.className = 'gameCard' + (currentGame?.id === g.id ? ' active' : '');
       card.innerHTML = `
         <div class="gameTitle">${escapeHtml(g.title)}</div>
         <div class="meta"><span class="kbd">${escapeHtml(g.result || '*')}</span><span>${escapeHtml(g.opening || '')}</span></div>
       `;
-      card.onclick = () => loadGame(g.id);
+      card.onclick = () => { loadGame(g.id, { startAtFirst:true }); setTab('moves'); };
       gameListEl.appendChild(card);
     }
   }
@@ -1851,7 +2011,9 @@ function gotoPly(ply){
     redrawDrawings();
 }
 
-  function loadGame(gameId){
+  function loadGame(gameId, opts={}){
+    const startAtFirst = !!opts.startAtFirst;
+
     const g = GAMES.find(x => x.id===gameId);
     if (!g) return;
 
@@ -1888,9 +2050,8 @@ function gotoPly(ply){
     sizeBoardSquare();
     ensureMainBoard();
 
-    board.position(game.fen(), false);
-    if (typeof board.resize === 'function') board.resize();
-    logLine('OK', `Chessboard position updated.`);
+    const target = (startAtFirst && verboseHistory.length > 0) ? 1 : verboseHistory.length;
+    jumpTo(target);
 
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
     updateBottomCard();
@@ -2242,42 +2403,45 @@ function gotoPly(ply){
     return new TextEncoder().encode(text ?? "");
   }
 
-  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
+  
+function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
     const games = splitMultiPgn(multiPgnText);
     if (!games.length){
       logLine('WARN', 'No games found in output PGN.');
       return 0;
     }
-    let added = 0;
+
+    const newIds = [];
     for (let i=0;i<games.length;i++){
       const pgn = games[i];
       const h = parseHeaders(pgn);
       const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
-      const white = h.White || "?";
-      const black = h.Black || "?";
-      const date  = h.Date || "";
+      const date  = h.Date || todayYMD();
       const res   = h.Result || "*";
-
-      const id = `disc:${(sourceKey+"|"+title+"|"+white+"|"+black+"|"+date).replace(/\s+/g,'_').slice(0,200)}`;
-
-      if (discoveredIds.has(id)) continue;
-      discoveredIds.add(id);
+      const newId = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
 
       GAMES.unshift({
-        id,
-        title: `${title} — ${white} vs ${black}`,
-        opening: (h.Opening || "Discovered"),
+        id: newId,
+        title,
+        opening: sourceKey ? `CQL: ${sourceKey}` : 'CQL result',
         result: res,
         pgn
       });
-      added++;
+      newIds.push(newId);
     }
-    if (added){
-      logLine('OK', `Added ${added} discovered game(s) to Games tab.`);
-      renderGameList();
-      document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
+
+    if (newIds.length > 1){
+      const name = uniqStudyName(`${todayYMD()} Position Query`);
+      ensureStudy(name, newIds);
+      setCurrentStudy(name);
+      logLine('OK', `Created new study "${name}" with ${newIds.length} games from query result.`);
+    } else if (newIds.length === 1){
+      ensureStudy(currentStudyName, [newIds[0]]);
+      setCurrentStudy(currentStudyName);
     }
-    return added;
+
+    renderGameList();
+    return newIds.length;
   }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -2572,6 +2736,63 @@ async function runCqlEvalFromManifest(ref){
 
   document.getElementById('btnReloadEvals').addEventListener('click', () => loadEvals());
 
+
+  // ---------- Studies UI ----------
+  const studySelectEl = document.getElementById('studySelect');
+  const btnNewStudy = document.getElementById('btnNewStudy');
+  const btnImportStudy = document.getElementById('btnImportStudy');
+  const btnPlayFromHere = document.getElementById('btnPlayFromHere');
+
+  if (studySelectEl){
+    studySelectEl.addEventListener('change', () => setCurrentStudy(studySelectEl.value));
+  }
+  if (btnNewStudy){
+    btnNewStudy.addEventListener('click', () => {
+      const name = uniqStudyName(`${todayYMD()} Study`);
+      ensureStudy(name, []);
+      setCurrentStudy(name);
+    });
+  }
+  if (btnImportStudy){
+    btnImportStudy.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.pgn';
+      inp.addEventListener('change', async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const txt = await f.text();
+        const parts = splitMultiPgn(txt);
+        if (!parts.length){ logLine('WARN','No games found in study PGN.'); return; }
+        const name = uniqStudyName(f.name.replace(/\.pgn$/i,'') || `${todayYMD()} Study`);
+        const ids = [];
+        for (let i=0;i<parts.length;i++){
+          const pgn = parts[i];
+          const h = parseHeaders(pgn);
+          const title = h.Event ? h.Event : `${name} • Game ${i+1}`;
+          const id = `study:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+          GAMES.unshift({ id, title, opening:'Imported Study', result:(h.Result||'*'), pgn });
+          ids.push(id);
+        }
+        ensureStudy(name, ids);
+        setCurrentStudy(name);
+        setTab('games');
+      });
+      inp.click();
+    });
+  }
+  if (btnPlayFromHere){
+    btnPlayFromHere.addEventListener('click', () => {
+      const id = ensureSetupDraftGame();
+      if (!id) return;
+      setQuerySetupMode(false);
+      loadGame(id);
+      jumpTo(0);
+      setTab('moves');
+    });
+  }
+
+
   // ---------------- Priyomes ----------------
   function addPriyome(def){
     // def: {id,title,subtitle,fen,miniSquares?,miniArrows?}
@@ -2792,10 +3013,7 @@ async function runCqlEvalFromManifest(ref){
   function setQuerySetupMode(on){
     isQuerySetupMode = !!on;
 
-    // turn off drawing tools while in setup mode
-    if (isQuerySetupMode){
-      setTool(Tool.NONE);
-    }
+    // keep drawing tools available in setup mode
 
     setupRow.classList.toggle('open', isQuerySetupMode);
 
@@ -2823,6 +3041,7 @@ async function runCqlEvalFromManifest(ref){
       });
       if (typeof board.resize === 'function') board.resize();
 
+      updateSetupPreview();
       logLine('OK', 'Entered query setup mode (sparePieces + trash).');
     } else {
       // restore normal board bound to current chess.js game position
@@ -2854,10 +3073,32 @@ async function runCqlEvalFromManifest(ref){
     setupImportedMiniSquares = null;
     setupImportedMiniArrows  = null;
 
-    setupHint.innerHTML = 'Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.';
+    setupHint.innerHTML = 'Drag pieces to set a position. This immediately creates a new game in the current study. Click <b>Play from here</b> when ready.';
     setQuerySetupMode(true);
-    // stay on Priyomes tab; user configures on main board above.
-    logLine('OK', 'New Query: setup mode enabled on main board.');
+
+    // Create the draft game immediately so drawings (arrows/squares) have a stable bucket
+    // and the game exists inside the current study right away.
+    // Default to a clean start position unless the board already shows something.
+    try {
+      if (board) board.position('start', false);
+      clearSetupDraftTemp();
+      const id = ensureSetupDraftGame();
+      if (id){
+        const g = GAMES.find(x => x.id === id);
+        if (g){
+          currentGame = g;
+          ensureStores(g.id);
+          gamePill.textContent = g.title;
+          document.getElementById('studyPill').textContent = `${currentStudyName} • ${currentStudy().gameIds.length} games`;
+          renderGameList();
+        }
+      }
+      updateSetupPreview();
+      redrawDrawings();
+      logLine('OK', 'New Query: created a draft game in the current study.');
+    } catch (e) {
+      logStack('ERR', 'New Query failed: ', e);
+    }
   });
 
   btnCancelPriyome.addEventListener('click', () => {
