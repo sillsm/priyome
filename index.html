@@ -1019,74 +1019,92 @@ async function fetchText(url) {
   // Boot: load default studies from ./pgn/Study.pgn (if present)
 async function bootLoadDefaultStudies() {
   try {
-    // STUDY_MANIFEST is guaranteed to be a module variable (per your instruction).
-    const entries = Object.entries(STUDY_MANIFEST).filter(
-      ([k, v]) => typeof k === "string" && typeof v === "string" && v.trim()
-    );
-
+    const entries = Object.entries(STUDY_MANIFEST || {});
     if (!entries.length) {
-      logStack("WARN", "STUDY_MANIFEST is empty; nothing to boot-load.");
+      logLine('WARN', 'STUDY_MANIFEST empty; nothing to boot-load.');
       return;
     }
 
-    const toStudyName = (key) => (key.toLowerCase() === "default" ? "Default" : key);
     const loadedStudyNames = [];
 
-    for (const [key, urlRaw] of entries) {
-      const studyName = toStudyName(key);
-      const url = urlRaw.trim();
+    // local fetch helper: avoids dependency on any global fetchText/fetchTextCached
+    async function _fetchTextNoStore(url) {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return await res.text();
+    }
+
+    for (const [keyRaw, urlRaw] of entries) {
+      const key = String(keyRaw || '').trim();
+      const url = String(urlRaw || '').trim();
+      if (!key || !url) continue;
+
+      const studyName = (key.toLowerCase() === 'default') ? 'Default' : key;
 
       try {
-        logStack("OK", `Boot loading study "${studyName}" from ${url} …`);
+        logLine('OK', `Boot loading study "${studyName}" from ${url} …`);
 
-        const pgnText = await fetchText(url);
+        const txt = await _fetchTextNoStore(url);
+        const parts = splitMultiPgn(txt);
 
-        // Must return array of newly-added game IDs (as wired in your current file)
-        const ids = parseMultiPgnToGameIds(pgnText, { source: url, studyName }) || [];
+        if (!parts.length) {
+          logLine('WARN', `No games found in ${url} for study "${studyName}".`);
+          continue;
+        }
 
-        // Replace study contents with manifest contents
-        ensureStudy(studyName, []);
-        STUDIES[studyName].gameIds = [];
-        if (ids.length) ensureStudy(studyName, ids);
+        // Overwrite this study’s game list on boot (keeps boot deterministic)
+        STUDIES[studyName] = { name: studyName, gameIds: [], loaded: true };
 
+        const ids = [];
+        for (let i = 0; i < parts.length; i++) {
+          const pgn = String(parts[i] || '').trim();
+          if (!pgn) continue;
+
+          const h = parseHeaders(pgn);
+          const title = (h && h.Event) ? h.Event : `${studyName} • Game ${i + 1}`;
+          const resTok = (h && h.Result) ? h.Result : '*';
+
+          const id = `boot:${studyName}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+          GAMES.unshift({
+            id,
+            title,
+            opening: 'Boot Study',
+            result: resTok,
+            pgn
+          });
+
+          ids.push(id);
+        }
+
+        if (!ids.length) {
+          logLine('WARN', `All games empty/invalid in ${url} for "${studyName}".`);
+          continue;
+        }
+
+        // Ensure the study exists and has the ids we just created
+        ensureStudy(studyName, ids);
         loadedStudyNames.push(studyName);
-        logStack("OK", `Loaded "${studyName}" (${ids.length} games).`);
+
+        logLine('OK', `Boot-loaded "${studyName}" (${ids.length} games).`);
       } catch (e) {
-        logStack("WARN", `Failed to boot-load "${studyName}" from ${url}:`, e);
+        logStack('WARN', `Failed to boot-load "${studyName}" from ${url}:`, e);
       }
     }
 
-    // Choose active: Default if it loaded, else first loaded
-    const active = loadedStudyNames.includes("Default")
-      ? "Default"
-      : (loadedStudyNames[0] || null);
-
-    if (!active) {
-      logStack("WARN", "No studies loaded successfully from STUDY_MANIFEST.");
+    if (!loadedStudyNames.length) {
+      logLine('WARN', 'No studies loaded successfully from STUDY_MANIFEST.');
       return;
     }
 
-    setCurrentStudy(active);
+    // Prefer Default if present; otherwise first successfully loaded.
+    const preferred =
+      loadedStudyNames.includes('Default') ? 'Default' : loadedStudyNames[0];
 
-    // Refresh UI (only call if present)
-    if (typeof renderStudyDropdown === "function") renderStudyDropdown();
-    if (typeof updateStudiesUI === "function") updateStudiesUI();
-    if (typeof renderGameList === "function") renderGameList();
-
-    // Update pill
-    const pill = document.getElementById("studyPill");
-    if (pill) {
-      const n = (STUDIES[active]?.gameIds || []).length;
-      pill.textContent = `${active} • ${n} game${n === 1 ? "" : "s"}`;
-    }
-
-    // Select first game and jump to first ply (your selectGame fix should handle this)
-    const firstId = STUDIES[active]?.gameIds?.[0];
-    if (firstId && typeof selectGame === "function") {
-      selectGame(firstId, { goto: "first" });
-    }
-  } catch (fatal) {
-    logStack("ERR", "bootLoadDefaultStudies fatal error:", fatal);
+    setCurrentStudy(preferred);
+    logLine('OK', `Boot studies complete. Active study: "${preferred}".`);
+  } catch (e) {
+    logStack('ERR', 'bootLoadDefaultStudies() failed:', e);
   }
 }
 
