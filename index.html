@@ -948,50 +948,8 @@
       default: return '#16a34a';
     }
   }
-
-  // ---------- mock games ----------
-  // IMPORTANT: chess.js 0.11 is picky. Use proper PGN formatting: header lines + blank line + moves.
-  let GAMES = [
-    {
-      id:"mock1", title:"Mock Game 1", opening:"English (mock)", result:"1-0",
-      pgn:
-`[Event "Mock Study"]
-[Site "Local"]
-[Date "2026.01.01"]
-[Round "1"]
-[White "blockchop"]
-[Black "mockbot"]
-[Result "1-0"]
-
-1. c4 e5 2. g3 Nf6 3. Bg2 Bc5 4. d3 O-O 5. Nc3 Re8 6. Nf3 c6 7. O-O d5 8. cxd5 cxd5 9. Bg5 Be6 10. Nxe5 1-0`
-    },
-    {
-      id:"mock2", title:"Mock Game 2", opening:"Caro-Kann (mock)", result:"0-1",
-      pgn:
-`[Event "Mock Study"]
-[Site "Local"]
-[Date "2026.01.01"]
-[Round "2"]
-[White "blockchop"]
-[Black "mockbot"]
-[Result "0-1"]
-
-1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1`
-    },
-    {
-      id:"mock3", title:"Mock Game 3", opening:"Ruy Lopez (mock)", result:"1/2-1/2",
-      pgn:
-`[Event "Mock Study"]
-[Site "Local"]
-[Date "2026.01.01"]
-[Round "3"]
-[White "blockchop"]
-[Black "mockbot"]
-[Result "1/2-1/2"]
-
-1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 1/2-1/2`
-    },
-  ];
+  
+  let GAMES = [];
   // ---------- studies ----------
   // A Study is just a list of game ids (subset of GAMES).
   const STUDIES = Object.create(null); // name -> { name, gameIds:[], loaded:true }
@@ -1052,50 +1010,95 @@
     document.getElementById('gamePill').textContent = `Study • ${currentStudy().gameIds.length} games`;
   }
 
-  // init Default with first three mock games (if present)
-  ensureStudy('Default', ['mock1','mock2','mock3']);
-
 
   // Boot: load default studies from ./pgn/Study.pgn (if present)
-  async function bootLoadDefaultStudies(){
-    try{
-      const url = STUDY_MANIFEST?.default;
-      if (!url) return;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
-      const txt = await res.text();
-      const parts = splitMultiPgn(txt);
-      if (!parts.length){
-        logLine('WARN', `Study.pgn loaded but contained no games: ${url}`);
-        return;
-      }
-
-      const ids = [];
-      for (let i=0;i<parts.length;i++){
-        const pgn = parts[i].trim();
-        if (!pgn) continue;
-        const h = parseHeaders(pgn);
-        const title = h.Event ? h.Event : `Study Game ${i+1}`;
-        const id = `boot:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
-        GAMES.unshift({ id, title, opening:'Study.pgn', result:(h.Result||'*'), pgn });
-        ids.push(id);
-      }
-
-      // Replace the Default study's games with the boot list.
-      ensureStudy('Default', []);
-      STUDIES['Default'].gameIds = [];
-      ensureStudy('Default', ids);
-
-      setCurrentStudy('Default');
-      logLine('OK', `Boot loaded ${ids.length} game(s) from ${url} into study "Default".`);
-      renderGameList();
-      document.getElementById('studyPill').textContent = `Default • ${ids.length} games`;
-    }catch(e){
-      logStack('WARN', 'Boot study load failed (continuing with mocks): ', e);
+async function bootLoadDefaultStudies() {
+  try {
+    if (!window.STUDY_MANIFEST || typeof STUDY_MANIFEST !== "object") {
+      logStack("WARN", "No STUDY_MANIFEST found; nothing to boot-load.");
+      return;
     }
+
+    const entries = Object.entries(STUDY_MANIFEST).filter(
+      ([k, v]) => typeof k === "string" && typeof v === "string" && v.trim()
+    );
+
+    if (!entries.length) {
+      logStack("WARN", "STUDY_MANIFEST is empty; nothing to boot-load.");
+      return;
+    }
+
+    // helper: manifest key -> display study name
+    const toStudyName = (key) =>
+      key.toLowerCase() === "default" ? "Default" : key;
+
+    const loadedStudyNames = [];
+
+    // Load each manifest entry into its own study.
+    for (const [key, urlRaw] of entries) {
+      const studyName = toStudyName(key);
+      const url = urlRaw.trim();
+
+      try {
+        logStack("OK", `Boot loading study "${studyName}" from ${url} ...`);
+
+        const pgnText = await fetchText(url);
+
+        // This should parse PGN into your global GAMES store and return the ids
+        // of the newly-added games (this is how index_fixed.html is wired).
+        const ids = parseMultiPgnToGameIds(pgnText, { source: url, studyName });
+
+        // Ensure the study exists and replace its contents with the manifest contents.
+        ensureStudy(studyName, []);
+        STUDIES[studyName].gameIds = [];
+        if (ids && ids.length) {
+          ensureStudy(studyName, ids);
+        }
+
+        loadedStudyNames.push(studyName);
+        logStack("OK", `Loaded "${studyName}" (${(ids && ids.length) || 0} games).`);
+      } catch (e) {
+        logStack("WARN", `Failed to boot-load "${studyName}" from ${url}:`, e);
+        // continue loading other studies
+      }
+    }
+
+    // Pick active study: Default if present, else first loaded, else leave as-is.
+    let active =
+      loadedStudyNames.includes("Default")
+        ? "Default"
+        : loadedStudyNames[0] || null;
+
+    if (active) {
+      setCurrentStudy(active);
+
+      // Update UI bits (keep these calls matching your existing file)
+      try {
+        renderStudyDropdown?.();
+        updateStudiesUI?.();
+
+        const pill = document.getElementById("studyPill");
+        if (pill) {
+          const n = (STUDIES[active]?.gameIds || []).length;
+          pill.textContent = `${active} • ${n} game${n === 1 ? "" : "s"}`;
+        }
+
+        // Ensure game list shows current study
+        renderGameList?.();
+
+        // Select first game (jump to first ply) if any
+        const firstId = STUDIES[active]?.gameIds?.[0];
+        if (firstId) selectGame(firstId, { goto: "first" });
+      } catch (uiErr) {
+        logStack("WARN", "Boot load: UI update failed:", uiErr);
+      }
+    } else {
+      logStack("WARN", "No studies loaded successfully from STUDY_MANIFEST.");
+    }
+  } catch (fatal) {
+    logStack("ERR", "bootLoadDefaultStudies fatal error:", fatal);
   }
-
-
+}
 
 
   const discoveredIds = new Set();
