@@ -1014,11 +1014,7 @@
   // Boot: load default studies from ./pgn/Study.pgn (if present)
 async function bootLoadDefaultStudies() {
   try {
-    if (!window.STUDY_MANIFEST || typeof STUDY_MANIFEST !== "object") {
-      logStack("WARN", "No STUDY_MANIFEST found; nothing to boot-load.");
-      return;
-    }
-
+    // STUDY_MANIFEST is guaranteed to be a module variable (per your instruction).
     const entries = Object.entries(STUDY_MANIFEST).filter(
       ([k, v]) => typeof k === "string" && typeof v === "string" && v.trim()
     );
@@ -1028,78 +1024,66 @@ async function bootLoadDefaultStudies() {
       return;
     }
 
-    // helper: manifest key -> display study name
-    const toStudyName = (key) =>
-      key.toLowerCase() === "default" ? "Default" : key;
-
+    const toStudyName = (key) => (key.toLowerCase() === "default" ? "Default" : key);
     const loadedStudyNames = [];
 
-    // Load each manifest entry into its own study.
     for (const [key, urlRaw] of entries) {
       const studyName = toStudyName(key);
       const url = urlRaw.trim();
 
       try {
-        logStack("OK", `Boot loading study "${studyName}" from ${url} ...`);
+        logStack("OK", `Boot loading study "${studyName}" from ${url} …`);
 
         const pgnText = await fetchText(url);
 
-        // This should parse PGN into your global GAMES store and return the ids
-        // of the newly-added games (this is how index_fixed.html is wired).
-        const ids = parseMultiPgnToGameIds(pgnText, { source: url, studyName });
+        // Must return array of newly-added game IDs (as wired in your current file)
+        const ids = parseMultiPgnToGameIds(pgnText, { source: url, studyName }) || [];
 
-        // Ensure the study exists and replace its contents with the manifest contents.
+        // Replace study contents with manifest contents
         ensureStudy(studyName, []);
         STUDIES[studyName].gameIds = [];
-        if (ids && ids.length) {
-          ensureStudy(studyName, ids);
-        }
+        if (ids.length) ensureStudy(studyName, ids);
 
         loadedStudyNames.push(studyName);
-        logStack("OK", `Loaded "${studyName}" (${(ids && ids.length) || 0} games).`);
+        logStack("OK", `Loaded "${studyName}" (${ids.length} games).`);
       } catch (e) {
         logStack("WARN", `Failed to boot-load "${studyName}" from ${url}:`, e);
-        // continue loading other studies
       }
     }
 
-    // Pick active study: Default if present, else first loaded, else leave as-is.
-    let active =
-      loadedStudyNames.includes("Default")
-        ? "Default"
-        : loadedStudyNames[0] || null;
+    // Choose active: Default if it loaded, else first loaded
+    const active = loadedStudyNames.includes("Default")
+      ? "Default"
+      : (loadedStudyNames[0] || null);
 
-    if (active) {
-      setCurrentStudy(active);
-
-      // Update UI bits (keep these calls matching your existing file)
-      try {
-        renderStudyDropdown?.();
-        updateStudiesUI?.();
-
-        const pill = document.getElementById("studyPill");
-        if (pill) {
-          const n = (STUDIES[active]?.gameIds || []).length;
-          pill.textContent = `${active} • ${n} game${n === 1 ? "" : "s"}`;
-        }
-
-        // Ensure game list shows current study
-        renderGameList?.();
-
-        // Select first game (jump to first ply) if any
-        const firstId = STUDIES[active]?.gameIds?.[0];
-        if (firstId) selectGame(firstId, { goto: "first" });
-      } catch (uiErr) {
-        logStack("WARN", "Boot load: UI update failed:", uiErr);
-      }
-    } else {
+    if (!active) {
       logStack("WARN", "No studies loaded successfully from STUDY_MANIFEST.");
+      return;
+    }
+
+    setCurrentStudy(active);
+
+    // Refresh UI (only call if present)
+    if (typeof renderStudyDropdown === "function") renderStudyDropdown();
+    if (typeof updateStudiesUI === "function") updateStudiesUI();
+    if (typeof renderGameList === "function") renderGameList();
+
+    // Update pill
+    const pill = document.getElementById("studyPill");
+    if (pill) {
+      const n = (STUDIES[active]?.gameIds || []).length;
+      pill.textContent = `${active} • ${n} game${n === 1 ? "" : "s"}`;
+    }
+
+    // Select first game and jump to first ply (your selectGame fix should handle this)
+    const firstId = STUDIES[active]?.gameIds?.[0];
+    if (firstId && typeof selectGame === "function") {
+      selectGame(firstId, { goto: "first" });
     }
   } catch (fatal) {
     logStack("ERR", "bootLoadDefaultStudies fatal error:", fatal);
   }
 }
-
 
   const discoveredIds = new Set();
 
