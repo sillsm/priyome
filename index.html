@@ -1102,6 +1102,22 @@ async function bootLoadDefaultStudies() {
       loadedStudyNames.includes('Default') ? 'Default' : loadedStudyNames[0];
 
     setCurrentStudy(preferred);
+    // On initial boot, immediately load the first game of the active study onto the main board.
+    try {
+      const s = currentStudy();
+      const firstId = s && s.gameIds && s.gameIds.length ? s.gameIds[0] : null;
+      if (firstId) {
+        // Ensure boards exist before loading
+        ensureMainBoard();
+        loadGame(firstId, { startAtFirst: true });
+        logLine('OK', `Boot: loaded first game (${firstId}) from study "${preferred}".`);
+      } else {
+        logLine('WARN', `Boot: study "${preferred}" has no games to auto-load.`);
+      }
+    } catch (e) {
+      logStack('WARN', 'Boot: failed to auto-load first game.', e);
+    }
+
     logLine('OK', `Boot studies complete. Active study: "${preferred}".`);
   } catch (e) {
     logStack('ERR', 'bootLoadDefaultStudies() failed:', e);
@@ -1177,6 +1193,80 @@ async function bootLoadDefaultStudies() {
   let game = null;
   let verboseHistory = [];
   let activePly = 0;
+  let currentStartFen = 'start'; // per-game ply 0 start position (from PGN [FEN "..."] if present)
+
+  function setBoardFen(reason, fen, animate=false){
+    if (!board) return;
+    const f = (fen && String(fen).trim()) ? String(fen).trim() : 'start';
+    // log to both console and the on-page log
+    try { console.log(`[board] position (${reason}) fen =>`, f); } catch(_e){}
+    logLine('OK', `BOARD FEN [${reason}]: ${f}`);
+    board.position(f, !!animate);
+  }
+
+  
+  function resetGameToStartFen(){
+    const f = (currentStartFen && String(currentStartFen).trim()) ? String(currentStartFen).trim() : 'start';
+    if (f === 'start'){
+      game.reset();
+      return { ok:true, used:'start' };
+    }
+
+    // chess.js versions differ: some support load(fen, {skipValidation:true})
+    // We try strict first, then skipValidation, and log detailed validation errors when possible.
+    let ok = false;
+    let used = f;
+    try {
+      ok = !!game.load(f);
+    } catch (e) {
+      ok = false;
+    }
+    if (!ok){
+      try {
+        ok = !!game.load(f, { skipValidation: true });
+      } catch (_e) {
+        ok = false;
+      }
+    }
+
+    if (!ok){
+      // Some chess.js builds are strict or have different FEN loading paths.
+      // 1) Surface validation diagnostics if available
+      try {
+        if (typeof game.validate_fen === 'function'){
+          const v = game.validate_fen(f);
+          logLine('WARN', `Start FEN validate_fen: valid=${v.valid} err=${v.error_number} ${v.error || ''}`);
+        } else if (typeof game.validateFen === 'function'){
+          const v = game.validateFen(f);
+          logLine('WARN', `Start FEN validateFen: valid=${v.valid} err=${v.error_number} ${v.error || ''}`);
+        }
+      } catch(_e){}
+
+      // 2) Fallback: re-instantiate the Chess() object with the FEN (supported by many versions)
+      // This avoids relying on .load(...) semantics, while still letting us replay SAN on top.
+      try {
+        if (typeof Chess === 'function'){
+          const g2 = new Chess(f);
+          // If constructor succeeded, swap it in.
+          if (g2 && typeof g2.fen === 'function'){
+            game = g2;
+            ok = true;
+          }
+        }
+      } catch(_e){ ok = false; }
+
+      if (!ok){
+        logLine('WARN', `Failed to load start FEN from headers; falling back to standard start. FEN="${f}"`);
+        try { game.reset(); } catch(_e) {}
+        currentStartFen = 'start';
+        used = 'start';
+        return { ok:false, used };
+      }
+    }
+
+    return { ok:true, used };
+  }
+
 
   // user annotations per ply
   const annotations = Object.create(null);
@@ -1825,14 +1915,16 @@ function sizeBoardSquare(){
   document.getElementById('tabErrors').addEventListener('click', () => setTab('errors'));
 
   // ---------- move list / nav ----------
+  
   function rebuildToPly(ply){
-    game.reset();
+    resetGameToStartFen();
     for (let i=0;i<ply;i++){
       const mv = verboseHistory[i];
       if (!mv) break;
       game.move({from:mv.from,to:mv.to,promotion:mv.promotion||'q'});
     }
   }
+
 
   function setStatus(){
     let s = `${game.turn()==='w'?'White':'Black'} to move.`;
@@ -1941,7 +2033,7 @@ function renderMoves(){
   function jumpTo(ply){
     activePly = Math.max(0, Math.min(ply, verboseHistory.length));
     rebuildToPly(activePly);
-    board.position(game.fen(), false);
+    setBoardFen(`jumpTo ply ${activePly}`, game.fen(), false);
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
     updateBottomCard();
     logLine('OK', `Jump to ply ${activePly}`);
@@ -1998,7 +2090,7 @@ function gotoPly(ply){
   function onSnapEnd(){
     isDraggingPiece = false;
     if (!isQuerySetupMode){
-      board.position(game.fen(), false);
+      setBoardFen('onSnapEnd', game.fen(), false);
     }
     if (isQuerySetupMode) updateSetupPreview();
   }
@@ -2115,6 +2207,17 @@ function gotoPly(ply){
     const { ok, game : gg } = SanitizedLoadPgn(g.pgn);
     if (!ok) throw new Error('SanitizedLoadPgn err in loadgame');
     game = gg;
+    // Determine ply-0 start position from PGN headers (FEN/SetUp).
+    try {
+      const h = (typeof game.header === 'function') ? game.header() : null;
+      const fenTag = h && (h.FEN || h.Fen || h.fen);
+      currentStartFen = (fenTag && String(fenTag).trim()) ? String(fenTag).trim() : 'start';
+      logLine('OK', `PGN start FEN for "${g.title}": ${currentStartFen}`);
+    } catch (e) {
+      currentStartFen = 'start';
+      logStack('WARN', 'Failed to read PGN headers for start FEN; using standard start.', e);
+    }
+
 
     verboseHistory = game.history({verbose:true});
     activePly = verboseHistory.length;
@@ -2122,7 +2225,7 @@ function gotoPly(ply){
     sizeBoardSquare();
     ensureMainBoard();
 
-    const target = (startAtFirst && verboseHistory.length > 0) ? 1 : verboseHistory.length;
+    const target = startAtFirst ? 0 : verboseHistory.length;
     jumpTo(target);
 
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
@@ -2232,7 +2335,7 @@ function gotoPly(ply){
 
     if (isQuerySetupMode){
       // reset to empty in setup mode
-      board.position('8/8/8/8/8/8/8/8', false);
+      setBoardFen('setup mode: clear board', '8/8/8/8/8/8/8/8', false);
       logLine('OK', 'Setup mode: cleared board.');
       return;
     }
@@ -2356,7 +2459,7 @@ function gotoPly(ply){
         fen = tmp.fen();
       }
 
-      board.position(fen, false);
+      setBoardFen('setup import', fen, false);
       setupImportedPgnTitle = h.Event || f.name;
       setupHint.innerHTML = `Imported <b>${escapeHtml(setupImportedPgnTitle)}</b>` +
         (setupImportedCqlRef ? ` • cqlref=<span class="kbd">${escapeHtml(setupImportedCqlRef)}</span>` : '');
@@ -3161,7 +3264,7 @@ async function runCqlEvalFromManifest(ref){
     // and the game exists inside the current study right away.
     // Default to a clean start position unless the board already shows something.
     try {
-      if (board) board.position('start', false);
+      if (board) setBoardFen('setup mode init', 'start', false);
       clearSetupDraftTemp();
       const id = ensureSetupDraftGame();
       if (id){
