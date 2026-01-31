@@ -1,0 +1,3438 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Priyome</title>
+  <link href="./favicon.svg" rel="icon">
+
+  <!-- chessboard.js (requires jQuery) -->
+  <link rel="stylesheet"
+        href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
+        integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
+        crossorigin="anonymous">
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+          integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
+          integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
+          crossorigin="anonymous"></script>
+  <!-- chess.js UMD (global Chess) -->
+  <!-- imported below as a module in main script. Pinned to version 1.4.0 -->
+
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --panel:#ffffff;
+      --text:#0f172a;
+      --muted:#475569;
+      --border:#dbe3f0;
+      --accent:#2563eb;
+      --green:#16a34a;
+      --radius:14px;
+      --shadow:0 10px 22px rgba(15,23,42,.08);
+      --bad:#dc2626;
+      --warn:#d97706;
+    
+      --nav-h: 60px;
+      --top-band: 80vh;
+    }
+    *{box-sizing:border-box}
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      overflow:auto;
+      padding-bottom:5vh;
+    }
+
+    button{
+      border:1px solid var(--border);
+      background: #ffffff;
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+    }
+    button:hover{filter:brightness(0.98)}
+    button.on{
+      border-color: rgba(22,163,74,.55);
+      box-shadow:0 0 0 1px rgba(22,163,74,.20) inset;
+    }
+
+    /* --- Collapsible hamburger top bar --- */
+    .topbarWrap{
+    position: static;   /* was: sticky */
+    top: auto;
+    z-index: auto;
+    background: rgba(246,247,251,.92);
+    backdrop-filter: blur(10px);
+    border-bottom:1px solid var(--border);
+    }
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 14px;
+      gap:10px;
+    }
+    .nav--hidden{ transform: translateY(-100%); opacity: 0; pointer-events: none; }
+    .nav--shown { transform: translateY(0); opacity: 1; }
+    .topbar{ will-change: transform; }
+    .brand{
+      display:flex; align-items:center; gap:10px; font-weight:900;
+      min-width:0;
+    }
+    .hamburger{
+      width:42px; height:42px;
+      display:grid; place-items:center;
+      font-size:18px;
+      padding:0;
+      flex:0 0 auto;
+    }
+    .brandTitle{font-size:16px; letter-spacing:.2px}
+    .pill{
+      font-size:12px;
+      color:var(--muted);
+      border:1px solid var(--border);
+      padding:3px 8px;
+      border-radius:999px;
+      background: rgba(37,99,235,.06);
+      white-space:nowrap;
+    }
+
+    .menu{
+      display:none;
+      padding:10px 14px 14px;
+      border-top:1px solid var(--border);
+      background: rgba(255,255,255,.75);
+    }
+    .menu.open{display:block;}
+    .actions{
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+    }
+
+        /* --- Layout: mimic layout.html (P1+P2 always visible; P3 peeks below) --- */
+    .layout{
+      max-width:1240px;
+      margin:0 auto;
+      padding:14px;
+      min-height: calc(100vh - var(--nav-h));
+      display:grid;
+      gap:14px;
+      grid-template-columns: 1fr;
+      grid-template-rows: 60vh 40vh auto; /* mobile default */
+      align-items: stretch;
+    }
+
+    /* WIDE MODE */
+    @media (min-width: 900px){
+      .layout{
+        max-width: none;
+        grid-template-columns: 3fr 1fr;
+        grid-template-rows: var(--top-band) auto;
+      }
+      #boardCard{ grid-column: 1; grid-row: 1; }
+      .rightCard{ grid-column: 2; grid-row: 1; }
+      #bottomCard{ grid-column: 1 / span 2; grid-row: 2; }
+    }
+
+    /* keep spacing comfortable on smaller widths */
+    @media (max-width: 980px){
+      .layout{ padding:10px; }
+    }
+
+    .card{
+      background: var(--panel);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden; /* IMPORTANT: prevent board overflow past card */
+      min-height:0;
+    }
+    .head{
+      padding:10px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+    }
+    .status{font-size:12px; color:var(--muted)}
+
+    /* Tool color dots */
+    .toolDots{ display:inline-flex; gap:6px; margin-left:8px; vertical-align:middle; }
+    .dotBtn{
+      width:18px; height:18px; padding:0;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#fff;
+      display:grid; place-items:center;
+    }
+    .dotBtn.active{ box-shadow:0 0 0 2px rgba(37,99,235,.18); border-color: rgba(37,99,235,.55); }
+    .dot{ width:10px; height:10px; border-radius:999px; display:block; }
+    .dotG{ background:#16a34a; }
+    .dotR{ background:#dc2626; }
+    .dotB{ background:#2563eb; }
+    .dotY{ background:#d97706; }
+
+    .boardCard{ display:flex; flex-direction:column; min-height:0; }
+    .boardArea{
+  position:relative;
+  padding:12px;
+  flex:1 1 auto;              /* CHANGED (was 0 0 auto) */
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+  .boardCard{ height: 100%; }          /* ensures it stretches to the layout row */
+  .boardArea{ flex: 1 1 auto; }
+
+
+    /* square board wrapper; JS sets px size so it always stays square and maximal */
+    .boardWrap{
+      position:relative;
+      width:100%;
+      height:100%;
+      max-width:800px;
+      /* FIX: cap to 800x800 */
+      max-height:800px;
+    }
+    #board{
+      width:100%;
+      height:100%;
+    }
+    #overlay{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      pointer-events:none;
+    }
+
+    /* chessboard.js coordinate labels */
+    #board .notation-322f9{
+      font-size: 9px;
+      line-height: 1;
+      opacity: .70;
+      pointer-events: none;
+    }
+    #board .alpha-d2270{ left: 2px !important; bottom: 2px !important; }
+    #board .numeric-fc462{ right: 2px !important; top: 2px !important; }
+
+    .below{
+      padding:10px 12px 12px;
+      border-top:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      display:grid; gap:8px;
+    }
+    .fenRow{display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12px;}
+    .fenLabel{color:var(--muted); font-weight:900; letter-spacing:.2px}
+    .fenBox{
+      flex:1; padding:8px 10px; border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.03);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      overflow:auto; white-space:nowrap;
+    }
+    .hint{font-size:12px; color:var(--muted); line-height:1.35}
+
+    /* NEW: nav row under the game (replaces FEN under the board) */
+    .navRow{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .navRow .smallBtn{
+      padding:8px 10px;
+      border-radius:10px;
+      font-size:12px;
+      font-weight:900;
+    }
+    .navMeta{
+      font-size:12px;
+      color:var(--muted);
+      padding:6px 8px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.03);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space:nowrap;
+      overflow:auto;
+      flex:1;
+      min-width:240px;
+    }
+
+    /* NEW: query-setup action row under navRow (shown only in setup mode) */
+    .setupRow{
+      display:none;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .setupRow.open{ display:flex; }
+    .setupRow .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:11px;
+      padding:2px 6px;
+      border-radius:8px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      color: rgba(15,23,42,.78);
+    }
+
+    .tabs{
+      display:flex; gap:8px;
+      padding:10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      flex-wrap:wrap;
+    }
+    .tab{
+      padding:8px 10px; border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      color:var(--muted);
+      font-weight:900; font-size:12px; cursor:pointer;
+      user-select:none;
+    }
+    .tab.active{
+      color:var(--text);
+      border-color: rgba(37,99,235,.55);
+      box-shadow:0 0 0 1px rgba(37,99,235,.15) inset;
+      background: rgba(37,99,235,.06);
+    }
+
+    .rightCard{ min-height:0; display:flex; flex-direction:column; }
+
+    .pane{
+      display:none;
+      padding:12px;
+      gap:10px;
+      flex:1;
+      min-height:0;
+      overflow:auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .pane.active{display:flex; flex-direction:column;}
+
+    /* FIX: moves list horizontal */
+    /* Moves list: lichess-like table */
+.moves{
+  overflow:auto;
+  padding-right:4px;
+  min-height:120px;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  align-content:stretch;
+}
+
+.moveRow{
+  display:grid;
+  grid-template-columns: 42px 1fr 1fr; /* move#, white, black */
+  gap:8px;
+  padding:4px 2px;
+  align-items:start;
+  border-radius:10px;
+}
+
+.moveRow:hover{ background: rgba(15,23,42,.02); }
+
+.mn{
+  color:var(--muted);
+  text-align:right;
+  padding:6px 8px;
+  border-radius:10px;
+  background: rgba(15,23,42,.04);
+  border:1px solid rgba(15,23,42,.06);
+  white-space:nowrap;
+}
+
+.plyBtn{
+  width:100%;
+  text-align:left;
+  padding:6px 10px;
+  border-radius:10px;
+  background:transparent;
+  border:1px solid transparent;
+  font-weight:700;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.plyBtn:hover{ border-color:var(--border); background:rgba(15,23,42,.03); }
+.plyBtn.active{ border-color:rgba(22,163,74,.55); box-shadow:0 0 0 1px rgba(22,163,74,.15) inset; }
+
+.moveCmt{
+  grid-column: 2 / 4; /* spans under white+black */
+  margin-top:2px;
+}
+
+.cmt{
+  display:block;
+  padding:4px 8px;
+  border-radius:10px;
+  border:1px solid rgba(15,23,42,.08);
+  background: rgba(15,23,42,.03);
+  color: rgba(15,23,42,.72);
+  font-size:12px;
+  line-height:1.25;
+  white-space:normal;
+}
+
+
+
+    textarea{
+      width:100%;
+      min-height:140px;
+      resize:vertical;
+      border-radius:12px; border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      color:var(--text);
+      padding:10px; outline:none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    textarea:focus{border-color:rgba(37,99,235,.55); box-shadow:0 0 0 3px rgba(37,99,235,.10);}
+
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .row label{min-width:120px; font-size:12px; color:var(--muted); font-weight:900}
+    input[type="file"]{padding:6px}
+    .smallBtn{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
+
+    .gameList{overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
+    .gameCard{
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      border-radius:14px;
+      padding:10px;
+      cursor:pointer;
+    }
+    .gameCard:hover{filter:brightness(0.99)}
+    .gameCard.active{border-color:rgba(37,99,235,.55); box-shadow:0 0 0 1px rgba(37,99,235,.12) inset;}
+    .gameTitle{font-weight:900; font-size:13px; margin-bottom:4px;}
+    .meta{font-size:12px; color:var(--muted); display:flex; gap:10px; flex-wrap:wrap;}
+    .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:11px;
+      padding:2px 6px;
+      border-radius:8px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      color: rgba(15,23,42,.78);
+    }
+
+    /* Errors tab console */
+    .errorTools{
+      display:flex; gap:8px; align-items:center; justify-content:space-between;
+      flex-wrap:wrap;
+    }
+    .errorBody{
+      padding:10px 12px 12px;
+      border:1px solid rgba(220,38,38,.25);
+      background: rgba(220,38,38,.05);
+      border-radius: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size:12px;
+      white-space:pre-wrap;
+      color:#7f1d1d;
+      overflow:auto;
+      min-height:160px;
+      flex:1;
+    }
+    .okLine{color:#166534}
+    .warnLine{color:#92400e}
+
+    /* Eval list */
+    .evalList{display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
+    .evalCard{
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      border-radius:14px;
+      padding:10px;
+    }
+    .evalTop{display:flex; align-items:flex-start; justify-content:space-between; gap:10px;}
+    .evalName{font-weight:900; font-size:13px;}
+    .evalDesc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.35}
+    .evalBtns{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
+    .evalBtns button{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
+    
+    /* bottom card */
+    .bottomGrid{
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      min-height:0;
+    }
+    /* ensure bottom FEN row aligns with other cards */
+    #bottomCard .fenRow{ margin:0; }
+
+    /* --- Import PGN modal --- */
+    .modalBackdrop{
+      position:fixed;
+      inset:0;
+      background: rgba(15,23,42,.45);
+      backdrop-filter: blur(6px);
+      display:none;
+      z-index:999;
+      padding:14px;
+    }
+    .modalBackdrop.open{display:grid; place-items:center;}
+    .modal{
+      width:min(980px, 100%);
+      height:min(84vh, 860px);
+      background: var(--panel);
+      border:1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 20px 60px rgba(15,23,42,.22);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+    }
+    .modalHead{
+      padding:12px 14px;
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background: rgba(15,23,42,.02);
+    }
+    .modalBody{
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      flex:1;
+      min-height:0;
+    }
+    #importPgnText{ flex:1; min-height:0; }
+
+    /* ---------------- Priyomes pane ---------------- */
+    .priyomesGrid{
+      display:grid;
+      grid-template-columns: 3fr 1fr; /* left ~75%, right ~25% */
+      gap:12px;
+      min-height:0;
+      flex:1;
+    }
+    @media (max-width:980px){
+      .priyomesGrid{
+        grid-template-columns: 1fr; /* stack on mobile */
+      }
+    }
+
+    .prLeftCard, .prRightCard{
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      border-radius:14px;
+      padding:10px;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .prList{
+      flex:1;
+      min-height:0;
+      overflow:auto; /* IMPORTANT: scroll within Priyomes */
+      -webkit-overflow-scrolling: touch;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding-right:4px;
+    }
+
+    .prRow{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+
+    .prItem{
+      border:1px solid var(--border);
+      background:#fff;
+      border-radius:14px;
+      padding:10px;
+      display:grid;
+      grid-template-columns: auto 1fr;
+      gap:10px;
+      align-items:start;
+    }
+
+    .prItem.active{
+      border-color: rgba(37,99,235,.55);
+      box-shadow:0 0 0 1px rgba(37,99,235,.12) inset;
+    }
+
+    .small-board{
+      width: 120px;
+      height: 120px;
+      border-radius:12px;
+      overflow:hidden;
+      border:1px solid rgba(15,23,42,.08);
+      background:#fff;
+      flex:0 0 auto;
+    }
+    @media (max-width:520px){
+      .small-board{
+        width: 96px;
+        height: 96px;
+      }
+    }
+
+    .prTitle{
+      font-weight:900;
+      font-size:13px;
+      margin-bottom:4px;
+    }
+    .prSub{
+      font-size:12px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+    .prControls{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    select{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:9px 10px;
+      background:#fff;
+      color:var(--text);
+      font-size:12px;
+      font-weight:800;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbarWrap">
+    <div class="topbar">
+      <div class="brand">
+        <button class="hamburger" id="btnHamburger" aria-label="Menu">☰</button>
+        <span class="brandTitle">Priyoиes</span>
+        <span class="pill" id="studyPill">Mock Study • 3 games</span>
+        <span class="pill" id="gamePill">—</span>
+      </div>
+    </div>
+    <div class="menu" id="menu">
+      <div class="actions">
+        <!-- MOVED: Prev/Next removed from hamburger per request -->
+        <button id="btnFlip">Flip</button>
+        <button id="btnReset">Reset</button>
+
+        <button id="btnSquares">Squares</button>
+        <button id="btnArrows">Arrows</button>
+        <button id="btnClear">Clear</button>
+
+        <button id="btnImportPgn">Import PGN</button>
+
+        <button id="btnExportGame">Export Game PGN</button>
+        <button id="btnExportStudy">Export Study PGN</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <!-- Top half: board -->
+    <div class="card boardCard" id="boardCard">
+      <div class="head" id="boardHead">
+        <div class="status" id="status">—</div>
+        <div class="status">
+          Tool: <span id="toolStatus">none</span>
+          <span id="toolDots" class="toolDots" hidden>
+            <button class="dotBtn" data-color="G" title="Green" aria-label="Green"><span class="dot dotG"></span></button>
+            <button class="dotBtn" data-color="R" title="Red" aria-label="Red"><span class="dot dotR"></span></button>
+            <button class="dotBtn" data-color="B" title="Blue" aria-label="Blue"><span class="dot dotB"></span></button>
+            <button class="dotBtn" data-color="Y" title="Yellow" aria-label="Yellow"><span class="dot dotY"></span></button>
+          </span>
+        </div>
+      </div>
+
+      <div class="boardArea" id="boardArea" tabindex="0" aria-label="Chessboard area">
+        <div class="boardWrap" id="boardWrap">
+          <div id="board"></div>
+          <svg id="overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+
+      <div class="below" id="boardBelow">
+        <!-- nav buttons below game -->
+        <div class="navRow">
+          <button class="smallBtn" id="btnPrev" type="button">◀︎</button>
+          <button class="smallBtn" id="btnNext" type="button">▶︎</button>
+        </div>
+
+        <!-- shown only during query-setup mode -->
+        <div class="setupRow" id="setupRow">
+          <span class="kbd">Query setup mode</span>
+          <button class="smallBtn" id="btnAddPriyome" type="button">Add</button>
+          <button class="smallBtn" id="btnCancelPriyome" type="button">Cancel</button>
+          <button class="smallBtn" id="btnPlayFromHere" type="button">Play from here</button>
+          <button class="smallBtn" id="btnSetupImportPgn" type="button">Import from PGN</button>
+          <input id="setupPgnFile" type="file" accept=".pgn" hidden />
+          <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Lower half: tabs -->
+    <div class="card rightCard">
+      <div class="tabs">
+        <div class="tab active" id="tabMoves">Moves</div>
+        <div class="tab" id="tabPriyomes">Priyomes</div>
+        <div class="tab" id="tabGames">Games</div>
+        <div class="tab" id="tabQuery">Query</div>
+        <div class="tab" id="tabEvals">Evals</div>
+        <div class="tab" id="tabErrors">Errors</div>
+      </div>
+
+      <div class="pane active" id="paneMoves">
+        <div class="moves" id="moves"></div>
+        <div>
+          <div class="hint" id="annoTitle">Annotation</div>
+          <textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
+        </div>
+      </div>
+
+      <!-- Priyomes tab -->
+      <div class="pane" id="panePriyomes">
+        <div class="hint">
+          Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board; click <b>Add</b> under the board to save.
+        </div>
+
+        <div class="priyomesGrid">
+          <div class="prLeftCard">
+            <div class="prRow">
+              <div class="status"><b>Patterns</b></div>
+              <div class="hint" id="prSelHint" style="margin-left:auto;">Tap a card to select.</div>
+            </div>
+            <div class="prList" id="prList"></div>
+          </div>
+
+          <div class="prRightCard">
+            <div class="status"><b>Database</b></div>
+            <select id="dbSelect" aria-label="Database select">
+              <option value="all">all</option>
+              <option value="fischer">Fischer</option>
+            </select>
+
+            <div class="prControls">
+              <button class="smallBtn" id="btnPriyomesSearch" type="button">Search</button>
+              <button class="smallBtn" id="btnPriyomesNew" type="button">New Query</button>
+            </div>
+
+            <div class="hint" id="prRightHint">
+              Search is a stub (no backend wired yet). New Query turns the main board into a setup tool.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" id="paneGames">
+        <div class="hint">Studies list. Click to load.</div>
+        
+        <div class="row" style="gap:8px; align-items:center; margin: 8px 0 10px;">
+          <label class="kbd" for="studySelect">Study</label>
+          <select id="studySelect" class="smallSelect" style="flex:1; min-width:0;"></select>
+          <button class="smallBtn" id="btnNewStudy" type="button">New Study</button>
+        </div>
+<div class="gameList" id="gameList"></div>
+      </div>
+
+      <!-- Query tab -->
+      <div class="pane" id="paneQuery">
+        <div class="hint">
+          Load <span class="kbd">.cql</span> and <span class="kbd">.pgn</span>. CQL becomes editable. Run executes <span class="kbd">/wasm/cql_runner.js</span>.
+          Discovered games from output are added to <b>Studies</b>.
+        </div>
+
+        <div class="row">
+          <label for="qCqlFile">CQL file</label>
+          <input id="qCqlFile" type="file" accept=".cql"/>
+          <span class="kbd" id="qCqlName">—</span>
+        </div>
+
+        <div class="row">
+          <label for="qPgnFile">PGN file</label>
+          <input id="qPgnFile" type="file" accept=".pgn"/>
+          <span class="kbd" id="qPgnName">—</span>
+        </div>
+
+        <div class="row">
+          <label for="qArgv">Argv</label>
+          <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql"
+                 style="width:min(980px,100%); padding:8px 10px; border-radius:12px; border:1px solid var(--border); background:rgba(15,23,42,.02);"/>
+        </div>
+
+        <div class="row">
+          <label>CQL (editable)</label>
+          <span class="kbd">in-memory</span>
+        </div>
+        <textarea id="qCqlText" placeholder="CQL will load here; you can edit before running…"></textarea>
+
+        <div class="row">
+          <button class="smallBtn" id="qRun" disabled>Run Query</button>
+          <span class="hint" id="qStatus">Choose files to enable.</span>
+        </div>
+      </div>
+
+      <!-- Evals tab -->
+      <div class="pane" id="paneEvals">
+        <div class="hint">
+          Evals are loaded from <span class="kbd">./evals.js</span>. Click <b>Run</b> to evaluate the <b>current game</b>.
+          Output is added as a new game (and smoke-checked with chess.js first).
+          <br/>This tab logs <b>full</b> input/output previews to the error logger.
+        </div>
+
+        <div class="row">
+          <button class="smallBtn" id="btnReloadEvals" type="button">Reload evals.js</button>
+          <span class="kbd" id="evalsStatus">—</span>
+        </div>
+
+        <div class="evalList" id="evalList"></div>
+         <div class="hint" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+         CQL evals
+         </div>
+<div class="evalList" id="cqlEvalList"></div>
+      </div>
+
+      <!-- Errors tab -->
+      <div class="pane" id="paneErrors">
+        <div class="errorTools">
+          <div class="hint">All logs and errors show here.</div>
+          <div class="row" style="margin-left:auto;">
+            <span class="kbd">Lines</span>
+            <span class="kbd" id="errCount">0</span>
+            <button class="smallBtn" id="btnClearErrors" type="button">Clear</button>
+          </div>
+        </div>
+        <div class="errorBody" id="errorLog"></div>
+      </div>
+    </div>
+
+  <!-- Bottom card for position FEN + game PGN -->
+  <div class="card bottomCard" id="bottomCard">
+      <div class="head">
+        <div class="status">Position FEN & Game PGN</div>
+        <div class="status" id="bottomMeta">—</div>
+      </div>
+      <div class="bottomGrid">
+        <div class="fenRow">
+          <span class="fenLabel">FEN</span>
+          <div class="fenBox" id="fenBottom"></div>
+        </div>
+        <div class="hint">PGN shown includes inline <span class="kbd">{ comments }</span> and inline draw tags <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span> at the ply they belong to.</div>
+        <textarea id="pgnBottom" readonly></textarea>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Import PGN modal -->
+  <div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Import PGN">
+      <div class="modalHead">
+        <div class="status"><b>Import PGN</b> <span class="pill">paste one or more games</span></div>
+        <div class="row">
+          <button class="smallBtn" id="btnImportCancel" type="button">Cancel</button>
+          <button class="smallBtn" id="btnImportAdd" type="button">Add to Games</button>
+        </div>
+      </div>
+      <div class="modalBody">
+        <div class="hint">
+          Paste PGN here. Multiple games are supported if each game starts with <span class="kbd">[Event "…"]</span>.
+        </div>
+        <textarea id="importPgnText" placeholder='[Event "Example"]&#10;...'></textarea>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { Chess } from "./third_party/chess.js";
+(() => {
+  // ---------- hamburger menu ----------
+  const btnHamburger = document.getElementById('btnHamburger');
+  const menu = document.getElementById('menu');
+  btnHamburger.addEventListener('click', () => {
+    menu.classList.toggle('open');
+    sizeBoardSquare();
+    if (board && typeof board.resize === 'function') board.resize();
+    redrawDrawings();
+    resizeMiniBoards();
+  });
+
+  // ---------- error logger ----------
+  const errorLog = document.getElementById('errorLog');
+  const errCount = document.getElementById('errCount');
+  let errorLines = [];
+
+  function logLine(kind, msg){
+    const ts = new Date().toISOString().slice(11,19);
+    const line = `[${ts}] ${kind}: ${msg}`;
+    errorLines.push(line);
+    errCount.textContent = String(errorLines.length);
+
+    const el = document.createElement('div');
+    el.textContent = line;
+    if (kind === 'OK') el.className = 'okLine';
+    if (kind === 'WARN') el.className = 'warnLine';
+    errorLog.appendChild(el);
+    errorLog.scrollTop = errorLog.scrollHeight;
+  }
+
+  function logBlock(kind, title, value, max=2000){
+    const s = (value === undefined) ? 'undefined'
+          : (value === null) ? 'null'
+          : (typeof value === 'string') ? value
+          : (() => { try { return JSON.stringify(value, null, 2); } catch { return String(value); } })();
+
+    const clipped = (s.length > max) ? (s.slice(0, max) + `\n… (${s.length-max} more chars)`) : s;
+    logLine(kind, `${title} (${s.length} chars)\n${clipped}`);
+  }
+
+  function logStack(kind, prefix, e){
+    const msg = e && e.stack ? e.stack : String(e);
+    logLine(kind, `${prefix}${msg}`);
+  }
+
+  window.addEventListener('error', (e) => {
+    const where = e.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
+    const detail = (e.error && e.error.stack) ? `\n${e.error.stack}` : '';
+    logLine('ERR', `${e.message || 'Error'}${where}${detail}`);
+  });
+
+  window.addEventListener('unhandledrejection', (e) => {
+    logLine('ERR', `Unhandled promise rejection: ${String(e.reason && e.reason.stack ? e.reason.stack : e.reason)}`);
+  });
+
+  document.getElementById('btnClearErrors').addEventListener('click', () => {
+    errorLines = [];
+    errCount.textContent = '0';
+    errorLog.innerHTML = '';
+    logLine('OK', 'Cleared error log.');
+  });
+
+  // ---------- dependency diagnostics ----------
+  function diag(){
+    logLine('OK', `User-Agent: ${navigator.userAgent}`);
+    const haveJQ = (typeof window.jQuery !== 'undefined');
+    logLine(haveJQ ? 'OK' : 'ERR', `jQuery loaded: ${haveJQ}`);
+
+    const haveChessboard = (typeof window.Chessboard !== 'undefined');
+    logLine(haveChessboard ? 'OK' : 'ERR', `Chessboard loaded: ${haveChessboard}`);
+
+    const haveChess = (typeof new Chess() !== 'undefined');
+    logLine(haveChess ? 'OK' : 'ERR', `Chess (chess.js) loaded: ${haveChess}`);
+
+    const testImg = new Image();
+    testImg.onload = () => logLine('OK', 'Piece sprite reachable (wikipedia set).');
+    testImg.onerror = () => logLine('ERR', 'Piece sprite failed to load (CDN blocked?).');
+    testImg.src = 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/Wp.png';
+  }
+
+  function colorHex(c){
+    switch(c){
+      case 'G': return '#16a34a';
+      case 'R': return '#dc2626';
+      case 'B': return '#2563eb';
+      case 'Y': return '#d97706';
+      default: return '#16a34a';
+    }
+  }
+  
+  let GAMES = [];
+  // ---------- studies ----------
+  // A Study is just a list of game ids (subset of GAMES).
+  const STUDIES = Object.create(null); // name -> { name, gameIds:[], loaded:true }
+  let currentStudyName = 'Default';
+
+  function todayYMD(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${dd}`;
+  }
+  function uniqStudyName(base){
+    let name = base;
+    let n = 2;
+    while (STUDIES[name]) name = `${base} (${n++})`;
+    return name;
+  }
+  function ensureStudy(name, gameIds=[]){
+    if (!STUDIES[name]) STUDIES[name] = { name, gameIds: [], loaded:true };
+    const s = STUDIES[name];
+    for (const id of gameIds){
+      if (id && !s.gameIds.includes(id)) s.gameIds.push(id);
+    }
+    return s;
+  }
+  function currentStudy(){ return STUDIES[currentStudyName] || ensureStudy(currentStudyName, []); }
+
+  function getStudyGames(){
+    const ids = currentStudy().gameIds || [];
+    const map = new Map(GAMES.map(g => [g.id, g]));
+    const out = [];
+    for (const id of ids){
+      const g = map.get(id);
+      if (g) out.push(g);
+    }
+    return out;
+  }
+
+  function renderStudySelect(){
+    const sel = document.getElementById('studySelect');
+    if (!sel) return;
+    const names = Object.keys(STUDIES).sort((a,b)=>a.localeCompare(b));
+    sel.innerHTML = '';
+    for (const n of names){
+      const opt = document.createElement('option');
+      opt.value = n;
+      opt.textContent = n;
+      if (n === currentStudyName) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  function setCurrentStudy(name){
+    currentStudyName = name;
+    ensureStudy(name, []);
+    renderStudySelect();
+    renderGameList();
+    document.getElementById('gamePill').textContent = `Study • ${currentStudy().gameIds.length} games`;
+  }
+
+async function fetchText(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`fetchText: ${res.status} ${res.statusText} for ${url}`);
+  return await res.text();
+}
+  
+  // Boot: load default studies from ./pgn/Study.pgn (if present)
+async function bootLoadDefaultStudies() {
+  try {
+    const entries = Object.entries(STUDY_MANIFEST || {});
+    if (!entries.length) {
+      logLine('WARN', 'STUDY_MANIFEST empty; nothing to boot-load.');
+      return;
+    }
+
+    const loadedStudyNames = [];
+
+    // local fetch helper: avoids dependency on any global fetchText/fetchTextCached
+    async function _fetchTextNoStore(url) {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return await res.text();
+    }
+
+    for (const [keyRaw, urlRaw] of entries) {
+      const key = String(keyRaw || '').trim();
+      const url = String(urlRaw || '').trim();
+      if (!key || !url) continue;
+
+      const studyName = (key.toLowerCase() === 'default') ? 'Default' : key;
+
+      try {
+        logLine('OK', `Boot loading study "${studyName}" from ${url} …`);
+
+        const txt = await _fetchTextNoStore(url);
+        const parts = splitMultiPgn(txt);
+
+        if (!parts.length) {
+          logLine('WARN', `No games found in ${url} for study "${studyName}".`);
+          continue;
+        }
+
+        // Overwrite this study’s game list on boot (keeps boot deterministic)
+        STUDIES[studyName] = { name: studyName, gameIds: [], loaded: true };
+
+        const ids = [];
+        for (let i = 0; i < parts.length; i++) {
+          const pgn = String(parts[i] || '').trim();
+          if (!pgn) continue;
+
+          const h = parseHeaders(pgn);
+          const title = (h && h.Event) ? h.Event : `${studyName} • Game ${i + 1}`;
+          const resTok = (h && h.Result) ? h.Result : '*';
+
+          const id = `boot:${studyName}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+          GAMES.unshift({
+            id,
+            title,
+            opening: 'Boot Study',
+            result: resTok,
+            pgn
+          });
+
+          ids.push(id);
+        }
+
+        if (!ids.length) {
+          logLine('WARN', `All games empty/invalid in ${url} for "${studyName}".`);
+          continue;
+        }
+
+        // Ensure the study exists and has the ids we just created
+        ensureStudy(studyName, ids);
+        loadedStudyNames.push(studyName);
+
+        logLine('OK', `Boot-loaded "${studyName}" (${ids.length} games).`);
+      } catch (e) {
+        logStack('WARN', `Failed to boot-load "${studyName}" from ${url}:`, e);
+      }
+    }
+
+    if (!loadedStudyNames.length) {
+      logLine('WARN', 'No studies loaded successfully from STUDY_MANIFEST.');
+      return;
+    }
+
+    // Prefer Default if present; otherwise first successfully loaded.
+    const preferred =
+      loadedStudyNames.includes('Default') ? 'Default' : loadedStudyNames[0];
+
+    setCurrentStudy(preferred);
+    // On initial boot, immediately load the first game of the active study onto the main board.
+    try {
+      const s = currentStudy();
+      const firstId = s && s.gameIds && s.gameIds.length ? s.gameIds[0] : null;
+      if (firstId) {
+        // Ensure boards exist before loading
+        ensureMainBoard();
+        loadGame(firstId, { startAtFirst: true });
+        logLine('OK', `Boot: loaded first game (${firstId}) from study "${preferred}".`);
+      } else {
+        logLine('WARN', `Boot: study "${preferred}" has no games to auto-load.`);
+      }
+    } catch (e) {
+      logStack('WARN', 'Boot: failed to auto-load first game.', e);
+    }
+
+    logLine('OK', `Boot studies complete. Active study: "${preferred}".`);
+  } catch (e) {
+    logStack('ERR', 'bootLoadDefaultStudies() failed:', e);
+  }
+}
+
+  const discoveredIds = new Set();
+
+  // ---------- eval registry ----------
+  let EVALS_REGISTRY = [];
+  const evalListEl = document.getElementById('evalList');
+  const cqlEvalListEl = document.getElementById('cqlEvalList');
+  const evalsStatusEl = document.getElementById('evalsStatus');
+
+  // ---------- DOM ----------
+  const statusEl = document.getElementById('status');
+  const movesEl = document.getElementById('moves');
+  const gameListEl = document.getElementById('gameList');
+  const gamePill = document.getElementById('gamePill');
+  const toolStatusEl = document.getElementById('toolStatus');
+  const toolDotsEl = document.getElementById('toolDots');
+  const annoTitleEl = document.getElementById('annoTitle');
+  const annoTextEl = document.getElementById('annoText');
+  const overlay = document.getElementById('overlay');
+
+  // Bottom card DOM
+  const fenBottom = document.getElementById('fenBottom');
+  const pgnBottom = document.getElementById('pgnBottom');
+  const bottomMeta = document.getElementById('bottomMeta');
+
+  // Query tab DOM
+  const qCqlFile = document.getElementById('qCqlFile');
+  const qPgnFile = document.getElementById('qPgnFile');
+  const qCqlName = document.getElementById('qCqlName');
+  const qPgnName = document.getElementById('qPgnName');
+  const qCqlText = document.getElementById('qCqlText');
+  const qArgv = document.getElementById('qArgv');
+  const qRun = document.getElementById('qRun');
+  const qStatus = document.getElementById('qStatus');
+
+  // Board sizing DOM
+  const boardArea = document.getElementById('boardArea');
+  const boardWrap = document.getElementById('boardWrap');
+  const boardCard = document.getElementById('boardCard');
+  const boardHead = document.getElementById('boardHead');
+  const boardBelow = document.getElementById('boardBelow');
+
+  // Import modal DOM
+  const importModalBackdrop = document.getElementById('importModalBackdrop');
+  const importPgnText = document.getElementById('importPgnText');
+  const btnImportCancel = document.getElementById('btnImportCancel');
+  const btnImportAdd = document.getElementById('btnImportAdd');
+  const btnImportPgn = document.getElementById('btnImportPgn');
+
+  // Priyomes DOM
+  const prListEl = document.getElementById('prList');
+  const dbSelectEl = document.getElementById('dbSelect');
+  const btnPriyomesSearch = document.getElementById('btnPriyomesSearch');
+  const btnPriyomesNew = document.getElementById('btnPriyomesNew');
+
+  // Setup mode DOM
+  const setupRow = document.getElementById('setupRow');
+  const btnAddPriyome = document.getElementById('btnAddPriyome');
+  const btnCancelPriyome = document.getElementById('btnCancelPriyome');
+  const btnSetupImportPgn = document.getElementById('btnSetupImportPgn');
+  const setupPgnFile = document.getElementById('setupPgnFile');
+
+  // ---------- state ----------
+  let board = null;
+  let orientation = 'white';
+  let currentGame = null;
+
+  let game = null;
+  let verboseHistory = [];
+  let activePly = 0;
+  let currentStartFen = 'start'; // per-game ply 0 start position (from PGN [FEN "..."] if present)
+
+  function setBoardFen(reason, fen, animate=false){
+    if (!board) return;
+    const f = (fen && String(fen).trim()) ? String(fen).trim() : 'start';
+    // log to both console and the on-page log
+    try { console.log(`[board] position (${reason}) fen =>`, f); } catch(_e){}
+    logLine('OK', `BOARD FEN [${reason}]: ${f}`);
+    board.position(f, !!animate);
+  }
+
+  
+  function resetGameToStartFen(){
+    const f = (currentStartFen && String(currentStartFen).trim()) ? String(currentStartFen).trim() : 'start';
+    if (f === 'start'){
+      game.reset();
+      return { ok:true, used:'start' };
+    }
+
+    // chess.js versions differ: some support load(fen, {skipValidation:true})
+    // We try strict first, then skipValidation, and log detailed validation errors when possible.
+    let ok = false;
+    let used = f;
+    try {
+      ok = !!game.load(f);
+    } catch (e) {
+      ok = false;
+    }
+    if (!ok){
+      try {
+        ok = !!game.load(f, { skipValidation: true });
+      } catch (_e) {
+        ok = false;
+      }
+    }
+
+    if (!ok){
+      // Some chess.js builds are strict or have different FEN loading paths.
+      // 1) Surface validation diagnostics if available
+      try {
+        if (typeof game.validate_fen === 'function'){
+          const v = game.validate_fen(f);
+          logLine('WARN', `Start FEN validate_fen: valid=${v.valid} err=${v.error_number} ${v.error || ''}`);
+        } else if (typeof game.validateFen === 'function'){
+          const v = game.validateFen(f);
+          logLine('WARN', `Start FEN validateFen: valid=${v.valid} err=${v.error_number} ${v.error || ''}`);
+        }
+      } catch(_e){}
+
+      // 2) Fallback: re-instantiate the Chess() object with the FEN (supported by many versions)
+      // This avoids relying on .load(...) semantics, while still letting us replay SAN on top.
+      try {
+        if (typeof Chess === 'function'){
+          const g2 = new Chess(f);
+          // If constructor succeeded, swap it in.
+          if (g2 && typeof g2.fen === 'function'){
+            game = g2;
+            ok = true;
+          }
+        }
+      } catch(_e){ ok = false; }
+
+      if (!ok){
+        logLine('WARN', `Failed to load start FEN from headers; falling back to standard start. FEN="${f}"`);
+        try { game.reset(); } catch(_e) {}
+        currentStartFen = 'start';
+        used = 'start';
+        return { ok:false, used };
+      }
+    }
+
+    return { ok:true, used };
+  }
+
+
+  // user annotations per ply
+  const annotations = Object.create(null);
+
+  // drawings PER PLY
+  const drawings = Object.create(null);
+
+  // Priyomes patterns
+  const PRIYOMES = [];
+  let selectedPriyomeId = null;
+
+  // Setup-mode import (PGN -> fen + optional cqlref)
+  let setupImportedCqlRef = null;
+  let setupImportedPgnTitle = null;
+
+  // Query Pgn input
+  // when set, Query runs against these bytes (e.g., current game)
+  let qPgnBytesOverride = null;
+
+  // mini boards
+  const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
+  let setupImportedMiniSquares = null;
+  let setupImportedMiniArrows  = null;
+
+  // ---------- Manifests (edit these paths to match your repo) ----------
+  // name -> URL for CQL file
+  const CQL_MANIFEST = {
+    // "b7_sac": "./cql/b7_sac.cql",
+    "weakd4" : "./cql/weakd4.cql"
+  };
+
+  // db key -> URL for PGN database
+  const PGN_MANIFEST = {
+    // "all": "./pgn/all.pgn",
+    "fischer": "./pgn/Fischer.pgn"
+  };
+
+  // priyomes
+  const PRIYOME_PGN_MANIFEST = {
+  default: "./priyomes/priyomes.pgn"
+};
+
+
+  // studies: PGN file that seeds default studies on boot
+  const STUDY_MANIFEST = {
+    default:"./pgn/Study.pgn",
+    fen_test: "./pgn/default games.pgn"
+  };
+
+  // kick off boot load (non-blocking for UI)
+  bootLoadDefaultStudies();
+
+// name -> { url, description } for *Evals tab* CQL evals list
+  const CQL_EVAL_MANIFEST = {
+    naivealignments: {
+      url: "./cql/naivealignments.cql",
+      description: "Naive alignments."
+    }
+  };
+
+  // All PGN should be loaded through this function
+  // to manage edge cases in chess.js 1.4.0
+  function SanitizedLoadPgn(pgnText) {
+  const raw = String(pgnText || "").replace(/\r/g, "");
+
+  // Merge adjacent brace-comments: "{a} {b}" -> "{a\n\nb}" (repeat until stable).
+  // This preserves the intent of "engine comment" + "human comment" as paragraphs.
+  function mergeAdjacentBraceComments(s) {
+    let out = s;
+    for (let i = 0; i < 200; i++) {
+      const next = out.replace(
+        /\{\s*([\s\S]*?)\s*\}\s*\{\s*([\s\S]*?)\s*\}/g,
+        "{ $1\n\n$2 }"
+      );
+      if (next === out) break;
+      out = next;
+    }
+    return out;
+  }
+
+  const sanitized = mergeAdjacentBraceComments(raw);
+
+  let game = new Chess();
+  let ok = true;
+
+  try {
+    game.loadPgn(sanitized);
+  } catch (e) {
+    ok = false;
+    return {ok, game};
+  }
+    return  {ok, game};
+}
+
+
+  const _cqlCache = new Map(); // name -> text
+  const _pgnCache = new Map(); // db -> Uint8Array
+
+  async function fetchTextCached(url, cache){
+    if (cache.has(url)) return cache.get(url);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
+    const txt = await res.text();
+    cache.set(url, txt);
+    return txt;
+  }
+
+  async function loadCqlByRef(name){
+    if (!name) return null;
+    const url = CQL_MANIFEST[name];
+    if (!url) throw new Error(`Unknown cqlref="${name}" (not in CQL_MANIFEST)`);
+    const txt = await fetchTextCached(url, _cqlCache);
+    qCqlName.textContent = `(manifest) ${name}`;
+    qCqlText.value = txt;
+    updateQueryUi();
+    return txt;
+  }
+
+  async function loadPriyomesFromPgn(url){
+  const text = await fetchTextCached(url, _pgnCache);
+  const games = splitMultiPgn(text);
+
+  const priyomes = [];
+
+  for (const pgn of games){
+    const headers = parseHeaders(pgn);
+
+    // REQUIRED: stable identifier
+    const id = crypto.randomUUID();
+
+    // Position
+    let fen;
+    if (headers.SetUp === "1" && headers.FEN){
+      fen = headers.FEN;
+    } else {
+      const { ok, g } = SanitizedLoadPgn(pgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in loadpr');
+      fen = g.fen();
+    }
+
+    // Optional overlays
+    const tagsByPly = parseDrawTagsByPlyFromPgn(pgn);
+    const d0 = tagsByPly["0"] || {};
+
+    priyomes.push({
+      id,
+      title: headers.Event || "Priyome",
+      subtitle: headers.Description || "",
+      fen,
+      cqlref: headers.cqlref || headers.CQLRef || null,
+      miniSquares: d0.squares || {},
+      miniArrows:  d0.arrows  || [],
+      _pgn: pgn          // keep raw PGN if you want
+    });
+  }
+
+  return priyomes;
+  }
+
+  (async () => {
+  const url = PRIYOME_PGN_MANIFEST.default;
+  const loaded = await loadPriyomesFromPgn(url);
+
+  PRIYOMES.length = 0;
+  PRIYOMES.push(...loaded);
+
+  renderPriyomes();
+})();
+
+  async function getPgnBytesForDb(dbKey){
+    const url = PGN_MANIFEST[dbKey];
+    if (!url) return null;
+    if (_pgnCache.has(dbKey)) return _pgnCache.get(dbKey);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
+    const ab = await res.arrayBuffer();
+    const bytes = new Uint8Array(ab);
+    _pgnCache.set(dbKey, bytes);
+    return bytes;
+  }
+
+
+  function ensureStores(gameId){
+    if (!annotations[gameId]) annotations[gameId] = Object.create(null);
+    if (!drawings[gameId]) drawings[gameId] = Object.create(null);
+  }
+
+  function ensureDrawAt(gameId, ply){
+    ensureStores(gameId);
+    const key = String(ply);
+    if (!drawings[gameId][key]){
+      drawings[gameId][key] = { squares:Object.create(null), arrows:[] };
+    }
+    return drawings[gameId][key];
+  }
+
+  function currentDraw(){
+    // In setup mode, drawings apply to the setup position (ply 0).
+    if (isQuerySetupMode){
+      const gid = setupDraftId || setupDraftDrawId;
+      return ensureDrawAt(gid, 0);
+    }
+    if (!currentGame) return { squares:Object.create(null), arrows:[] };
+    return ensureDrawAt(currentGame.id, activePly);
+  }
+
+  const Tool = { NONE:'none', SQUARES:'squares', ARROWS:'arrows' };
+  let tool = Tool.NONE;
+  let tapFrom = null;
+
+  // Tool color
+  let toolColor = 'G'; // G,R,B,Y
+  function setToolColor(c){
+    toolColor = c;
+    document.querySelectorAll('.dotBtn').forEach(b => b.classList.toggle('active', b.dataset.color === c));
+    logLine('OK', `Tool color set to: ${c}`);
+  }
+  document.querySelectorAll('.dotBtn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setToolColor(btn.dataset.color);
+    });
+  });
+  setToolColor(toolColor);
+
+  // Only suppress navigation gestures while a piece is actively being dragged
+  let isDraggingPiece = false;
+
+  // Query setup mode (free placement / trash / spare pieces)
+  let isQuerySetupMode = false;
+
+  // Setup-draft game (for query setup mode)
+  let setupDraftId = null;                 // game id once created
+  const setupDraftDrawId = '__setup__';    // temp drawings bucket before game exists
+
+  function boardObjToFen(posObj){
+    const files = 'abcdefgh';
+    const ranks = [];
+    for (let r=8;r>=1;r--){
+      let row = '';
+      let empties = 0;
+      for (let f=0;f<8;f++){
+        const sq = files[f] + r;
+        const p = posObj[sq];
+        if (!p){ empties++; continue; }
+        if (empties){ row += String(empties); empties = 0; }
+        const c = p[0]; // w/b
+        const t = p[1]; // P,N,B,R,Q,K
+        row += (c === 'w') ? t : t.toLowerCase();
+      }
+      if (empties) row += String(empties);
+      ranks.push(row || '8');
+    }
+    return ranks.join('/') + ' w - - 0 1';
+  }
+
+  function buildSetupPgn(fen, title){
+    const nm = (title || 'Untitled Setup').replace(/"/g, "'");
+    return `[Event "${nm}"]
+[Site "Local"]
+[Date "${todayYMD()}"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "*"]
+[SetUp "1"]
+[FEN "${fen}"]
+
+*`;
+  }
+
+  function updateSetupPreview(){
+    if (!isQuerySetupMode || !board) return null;
+    const fen = boardObjToFen(board.position());
+    const pgn = buildSetupPgn(fen, `Setup ${todayYMD()}`);
+
+    // Live preview in the bottom card (FEN + PGN) during setup mode
+    if (fenBottom) fenBottom.textContent = fen;
+    if (pgnBottom) pgnBottom.value = pgn;
+    if (bottomMeta) bottomMeta.textContent = 'Setup preview';
+
+    return { fen, pgn };
+  }
+
+  function ensureSetupDraftGame(){
+    const prev = updateSetupPreview();
+    if (!prev) return null;
+    if (setupDraftId) return setupDraftId;
+
+    const title = prompt('Name this game (you can rename later):', `Setup ${todayYMD()}`) || `Setup ${todayYMD()}`;
+    const pgn = buildSetupPgn(prev.fen, title);
+    const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+
+    GAMES.unshift({ id:newId, title, opening:'Setup', result:'*', pgn });
+
+    // carry drawings made in setup mode, if any
+    if (drawings[setupDraftDrawId]){
+      drawings[newId] = JSON.parse(JSON.stringify(drawings[setupDraftDrawId]));
+    }
+
+    ensureStudy(currentStudyName, [newId]);
+    setCurrentStudy(currentStudyName);
+
+    setupDraftId = newId;
+    return newId;
+  }
+
+  function clearSetupDraftTemp(){
+    setupDraftId = null;
+    drawings[setupDraftDrawId] = null;
+  }
+
+
+  function setTool(t){
+    tool = t;
+    tapFrom = null;
+    toolStatusEl.textContent = t;
+    toolDotsEl.hidden = (t === Tool.NONE);
+
+    document.getElementById('btnSquares').classList.toggle('on', t === Tool.SQUARES);
+    document.getElementById('btnArrows').classList.toggle('on', t === Tool.ARROWS);
+    logLine('OK', `Tool set to: ${t}`);
+  }
+
+  // ---------- board sizing ----------
+function sizeBoardSquare(){
+  // layout.html-style sizing: board fills available panel space while staying square
+  const areaRect = boardArea.getBoundingClientRect();
+  const cs = getComputedStyle(boardArea);
+
+  const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
+  const padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
+
+  const availW = Math.max(0, areaRect.width  - padX);
+  const availH = Math.max(0, areaRect.height - padY);
+
+  const inPiecesMode = !!isQuerySetupMode;
+  const maxSide = inPiecesMode ? 600 : 800;
+
+  let side;
+  let height;
+
+  if (inPiecesMode){
+    // Keep the "pieces mode" taller board, but ensure it fits in the panel.
+    side = Math.floor(Math.min(maxSide, availW, availH / 1.3));
+    height = Math.floor(side * 1.3);
+  } else {
+    side = Math.floor(Math.min(maxSide, availW, availH));
+    height = side;
+  }
+
+  boardWrap.style.width  = side + 'px';
+  boardWrap.style.height = height + 'px';
+}
+
+  // Use ResizeObserver to keep the board sized like layout.html
+  let _boardRO = null;
+  function ensureBoardRO(){
+    if (_boardRO) return;
+    if (typeof ResizeObserver === 'undefined') return;
+    _boardRO = new ResizeObserver(() => {
+      sizeBoardSquare();
+      if (board && typeof board.resize === 'function') board.resize();
+      redrawDrawings();
+      resizeMiniBoards();
+    });
+    _boardRO.observe(boardArea);
+  }
+
+
+  // ---------- overlay ----------
+  function clearOverlay(){ while(overlay.firstChild) overlay.removeChild(overlay.firstChild); }
+
+  function ensureDefs(){
+    let defs = overlay.querySelector('defs');
+    if (!defs){
+      defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+      overlay.appendChild(defs);
+    }
+    for (const c of ['G','R','B','Y']){
+      if (!overlay.querySelector(`#arrowHead${c}`)){
+        const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
+        marker.setAttribute('id',`arrowHead${c}`);
+        marker.setAttribute('markerWidth','6');
+        marker.setAttribute('markerHeight','6');
+        marker.setAttribute('refX','5.2');
+        marker.setAttribute('refY','3');
+        marker.setAttribute('orient','auto');
+        marker.setAttribute('markerUnits','strokeWidth');
+        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d','M0,0 L6,3 L0,6 Z');
+        path.setAttribute('fill', colorHex(c));
+        marker.appendChild(path);
+        defs.appendChild(marker);
+      }
+    }
+  }
+
+  function squareToXY(sq){
+    const f = sq.charCodeAt(0)-97;
+    const r = parseInt(sq[1],10)-1;
+    if (orientation === 'white'){
+      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
+    } else {
+      return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
+    }
+  }
+
+  function drawSquare(sq, c){
+    const {x,y} = squareToXY(sq);
+    const size = 12.5;
+    const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', x - size/2);
+    rect.setAttribute('y', y - size/2);
+    rect.setAttribute('width', size);
+    rect.setAttribute('height', size);
+    rect.setAttribute('fill', colorHex(c));
+    rect.setAttribute('opacity', '0.16');
+    overlay.appendChild(rect);
+  }
+
+  function drawArrow(from, to, c){
+    const a = squareToXY(from), b = squareToXY(to);
+    const dx=b.x-a.x, dy=b.y-a.y;
+    const len=Math.hypot(dx,dy)||1;
+    const shrink=4;
+    const ux=dx/len, uy=dy/len;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', a.x);
+    line.setAttribute('y1', a.y);
+    line.setAttribute('x2', b.x - ux*shrink);
+    line.setAttribute('y2', b.y - uy*shrink);
+    line.setAttribute('stroke', colorHex(c));
+    line.setAttribute('stroke-width', '1.7');
+    line.setAttribute('opacity', '0.92');
+    line.setAttribute('marker-end', `url(#arrowHead${c})`);
+    overlay.appendChild(line);
+  }
+
+  function redrawDrawings(){
+    clearOverlay();
+    ensureDefs();
+    if (!currentGame) return;
+
+    const d = currentDraw();
+    for (const sq of Object.keys(d.squares)){
+      const c = d.squares[sq];
+      if (c) drawSquare(sq, c);
+    }
+    for (const ar of d.arrows){
+      drawArrow(ar.from, ar.to, ar.color || 'G');
+    }
+  }
+
+  // ---------- PGN draw-tags helpers ----------
+  function buildCslTag(d){
+    const items = Object.keys(d.squares || {}).sort().map(sq => `${d.squares[sq]}${sq}`);
+    return items.length ? `[%csl ${items.join(',')}]` : '';
+  }
+  function buildCalTag(d){
+    const items = (d.arrows || []).map(a => `${a.color || 'G'}${a.from}${a.to}`);
+    return items.length ? `[%cal ${items.join(',')}]` : '';
+  }
+
+  function drawTagsCommentFor(gameId, ply){
+    const d = drawings[gameId]?.[String(ply)];
+    if (!d) return '';
+    const csl = buildCslTag(d);
+    const cal = buildCalTag(d);
+    const tags = [csl, cal].filter(Boolean).join(' ');
+    return tags ? `{ ${tags} }` : '';
+  }
+
+  function parseDrawTagsByPlyFromPgn(pgn){
+    const out = Object.create(null);
+    const body = String(pgn || "")
+      .replace(/\r/g,'')
+      .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
+      .trim();
+
+    let ply = 0;
+    const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
+    let m;
+
+    while ((m = re.exec(body)) !== null){
+      const tok = m[0];
+
+      if (tok.startsWith('{')){
+        const txt = tok.slice(1,-1);
+        const cslM = txt.match(/\[%csl\s+([^\]]+)\]/);
+        const calM = txt.match(/\[%cal\s+([^\]]+)\]/);
+
+        if (cslM || calM){
+          const key = String(ply);
+          if (!out[key]) out[key] = { squares:Object.create(null), arrows:[] };
+
+          if (cslM){
+            for (const part of cslM[1].split(/[\s,]+/).map(s=>s.trim()).filter(Boolean)){
+              const c = part[0], sq = part.slice(1);
+              if (/^[GRBY]$/.test(c) && /^[a-h][1-8]$/.test(sq)) out[key].squares[sq] = c;
+            }
+          }
+          if (calM){
+            for (const part of calM[1].split(/[\s,]+/).map(s=>s.trim()).filter(Boolean)){
+              const c = part[0];
+              const rest = part.slice(1);
+              const from = rest.slice(0,2), to = rest.slice(2,4);
+              if (/^[GRBY]$/.test(c) && /^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)){
+                out[key].arrows.push({from,to,color:c});
+              }
+            }
+          }
+        }
+        continue;
+      }
+
+      if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
+      ply++;
+    }
+
+    return out;
+  }
+
+  function parseCommentsByPlyFromPgn(pgn){
+    const out = Object.create(null);
+    const body = String(pgn || "")
+      .replace(/\r/g,'')
+      .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
+      .trim();
+
+    let ply = 0;
+    const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
+    let m;
+
+    while ((m = re.exec(body)) !== null){
+      const tok = m[0];
+
+      if (tok.startsWith('{')){
+        let txt = tok.slice(1,-1);
+        txt = txt.replace(/\[%csl\s+[^\]]+\]/g, '').replace(/\[%cal\s+[^\]]+\]/g, '');
+        txt = txt.replace(/\s+/g,' ').trim();
+
+        if (txt){
+          const key = String(ply);
+          out[key] = out[key] ? (out[key] + ' ' + txt).trim() : txt;
+        }
+        continue;
+      }
+
+      if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
+      ply++;
+    }
+
+    return out;
+  }
+
+  function syncDrawingsToPgn(){
+    updateBottomCard();
+    renderMoves();
+  }
+
+  function toggleSquare(gameId, sq){
+    const d = ensureDrawAt(gameId, activePly);
+    const cur = d.squares[sq];
+    if (cur === toolColor){
+      delete d.squares[sq];
+      logLine('OK', `Square ${sq} removed @ ply ${activePly}`);
+    } else {
+      d.squares[sq] = toolColor;
+      logLine('OK', `Square ${sq} => ${toolColor} @ ply ${activePly}`);
+    }
+    redrawDrawings();
+    syncDrawingsToPgn();
+  }
+
+  function toggleArrow(gameId, from, to){
+    if (from === to) return;
+    const d = ensureDrawAt(gameId, activePly);
+    const key = (from < to) ? `${from}-${to}` : `${to}-${from}`;
+    const arr = d.arrows;
+
+    const idx = arr.findIndex(x => {
+      const k = (x.from < x.to) ? `${x.from}-${x.to}` : `${x.to}-${x.from}`;
+      return k === key;
+    });
+
+    if (idx >= 0){
+      if ((arr[idx].color || 'G') === toolColor){
+        arr.splice(idx, 1);
+        logLine('OK', `Arrow ${from}->${to} removed @ ply ${activePly}`);
+      } else {
+        arr[idx] = { from, to, color: toolColor };
+        logLine('OK', `Arrow ${from}->${to} recolored to ${toolColor} @ ply ${activePly}`);
+      }
+    } else {
+      arr.push({ from, to, color: toolColor });
+      logLine('OK', `Arrow ${from}->${to} added (${toolColor}) @ ply ${activePly}`);
+    }
+
+    redrawDrawings();
+    syncDrawingsToPgn();
+  }
+
+  function clearAll(gameId){
+    const d = ensureDrawAt(gameId, activePly);
+    d.squares = Object.create(null);
+    d.arrows = [];
+    logLine('OK', `Cleared drawings @ ply ${activePly}.`);
+    redrawDrawings();
+    syncDrawingsToPgn();
+  }
+
+  // ---------- tabs ----------
+  function setTab(which){
+    const map = {
+      moves:    ['tabMoves','paneMoves'],
+      priyomes: ['tabPriyomes','panePriyomes'],
+      games:    ['tabGames','paneGames'],
+      query:    ['tabQuery','paneQuery'],
+      evals:    ['tabEvals','paneEvals'],
+      errors:   ['tabErrors','paneErrors'],
+    };
+
+    for (const k of Object.keys(map)){
+      const [t,p] = map[k];
+      document.getElementById(t).classList.toggle('active', k===which);
+      document.getElementById(p).classList.toggle('active', k===which);
+    }
+    logLine('OK', `Tab: ${which}`);
+
+    if (which === 'priyomes'){
+      // ensure mini boards are sized once visible
+      setTimeout(() => { renderPriyomes(); resizeMiniBoards(); }, 0);
+    }
+  }
+
+  document.getElementById('tabMoves').addEventListener('click', () => setTab('moves'));
+  document.getElementById('tabPriyomes').addEventListener('click', () => setTab('priyomes'));
+  document.getElementById('tabGames').addEventListener('click', () => setTab('games'));
+  document.getElementById('tabQuery').addEventListener('click', () => setTab('query'));
+  document.getElementById('tabEvals').addEventListener('click', () => setTab('evals'));
+  document.getElementById('tabErrors').addEventListener('click', () => setTab('errors'));
+
+  // ---------- move list / nav ----------
+  
+  function rebuildToPly(ply){
+    resetGameToStartFen();
+    for (let i=0;i<ply;i++){
+      const mv = verboseHistory[i];
+      if (!mv) break;
+      game.move({from:mv.from,to:mv.to,promotion:mv.promotion||'q'});
+    }
+  }
+
+
+  function setStatus(){
+    let s = `${game.turn()==='w'?'White':'Black'} to move.`;
+    if (game.inCheck()) s += ' (Check)';
+    if (game.isGameOver()){
+      if (game.isCheckmate()) s = `Checkmate. ${game.turn()==='w'?'Black':'White'} wins.`;
+      else if (game.isDraw()) s = 'Draw.';
+      else s = 'Game over.';
+    }
+    statusEl.textContent = s;
+  }
+
+  function setFen(){
+    const f = game.fen();    fenBottom.textContent = f;
+  }
+
+  function mergedUserComment(gameId, ply){
+    ensureStores(gameId);
+    return (annotations[gameId] && annotations[gameId][ply]) ? String(annotations[gameId][ply]).trim() : "";
+  }
+
+function renderMoves(){
+  movesEl.innerHTML = '';
+  if (!currentGame) return;
+
+  const total = verboseHistory.length;
+  const rows = Math.ceil(total / 2);
+
+  function mkBtn(idx){
+    const mv = verboseHistory[idx];
+    if (!mv) return null;
+
+    const ply = idx + 1; // activePly counts half-moves applied
+    const b = document.createElement('button');
+    b.className = 'plyBtn' + (activePly === ply ? ' active' : '');
+    b.textContent = mv.san || '?';
+    b.onclick = () => gotoPly(ply); // gotoPly should alias to jumpTo
+    return b;
+  }
+
+  for (let r = 0; r < rows; r++){
+    const wIdx = r * 2;
+    const bIdx = wIdx + 1;
+
+    const row = document.createElement('div');
+    row.className = 'moveRow';
+
+    const mn = document.createElement('div');
+    mn.className = 'mn';
+    mn.textContent = (r + 1) + '.';
+    row.appendChild(mn);
+
+    const wBtn = mkBtn(wIdx);
+    const bBtn = mkBtn(bIdx);
+
+    row.appendChild(wBtn ? wBtn : document.createElement('div'));
+    row.appendChild(bBtn ? bBtn : document.createElement('div'));
+
+    // Show ONLY regular comments (no [%cal]/[%csl] directives)
+    const wC = wBtn ? mergedUserComment(currentGame.id, wIdx + 1) : '';
+    const bC = bBtn ? mergedUserComment(currentGame.id, bIdx + 1) : '';
+    const combined = [wC, bC].filter(Boolean).join(' • ').trim();
+
+    if (combined){
+      const cWrap = document.createElement('div');
+      cWrap.className = 'moveCmt';
+      const c = document.createElement('div');
+      c.className = 'cmt';
+      c.textContent = combined;
+      cWrap.appendChild(c);
+      row.appendChild(cWrap);
+    }
+
+    movesEl.appendChild(row);
+  }
+
+  // Auto-scroll active ply inside the moves panel ONLY (do not scroll page)
+  const active = movesEl.querySelector('button.plyBtn.active');
+  if (active){
+    const scroller = movesEl;
+    const top =
+      active.offsetTop
+      - scroller.clientHeight / 2
+      + active.clientHeight / 2;
+
+    scroller.scrollTo({ top, behavior: 'smooth' });
+  }
+}
+
+  function updateAnnoUI(){
+    ensureStores(currentGame.id);
+    annoTitleEl.textContent = `Annotation (ply ${activePly}${activePly===0?' / start':''})`;
+    annoTextEl.value = annotations[currentGame.id][activePly] || '';
+  }
+
+  function updateBottomCard(){
+    if (!currentGame){
+      bottomMeta.textContent = '—';
+      pgnBottom.value = '';
+      return;
+    }
+    bottomMeta.textContent = currentGame.title;
+    pgnBottom.value = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
+  }
+
+  function jumpTo(ply){
+    activePly = Math.max(0, Math.min(ply, verboseHistory.length));
+    rebuildToPly(activePly);
+    setBoardFen(`jumpTo ply ${activePly}`, game.fen(), false);
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    updateBottomCard();
+    logLine('OK', `Jump to ply ${activePly}`);
+  }
+
+// compatibility: older/newer UI code calls gotoPly()
+function gotoPly(ply){
+  jumpTo(ply);
+}
+
+
+  // ---------- board callbacks ----------
+  function onDragStart(source, piece){
+    // In setup mode, allow dragging any piece freely
+    if (isQuerySetupMode) {
+      isDraggingPiece = true;
+      return true;
+    }
+
+    if (tool !== Tool.NONE) return false;
+    if (game.isGameOver()) return false;
+    if (activePly !== verboseHistory.length) return false;
+    if (game.turn()==='w' && piece.startsWith('b')) return false;
+    if (game.turn()==='b' && piece.startsWith('w')) return false;
+
+    isDraggingPiece = true;
+    return true;
+  }
+
+  function onDrop(source,target){
+    // Setup mode: just accept the drop; keep board state (no chess.js validation)
+    if (isQuerySetupMode){
+      isDraggingPiece = false;
+      // Allow trashing pieces
+      return;
+    }
+    let mv;
+    try {
+      mv = game.move({from:source,to:target});
+    } catch (e) {
+      return 'snapback';
+  }
+
+
+    isDraggingPiece = false;
+    if (!mv) return 'snapback';
+    verboseHistory = game.history({verbose:true});
+    activePly = verboseHistory.length;
+    setStatus(); setFen(); renderMoves(); updateAnnoUI();
+    updateBottomCard();
+    logLine('OK', `Move: ${mv.san}`);
+  }
+
+  function onSnapEnd(){
+    isDraggingPiece = false;
+    if (!isQuerySetupMode){
+      setBoardFen('onSnapEnd', game.fen(), false);
+    }
+    if (isQuerySetupMode) updateSetupPreview();
+  }
+
+  document.addEventListener('touchmove', (e) => {
+    if (isDraggingPiece) e.preventDefault();
+  }, { passive:false });
+
+  window.addEventListener('mouseup', () => { isDraggingPiece = false; });
+
+  // ---------- square detection ----------
+  function squareFromTarget(t){
+    const el = t.closest?.('div.square-55d63');
+    if (!el) return null;
+    const sqClass = Array.from(el.classList).find(c => /^square-[a-h][1-8]$/.test(c));
+    return sqClass ? sqClass.slice('square-'.length) : null;
+  }
+
+  document.getElementById('boardArea').addEventListener('click', (e) => {
+    if (!currentGame) return;
+    // In setup mode, allow squares/arrows too (but don't interfere with dragging)
+    if (isQuerySetupMode && isDraggingPiece) return;
+    if (tool === Tool.NONE) return;
+
+    const sq = squareFromTarget(e.target);
+    if (!sq) return;
+
+    if (tool === Tool.SQUARES){
+      toggleSquare(currentGame.id, sq);
+      return;
+    }
+
+    if (tool === Tool.ARROWS){
+      if (!tapFrom){
+        tapFrom = sq;
+        logLine('OK', `Arrow start = ${sq} (tap destination)`);
+      } else {
+        toggleArrow(currentGame.id, tapFrom, sq);
+        tapFrom = null;
+      }
+    }
+  });
+
+  // ---------- games list ----------
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  function renderGameList(){
+    gameListEl.innerHTML = '';
+    for (const g of getStudyGames()){
+      const card = document.createElement('div');
+      card.className = 'gameCard' + (currentGame?.id === g.id ? ' active' : '');
+      card.innerHTML = `
+        <div class="gameTitle">${escapeHtml(g.title)}</div>
+        <div class="meta"><span class="kbd">${escapeHtml(g.result || '*')}</span><span>${escapeHtml(g.opening || '')}</span></div>
+      `;
+      card.onclick = () => { loadGame(g.id, { startAtFirst:true }); setTab('moves'); };
+      gameListEl.appendChild(card);
+    }
+  }
+
+  function ensureMainBoard(){
+    if (board) return;
+
+    logLine('OK', 'Initializing Chessboard...');
+    board = Chessboard('board', {
+      draggable:true,
+      position: game.fen(),
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+      onDragStart, onDrop, onSnapEnd
+    });
+    if (typeof board.resize === 'function') board.resize();
+    logLine('OK', 'Chessboard initialized.');
+  
+
+    ensureBoardRO();
+    sizeBoardSquare();
+    if (board && typeof board.resize === 'function') board.resize();
+    redrawDrawings();
+}
+
+  function loadGame(gameId, opts={}){
+    const startAtFirst = !!opts.startAtFirst;
+
+    const g = GAMES.find(x => x.id===gameId);
+    if (!g) return;
+
+    // leaving setup mode when loading games
+    if (isQuerySetupMode) setQuerySetupMode(false);
+
+    currentGame = g;
+    ensureStores(g.id);
+    gamePill.textContent = g.title;
+
+    drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
+
+    const parsedComments = parseCommentsByPlyFromPgn(g.pgn);
+    const existing = annotations[g.id] || Object.create(null);
+    const existingKeys = Object.keys(existing);
+    if (existingKeys.length === 0){
+      annotations[g.id] = parsedComments;
+    } else {
+      for (const k of Object.keys(parsedComments)){
+        if (!existing[k]) existing[k] = parsedComments[k];
+      }
+      annotations[g.id] = existing;
+    }
+
+    game.reset();
+
+    const { ok, game : gg } = SanitizedLoadPgn(g.pgn);
+    if (!ok) throw new Error('SanitizedLoadPgn err in loadgame');
+    game = gg;
+    // Determine ply-0 start position from PGN headers (FEN/SetUp).
+    try {
+      const h = (typeof game.header === 'function') ? game.header() : null;
+      const fenTag = h && (h.FEN || h.Fen || h.fen);
+      currentStartFen = (fenTag && String(fenTag).trim()) ? String(fenTag).trim() : 'start';
+      logLine('OK', `PGN start FEN for "${g.title}": ${currentStartFen}`);
+    } catch (e) {
+      currentStartFen = 'start';
+      logStack('WARN', 'Failed to read PGN headers for start FEN; using standard start.', e);
+    }
+
+
+    verboseHistory = game.history({verbose:true});
+    activePly = verboseHistory.length;
+
+    sizeBoardSquare();
+    ensureMainBoard();
+
+    const target = startAtFirst ? 0 : verboseHistory.length;
+    jumpTo(target);
+
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    updateBottomCard();
+    renderGameList();
+  }
+
+  // ---------- export ----------
+  function downloadText(filename, text){
+    const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
+    logLine('OK', `Downloaded: ${filename}`);
+  }
+
+ function pgnWithComments(gameId, basePgn){
+  const raw = String(basePgn || "").replace(/\r/g, "");
+
+  // 1) Preserve the ORIGINAL header block exactly (do not regenerate headers).
+  // Split at the first blank line (PGN convention: headers then blank line then movetext).
+  let headerBlock = "";
+  let sepIdx = -1;
+  {
+    const m = raw.match(/\n\s*\n/);
+    if (m && typeof m.index === "number") sepIdx = m.index;
+  }
+  if (sepIdx >= 0) headerBlock = raw.slice(0, sepIdx).replace(/\s+$/g, "");
+
+  // 2) Determine result token (prefer header, else fallback to '*').
+  let resultToken = "*";
+  const resM = headerBlock.match(/^\[Result\s+"([^"]*)"\]\s*$/m);
+  if (resM && resM[1]) resultToken = resM[1];
+
+  // 3) Parse moves ONCE via chess.js to get a reliable mainline history.
+  // We use chess.js only for move parsing/history, not for PGN/header output.
+  const {ok, game : tmp } = SanitizedLoadPgn(raw);
+  if (!ok) throw new Error('SanitizedLoadPgn err in pgnwithcomments');
+
+  const hist = tmp.history({ verbose: true });
+
+  // 4) Rebuild movetext while injecting:
+  //    - draw tags: drawTagsCommentFor(gameId, ply)  (already wrapped like "{ [%csl ...] [%cal ...] }")
+  //    - user comments: mergedUserComment(gameId, ply) (we wrap as "{ ... }")
+  const parts = [];
+
+  function pushPlyExtras(ply){
+    const tag = drawTagsCommentFor(gameId, ply);
+    if (tag) parts.push(tag);
+
+    const c = mergedUserComment(gameId, ply);
+    if (c) parts.push(`{ ${String(c).trim()} }`);
+  }
+
+  // Start-position extras (ply 0)
+  pushPlyExtras(0);
+
+  for (let i = 0; i < hist.length; i++){
+    const mv = hist[i];
+    const ply = i + 1;
+
+    if (i % 2 === 0){
+      const moveNo = (i / 2) + 1;
+      parts.push(`${moveNo}. ${mv.san}`);
+    } else {
+      parts.push(mv.san);
+    }
+
+    pushPlyExtras(ply);
+  }
+
+  // Append result token
+  parts.push(resultToken);
+
+  const movetext = parts.join(" ").replace(/\s+/g, " ").trim();
+
+  // If there were headers, keep the canonical blank line between headers and movetext.
+  return headerBlock ? `${headerBlock}\n\n${movetext}` : movetext;
+}
+
+  document.getElementById('btnExportGame').onclick = () => {
+    if (!currentGame) return;
+    downloadText(`${currentGame.title.replace(/\s+/g,'_')}.pgn`, pgnWithComments(currentGame.id, currentGame.pgn) + '\n');
+  };
+  document.getElementById('btnExportStudy').onclick = () => {
+    const blocks = GAMES.map(g => pgnWithComments(g.id, g.pgn));
+    downloadText(`Study.pgn`, blocks.join('\n\n\n') + '\n');
+  };
+
+  // ---------- buttons ----------
+  document.getElementById('btnPrev').onclick = () => { if (game && !isQuerySetupMode) jumpTo(activePly - 1); };
+  document.getElementById('btnNext').onclick = () => { if (game && !isQuerySetupMode) jumpTo(activePly + 1); };
+
+  document.getElementById('btnFlip').onclick = () => {
+    if (!board) return;
+    board.flip();
+    orientation = (orientation==='white') ? 'black' : 'white';
+    redrawDrawings();
+    logLine('OK', `Flip => ${orientation}`);
+  };
+
+  document.getElementById('btnReset').onclick = () => {
+    if (!board || !game) return;
+
+    if (isQuerySetupMode){
+      // reset to empty in setup mode
+      setBoardFen('setup mode: clear board', '8/8/8/8/8/8/8/8', false);
+      logLine('OK', 'Setup mode: cleared board.');
+      return;
+    }
+
+    game.reset();
+    verboseHistory = [];
+    activePly = 0;
+    board.start(false);
+    if (typeof board.resize === 'function') board.resize();
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    updateBottomCard();
+    logLine('OK', 'Reset line to start position.');
+  };
+
+  document.getElementById('btnSquares').onclick = () => {
+    if (isQuerySetupMode) return;
+    setTool(tool===Tool.SQUARES ? Tool.NONE : Tool.SQUARES);
+  };
+  document.getElementById('btnArrows').onclick = () => {
+    if (isQuerySetupMode) return;
+    setTool(tool===Tool.ARROWS ? Tool.NONE : Tool.ARROWS);
+  };
+  document.getElementById('btnClear').onclick = () => { if(currentGame && !isQuerySetupMode){ clearAll(currentGame.id); } };
+
+  annoTextEl.addEventListener('input', () => {
+    if (!currentGame) return;
+    if (isQuerySetupMode) return;
+    ensureStores(currentGame.id);
+    annotations[currentGame.id][activePly] = annoTextEl.value;
+    updateBottomCard();
+    renderMoves();
+    logLine('OK', `Annotation saved for ply ${activePly} (${annoTextEl.value.length} chars)`);
+  });
+
+  window.addEventListener('resize', () => {
+    sizeBoardSquare();
+    redrawDrawings();
+    if (board && typeof board.resize === 'function') board.resize();
+    resizeMiniBoards();
+  });
+
+  // ---------- Import PGN modal ----------
+  function openImportModal(){
+    importModalBackdrop.classList.add('open');
+    importModalBackdrop.setAttribute('aria-hidden','false');
+    importPgnText.value = '';
+    setTimeout(() => importPgnText.focus(), 0);
+    logLine('OK', 'Opened Import PGN modal.');
+  }
+  function closeImportModal(){
+    importModalBackdrop.classList.remove('open');
+    importModalBackdrop.setAttribute('aria-hidden','true');
+    logLine('OK', 'Closed Import PGN modal.');
+  }
+
+  btnImportPgn.addEventListener('click', () => openImportModal());
+  btnImportCancel.addEventListener('click', () => closeImportModal());
+  importModalBackdrop.addEventListener('click', (e) => {
+    if (e.target === importModalBackdrop) closeImportModal();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && importModalBackdrop.classList.contains('open')) closeImportModal();
+  });
+
+  function parseHeaders(pgn){
+    const headers = {};
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    let m;
+    while ((m = headerRe.exec(pgn)) !== null){
+      headers[m[1]] = m[2];
+    }
+    return headers;
+  }
+
+  function splitMultiPgn(text){
+    const t = (text || "").trim();
+    if (!t) return [];
+    const parts = t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
+    return parts.length ? parts : [t];
+  }
+
+  // ---------- CQL runner workaround: ensure >=2 games ----------
+  // Some CQL runner / PGN edge cases appear when the input PGN contains only a single game.
+  // Workaround: if the input has exactly 1 game, append a distinctive dummy game before running.
+  // Then, strip that dummy from output PGN (even if modified) before importing discovered games.
+  const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
+  const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
+  const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
+  function buildDummyGamePgn(){
+    // 10 plies = 5 full moves
+    const headers = [
+      `[Event "${DUMMY_CQL_EVENT}"]`,
+      `[Site "Local"]`,
+      `[Date "${todayYMD()}"]`,
+      `[Round "1"]`,
+      `[White "${DUMMY_CQL_WHITE}"]`,
+      `[Black "${DUMMY_CQL_BLACK}"]`,
+      `[Result "*"]`,
+    ].join("\n");
+
+    const moves = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 *";
+    return `${headers}\n\n${moves}\n`;
+  }
+
+  function isDummyGamePgn(pgn){
+    const h = parseHeaders(String(pgn || ""));
+    return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
+  }
+
+  function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
+    const bytes = (pgnBytes instanceof Uint8Array) ? pgnBytes : new Uint8Array(pgnBytes || []);
+    const text = new TextDecoder().decode(bytes);
+    const games = splitMultiPgn(text);
+    if (games.length !== 1){
+      return { bytes, injected:false, originalGameCount: games.length };
+    }
+    const dummy = buildDummyGamePgn();
+    const outText = (text.trim() ? (text.trim() + "\n\n" + dummy) : dummy) + "\n";
+    return { bytes: textToUtf8Bytes(outText), injected:true, originalGameCount:1 };
+  }
+
+  function stripDummyFromMultiPgnText(multiPgnText){
+    const games = splitMultiPgn(String(multiPgnText || ""));
+    if (!games.length) return "";
+    const kept = games.filter(g => !isDummyGamePgn(g));
+    return kept.join("\n\n").trim();
+  }
+
+
+  // ---------- Setup-mode: Import from PGN  ----------
+  btnSetupImportPgn.addEventListener('click', () => {
+    if (!isQuerySetupMode) return;
+    setupPgnFile.value = '';
+    setupPgnFile.click();
+  });
+
+  setupPgnFile.addEventListener('change', async () => {
+    if (!isQuerySetupMode) return;
+    const f = setupPgnFile.files?.[0];
+    if (!f) return;
+    try{
+      const text = await f.text();
+      const blocks = splitMultiPgn(text);
+      if (!blocks.length) throw new Error('No PGN game found.');
+      const pgn = blocks[0];
+
+      const tagsByPly = parseDrawTagsByPlyFromPgn(pgn);
+      const d0 = tagsByPly["0"];               // tags before the first move
+      setupImportedMiniSquares = d0?.squares || null;
+      setupImportedMiniArrows  = d0?.arrows  || null;
+
+      const h = parseHeaders(pgn);
+
+      setupImportedCqlRef = null;
+      for (const k of Object.keys(h)){
+        if (k.toLowerCase() === 'cqlref') setupImportedCqlRef = h[k];
+      }
+      if (setupImportedCqlRef && !CQL_MANIFEST[setupImportedCqlRef]){
+        throw new Error(`PGN cqlref="${setupImportedCqlRef}" not found in CQL_MANIFEST`);
+      }
+
+      let fen = null;
+      if ((h.SetUp === '1' || h.SetUp === 'true') && h.FEN){
+        fen = h.FEN;
+      } else {
+         const { ok, game : tmp } = SanitizedLoadPgn(pgn);
+         if (!ok) throw new Error('SanitizedLoadPgn err in SetupPgnFile');
+        fen = tmp.fen();
+      }
+
+      setBoardFen('setup import', fen, false);
+      setupImportedPgnTitle = h.Event || f.name;
+      setupHint.innerHTML = `Imported <b>${escapeHtml(setupImportedPgnTitle)}</b>` +
+        (setupImportedCqlRef ? ` • cqlref=<span class="kbd">${escapeHtml(setupImportedCqlRef)}</span>` : '');
+      logLine('OK', `Setup import: applied fen; cqlref=${setupImportedCqlRef || '(none)'}`);
+    }catch(e){
+      setupImportedCqlRef = null;
+      setupImportedPgnTitle = null;
+      logStack('ERR', 'Setup import failed: ', e);
+      setTab('errors');
+    }
+  });
+
+  
+  function addGamesFromText(multiPgnText, sourceLabel){
+    const blocks = splitMultiPgn(multiPgnText);
+    let added = 0;
+    const ids = [];
+    for (let i=0;i<blocks.length;i++){
+      const pgn = blocks[i].trim();
+      if (!pgn) continue;
+
+      const { ok, game: tmp } = SanitizedLoadPgn(pgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in addGamesFromText');
+
+      const h = parseHeaders(pgn);
+      const title = h.Event ? h.Event : `Imported Game ${i+1}`;
+      const white = h.White || "?";
+      const black = h.Black || "?";
+      const res   = h.Result || "*";
+
+      const id = `${sourceLabel}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+      GAMES.unshift({
+        id,
+        title: `${title} — ${white} vs ${black}`,
+        opening: (h.Opening || sourceLabel),
+        result: res,
+        pgn
+      });
+      ids.push(id);
+      added++;
+    }
+
+    if (added){
+      // IMPORTANT: import output should land in the current active study
+      ensureStudy(currentStudyName, ids);
+      setCurrentStudy(currentStudyName);
+
+      logLine('OK', `Imported ${added} game(s) into active study "${currentStudyName}".`);
+      renderGameList();
+      document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
+    }
+    return { added, ids };
+  }
+
+  btnImportAdd.addEventListener('click', () => {
+    const txt = importPgnText.value || '';
+    if (!txt.trim()){
+      logLine('WARN', 'Import PGN: empty input.');
+      return;
+    }
+    const { added } = addGamesFromText(txt, 'import');
+    if (added > 0){
+      closeImportModal();
+      setTab('games');
+    } else {
+      setTab('errors');
+    }
+  });
+
+  // ---------- Query tab ----------
+  function updateQueryUi(){
+    const haveCql = !!qCqlText.value.trim();
+    const haveUploadedPgn = !!qPgnFile.files?.[0];
+    const haveManifestPgn = !!PGN_MANIFEST[dbSelectEl.value];
+    const haveOverridePgn = !!qPgnBytesOverride;
+
+    qRun.disabled = !(haveCql && (haveUploadedPgn || haveManifestPgn || haveOverridePgn));
+
+    if (!haveCql){
+      qStatus.textContent = "Provide CQL (file or edit box) to enable.";
+    } else if (!(haveUploadedPgn || haveManifestPgn || haveOverridePgn)){
+      qStatus.textContent = "Choose a PGN upload, select a DB with a manifest PGN, or run from current game.";
+    } else {
+      qStatus.textContent = haveUploadedPgn ? "Ready (upload)."
+        : haveOverridePgn ? "Ready (current game)."
+        : `Ready (manifest: ${dbSelectEl.value}).`;
+    }
+  }
+
+  qCqlFile.addEventListener('change', async () => {
+    const f = qCqlFile.files?.[0];
+    qCqlName.textContent = f ? f.name : "—";
+    if (!f) { updateQueryUi(); return; }
+    try{
+      const txt = await f.text();
+      qCqlText.value = txt;
+      logLine('OK', `Loaded CQL file (${txt.length} chars): ${f.name}`);
+    }catch(e){
+      logLine('ERR', `Failed reading CQL: ${String(e)}`);
+    }finally{
+      updateQueryUi();
+    }
+  });
+
+  qPgnFile.addEventListener('change', () => {
+    const f = qPgnFile.files?.[0];
+    if (f) qPgnBytesOverride = null; // user explicitly chose a file; override off
+    qPgnName.textContent = f ? f.name : "—";
+    if (f) logLine('OK', `Selected PGN file: ${f.name}`);
+    updateQueryUi();
+  });
+
+
+  qCqlText.addEventListener('input', updateQueryUi);
+
+  async function fileToUint8(file) {
+    const ab = await file.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+  function textToUtf8Bytes(text){
+    return new TextEncoder().encode(text ?? "");
+  }
+
+  
+function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
+    const games = splitMultiPgn(multiPgnText);
+    if (!games.length){
+      logLine('WARN', 'No games found in output PGN.');
+      return 0;
+    }
+
+    const newIds = [];
+    for (let i=0;i<games.length;i++){
+      const pgn = games[i];
+      const h = parseHeaders(pgn);
+      const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
+      const date  = h.Date || todayYMD();
+      const res   = h.Result || "*";
+      const newId = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+      GAMES.unshift({
+        id: newId,
+        title,
+        opening: sourceKey ? `CQL: ${sourceKey}` : 'CQL result',
+        result: res,
+        pgn
+      });
+      newIds.push(newId);
+    }
+
+    if (newIds.length > 1){
+      const name = uniqStudyName(`${todayYMD()} Position Query`);
+      ensureStudy(name, newIds);
+      setCurrentStudy(name);
+      logLine('OK', `Created new study "${name}" with ${newIds.length} games from query result.`);
+    } else if (newIds.length === 1){
+      ensureStudy(currentStudyName, [newIds[0]]);
+      setCurrentStudy(currentStudyName);
+    }
+
+    renderGameList();
+    return newIds.length;
+  }
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const mod = await import('./wasm/cql_runner.js');
+    if (typeof mod.ensureWarmPool !== 'function') throw new Error('ensureWarmPool export not found');
+    logLine('OK', 'Warming wasm pool (2 workers)…');
+    await mod.ensureWarmPool({
+      onLog: (line) => logLine('OK', String(line)),
+    });
+    logLine('OK', 'Wasm pool warm: primary+standby ready (2/2).');
+  } catch (e) {
+    logLine('WARN', 'Warm-up failed; will warm on demand. ' + String(e && e.stack ? e.stack : e));
+  }
+});
+
+let _runnerModPromise = null;
+async function getRunnerMod() {
+  if (!_runnerModPromise) _runnerModPromise = import('./wasm/cql_runner.js');
+  return _runnerModPromise;
+}
+
+  qRun.addEventListener('click', async () => {
+    const pgnFile = qPgnFile.files?.[0] || null;
+    try{
+      const cqlText = qCqlText.value || "";
+      if (!cqlText.trim()) throw new Error("CQL is empty.");
+
+      let pgnBytes = null;
+
+      if (qPgnBytesOverride){
+        pgnBytes = qPgnBytesOverride;
+      } else {
+        const pgnFile = qPgnFile.files?.[0];
+        if (pgnFile){
+          pgnBytes = await fileToUint8(pgnFile);
+        } else {
+          const db = dbSelectEl.value;
+          pgnBytes = await getPgnBytesForDb(db);
+          if (!pgnBytes) throw new Error(`No uploaded PGN and no PGN manifest for db="${db}"`);
+          qPgnName.textContent = `(manifest) ${db}`;
+          }
+      }
+
+      const sourceKey =
+       qPgnBytesOverride ? `game:${currentGame?.id || 'unknown'}`
+       : (pgnFile ? `upload:${pgnFile.name}` : `db:${dbSelectEl.value}`);
+
+       // Workaround: if PGN has only one game, append a dummy second game for CQL execution.
+       let _dummyInjected = false;
+       try{
+         const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+         pgnBytes = ensured.bytes;
+         _dummyInjected = !!ensured.injected;
+         if (_dummyInjected){
+           logLine('WARN', `CQL workaround: input had 1 game; appended dummy game (${DUMMY_CQL_EVENT}).`);
+         }
+       }catch(e){
+         logLine('WARN', 'CQL workaround failed (continuing without dummy): ' + String(e));
+       }
+
+
+
+      qRun.disabled = true;
+      qStatus.textContent = "Running…";
+      logLine('OK', `Running query with argv: ${qArgv.value}`);
+
+      const mod = await getRunnerMod();
+      const runCqlWasm = mod.runCqlWasm;
+      if (typeof runCqlWasm !== 'function') throw new Error("runCqlWasm export not found");
+
+
+      const cqlBytes = textToUtf8Bytes(cqlText);
+      const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
+        onLog: (line) => {
+          const s = String(line);
+          if (s.startsWith("[stderr]")) logLine('WARN', s);
+          else logLine('OK', s);
+        }
+      });
+
+      const unsub = job.subscribe((j) => {
+        const st = j.status ? j.status() : {busy:0,total:1};
+        qStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "");
+        if (j.state === "done" || j.state === "error"){
+          unsub();
+          if (j.state === "error"){
+            logLine('ERR', `Query failed: ${j.error || "unknown error"}`);
+            setTab('errors');
+          } else {
+            logLine('OK', `Query done (rc=${String(j.rc)}). outputPgn=${j.outputPgn.length} chars`);
+            if (j.outputMissing) logLine('WARN', 'output.pgn not found by runner (empty output).');
+            let outPgnText = j.outputPgn || "";
+              if (_dummyInjected){
+                const stripped = stripDummyFromMultiPgnText(outPgnText);
+                if (stripped !== outPgnText.trim()){
+                  logLine('OK', 'CQL workaround: stripped dummy game from output.');
+                }
+                outPgnText = stripped;
+              }
+              if (outPgnText && outPgnText.trim()){
+                const added = addDiscoveredGamesFromPgn(outPgnText, sourceKey);
+                if (added > 0) setTab('games');
+              } else if (_dummyInjected){
+                logLine('WARN', 'CQL workaround: output contained only dummy game (or nothing); ignoring.');
+              }
+          }
+          qRun.disabled = false;
+          updateQueryUi();
+        }
+      });
+
+    }catch(e){
+      logLine('ERR', `Run exception: ${e && e.stack ? e.stack : String(e)}`);
+      qRun.disabled = false;
+      updateQueryUi();
+      setTab('errors');
+    }
+  });
+
+  // ---------- Evals tab ----------
+  async function loadEvals(){
+    evalsStatusEl.textContent = 'loading…';
+    try{
+      const mod = await import(`./evals.js?ts=${Date.now()}`);
+      const list = Array.isArray(mod.EVALS) ? mod.EVALS : (Array.isArray(mod.default) ? mod.default : []);
+      EVALS_REGISTRY = list.filter(e => e && typeof e.id === 'string' && typeof e.run === 'function');
+
+      evalsStatusEl.textContent = `${EVALS_REGISTRY.length} eval(s)`;
+      logLine('OK', `Loaded evals from ./evals.js: ${EVALS_REGISTRY.map(e=>e.id).join(', ') || '(none)'}`);
+      renderEvalList();
+      renderCqlEvalList();
+    }catch(e){
+      evalsStatusEl.textContent = 'load failed';
+      logStack('ERR', 'Failed to load ./evals.js: ', e);
+      renderEvalList();
+      setTab('errors');
+    }
+  }
+
+  function renderEvalList(){
+    evalListEl.innerHTML = '';
+    if (!EVALS_REGISTRY.length){
+      const d = document.createElement('div');
+      d.className = 'hint';
+      d.textContent = 'No evals registered. Check ./evals.js exports EVALS (or default) and each entry has {id, run()}.';
+      evalListEl.appendChild(d);
+      return;
+    }
+
+    for (const entry of EVALS_REGISTRY){
+      const card = document.createElement('div');
+      card.className = 'evalCard';
+
+      const name = entry.name || entry.id;
+      const desc = entry.description || '';
+
+      card.innerHTML = `
+        <div class="evalTop">
+          <div style="min-width:0;">
+            <div class="evalName">${escapeHtml(name)} <span class="kbd">${escapeHtml(entry.id)}</span></div>
+            <div class="evalDesc">${escapeHtml(desc)}</div>
+          </div>
+          <div class="evalBtns">
+            <button type="button" data-run="${escapeHtml(entry.id)}">Run</button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('button[data-run]').addEventListener('click', () => runEval(entry));
+      evalListEl.appendChild(card);
+    }
+  }
+
+  function renderCqlEvalList(){
+  if (!cqlEvalListEl) return;
+
+  cqlEvalListEl.innerHTML = '';
+
+  const entries = Object.entries(CQL_EVAL_MANIFEST || {});
+  if (!entries.length){
+    const d = document.createElement('div');
+    d.className = 'hint';
+    d.textContent = 'No CQL evals.';
+    cqlEvalListEl.appendChild(d);
+    return;
+  }
+
+  for (const [ref, meta] of entries){
+    const url  = meta?.url || '';
+    const desc = meta?.description || '';
+
+    const card = document.createElement('div');
+    card.className = 'evalCard';
+
+    card.innerHTML = `
+      <div class="evalTop">
+        <div style="min-width:0;">
+          <div class="evalName">
+            ${escapeHtml(ref)} <span class="kbd">.cql</span>
+          </div>
+          <div class="evalDesc">
+            ${escapeHtml(desc)}
+          </div>
+        </div>
+        <div class="evalBtns">
+          <button type="button" data-cqlref="${escapeHtml(ref)}">Run</button>
+        </div>
+      </div>
+    `;
+
+    card.querySelector('button[data-cqlref]')
+      .addEventListener('click', () => runCqlEvalFromManifest(ref));
+
+    cqlEvalListEl.appendChild(card);
+  }
+}
+
+
+async function runCqlEvalFromManifest(ref){
+  try{
+    if (!currentGame) throw new Error('No current game selected.');
+
+    const meta = CQL_EVAL_MANIFEST[ref];
+    if (!meta) throw new Error(`CQL_EVAL_MANIFEST missing ref="${ref}"`);
+
+    const url = meta.url;
+    if (!url) throw new Error(`CQL_EVAL_MANIFEST["${ref}"].url missing`);
+
+    const cql = await fetchTextCached(url, _cqlCache);
+
+    qCqlText.value = cql;
+    qCqlName.textContent = `(eval) ${ref}`;
+
+    const inputPgn = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
+    qPgnBytesOverride = textToUtf8Bytes(inputPgn);
+    qPgnFile.value = '';
+    qPgnName.textContent = '(current game)';
+
+    updateQueryUi();
+    setTab('query');
+    qRun.click();
+  }catch(e){
+    logStack('ERR', `CQL eval "${ref}" failed: `, e);
+    setTab('errors');
+  }
+}
+
+  async function runEval(entry){
+    try{
+      if (!currentGame) throw new Error('No current game selected.');
+      if (typeof Chess === 'undefined') throw new Error('Chess is undefined (chess.js missing).');
+
+      const evalId = entry.id;
+      logLine('OK', `Running eval "${evalId}" on: ${currentGame.title}`);
+
+      const inputPgn = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
+      logBlock('OK', `EVAL/${evalId} INPUT PGN`, inputPgn, 8000);
+
+      const ctx = {
+        log:  (s) => logLine('OK',   `EVAL/${evalId}: ${String(s)}`),
+        warn: (s) => logLine('WARN', `EVAL/${evalId}: ${String(s)}`),
+        err:  (s) => logLine('ERR',  `EVAL/${evalId}: ${String(s)}`),
+      };
+
+      let res;
+      try{
+        ctx.log('calling eval function…');
+        res = (entry.run.length >= 2) ? await entry.run(inputPgn, ctx) : await entry.run(inputPgn);
+        ctx.log('eval function returned');
+      }catch(e){
+        logStack('ERR', `Eval run failed (threw): `, e);
+        setTab('errors');
+        return;
+      }
+
+      logBlock('OK', `EVAL/${evalId} RAW RETURN`, res, 8000);
+
+      const outPgn =
+        (typeof res === 'string') ? res :
+        (res && typeof res.pgn === 'string') ? res.pgn :
+        '';
+
+      logBlock('OK', `EVAL/${evalId} OUTPUT PGN`, outPgn, 12000);
+
+      if (!outPgn.trim()) throw new Error(`Eval "${evalId}" returned empty output PGN.`);
+
+      const { ok, game: tmp } = SanitizedLoadPgn(outPgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in runeval');
+
+      const h = parseHeaders(outPgn);
+      const titleBase = currentGame.title;
+      const title = `Evaluated (${evalId}) • ${titleBase}`;
+      const resTok = h.Result || '*';
+
+      const newId = `eval:${evalId}:${currentGame.id}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+
+      GAMES.unshift({
+        id: newId,
+        title,
+        opening: `Eval: ${entry.name || evalId}`,
+        result: resTok,
+        pgn: outPgn
+      });
+      // IMPORTANT: eval output should land in the current active study
+      ensureStudy(currentStudyName, [newId]);
+      setCurrentStudy(currentStudyName);
+
+
+      document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
+      renderGameList();
+      logLine('OK', `Eval added as new game: ${title}`);
+      setTab('games');
+
+    }catch(e){
+      logStack('ERR', 'Eval run failed: ', e);
+      setTab('errors');
+    }
+  }
+
+  document.getElementById('btnReloadEvals').addEventListener('click', () => loadEvals());
+
+
+  // ---------- Studies UI ----------
+  const studySelectEl = document.getElementById('studySelect');
+  const btnNewStudy = document.getElementById('btnNewStudy');
+  const btnImportStudy = document.getElementById('btnImportStudy');
+  const btnPlayFromHere = document.getElementById('btnPlayFromHere');
+
+  if (studySelectEl){
+    studySelectEl.addEventListener('change', () => setCurrentStudy(studySelectEl.value));
+  }
+  if (btnNewStudy){
+    btnNewStudy.addEventListener('click', () => {
+      const name = uniqStudyName(`${todayYMD()} Study`);
+      ensureStudy(name, []);
+      setCurrentStudy(name);
+    });
+  }
+  if (btnImportStudy){
+    btnImportStudy.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.pgn';
+      inp.addEventListener('change', async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const txt = await f.text();
+        const parts = splitMultiPgn(txt);
+        if (!parts.length){ logLine('WARN','No games found in study PGN.'); return; }
+        const name = uniqStudyName(f.name.replace(/\.pgn$/i,'') || `${todayYMD()} Study`);
+        const ids = [];
+        for (let i=0;i<parts.length;i++){
+          const pgn = parts[i];
+          const h = parseHeaders(pgn);
+          const title = h.Event ? h.Event : `${name} • Game ${i+1}`;
+          const id = `study:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+          GAMES.unshift({ id, title, opening:'Imported Study', result:(h.Result||'*'), pgn });
+          ids.push(id);
+        }
+        ensureStudy(name, ids);
+        setCurrentStudy(name);
+        setTab('games');
+      });
+      inp.click();
+    });
+  }
+  if (btnPlayFromHere){
+    btnPlayFromHere.addEventListener('click', () => {
+      const id = ensureSetupDraftGame();
+      if (!id) return;
+      setQuerySetupMode(false);
+      loadGame(id);
+      jumpTo(0);
+      setTab('moves');
+    });
+  }
+
+
+  // ---------------- Priyomes ----------------
+  function addPriyome(def){
+    // def: {id,title,subtitle,fen,miniSquares?,miniArrows?}
+    PRIYOMES.push(def);
+  }
+
+  function buildGreekGift(){
+    // Position: black king castled; pawns on f7 g7 h7; white bishop+queen aimed at h7.
+    // We'll use a simple illustrative setup (not claiming it's legal from a real game).
+    const fen = "rnbq1rk1/pppp1ppp/8/4p3/4P3/2N2B2/PPPP1PPP/R2QK2R w KQ - 0 1";
+
+    addPriyome({
+      id: "gg",
+      title: "Greek Gift",
+      subtitle: "Idea: Bxh7+ and Qxh7+ (illustration)",
+      fen,
+      arrows: [
+        {from:"f3", to:"h5", color:"G"}, // bishop line suggestion (rough)
+        {from:"d1", to:"h5", color:"G"}, // queen line suggestion (rough)
+      ],
+      // In the mini-board overlay we will draw arrows to h7 more explicitly
+      miniArrows: [
+        {from:"f3", to:"h5", color:"G"},
+        {from:"d1", to:"h5", color:"G"},
+        {from:"f3", to:"h7", color:"G"},
+        {from:"d1", to:"h5", color:"G"},
+      ],
+      miniSquares: {
+        "h7":"G"
+      }
+    });
+  }
+
+  function renderPriyomes(){
+    miniBoards.clear(); // Fresh creation
+    prListEl.innerHTML = '';
+    if (!PRIYOMES.length){
+      const d = document.createElement('div');
+      d.className = 'hint';
+      d.textContent = 'No priyomes yet.';
+      prListEl.appendChild(d);
+      return;
+    }
+
+    for (const p of PRIYOMES){
+      const item = document.createElement('div');
+      item.className = 'prItem' + (selectedPriyomeId === p.id ? ' active' : '');
+      const boardId = `mini_${p.id}`;
+      item.innerHTML = `
+        <div>
+          <div id="${boardId}" class="small-board" aria-label="${escapeHtml(p.title)} mini board"></div>
+        </div>
+        <div>
+          <div class="prTitle">${escapeHtml(p.title)}</div>
+          <div class="prSub">${escapeHtml(p.subtitle || '')}</div>
+          <div class="prSub" style="margin-top:6px;">
+            <span class="kbd">DB</span> <span class="kbd">${escapeHtml(dbSelectEl.value)}</span>
+          </div>
+        </div>
+      `;
+      item.addEventListener('click', async () => {
+        selectedPriyomeId = p.id;
+        renderPriyomes();
+        setTimeout(() => { resizeMiniBoards(); }, 0);
+
+        if (p.cqlref){
+          try{
+            await loadCqlByRef(p.cqlref);
+            logLine('OK', `Loaded CQL via cqlref=${p.cqlref}`);
+          }catch(e){
+            logStack('ERR', `Failed loading cqlref=${p.cqlref}: `, e);
+            setTab('errors');
+          }
+        }
+      });
+      prListEl.appendChild(item);
+
+      // init mini board after it's in DOM
+      setTimeout(() => initMiniBoard(boardId, p), 0);
+    }
+  }
+
+  function initMiniBoard(elId, pr){
+    const el = document.getElementById(elId);
+    if (!el) return;
+
+    // already exists?
+    if (miniBoards.has(elId)) return;
+
+    // ensure fixed size from CSS; chessboardjs reads container size at init
+    const b = Chessboard(elId, {
+      draggable: false,
+      position: pr.fen,
+      orientation: 'white',
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+      showNotation: false
+    });
+
+    miniBoards.set(elId, { board: b, pr });
+    // draw a tiny overlay (SVG) for arrows/squares
+    attachMiniOverlay(el, pr);
+  }
+
+  function attachMiniOverlay(containerEl, pr){
+    // Avoid duplicates
+    if (containerEl.querySelector('svg[data-mini-overlay="1"]')) return;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('data-mini-overlay','1');
+    svg.style.position = 'absolute';
+    svg.style.inset = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.pointerEvents = 'none';
+    svg.setAttribute('viewBox','0 0 100 100');
+    svg.setAttribute('preserveAspectRatio','none');
+
+    // container needs position:relative; chessboardjs uses internal div, so we wrap with relative by styling here
+    containerEl.style.position = 'relative';
+    containerEl.appendChild(svg);
+
+    const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+    svg.appendChild(defs);
+
+    for (const c of ['G','R','B','Y']){
+      const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
+      marker.setAttribute('id',`miniArrowHead_${containerEl.id}_${c}`);
+      marker.setAttribute('markerWidth','6');
+      marker.setAttribute('markerHeight','6');
+      marker.setAttribute('refX','5.2');
+      marker.setAttribute('refY','3');
+      marker.setAttribute('orient','auto');
+      marker.setAttribute('markerUnits','strokeWidth');
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d','M0,0 L6,3 L0,6 Z');
+      path.setAttribute('fill', colorHex(c));
+      marker.appendChild(path);
+      defs.appendChild(marker);
+    }
+
+    function sqToXY(sq){
+      const f = sq.charCodeAt(0)-97;
+      const r = parseInt(sq[1],10)-1;
+      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
+    }
+
+    function drawMiniSquare(sq, c){
+      const {x,y} = sqToXY(sq);
+      const size = 12.5;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x', x - size/2);
+      rect.setAttribute('y', y - size/2);
+      rect.setAttribute('width', size);
+      rect.setAttribute('height', size);
+      rect.setAttribute('fill', colorHex(c));
+      rect.setAttribute('opacity', '0.16');
+      svg.appendChild(rect);
+    }
+
+    function drawMiniArrow(from,to,c){
+      const a = sqToXY(from), b = sqToXY(to);
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const len=Math.hypot(dx,dy)||1;
+      const shrink=4;
+      const ux=dx/len, uy=dy/len;
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1', a.x);
+      line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x - ux*shrink);
+      line.setAttribute('y2', b.y - uy*shrink);
+      line.setAttribute('stroke', colorHex(c));
+      line.setAttribute('stroke-width', '1.7');
+      line.setAttribute('opacity', '0.92');
+      line.setAttribute('marker-end', `url(#miniArrowHead_${containerEl.id}_${c})`);
+      svg.appendChild(line);
+    }
+
+    // render overlays
+    const sqs = pr.miniSquares || {};
+    for (const k of Object.keys(sqs)){
+      drawMiniSquare(k, sqs[k]);
+    }
+    const ars = pr.miniArrows || pr.arrows || [];
+    for (const a of ars){
+      drawMiniArrow(a.from, a.to, a.color || 'G');
+    }
+  }
+
+  function resizeMiniBoards(){
+    // chessboardjs sometimes needs resize after being shown / after layout changes
+    for (const {board} of miniBoards.values()){
+      if (board && typeof board.resize === 'function') board.resize();
+    }
+  }
+
+  btnPriyomesSearch.addEventListener('click', async () => {
+    // behave like "Run Query"
+    setTab('query');
+
+    // let the tab switch/layout settle so disabled state is correct
+    setTimeout(() => {
+      if (qRun.disabled) {
+        logLine('WARN', 'Cannot run: Query is not ready (missing CQL or PGN).');
+        return;
+      }
+      qRun.click(); // triggers the existing Run Query handler
+    }, 0);
+  });
+
+
+  dbSelectEl.addEventListener('change', () => {
+    // update labels
+    if (document.getElementById('panePriyomes').classList.contains('active')) renderPriyomes();
+    updateQueryUi();
+  });
+
+  function setQuerySetupMode(on){
+    isQuerySetupMode = !!on;
+
+    // keep drawing tools available in setup mode
+
+    setupRow.classList.toggle('open', isQuerySetupMode);
+
+    if (!board){
+      ensureMainBoard();
+    }
+
+    if (isQuerySetupMode){
+      // allow free placement:
+      // - chessboard.js supports dropOffBoard:'trash'
+      // - sparePieces:true lets users add pieces
+      // Re-init board with sparePieces enabled (minimal & reliable)
+      try {
+        // If chessboard.js supports destroy
+        if (board && typeof board.destroy === 'function') board.destroy();
+      } catch {}
+
+      board = Chessboard('board', {
+        draggable: true,
+        dropOffBoard: 'trash',
+        sparePieces: true,
+        position: '8/8/8/8/8/8/8/8',
+        pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+        onDragStart, onDrop, onSnapEnd
+      });
+      if (typeof board.resize === 'function') board.resize();
+
+      updateSetupPreview();
+      logLine('OK', 'Entered query setup mode (sparePieces + trash).');
+    } else {
+      // restore normal board bound to current chess.js game position
+      try {
+        if (board && typeof board.destroy === 'function') board.destroy();
+      } catch {}
+
+      board = Chessboard('board', {
+        draggable:true,
+        position: game ? game.fen() : 'start',
+        pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
+        onDragStart, onDrop, onSnapEnd
+      });
+      if (typeof board.resize === 'function') board.resize();
+
+      // refresh overlays
+      redrawDrawings();
+      logLine('OK', 'Exited query setup mode.');
+    }
+
+    // keep sizing stable
+    sizeBoardSquare();
+    setTimeout(() => { if (board && typeof board.resize === 'function') board.resize(); }, 0);
+  }
+
+  btnPriyomesNew.addEventListener('click', () => {
+    setupImportedCqlRef = null;
+    setupImportedPgnTitle = null;
+    setupImportedMiniSquares = null;
+    setupImportedMiniArrows  = null;
+
+    setupHint.innerHTML = 'Drag pieces to set a position. This immediately creates a new game in the current study. Click <b>Play from here</b> when ready.';
+    setQuerySetupMode(true);
+
+    // Create the draft game immediately so drawings (arrows/squares) have a stable bucket
+    // and the game exists inside the current study right away.
+    // Default to a clean start position unless the board already shows something.
+    try {
+      if (board) setBoardFen('setup mode init', 'start', false);
+      clearSetupDraftTemp();
+      const id = ensureSetupDraftGame();
+      if (id){
+        const g = GAMES.find(x => x.id === id);
+        if (g){
+          currentGame = g;
+          ensureStores(g.id);
+          gamePill.textContent = g.title;
+          document.getElementById('studyPill').textContent = `${currentStudyName} • ${currentStudy().gameIds.length} games`;
+          renderGameList();
+        }
+      }
+      updateSetupPreview();
+      redrawDrawings();
+      logLine('OK', 'New Query: created a draft game in the current study.');
+    } catch (e) {
+      logStack('ERR', 'New Query failed: ', e);
+    }
+  });
+
+  btnCancelPriyome.addEventListener('click', () => {
+    setQuerySetupMode(false);
+  });
+
+  btnAddPriyome.addEventListener('click', () => {
+    if (!isQuerySetupMode || !board) return;
+
+    const posFen = board.fen ? board.fen() : null;
+    // chessboard.js v1.0 provides board.fen() in API; if unavailable, fall back to current game fen
+    const fen = (typeof posFen === 'string' && posFen.trim()) ? posFen : (game ? game.fen() : '8/8/8/8/8/8/8/8');
+
+    const id = `custom_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    addPriyome({
+      id,
+      title: `Custom ${PRIYOMES.filter(p => p.id.startsWith('custom_')).length + 1}`,
+      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created position',
+      fen,
+      cqlref: setupImportedCqlRef || null,
+      miniSquares: setupImportedMiniSquares || {},
+      miniArrows:  setupImportedMiniArrows  || [],
+    });
+
+    selectedPriyomeId = id;
+    setQuerySetupMode(false);
+    setTab('priyomes');
+
+    // scroll list to bottom and re-render
+    renderPriyomes();
+    setTimeout(() => {
+      prListEl.scrollTop = prListEl.scrollHeight;
+      resizeMiniBoards();
+    }, 0);
+
+    logLine('OK', `Added new Priyome: ${id}`);
+  });
+
+  // ---------- boot ----------
+  try {
+    diag();
+
+    if (typeof Chess === 'undefined') {
+      logLine('ERR', 'Chess is undefined. chess.js did not load (CDN blocked?).');
+      setTab('errors');
+      return;
+    }
+    if (typeof Chessboard === 'undefined') {
+      logLine('ERR', 'Chessboard is undefined. chessboard.js did not load (CDN blocked?), or jQuery missing.');
+      setTab('errors');
+      return;
+    }
+
+    game = new Chess();
+    setTool(Tool.NONE);
+
+    // build Priyomes list
+    buildGreekGift();
+    selectedPriyomeId = 'gg';
+
+    renderGameList();
+
+    sizeBoardSquare();
+    loadGame('mock1');
+
+    updateQueryUi();
+    loadEvals();
+
+    // initial priyomes render (hidden until tab opened; still fine)
+    renderPriyomes();
+
+    logLine('OK', 'Boot complete.');
+  } catch (e) {
+    logLine('ERR', `Boot exception: ${e && e.stack ? e.stack : String(e)}`);
+    setTab('errors');
+  }
+
+})();
+</script>
+</body>
+</html>
