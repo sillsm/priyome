@@ -2595,6 +2595,25 @@ function gotoPly(ply){
         : haveOverridePgn ? "Ready (current game)."
         : `Ready (manifest: ${dbSelectEl.value}).`;
     }
+  // After any CQL run we clear transient Query overrides so other panes (e.g., Priyomes DB search)
+  // don't accidentally keep running against the last "current game" or eval-selected PGN.
+  function resetAfterCqlRunTransientState(){
+    // 1) Clear "current game" override PGN (used by evals / run-from-game flows)
+    if (qPgnBytesOverride){
+      qPgnBytesOverride = null;
+      // If the user didn't pick a file, return the label to neutral (manifest selection still applies)
+      if (!qPgnFile.files?.[0]) qPgnName.textContent = "—";
+    }
+
+    // 2) Clear setup-import transient hints (so next action doesn't inherit them)
+    setupImportedCqlRef = null;
+    setupImportedPgnTitle = null;
+
+    // 3) If the CQL name was set by evals, de-pin the label (keep the text box untouched)
+    const cqlLabel = (qCqlName.textContent || "");
+    if (cqlLabel.startsWith("(eval)")) qCqlName.textContent = "—";
+  }
+
   }
 
   qCqlFile.addEventListener('change', async () => {
@@ -2777,6 +2796,7 @@ async function getRunnerMod() {
                 logLine('WARN', 'CQL workaround: output contained only dummy game (or nothing); ignoring.');
               }
           }
+          resetAfterCqlRunTransientState();
           qRun.disabled = false;
           updateQueryUi();
         }
@@ -2784,6 +2804,7 @@ async function getRunnerMod() {
 
     }catch(e){
       logLine('ERR', `Run exception: ${e && e.stack ? e.stack : String(e)}`);
+      resetAfterCqlRunTransientState();
       qRun.disabled = false;
       updateQueryUi();
       setTab('errors');
