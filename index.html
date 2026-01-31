@@ -2417,6 +2417,54 @@ function gotoPly(ply){
     return parts.length ? parts : [t];
   }
 
+  // ---------- CQL runner workaround: ensure >=2 games ----------
+  // Some CQL runner / PGN edge cases appear when the input PGN contains only a single game.
+  // Workaround: if the input has exactly 1 game, append a distinctive dummy game before running.
+  // Then, strip that dummy from output PGN (even if modified) before importing discovered games.
+  const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
+  const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
+  const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
+  function buildDummyGamePgn(){
+    // 10 plies = 5 full moves
+    const headers = [
+      `[Event "${DUMMY_CQL_EVENT}"]`,
+      `[Site "Local"]`,
+      `[Date "${todayYMD()}"]`,
+      `[Round "1"]`,
+      `[White "${DUMMY_CQL_WHITE}"]`,
+      `[Black "${DUMMY_CQL_BLACK}"]`,
+      `[Result "*"]`,
+    ].join("\n");
+
+    const moves = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 *";
+    return `${headers}\n\n${moves}\n`;
+  }
+
+  function isDummyGamePgn(pgn){
+    const h = parseHeaders(String(pgn || ""));
+    return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
+  }
+
+  function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
+    const bytes = (pgnBytes instanceof Uint8Array) ? pgnBytes : new Uint8Array(pgnBytes || []);
+    const text = new TextDecoder().decode(bytes);
+    const games = splitMultiPgn(text);
+    if (games.length !== 1){
+      return { bytes, injected:false, originalGameCount: games.length };
+    }
+    const dummy = buildDummyGamePgn();
+    const outText = (text.trim() ? (text.trim() + "\n\n" + dummy) : dummy) + "\n";
+    return { bytes: textToUtf8Bytes(outText), injected:true, originalGameCount:1 };
+  }
+
+  function stripDummyFromMultiPgnText(multiPgnText){
+    const games = splitMultiPgn(String(multiPgnText || ""));
+    if (!games.length) return "";
+    const kept = games.filter(g => !isDummyGamePgn(g));
+    return kept.join("\n\n").trim();
+  }
+
 
   // ---------- Setup-mode: Import from PGN  ----------
   btnSetupImportPgn.addEventListener('click', () => {
@@ -2547,6 +2595,25 @@ function gotoPly(ply){
         : haveOverridePgn ? "Ready (current game)."
         : `Ready (manifest: ${dbSelectEl.value}).`;
     }
+  // After any CQL run we clear transient Query overrides so other panes (e.g., Priyomes DB search)
+  // don't accidentally keep running against the last "current game" or eval-selected PGN.
+  function resetAfterCqlRunTransientState(){
+    // 1) Clear "current game" override PGN (used by evals / run-from-game flows)
+    if (qPgnBytesOverride){
+      qPgnBytesOverride = null;
+      // If the user didn't pick a file, return the label to neutral (manifest selection still applies)
+      if (!qPgnFile.files?.[0]) qPgnName.textContent = "—";
+    }
+
+    // 2) Clear setup-import transient hints (so next action doesn't inherit them)
+    setupImportedCqlRef = null;
+    setupImportedPgnTitle = null;
+
+    // 3) If the CQL name was set by evals, de-pin the label (keep the text box untouched)
+    const cqlLabel = (qCqlName.textContent || "");
+    if (cqlLabel.startsWith("(eval)")) qCqlName.textContent = "—";
+  }
+
   }
 
   qCqlFile.addEventListener('change', async () => {
@@ -2670,6 +2737,20 @@ async function getRunnerMod() {
        qPgnBytesOverride ? `game:${currentGame?.id || 'unknown'}`
        : (pgnFile ? `upload:${pgnFile.name}` : `db:${dbSelectEl.value}`);
 
+       // Workaround: if PGN has only one game, append a dummy second game for CQL execution.
+       let _dummyInjected = false;
+       try{
+         const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+         pgnBytes = ensured.bytes;
+         _dummyInjected = !!ensured.injected;
+         if (_dummyInjected){
+           logLine('WARN', `CQL workaround: input had 1 game; appended dummy game (${DUMMY_CQL_EVENT}).`);
+         }
+       }catch(e){
+         logLine('WARN', 'CQL workaround failed (continuing without dummy): ' + String(e));
+       }
+
+
 
       qRun.disabled = true;
       qStatus.textContent = "Running…";
@@ -2700,11 +2781,22 @@ async function getRunnerMod() {
           } else {
             logLine('OK', `Query done (rc=${String(j.rc)}). outputPgn=${j.outputPgn.length} chars`);
             if (j.outputMissing) logLine('WARN', 'output.pgn not found by runner (empty output).');
-            if (j.outputPgn && j.outputPgn.trim()){
-              const added = addDiscoveredGamesFromPgn(j.outputPgn, sourceKey);
-              if (added > 0) setTab('games');
-            }
+            let outPgnText = j.outputPgn || "";
+              if (_dummyInjected){
+                const stripped = stripDummyFromMultiPgnText(outPgnText);
+                if (stripped !== outPgnText.trim()){
+                  logLine('OK', 'CQL workaround: stripped dummy game from output.');
+                }
+                outPgnText = stripped;
+              }
+              if (outPgnText && outPgnText.trim()){
+                const added = addDiscoveredGamesFromPgn(outPgnText, sourceKey);
+                if (added > 0) setTab('games');
+              } else if (_dummyInjected){
+                logLine('WARN', 'CQL workaround: output contained only dummy game (or nothing); ignoring.');
+              }
           }
+          resetAfterCqlRunTransientState();
           qRun.disabled = false;
           updateQueryUi();
         }
@@ -2712,6 +2804,7 @@ async function getRunnerMod() {
 
     }catch(e){
       logLine('ERR', `Run exception: ${e && e.stack ? e.stack : String(e)}`);
+      resetAfterCqlRunTransientState();
       qRun.disabled = false;
       updateQueryUi();
       setTab('errors');
@@ -3174,6 +3267,20 @@ async function runCqlEvalFromManifest(ref){
   }
 
   btnPriyomesSearch.addEventListener('click', async () => {
+    // Priyomes DB search should ALWAYS run against the selected DB (manifest),
+    // not whatever Query tab previously ran against (upload/current-game override).
+    // Force Query input to "manifest mode" immediately.
+    qPgnBytesOverride = null;
+    if (qPgnFile) qPgnFile.value = '';
+    const db = dbSelectEl.value;
+    if (db && PGN_MANIFEST[db]) {
+      qPgnName.textContent = `(manifest) ${db}`;
+    } else {
+      // fallback label (Query will still validate availability)
+      qPgnName.textContent = '—';
+    }
+    updateQueryUi();
+
     // behave like "Run Query"
     setTab('query');
 
