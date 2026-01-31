@@ -3267,6 +3267,20 @@ async function runCqlEvalFromManifest(ref){
   }
 
   btnPriyomesSearch.addEventListener('click', async () => {
+    // Priyomes DB search should ALWAYS run against the selected DB (manifest),
+    // not whatever Query tab previously ran against (upload/current-game override).
+    // Force Query input to "manifest mode" immediately.
+    qPgnBytesOverride = null;
+    if (qPgnFile) qPgnFile.value = '';
+    const db = dbSelectEl.value;
+    if (db && PGN_MANIFEST[db]) {
+      qPgnName.textContent = `(manifest) ${db}`;
+    } else {
+      // fallback label (Query will still validate availability)
+      qPgnName.textContent = '—';
+    }
+    updateQueryUi();
+
     // behave like "Run Query"
     setTab('query');
 
