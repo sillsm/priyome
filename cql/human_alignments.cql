@@ -101,7 +101,7 @@ find all quiet {
     square t in [KQBNR]
       if (t != s) then {
         if (ray(s t)) then {
-          if (functrue(s t) then)
+          if (functrue(s t)) then
             colorEnclosingRay(s t)
         }
       }
@@ -110,7 +110,7 @@ find all quiet {
     square v in [kqbnr]
       if (v != u) then {
         if (ray(u v)) then {
-          if (funcfalse(u v) then
+          if (funcfalse(u v)) then
             colorEnclosingRay(u v)
         }
       }
