@@ -1,11 +1,5 @@
 cql(quiet)
 
-// Important alignments filter
-// Discards disabled if either side is down >=9 points from start
-// Discard: horizontal alignments on rank 1 or 8
-// Keep: (K or Q, other non-pawn piece, aligned, >=1 between-square)
-// Keep: (slider, friendly blocker, enemy target beyond blocker, >=1 between-square)
-
 function enclosingedges($s1 $s2) {
   if file $s1 == file $s2 then
     makesquare(file $s1 1) | makesquare(file $s1 8)
@@ -30,8 +24,9 @@ function enclosingedges($s1 $s2) {
 arrow_comment = ""
 
 function arrowFromToColor(color fromSq toSq){
-  if (arrow_comment == "") then
+  if (arrow_comment == "") then {
     arrow_comment = "[%cal " + color + str(fromSq) + str(toSq) + "]"
+  }
   else {
     arrow_comment = arrow_comment[:-1]
     arrow_comment = arrow_comment + "," + color + str(fromSq) + str(toSq) + "]"
@@ -40,145 +35,78 @@ function arrowFromToColor(color fromSq toSq){
 
 function colorEnclosingRay($s1 $s2){
   $edges = enclosingedges($s1 $s2)
+
   $from = []
   $to = []
+
   square sq in $edges {
-    if $from == [] then $from = sq else $to = sq
+    if $from == [] then
+      $from = sq
+    else
+      $to = sq
   }
+
   arrowFromToColor("Y" $from $to)
 }
 
-function countSquares($set) {
-  $n = 0
-  square z in $set { $n = $n + 1 }
-  $n
-}
-
-function sidePoints(isWhite) {
-  if (isWhite) then
-    9*countSquares([Q]) + 5*countSquares([R]) +
-    3*countSquares([B]) + 3*countSquares([N]) +
-    1*countSquares([P])
-  else
-    9*countSquares([q]) + 5*countSquares([r]) +
-    3*countSquares([b]) + 3*countSquares([n]) +
-    1*countSquares([p])
-}
-
-function messy() {
-  $w = sidePoints(1)
-  $b = sidePoints(0)
-  ($w <= 30) | ($b <= 30)
-}
+// Predicates return sets:
+// []       -> false
+// nonempty -> true
 
 function horizRank1or8($a $b) {
-  (rank $a == rank $b) & ((rank $a == 1) | (rank $a == 8))
+  if (rank $a == rank $b) then {
+    if (rank $a == 1) then [a1]
+    else if (rank $a == 8) then [a1]
+    else []
+  } else []
 }
 
 function hasBetween($a $b) {
-  countSquares(ray($a $b)) >= 1
+  $mid = ray($a $b)
+  $n = 0
+  square m in $mid { $n = $n + 1 }
+  if ($n >= 1) then
+    $mid
+  else
+    []
 }
 
-function isKQPair($a $b) {
-  $ok = 0
-  if (($a in [K]) & ($b in [QBNR])) then $ok = 1
-  if (($b in [K]) & ($a in [QBNR])) then $ok = 1
-  if (($a in [Q]) & ($b in [BNR])) then $ok = 1
-  if (($b in [Q]) & ($a in [BNR])) then $ok = 1
-  if (($a in [k]) & ($b in [qbnr])) then $ok = 1
-  if (($b in [k]) & ($a in [qbnr])) then $ok = 1
-  if (($a in [q]) & ($b in [bnr])) then $ok = 1
-  if (($b in [q]) & ($a in [bnr])) then $ok = 1
-  $ok & ray($a $b) & hasBetween($a $b)
-}
+// Still stubbed for now
+function messy() { [] }
+function isKQPair($a $b) { [] }
+function isDiscoverySeed($a $b) { [] }
 
-function enemyBeyond($slider $blocker isWhite) {
-  $edges = enclosingedges($slider $blocker)
-  $e1 = []
-  $e2 = []
-  square e in $edges { if $e1 == [] then $e1 = e else $e2 = e }
-  $beyond = []
-  if ($blocker in ray($slider $e1)) then $beyond = $e1
-  else if ($blocker in ray($slider $e2)) then $beyond = $e2
-  else $beyond = []
-  if ($beyond == []) then 0
-  else {
-    $after = ray($blocker $beyond)
-    if (isWhite) then countSquares($after & [qbnr]) >= 1
-    else countSquares($after & [QBNR]) >= 1
-  }
-}
-
-function isDiscovery($slider $blocker isWhite) {
-  ray($slider $blocker) &
-  hasBetween($slider $blocker) &
-  enemyBeyond($slider $blocker isWhite)
+function discardRay($a $b) {
+  if (horizRank1or8($a $b) != []) then
+    [a1]
+  if (hasBetween($a $b) == []) then
+    [a1]
+  []
 }
 
 find all quiet {
   arrow_comment = ""
-  $m = messy()
 
-  $d_r18 = 0
-  $d_space = 0
-  $d_other = 0
-
-  // K/Q focus
-  square a in [KQ]
-    square b in [QBNR]
-      if (a != b) & (str(a) < str(b)) then {
-        $keep = 0
-        if (ray(a b)) then {
-          if ((!$m) & horizRank1or8(a b)) then $d_r18 = $d_r18 + 1
-          else if ((!$m) & (!hasBetween(a b))) then $d_space = $d_space + 1
-          else if ($m | isKQPair(a b)) then $keep = 1
-          else $d_other = $d_other + 1
-        }
-        if ($keep) then colorEnclosingRay(a b)
-      }
-
-  square c in [kq]
-    square d in [qbnr]
-      if (c != d) & (str(c) < str(d)) then {
-        $keep2 = 0
-        if (ray(c d)) then {
-          if ((!$m) & horizRank1or8(c d)) then $d_r18 = $d_r18 + 1
-          else if ((!$m) & (!hasBetween(c d))) then $d_space = $d_space + 1
-          else if ($m | isKQPair(c d)) then $keep2 = 1
-          else $d_other = $d_other + 1
-        }
-        if ($keep2) then colorEnclosingRay(c d)
-      }
-
-  // Discovery seeds
-  square s in [BRQ]
+  square s in [KQBNR]
     square t in [KQBNR]
-      if (s != t) & (str(s) < str(t)) then {
-        $keep3 = 0
+      if (t != s) then {
         if (ray(s t)) then {
-          if ((!$m) & horizRank1or8(s t)) then $d_r18 = $d_r18 + 1
-          else if ((!$m) & (!hasBetween(s t))) then $d_space = $d_space + 1
-          else if ($m | isDiscovery(s t 1)) then $keep3 = 1
-          else $d_other = $d_other + 1
+          if (discardRay(s t) == []) then
+            colorEnclosingRay(s t)
         }
-        if ($keep3) then colorEnclosingRay(s t)
       }
 
-  square u in [brq]
+  square u in [kqbnr]
     square v in [kqbnr]
-      if (u != v) & (str(u) < str(v)) then {
-        $keep4 = 0
+      if (v != u) then {
         if (ray(u v)) then {
-          if ((!$m) & horizRank1or8(u v)) then $d_r18 = $d_r18 + 1
-          else if ((!$m) & (!hasBetween(u v))) then $d_space = $d_space + 1
-          else if ($m | isDiscovery(u v 0)) then $keep4 = 1
-          else $d_other = $d_other + 1
+          if (discardRay(u v) == []) then
+            colorEnclosingRay(u v)
         }
-        if ($keep4) then colorEnclosingRay(u v)
       }
 
   if (arrow_comment == "") then
-    comment("discard{r18=" + str($d_r18) + ",space=" + str($d_space) + ",other=" + str($d_other) + ",messy=" + str($m) + "}")
+    comment("hi")
   else
-    comment(arrow_comment + " discard{r18=" + str($d_r18) + ",space=" + str($d_space) + ",other=" + str($d_other) + ",messy=" + str($m) + "}")
+    comment(arrow_comment)
 }
