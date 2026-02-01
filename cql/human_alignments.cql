@@ -1,10 +1,10 @@
 cql(quiet)
 
-// Important-alignments filter.
-// Discard rules are disabled if either side is down >= 9 points from start (39 -> 30).
-// Discard: horizontal alignments on rank 1 or 8.
-// Keep: (K or Q, other non-pawn piece, aligned, at least one between-square).
-// Keep: (slider, friendly blocker, enemy target beyond blocker on same line, at least one between-square).
+// Important alignments filter
+// Discards disabled if either side is down >=9 points from start
+// Discard: horizontal alignments on rank 1 or 8
+// Keep: (K or Q, other non-pawn piece, aligned, >=1 between-square)
+// Keep: (slider, friendly blocker, enemy target beyond blocker, >=1 between-square)
 
 function enclosingedges($s1 $s2) {
   if file $s1 == file $s2 then
@@ -56,9 +56,13 @@ function countSquares($set) {
 
 function sidePoints(isWhite) {
   if (isWhite) then
-    9*countSquares([Q]) + 5*countSquares([R]) + 3*countSquares([B]) + 3*countSquares([N]) + 1*countSquares([P])
+    9*countSquares([Q]) + 5*countSquares([R]) +
+    3*countSquares([B]) + 3*countSquares([N]) +
+    1*countSquares([P])
   else
-    9*countSquares([q]) + 5*countSquares([r]) + 3*countSquares([b]) + 3*countSquares([n]) + 1*countSquares([p])
+    9*countSquares([q]) + 5*countSquares([r]) +
+    3*countSquares([b]) + 3*countSquares([n]) +
+    1*countSquares([p])
 }
 
 function messy() {
@@ -76,7 +80,6 @@ function hasBetween($a $b) {
 }
 
 function isKQPair($a $b) {
-  // K/Q with other non-pawn piece, aligned, >=1 between-square.
   $ok = 0
   if (($a in [K]) & ($b in [QBNR])) then $ok = 1
   if (($b in [K]) & ($a in [QBNR])) then $ok = 1
@@ -86,11 +89,10 @@ function isKQPair($a $b) {
   if (($b in [k]) & ($a in [qbnr])) then $ok = 1
   if (($a in [q]) & ($b in [bnr])) then $ok = 1
   if (($b in [q]) & ($a in [bnr])) then $ok = 1
-  $ok & (ray($a $b)) & hasBetween($a $b)
+  $ok & ray($a $b) & hasBetween($a $b)
 }
 
 function enemyBeyond($slider $blocker isWhite) {
-  // Any enemy non-pawn piece beyond blocker on same infinite line.
   $edges = enclosingedges($slider $blocker)
   $e1 = []
   $e2 = []
@@ -102,126 +104,81 @@ function enemyBeyond($slider $blocker isWhite) {
   if ($beyond == []) then 0
   else {
     $after = ray($blocker $beyond)
-    if (isWhite) then (countSquares($after & [qbnr]) >= 1)
-    else (countSquares($after & [QBNR]) >= 1)
+    if (isWhite) then countSquares($after & [qbnr]) >= 1
+    else countSquares($after & [QBNR]) >= 1
   }
 }
 
 function isDiscovery($slider $blocker isWhite) {
-  // Slider + friendly blocker + enemy target beyond, aligned, >=1 between-square (slider<->blocker).
-  (ray($slider $blocker)) & hasBetween($slider $blocker) & enemyBeyond($slider $blocker isWhite)
+  ray($slider $blocker) &
+  hasBetween($slider $blocker) &
+  enemyBeyond($slider $blocker isWhite)
 }
 
 find all quiet {
   arrow_comment = ""
   $m = messy()
 
-  // Discard counters
   $d_r18 = 0
-  $d_nospace = 0
+  $d_space = 0
   $d_other = 0
 
-  // Pass A: K/Q focus
+  // K/Q focus
   square a in [KQ]
     square b in [QBNR]
-      if (a != b) then
-        if (str(a) < str(b)) then {
-          $keep = 0
-          if (ray(a b)) then {
-            if ((!$m) & horizRank1or8(a b)) then $d_r18 = $d_r18 + 1
-            else if ((!$m) & (!hasBetween(a b))) then $d_nospace = $d_nospace + 1
-            else {
-              if ($m | isKQPair(a b)) then $keep = 1 else $d_other = $d_other + 1
-            }
-          }
-          if ($keep) then colorEnclosingRay(a b)
+      if (a != b) & (str(a) < str(b)) then {
+        $keep = 0
+        if (ray(a b)) then {
+          if ((!$m) & horizRank1or8(a b)) then $d_r18 = $d_r18 + 1
+          else if ((!$m) & (!hasBetween(a b))) then $d_space = $d_space + 1
+          else if ($m | isKQPair(a b)) then $keep = 1
+          else $d_other = $d_other + 1
         }
+        if ($keep) then colorEnclosingRay(a b)
+      }
 
   square c in [kq]
     square d in [qbnr]
-      if (c != d) then
-        if (str(c) < str(d)) then {
-          $keep2 = 0
-          if (ray(c d)) then {
-            if ((!$m) & horizRank1or8(c d)) then $d_r18 = $d_r18 + 1
-            else if ((!$m) & (!hasBetween(c d))) then $d_nospace = $d_nospace + 1
-            else {
-              if ($m | isKQPair(c d)) then $keep2 = 1 else $d_other = $d_other + 1
-            }
-          }
-          if ($keep2) then colorEnclosingRay(c d)
+      if (c != d) & (str(c) < str(d)) then {
+        $keep2 = 0
+        if (ray(c d)) then {
+          if ((!$m) & horizRank1or8(c d)) then $d_r18 = $d_r18 + 1
+          else if ((!$m) & (!hasBetween(c d))) then $d_space = $d_space + 1
+          else if ($m | isKQPair(c d)) then $keep2 = 1
+          else $d_other = $d_other + 1
         }
+        if ($keep2) then colorEnclosingRay(c d)
+      }
 
-  // Pass B: discovery seeds
+  // Discovery seeds
   square s in [BRQ]
     square t in [KQBNR]
-      if (s != t) then
-        if (str(s) < str(t)) then {
-          $keep3 = 0
-          if (ray(s t)) then {
-            if ((!$m) & horizRank1or8(s t)) then $d_r18 = $d_r18 + 1
-            else if ((!$m) & (!hasBetween(s t))) then $d_nospace = $d_nospace + 1
-            else {
-              if ($m | isDiscovery(s t 1)) then $keep3 = 1 else $d_other = $d_other + 1
-            }
-          }
-          if ($keep3) then colorEnclosingRay(s t)
+      if (s != t) & (str(s) < str(t)) then {
+        $keep3 = 0
+        if (ray(s t)) then {
+          if ((!$m) & horizRank1or8(s t)) then $d_r18 = $d_r18 + 1
+          else if ((!$m) & (!hasBetween(s t))) then $d_space = $d_space + 1
+          else if ($m | isDiscovery(s t 1)) then $keep3 = 1
+          else $d_other = $d_other + 1
         }
+        if ($keep3) then colorEnclosingRay(s t)
+      }
 
   square u in [brq]
     square v in [kqbnr]
-      if (u != v) then
-        if (str(u) < str(v)) then {
-          $keep4 = 0
-          if (ray(u v)) then {
-            if ((!$m) & horizRank1or8(u v)) then $d_r18 = $d_r18 + 1
-            else if ((!$m) & (!hasBetween(u v))) then $d_nospace = $d_nospace + 1
-            else {
-              if ($m | isDiscovery(u v 0)) then $keep4 = 1 else $d_other = $d_other + 1
-            }
-          }
-          if ($keep4) then colorEnclosingRay(u v)
+      if (u != v) & (str(u) < str(v)) then {
+        $keep4 = 0
+        if (ray(u v)) then {
+          if ((!$m) & horizRank1or8(u v)) then $d_r18 = $d_r18 + 1
+          else if ((!$m) & (!hasBetween(u v))) then $d_space = $d_space + 1
+          else if ($m | isDiscovery(u v 0)) then $keep4 = 1
+          else $d_other = $d_other + 1
         }
-
-  // Comment only discards (compact)
-  if (arrow_comment == "") then
-    comment("discard{r18=" + str($d_r18) + ",space=" + str($d_nospace) + ",other=" + str($d_other) + ",messy=" + str($m) + "}")
-  else
-    comment(arrow_comment + " discard{r18=" + str($d_r18) + ",space=" + str($d_nospace) + ",other=" + str($d_other) + ",messy=" + str($m) + "}")
-}
-f (ray(u v)) then {
-            if ((!$messy) & isRank1or8Horizontal(u v)) then {
-              $d_rank18 = $d_rank18 + 1
-            }
-            else if ((!$messy) & (!hasSpaceBetween(u v))) then {
-              $d_noSpace = $d_noSpace + 1
-            }
-            else {
-              if ($messy | isDiscoverySeed(u v 0)) then $keep4 = 1
-              else $d_notKQorDisc = $d_notKQorDisc + 1
-            }
-          }
-
-          if ($keep4) then colorEnclosingRay(u v)
-        }
+        if ($keep4) then colorEnclosingRay(u v)
       }
 
-  // Append a discard summary for iteration/debugging
-  // (When messy=1, these counters mostly remain low because we don’t discard.)
-  if (arrow_comment == "") then {
-    comment(
-      "discarded{rank1/8=" + str($d_rank18) +
-      ", noSpace=" + str($d_noSpace) +
-      ", notKQorDisc=" + str($d_notKQorDisc) +
-      ", messy=" + str($messy) + "}"
-    )
-  } else {
-    comment(
-      arrow_comment + " " +
-      "discarded{rank1/8=" + str($d_rank18) +
-      ", noSpace=" + str($d_noSpace) +
-      ", notKQorDisc=" + str($d_notKQorDisc) +
-      ", messy=" + str($messy) + "}"
-    )
-  }
+  if (arrow_comment == "") then
+    comment("discard{r18=" + str($d_r18) + ",space=" + str($d_space) + ",other=" + str($d_other) + ",messy=" + str($m) + "}")
+  else
+    comment(arrow_comment + " discard{r18=" + str($d_r18) + ",space=" + str($d_space) + ",other=" + str($d_other) + ",messy=" + str($m) + "}")
 }
