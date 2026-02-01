@@ -60,7 +60,7 @@ function horizRank1or8($a $b) {
     else []
   } else []
 }
-
+  
 function hasBetween($a $b) {
   $mid = ray($a $b)
   $n = 0
@@ -77,10 +77,12 @@ function isKQPair($a $b) { [] }
 function isDiscoverySeed($a $b) { [] }
 
 function discardRay($a $b) {
-  if (horizRank1or8($a $b) != []) then
+  if (horizRank1or8($a $b) != []) then {
     [a1]
-  if (hasBetween($a $b) == []) then
+  }
+  if (hasBetween($a $b) == [])  then {
     [a1]
+  } else
   []
 }
 
@@ -91,7 +93,7 @@ find all quiet {
     square t in [KQBNR]
       if (t != s) then {
         if (ray(s t)) then {
-          if (discardRay(s t) == []) then
+          if (discardRay(s t)) then
             colorEnclosingRay(s t)
         }
       }
