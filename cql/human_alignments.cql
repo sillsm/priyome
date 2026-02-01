@@ -60,6 +60,10 @@ function horizRank1or8($a $b) {
     else []
   } else []
 }
+
+function functrue($a $b) {
+  [a1]
+}
   
 function hasBetween($a $b) {
   $mid = ray($a $b)
@@ -93,7 +97,7 @@ find all quiet {
     square t in [KQBNR]
       if (t != s) then {
         if (ray(s t)) then {
-          if (discardRay(s t)) then
+          if (functrue) then
             colorEnclosingRay(s t)
         }
       }
