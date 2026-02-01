@@ -53,22 +53,6 @@ function colorEnclosingRay($s1 $s2){
 // []       -> false
 // nonempty -> true
 
-function horizRank1or8($a $b) {
-  if (rank $a == rank $b) then {
-    if (rank $a == 1) then [a1]
-    else if (rank $a == 8) then [a1]
-    else []
-  } else []
-}
-
-function functrue($a $b) {
-  [a1]
-}
-
-function funcfalse($a $b) {
-  []
-}
-  
 function hasBetween($a $b) {
   $mid = ray($a $b)
   $n = 0
@@ -79,19 +63,17 @@ function hasBetween($a $b) {
     []
 }
 
-// Still stubbed for now
-function messy() { [] }
-function isKQPair($a $b) { [] }
-function isDiscoverySeed($a $b) { [] }
-
+// Discard rays where both endpoints are on rank 1 or both endpoints are on rank 8.
+// Returns nonempty set to mean "discard", [] to mean "keep".
 function discardRay($a $b) {
-  if (horizRank1or8($a $b) != []) then {
-    [a1]
+  if (rank $a == 1) then {
+    if (rank $b == 1) then [a1] else []
   }
-  if (hasBetween($a $b) == [])  then {
-    [a1]
-  } else
-  []
+  else if (rank $a == 8) then {
+    if (rank $b == 8) then [a1] else []
+  }
+  else
+    []
 }
 
 find all quiet {
@@ -101,7 +83,9 @@ find all quiet {
     square t in [KQBNR]
       if (t != s) then {
         if (ray(s t)) then {
-          if (functrue(s t)) then
+          if (discardRay(s t)) then
+            []
+          else
             colorEnclosingRay(s t)
         }
       }
@@ -110,13 +94,12 @@ find all quiet {
     square v in [kqbnr]
       if (v != u) then {
         if (ray(u v)) then {
-          if (funcfalse(u v)) then
+          if (discardRay(u v)) then
+            []
+          else
             colorEnclosingRay(u v)
         }
       }
 
-  if (arrow_comment == "") then
-    comment("hi")
-  else
-    comment(arrow_comment)
+  comment(arrow_comment)
 }
