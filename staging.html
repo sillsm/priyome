@@ -1648,8 +1648,7 @@ async function bootLoadDefaultStudies() {
     if (!prev) return null;
     if (setupDraftId) return setupDraftId;
 
-    const title = prompt('Name this game (you can rename later):', `Setup ${todayYMD()}`) || `Setup ${todayYMD()}`;
-    const pgn = buildSetupPgn(prev.fen, title);
+    const title = `Setup ${todayYMD()}`;
     const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
     GAMES.unshift({ id:newId, title, opening:'Priyome', result:'*', pgn, isPriyomeGame:true, priyomeId:null });
@@ -1759,6 +1758,19 @@ function sizeBoardSquare(){
   }
 
   function squareToXY(sq){
+    // Prefer DOM-measured square centers for perfect overlay alignment at any width.
+    try {
+      const el = document.querySelector(`#board .square-${sq}`);
+      const wrap = document.getElementById('boardWrap');
+      if (el && wrap){
+        const b = el.getBoundingClientRect();
+        const w = wrap.getBoundingClientRect();
+        const cx = (b.left + b.width/2) - w.left;
+        const cy = (b.top  + b.height/2) - w.top;
+        return { x: (cx / w.width) * 100, y: (cy / w.height) * 100 };
+      }
+    } catch {}
+    // Fallback: math mapping in percent space.
     const f = sq.charCodeAt(0)-97;
     const r = parseInt(sq[1],10)-1;
     if (orientation === 'white'){
@@ -1788,6 +1800,31 @@ function sizeBoardSquare(){
 
 
   function drawSquare(sq, c){
+    const wrap = document.getElementById('boardWrap');
+    const el = document.querySelector(`#board .square-${sq}`);
+    // Use DOM rects when possible for pixel-perfect alignment.
+    if (wrap && el){
+      const b = el.getBoundingClientRect();
+      const w = wrap.getBoundingClientRect();
+      const x = ((b.left - w.left) / w.width) * 100;
+      const y = ((b.top  - w.top ) / w.height) * 100;
+      const ww = (b.width  / w.width) * 100;
+      const hh = (b.height / w.height) * 100;
+
+      const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', ww);
+      rect.setAttribute('height', hh);
+      rect.setAttribute('fill', colorHex(c));
+      rect.setAttribute('opacity', '0.62');
+      rect.style.mixBlendMode = 'multiply';
+      rect.setAttribute('shape-rendering','crispEdges');
+      overlay.appendChild(rect);
+      return;
+    }
+
+    // Fallback: percent-space square.
     const {x,y} = squareToXY(sq);
     const size = 12.5;
     const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
@@ -1796,7 +1833,9 @@ function sizeBoardSquare(){
     rect.setAttribute('width', size);
     rect.setAttribute('height', size);
     rect.setAttribute('fill', colorHex(c));
-    rect.setAttribute('opacity', '0.16');
+    rect.setAttribute('opacity', '0.62');
+    rect.style.mixBlendMode = 'multiply';
+    rect.setAttribute('shape-rendering','crispEdges');
     overlay.appendChild(rect);
   }
 
@@ -2226,7 +2265,7 @@ function gotoPly(ply){
   }
 
   document.getElementById('boardArea').addEventListener('click', (e) => {
-    if (!currentGame) return;
+    if (!currentGame && !isQuerySetupMode) return;
     // In setup mode, allow squares/arrows too (but don't interfere with dragging)
     if (isQuerySetupMode && isDraggingPiece) return;
     if (tool === Tool.NONE) return;
@@ -2235,7 +2274,8 @@ function gotoPly(ply){
     if (!sq) return;
 
     if (tool === Tool.SQUARES){
-      toggleSquare(currentGame.id, sq);
+      const gid = (currentGame && currentGame.id) ? currentGame.id : (setupDraftId || (setupDraftDrawId ||= (`setupdraw:${Date.now()}`)));
+      toggleSquare(gid, sq);
       return;
     }
 
@@ -2245,7 +2285,8 @@ function gotoPly(ply){
         previewTo = sq;
         logLine('OK', `Arrow start = ${sq} (tap destination)`);
       } else {
-        toggleArrow(currentGame.id, tapFrom, sq);
+        const gid = (currentGame && currentGame.id) ? currentGame.id : (setupDraftId || (setupDraftDrawId ||= (`setupdraw:${Date.now()}`)));
+        toggleArrow(gid, tapFrom, sq);
         tapFrom = null;
         previewTo = null;
       }
@@ -3216,15 +3257,22 @@ async function runCqlEvalFromManifest(ref){
   }
   if (btnPlayFromHere){
     btnPlayFromHere.addEventListener('click', () => {
-      const id = ensureSetupDraftGame();
-      if (!id) return;
+      const prev = updateSetupPreview();
+      if (!prev) return;
+      const fen = prev.fen;
+
+      // Create a fresh normal game from the current setup position and load it immediately.
+      const title = `Game from setup ${todayYMD()}`;
+      const pgn = buildSetupPgn(fen, title);
+      const id = addGameToCurrentStudy({ title, pgn, opening:'Setup', result:'*', isPriyomeGame:false });
+
+      // Exit setup mode and load the new game at ply 0.
       setQuerySetupMode(false);
       loadGame(id);
       jumpTo(0);
       setTab('moves');
     });
   }
-
 
   // ---------------- Priyomes ----------------
   function addPriyome(def){
