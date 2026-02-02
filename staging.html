@@ -169,10 +169,10 @@
     }
     .dotBtn.active{ box-shadow:0 0 0 2px rgba(37,99,235,.18); border-color: rgba(37,99,235,.55); }
     .dot{ width:10px; height:10px; border-radius:999px; display:block; }
-    .dotG{ background:#16a34a; }
-    .dotR{ background:#dc2626; }
-    .dotB{ background:#2563eb; }
-    .dotY{ background:#d97706; }
+    .dotG{ background:#00c853; }
+    .dotR{ background:#ff1744; }
+    .dotB{ background:#2979ff; }
+    .dotY{ background:#ffab00; }
 
     .boardCard{ display:flex; flex-direction:column; min-height:0; }
     .boardArea{
@@ -192,9 +192,10 @@
     .boardWrap{
       position:relative;
       width:100%;
-      height:100%;
+      /* Keep board perfectly square across widths */
+      aspect-ratio:1 / 1;
+      height:auto;
       max-width:800px;
-      /* FIX: cap to 800x800 */
       max-height:800px;
     }
     #board{
@@ -608,7 +609,34 @@
       color:var(--text);
       font-size:12px;
       font-weight:800;
+    }    #board .highlight1-32417, .small-board .highlight1-32417{ box-shadow: inset 0 0 0 3px rgba(255,255,255,.10) !important; }
+
+    /* Game pill delete (Priyome games) */
+    .pillBtn{
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.65);
+      border-radius:999px;
+      padding:2px 8px;
+      font-size:12px;
+      font-weight:900;
+      cursor:pointer;
+      line-height:1.4;
     }
+    .pillBtn:hover{ filter:brightness(0.98); }
+    .pillDanger{ border-color: rgba(220,38,38,.35); color:#7f1d1d; background: rgba(220,38,38,.08); }
+
+    /* Evals: prevent button overlap on small screens */
+    @media (max-width: 520px){
+      .evalTop{ flex-wrap:wrap; }
+      .evalBtns{ width:100%; justify-content:flex-start; }
+      .evalBtns button{ flex:1 1 auto; }
+    }
+
+    /* Priyomes: on mobile let list fully extend (scroll the pane, not the inner list) */
+    @media (max-width: 980px){
+      .prList{ overflow:visible; }
+    }
+
   </style>
 </head>
 
@@ -676,6 +704,7 @@
           <button class="smallBtn" id="btnAddPriyome" type="button">Add</button>
           <button class="smallBtn" id="btnCancelPriyome" type="button">Cancel</button>
           <button class="smallBtn" id="btnPlayFromHere" type="button">Play from here</button>
+          <button class="smallBtn" id="btnChangeInitial" type="button">Change initial state</button>
           <button class="smallBtn" id="btnSetupImportPgn" type="button">Import from PGN</button>
           <input id="setupPgnFile" type="file" accept=".pgn" hidden />
           <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
@@ -940,12 +969,13 @@
   }
 
   function colorHex(c){
+    // Saturated user-draw colors (squares/arrows)
     switch(c){
-      case 'G': return '#16a34a';
-      case 'R': return '#dc2626';
-      case 'B': return '#2563eb';
-      case 'Y': return '#d97706';
-      default: return '#16a34a';
+      case 'G': return '#00c853'; // vivid green
+      case 'R': return '#ff1744'; // vivid red
+      case 'B': return '#2979ff'; // vivid blue
+      case 'Y': return '#ffab00'; // vivid amber
+      default: return '#00c853';
     }
   }
   
@@ -967,6 +997,11 @@
     let n = 2;
     while (STUDIES[name]) name = `${base} (${n++})`;
     return name;
+  }
+
+  function autoPriyomeGameTitle(){
+    const n = (GAMES.filter(g => g && g.isPriyomeGame).length) + 1;
+    return `Priyome ${n}`;
   }
   function ensureStudy(name, gameIds=[]){
     if (!STUDIES[name]) STUDIES[name] = { name, gameIds: [], loaded:true };
@@ -1143,6 +1178,28 @@ async function bootLoadDefaultStudies() {
   const annoTextEl = document.getElementById('annoText');
   const overlay = document.getElementById('overlay');
 
+  function setGamePill(){
+    if (!gamePill) return;
+    if (!currentGame){
+      gamePill.textContent = '—';
+      return;
+    }
+    const title = escapeHtml(currentGame.title || '—');
+    if (currentGame.isPriyomeGame){
+      gamePill.innerHTML = `<span>${title}</span> <button class="pillBtn pillDanger" id="btnDeletePriyomeGame" title="Delete this Priyome game">✕</button>`;
+      const b = document.getElementById('btnDeletePriyomeGame');
+      if (b){
+        b.onclick = (e) => {
+          e.preventDefault(); e.stopPropagation();
+          deletePriyomeGame(currentGame.id);
+        };
+      }
+    } else {
+      gamePill.textContent = currentGame.title || '—';
+    }
+  }
+
+
   // Bottom card DOM
   const fenBottom = document.getElementById('fenBottom');
   const pgnBottom = document.getElementById('pgnBottom');
@@ -1313,7 +1370,8 @@ async function bootLoadDefaultStudies() {
   // studies: PGN file that seeds default studies on boot
   const STUDY_MANIFEST = {
     default:"./pgn/Study.pgn",
-    fen_test: "./pgn/default games.pgn"
+    fen_test: "./pgn/default games.pgn",
+    alignment_examples: "./pgn/alignment_examples.pgn"
   };
 
   // kick off boot load (non-blocking for UI)
@@ -1324,6 +1382,10 @@ async function bootLoadDefaultStudies() {
     naivealignments: {
       url: "./cql/naivealignments.cql",
       description: "Naive alignments."
+    },
+    humanlignments: {
+      url: "./cql/human_alignments.cql",
+      description: "Human alignments."
     }
   };
 
@@ -1476,6 +1538,7 @@ async function bootLoadDefaultStudies() {
   const Tool = { NONE:'none', SQUARES:'squares', ARROWS:'arrows' };
   let tool = Tool.NONE;
   let tapFrom = null;
+  let previewTo = null;
 
   // Tool color
   let toolColor = 'G'; // G,R,B,Y
@@ -1492,6 +1555,26 @@ async function bootLoadDefaultStudies() {
     });
   });
   setToolColor(toolColor);
+
+  function updateArrowPreviewFromEvent(e){
+    if (tool !== Tool.ARROWS || !tapFrom || !board) return;
+    let clientX = null, clientY = null;
+    if (e.touches && e.touches[0]){ clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
+    else { clientX = e.clientX; clientY = e.clientY; }
+    const sq = clientXYToSquare(clientX, clientY);
+    if (!sq) return;
+    previewTo = sq;
+    redrawDrawings();
+  }
+  function clearArrowPreview(){
+    previewTo = null;
+    redrawDrawings();
+  }
+  boardArea.addEventListener('mousemove', (e) => { updateArrowPreviewFromEvent(e); });
+  boardArea.addEventListener('mouseleave', () => { clearArrowPreview(); });
+  boardArea.addEventListener('touchmove', (e) => { updateArrowPreviewFromEvent(e); }, {passive:true});
+  boardArea.addEventListener('touchend', () => { clearArrowPreview(); });
+
 
   // Only suppress navigation gestures while a piece is actively being dragged
   let isDraggingPiece = false;
@@ -1539,6 +1622,14 @@ async function bootLoadDefaultStudies() {
 *`;
   }
 
+  function addGameToCurrentStudy({ title, pgn, opening='Game', result='*', isPriyomeGame=false }){
+    const id = `g:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+    GAMES.unshift({ id, title, opening, result, pgn, isPriyomeGame:!!isPriyomeGame, priyomeId: null });
+    ensureStudy(currentStudyName, [id]);
+    setCurrentStudy(currentStudyName);
+    return id;
+  }
+
   function updateSetupPreview(){
     if (!isQuerySetupMode || !board) return null;
     const fen = boardObjToFen(board.position());
@@ -1561,7 +1652,7 @@ async function bootLoadDefaultStudies() {
     const pgn = buildSetupPgn(prev.fen, title);
     const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
-    GAMES.unshift({ id:newId, title, opening:'Setup', result:'*', pgn });
+    GAMES.unshift({ id:newId, title, opening:'Priyome', result:'*', pgn, isPriyomeGame:true, priyomeId:null });
 
     // carry drawings made in setup mode, if any
     if (drawings[setupDraftDrawId]){
@@ -1584,6 +1675,7 @@ async function bootLoadDefaultStudies() {
   function setTool(t){
     tool = t;
     tapFrom = null;
+    previewTo = null;
     toolStatusEl.textContent = t;
     toolDotsEl.hidden = (t === Tool.NONE);
 
@@ -1675,6 +1767,25 @@ function sizeBoardSquare(){
       return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
     }
   }
+  function clientXYToSquare(clientX, clientY){
+    const r = boardWrap.getBoundingClientRect();
+    const x = (clientX - r.left) / r.width;
+    const y = (clientY - r.top) / r.height;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null;
+
+    const file = Math.floor(x * 8);
+    const rankFromTop = Math.floor(y * 8);
+    if (orientation === 'white'){
+      const f = file;
+      const rank = 8 - rankFromTop;
+      return 'abcdefgh'[f] + String(rank);
+    } else {
+      const f = 7 - file;
+      const rank = 1 + rankFromTop;
+      return 'abcdefgh'[f] + String(rank);
+    }
+  }
+
 
   function drawSquare(sq, c){
     const {x,y} = squareToXY(sq);
@@ -1711,7 +1822,7 @@ function sizeBoardSquare(){
   function redrawDrawings(){
     clearOverlay();
     ensureDefs();
-    if (!currentGame) return;
+    if (!currentGame && !isQuerySetupMode) return;
 
     const d = currentDraw();
     for (const sq of Object.keys(d.squares)){
@@ -1720,6 +1831,11 @@ function sizeBoardSquare(){
     }
     for (const ar of d.arrows){
       drawArrow(ar.from, ar.to, ar.color || 'G');
+    }
+
+    // Live preview arrow while choosing destination
+    if (tool === Tool.ARROWS && tapFrom && previewTo){
+      drawArrow(tapFrom, previewTo, toolColor || 'G');
     }
   }
 
@@ -2126,10 +2242,12 @@ function gotoPly(ply){
     if (tool === Tool.ARROWS){
       if (!tapFrom){
         tapFrom = sq;
+        previewTo = sq;
         logLine('OK', `Arrow start = ${sq} (tap destination)`);
       } else {
         toggleArrow(currentGame.id, tapFrom, sq);
         tapFrom = null;
+        previewTo = null;
       }
     }
   });
@@ -2153,6 +2271,43 @@ function gotoPly(ply){
       card.onclick = () => { loadGame(g.id, { startAtFirst:true }); setTab('moves'); };
       gameListEl.appendChild(card);
     }
+  }
+
+  function deletePriyomeGame(gameId){
+    const g = GAMES.find(x => x.id === gameId);
+    if (!g) return;
+
+    if (g.priyomeId){
+      const idx = PRIYOMES.findIndex(p => p.id === g.priyomeId);
+      if (idx >= 0) PRIYOMES.splice(idx, 1);
+      if (selectedPriyomeId === g.priyomeId) selectedPriyomeId = null;
+    }
+
+    const s = currentStudy();
+    if (s && Array.isArray(s.gameIds)) s.gameIds = s.gameIds.filter(id => id !== gameId);
+    const gi = GAMES.findIndex(x => x.id === gameId);
+    if (gi >= 0) GAMES.splice(gi, 1);
+
+    try { delete drawings[gameId]; delete annotations[gameId]; } catch {}
+
+    if (currentGame && currentGame.id === gameId){
+      currentGame = null;
+      setGamePill();
+      renderGameList();
+      renderPriyomes();
+      setTimeout(() => { resizeMiniBoards(); }, 0);
+      setQuerySetupMode(false);
+      try { game.reset(); setBoardFen('delete priyome game', 'start', false); } catch {}
+      setStatus(); setFen(); renderMoves(); redrawDrawings(); updateBottomCard();
+    } else {
+      renderGameList();
+      renderPriyomes();
+      setTimeout(() => { resizeMiniBoards(); }, 0);
+      setGamePill();
+    }
+
+    document.getElementById('studyPill').textContent = `${currentStudyName} • ${currentStudy().gameIds.length} games`;
+    logLine('OK', `Deleted Priyome game: ${gameId}`);
   }
 
   function ensureMainBoard(){
@@ -2186,7 +2341,7 @@ function gotoPly(ply){
 
     currentGame = g;
     ensureStores(g.id);
-    gamePill.textContent = g.title;
+    setGamePill();
 
     drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
 
@@ -3019,6 +3174,7 @@ async function runCqlEvalFromManifest(ref){
   const btnNewStudy = document.getElementById('btnNewStudy');
   const btnImportStudy = document.getElementById('btnImportStudy');
   const btnPlayFromHere = document.getElementById('btnPlayFromHere');
+  const btnChangeInitial = document.getElementById('btnChangeInitial');
 
   if (studySelectEl){
     studySelectEl.addEventListener('change', () => setCurrentStudy(studySelectEl.value));
@@ -3134,6 +3290,20 @@ async function runCqlEvalFromManifest(ref){
         selectedPriyomeId = p.id;
         renderPriyomes();
         setTimeout(() => { resizeMiniBoards(); }, 0);
+
+        // Linked Priyome games: jump straight into edit mode
+        if (p.gameId){
+          try{
+            loadGame(p.gameId, { startAtFirst:true });
+            setQuerySetupMode(true);
+            setBoardFen('priyome edit', p.fen || 'start', false);
+            updateSetupPreview();
+            redrawDrawings();
+            setGamePill();
+          }catch(e){
+            logStack('ERR', 'Failed entering Priyome edit mode: ', e);
+          }
+        }
 
         if (p.cqlref){
           try{
@@ -3359,36 +3529,58 @@ async function runCqlEvalFromManifest(ref){
   }
 
   btnPriyomesNew.addEventListener('click', () => {
+    // New Priyome: immediately create BOTH a Priyome entry + a linked setup game, then enter edit mode.
     setupImportedCqlRef = null;
     setupImportedPgnTitle = null;
     setupImportedMiniSquares = null;
     setupImportedMiniArrows  = null;
 
-    setupHint.innerHTML = 'Drag pieces to set a position. This immediately creates a new game in the current study. Click <b>Play from here</b> when ready.';
+    setupHint.innerHTML = 'Edit mode: drag pieces to set a position. Use <b>Squares</b>/<b>Arrows</b> to annotate. <b>Play from here</b> starts a normal game from this position.';
     setQuerySetupMode(true);
 
-    // Create the draft game immediately so drawings (arrows/squares) have a stable bucket
-    // and the game exists inside the current study right away.
-    // Default to a clean start position unless the board already shows something.
     try {
       if (board) setBoardFen('setup mode init', 'start', false);
       clearSetupDraftTemp();
-      const id = ensureSetupDraftGame();
-      if (id){
-        const g = GAMES.find(x => x.id === id);
-        if (g){
-          currentGame = g;
-          ensureStores(g.id);
-          gamePill.textContent = g.title;
-          document.getElementById('studyPill').textContent = `${currentStudyName} • ${currentStudy().gameIds.length} games`;
-          renderGameList();
-        }
+
+      const gameId = ensureSetupDraftGame();
+      if (!gameId) return;
+
+      const g = GAMES.find(x => x.id === gameId);
+      if (g){
+        currentGame = g;
+        ensureStores(g.id);
+
+        // Create a linked Priyome entry immediately (no prompt).
+        const pid = `pr_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const fen = updateSetupPreview()?.fen || boardObjToFen(board.position());
+        addPriyome({
+          id: pid,
+          title: g.title,
+          subtitle: 'User-created Priyome',
+          fen,
+          cqlref: null,
+          gameId: g.id,
+          miniSquares: {},
+          miniArrows: []
+        });
+
+        g.priyomeId = pid;
+        selectedPriyomeId = pid;
+
+        renderPriyomes();
+        renderGameList();
+        setTab('priyomes');
+        redrawDrawings();
+        setGamePill();
+        document.getElementById('studyPill').textContent = `${currentStudyName} • ${currentStudy().gameIds.length} games`;
+
+        logLine('OK', `New Priyome created: priyome=${pid} game=${g.id}`);
       }
+
       updateSetupPreview();
       redrawDrawings();
-      logLine('OK', 'New Query: created a draft game in the current study.');
     } catch (e) {
-      logStack('ERR', 'New Query failed: ', e);
+      logStack('ERR', 'New Priyome failed: ', e);
     }
   });
 
@@ -3397,38 +3589,92 @@ async function runCqlEvalFromManifest(ref){
   });
 
   btnAddPriyome.addEventListener('click', () => {
+    // Done: persist current setup position into the linked Priyome + setup game, then exit edit mode.
     if (!isQuerySetupMode || !board) return;
 
-    const posFen = board.fen ? board.fen() : null;
-    // chessboard.js v1.0 provides board.fen() in API; if unavailable, fall back to current game fen
-    const fen = (typeof posFen === 'string' && posFen.trim()) ? posFen : (game ? game.fen() : '8/8/8/8/8/8/8/8');
+    const prev = updateSetupPreview();
+    const fen = prev?.fen || boardObjToFen(board.position());
 
-    const id = `custom_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    addPriyome({
-      id,
-      title: `Custom ${PRIYOMES.filter(p => p.id.startsWith('custom_')).length + 1}`,
-      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created position',
-      fen,
-      cqlref: setupImportedCqlRef || null,
-      miniSquares: setupImportedMiniSquares || {},
-      miniArrows:  setupImportedMiniArrows  || [],
-    });
+    // Update linked Priyome (if any)
+    if (currentGame && currentGame.isPriyomeGame && currentGame.priyomeId){
+      const p = PRIYOMES.find(x => x.id === currentGame.priyomeId);
+      if (p){
+        p.fen = fen;
+        // persist ply-0 drawings into the mini overlay
+        const d0 = ensureDrawAt(currentGame.id, 0);
+        p.miniSquares = JSON.parse(JSON.stringify(d0.squares || {}));
+        p.miniArrows  = JSON.parse(JSON.stringify(d0.arrows  || []));
+      }
+      // Update the setup game's PGN headers to match the current initial position
+      currentGame.pgn = buildSetupPgn(fen, currentGame.title);
+      renderPriyomes();
+      setTimeout(() => { resizeMiniBoards(); }, 0);
+      logLine('OK', `Saved Priyome edits: ${currentGame.priyomeId}`);
+    }
 
-    selectedPriyomeId = id;
     setQuerySetupMode(false);
     setTab('priyomes');
-
-    // scroll list to bottom and re-render
-    renderPriyomes();
-    setTimeout(() => {
-      prListEl.scrollTop = prListEl.scrollHeight;
-      resizeMiniBoards();
-    }, 0);
-
-    logLine('OK', `Added new Priyome: ${id}`);
+    redrawDrawings();
+    setGamePill();
   });
 
-  // ---------- boot ----------
+  btnPlayFromHere.addEventListener('click', () => {
+      if (!isQuerySetupMode || !board) return;
+      const prev = updateSetupPreview();
+      const fen = prev?.fen || boardObjToFen(board.position());
+
+      const title = `Play: ${currentGame && currentGame.title ? currentGame.title : 'Setup'}`;
+      const pgn = buildSetupPgn(fen, title);
+
+      // Create a NEW normal game (not a Priyome game) starting from this setup position.
+      const id = addGameToCurrentStudy({ title, pgn, opening:'From Priyome', result:'*', isPriyomeGame:false });
+
+      setQuerySetupMode(false);
+      loadGame(id, { startAtFirst:true });
+      jumpTo(0);
+      setTab('moves');
+      logLine('OK', `Play from here: created game ${id} from setup FEN.`);
+    });
+
+    btnChangeInitial.addEventListener('click', () => {
+      if (!currentGame) return;
+
+      // re-enter edit mode and reset the linked Priyome game to this new initial state
+      setQuerySetupMode(true);
+
+      const prev = updateSetupPreview();
+      const fen = prev?.fen || boardObjToFen(board.position());
+
+      if (currentGame.isPriyomeGame){
+        currentGame.pgn = buildSetupPgn(fen, currentGame.title);
+
+        // keep only ply-0 drawings
+        drawings[currentGame.id] = drawings[currentGame.id] || Object.create(null);
+        drawings[currentGame.id]['0'] = ensureDrawAt(currentGame.id, 0);
+        for (const k of Object.keys(drawings[currentGame.id]||{})){
+          if (k !== '0') delete drawings[currentGame.id][k];
+        }
+        annotations[currentGame.id] = Object.create(null);
+
+        try { game = new Chess(fen); currentStartFen = fen; } catch {}
+        ensureMainBoard();
+        setBoardFen('change initial state', fen, false);
+
+        if (currentGame.priyomeId){
+          const p = PRIYOMES.find(x => x.id === currentGame.priyomeId);
+          if (p) p.fen = fen;
+        }
+
+        renderPriyomes();
+        setTimeout(() => { resizeMiniBoards(); }, 0);
+        setTab('priyomes');
+        redrawDrawings();
+        updateSetupPreview();
+        logLine('OK', `Changed initial state for Priyome game: ${currentGame.id}`);
+      }
+    });
+
+// ---------- boot ----------
   try {
     diag();
 
