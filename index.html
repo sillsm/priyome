@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Priyomes</title>
+  <title>Priyome</title>
   <link href="./favicon.svg" rel="icon">
 
   <!-- chessboard.js (requires jQuery) -->
@@ -203,7 +203,8 @@
     }
     #overlay{
       position:absolute;
-      inset:0;
+      left:0;
+      top:0;
       width:100%;
       height:100%;
       pointer-events:none;
@@ -446,7 +447,7 @@
     .warnLine{color:#92400e}
 
     /* Eval list */
-    .evalList{display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
+    .evalList{display:flex; flex-direction:column; gap:10px; min-height:0; flex:0 0 auto;}
     .evalCard{
       border:1px solid var(--border);
       background: rgba(15,23,42,.02);
@@ -609,7 +610,10 @@
       font-size:12px;
       font-weight:800;
     }
-  </style>
+  
+    .miniX{ margin-left:8px; background: rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.55); color:#dc2626; border-radius:10px; padding:0 6px; line-height:18px; font-size:12px; cursor:pointer; font-weight:900; }
+    .miniX:hover{ border-color: rgba(255,255,255,.35); }
+</style>
 </head>
 
 <body>
@@ -866,6 +870,7 @@
     menu.classList.toggle('open');
     sizeBoardSquare();
     if (board && typeof board.resize === 'function') board.resize();
+    positionMainOverlayToGrid();
     redrawDrawings();
     resizeMiniBoards();
   });
@@ -1287,7 +1292,17 @@ async function bootLoadDefaultStudies() {
   let qPgnBytesOverride = null;
 
   // mini boards
-  const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
+  
+  function fenAtEndFromPgn(pgnText){
+    try{
+      const ch = new Chess();
+      ch.load_pgn(String(pgnText||''), { sloppy:true });
+      return ch.fen();
+    }catch(e){
+      return null;
+    }
+  }
+const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
   let setupImportedMiniSquares = null;
   let setupImportedMiniArrows  = null;
 
@@ -1471,7 +1486,7 @@ async function bootLoadDefaultStudies() {
   function currentDraw(){
     // In setup mode, drawings apply to the setup position (ply 0).
     if (isQuerySetupMode){
-      const gid = setupDraftId || setupDraftDrawId;
+      const gid = (currentGame && currentGame.id) ? currentGame.id : (setupDraftId || setupDraftDrawId);
       return ensureDrawAt(gid, 0);
     }
     if (!currentGame) return { squares:Object.create(null), arrows:[] };
@@ -1529,8 +1544,9 @@ async function bootLoadDefaultStudies() {
     return ranks.join('/') + ' w - - 0 1';
   }
 
-  function buildSetupPgn(fen, title){
+  function buildSetupPgn(fen, title, preComment=''){
     const nm = (title || 'Untitled Setup').replace(/"/g, "'");
+    const comment = (preComment && String(preComment).trim()) ? String(preComment).trim() : '';
     return `[Event "${nm}"]
 [Site "Local"]
 [Date "${todayYMD()}"]
@@ -1541,7 +1557,7 @@ async function bootLoadDefaultStudies() {
 [SetUp "1"]
 [FEN "${fen}"]
 
-*`;
+${comment ? (comment + " ") : ""}*`;
   }
 
   function updateSetupPreview(){
@@ -1562,11 +1578,12 @@ async function bootLoadDefaultStudies() {
     if (!prev) return null;
     if (setupDraftId) return setupDraftId;
 
-    const title = prompt('Name this game (you can rename later):', `Setup ${todayYMD()}`) || `Setup ${todayYMD()}`;
-    const pgn = buildSetupPgn(prev.fen, title);
+    const title = `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
+    const tags0 = drawTagsCommentFor(setupDraftDrawId, 0);
+    const pgn = buildSetupPgn(prev.fen, title, tags0);
     const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
-    GAMES.unshift({ id:newId, title, opening:'Setup', result:'*', pgn });
+    GAMES.unshift({ id:newId, title, opening:'Priyome', result:'*', pgn, isPriyome:true });
 
     // carry drawings made in setup mode, if any
     if (drawings[setupDraftDrawId]){
@@ -1626,6 +1643,8 @@ function sizeBoardSquare(){
 
   boardWrap.style.width  = side + 'px';
   boardWrap.style.height = height + 'px';
+
+  positionMainOverlayToGrid();
 }
 
   // Use ResizeObserver to keep the board sized like layout.html
@@ -1656,14 +1675,14 @@ function sizeBoardSquare(){
       if (!overlay.querySelector(`#arrowHead${c}`)){
         const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
         marker.setAttribute('id',`arrowHead${c}`);
-        marker.setAttribute('markerWidth','6');
-        marker.setAttribute('markerHeight','6');
-        marker.setAttribute('refX','5.2');
-        marker.setAttribute('refY','3');
+        marker.setAttribute('markerWidth','5');
+        marker.setAttribute('markerHeight','5');
+        marker.setAttribute('refX','4.6');
+        marker.setAttribute('refY','2.5');
         marker.setAttribute('orient','auto');
-        marker.setAttribute('markerUnits','strokeWidth');
+        marker.setAttribute('markerUnits','userSpaceOnUse');
         const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-        path.setAttribute('d','M0,0 L6,3 L0,6 Z');
+        path.setAttribute('d','M0,0 L5,2.5 L0,5 L1.2,2.5 Z');
         path.setAttribute('fill', colorHex(c));
         marker.appendChild(path);
         defs.appendChild(marker);
@@ -1680,6 +1699,27 @@ function sizeBoardSquare(){
       return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
     }
   }
+  function positionMainOverlayToGrid(){
+    // In setup mode, chessboard.js adds a spare-pieces strip inside #board, making #boardWrap taller than the 8x8 grid.
+    // Align overlay to the actual grid (div.board-b72b1), not the entire wrap.
+    const wrap = boardWrap;
+    const grid = wrap ? wrap.querySelector('.board-b72b1') : null;
+    if (!wrap || !overlay) return;
+    if (!grid){
+      overlay.style.left = '0px';
+      overlay.style.top = '0px';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      return;
+    }
+    const wr = wrap.getBoundingClientRect();
+    const gr = grid.getBoundingClientRect();
+    overlay.style.left = (gr.left - wr.left) + 'px';
+    overlay.style.top  = (gr.top  - wr.top)  + 'px';
+    overlay.style.width  = gr.width + 'px';
+    overlay.style.height = gr.height + 'px';
+  }
+
 
   function drawSquare(sq, c){
     const {x,y} = squareToXY(sq);
@@ -1690,7 +1730,9 @@ function sizeBoardSquare(){
     rect.setAttribute('width', size);
     rect.setAttribute('height', size);
     rect.setAttribute('fill', colorHex(c));
-    rect.setAttribute('opacity', '0.16');
+    rect.setAttribute('opacity', '0.82');
+    rect.setAttribute('shape-rendering','crispEdges');
+    rect.setAttribute('shape-rendering','crispEdges');
     overlay.appendChild(rect);
   }
 
@@ -1698,7 +1740,7 @@ function sizeBoardSquare(){
     const a = squareToXY(from), b = squareToXY(to);
     const dx=b.x-a.x, dy=b.y-a.y;
     const len=Math.hypot(dx,dy)||1;
-    const shrink=4;
+    const shrink=4.6;
     const ux=dx/len, uy=dy/len;
 
     const line = document.createElementNS('http://www.w3.org/2000/svg','line');
@@ -1707,7 +1749,8 @@ function sizeBoardSquare(){
     line.setAttribute('x2', b.x - ux*shrink);
     line.setAttribute('y2', b.y - uy*shrink);
     line.setAttribute('stroke', colorHex(c));
-    line.setAttribute('stroke-width', '1.7');
+    line.setAttribute('stroke-width', '0.34');
+    line.setAttribute('stroke-linecap','round');
     line.setAttribute('opacity', '0.92');
     line.setAttribute('marker-end', `url(#arrowHead${c})`);
     overlay.appendChild(line);
@@ -1719,12 +1762,30 @@ function sizeBoardSquare(){
     if (!currentGame) return;
 
     const d = currentDraw();
+
+    // squares
     for (const sq of Object.keys(d.squares)){
       const c = d.squares[sq];
       if (c) drawSquare(sq, c);
     }
+
+    // arrows
     for (const ar of d.arrows){
       drawArrow(ar.from, ar.to, ar.color || 'G');
+    }
+
+    // If user started an arrow, show an immediate anchor dot so they know the tool is active.
+    if (tool === Tool.ARROWS && tapFrom){
+      try{
+        const {x,y} = squareToXY(tapFrom);
+        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        dot.setAttribute('cx', x);
+        dot.setAttribute('cy', y);
+        dot.setAttribute('r', '0.85');
+        dot.setAttribute('fill', colorHex(toolColor || 'G'));
+        dot.setAttribute('opacity', '0.95');
+        overlay.appendChild(dot);
+      }catch(_e){}
     }
   }
 
@@ -1838,14 +1899,15 @@ function sizeBoardSquare(){
   }
 
   function toggleSquare(gameId, sq){
-    const d = ensureDrawAt(gameId, activePly);
+    const ply = isQuerySetupMode ? 0 : activePly;
+    const d = ensureDrawAt(gameId, ply);
     const cur = d.squares[sq];
     if (cur === toolColor){
       delete d.squares[sq];
-      logLine('OK', `Square ${sq} removed @ ply ${activePly}`);
+      logLine('OK', `Square ${sq} removed @ ply ${ply}`);
     } else {
       d.squares[sq] = toolColor;
-      logLine('OK', `Square ${sq} => ${toolColor} @ ply ${activePly}`);
+      logLine('OK', `Square ${sq} => ${toolColor} @ ply ${ply}`);
     }
     redrawDrawings();
     syncDrawingsToPgn();
@@ -1853,7 +1915,8 @@ function sizeBoardSquare(){
 
   function toggleArrow(gameId, from, to){
     if (from === to) return;
-    const d = ensureDrawAt(gameId, activePly);
+    const ply = isQuerySetupMode ? 0 : activePly;
+    const d = ensureDrawAt(gameId, ply);
     const key = (from < to) ? `${from}-${to}` : `${to}-${from}`;
     const arr = d.arrows;
 
@@ -1865,14 +1928,14 @@ function sizeBoardSquare(){
     if (idx >= 0){
       if ((arr[idx].color || 'G') === toolColor){
         arr.splice(idx, 1);
-        logLine('OK', `Arrow ${from}->${to} removed @ ply ${activePly}`);
+        logLine('OK', `Arrow ${from}->${to} removed @ ply ${ply}`);
       } else {
         arr[idx] = { from, to, color: toolColor };
         logLine('OK', `Arrow ${from}->${to} recolored to ${toolColor} @ ply ${activePly}`);
       }
     } else {
       arr.push({ from, to, color: toolColor });
-      logLine('OK', `Arrow ${from}->${to} added (${toolColor}) @ ply ${activePly}`);
+      logLine('OK', `Arrow ${from}->${to} added (${toolColor}) @ ply ${ply}`);
     }
 
     redrawDrawings();
@@ -2031,9 +2094,26 @@ function renderMoves(){
       pgnBottom.value = '';
       return;
     }
+
+
+
     bottomMeta.textContent = currentGame.title;
     pgnBottom.value = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
   }
+  function syncPriyomeTerminal(){
+    try{
+      if (!currentGame || !currentGame.isPriyome || !currentGame.priyomeId) return;
+      const p = PRIYOMES.find(pp => pp.id === currentGame.priyomeId);
+      if (!p) return;
+      // terminal position (end of mainline)
+      const fen = (game && typeof game.fen === 'function') ? game.fen() : (p.fen || 'start');
+      p.fen = fen;
+      // update mini-boards display
+      renderPriyomes();
+    }catch(_e){}
+  }
+
+
 
   function jumpTo(ply){
     activePly = Math.max(0, Math.min(ply, verboseHistory.length));
@@ -2089,6 +2169,7 @@ function gotoPly(ply){
     activePly = verboseHistory.length;
     setStatus(); setFen(); renderMoves(); updateAnnoUI();
     updateBottomCard();
+    syncPriyomeTerminal();
     logLine('OK', `Move: ${mv.san}`);
   }
 
@@ -2098,6 +2179,8 @@ function gotoPly(ply){
       setBoardFen('onSnapEnd', game.fen(), false);
     }
     if (isQuerySetupMode) updateSetupPreview();
+    positionMainOverlayToGrid();
+    redrawDrawings();
   }
 
   document.addEventListener('touchmove', (e) => {
@@ -2131,6 +2214,7 @@ function gotoPly(ply){
     if (tool === Tool.ARROWS){
       if (!tapFrom){
         tapFrom = sq;
+        redrawDrawings();
         logLine('OK', `Arrow start = ${sq} (tap destination)`);
       } else {
         toggleArrow(currentGame.id, tapFrom, sq);
@@ -2146,7 +2230,42 @@ function gotoPly(ply){
     }[c]));
   }
 
-  function renderGameList(){
+  
+  function deletePriyomeGame(gameId){
+    try{
+      const g = GAMES.find(x=>x.id===gameId);
+      if (!g) return;
+      // remove from studies
+      for (const k of Object.keys(STUDIES)){
+        const st = STUDIES[k];
+        st.gameIds = st.gameIds.filter(id=>id!==gameId);
+      }
+      // remove linked priyome entry
+      if (g.priyomeId){
+        const idx = PRIYOMES.findIndex(p=>p.id===g.priyomeId);
+        if (idx>=0) PRIYOMES.splice(idx,1);
+        if (selectedPriyomeId === g.priyomeId) selectedPriyomeId = null;
+      }
+      // remove game
+      const gi = GAMES.findIndex(x=>x.id===gameId);
+      if (gi>=0) GAMES.splice(gi,1);
+      // clear drawings
+      delete drawings[gameId];
+
+      // if current, load another
+      if (currentGame && currentGame.id===gameId){
+        const next = getStudyGames()[0] || null;
+        if (next) loadGame(next.id);
+        else { currentGame=null; game.reset(); setBoardFen('delete priyome', 'start', false); }
+      }
+      renderGameList();
+      renderPriyomes();
+      logLine('OK', `Deleted Priyome game ${gameId}`);
+    }catch(e){
+      logStack('ERR','Delete Priyome failed: ',e);
+    }
+  }
+function renderGameList(){
     gameListEl.innerHTML = '';
     for (const g of getStudyGames()){
       const card = document.createElement('div');
@@ -2155,7 +2274,8 @@ function gotoPly(ply){
         <div class="gameTitle">${escapeHtml(g.title)}</div>
         <div class="meta"><span class="kbd">${escapeHtml(g.result || '*')}</span><span>${escapeHtml(g.opening || '')}</span></div>
       `;
-      card.onclick = () => { loadGame(g.id, { startAtFirst:true }); setTab('moves'); };
+      card.onclick = () => { loadGame(g.id, { startAtFirst:true }); syncPriyomeTerminal();
+      setTab('moves'); };
       gameListEl.appendChild(card);
     }
   }
@@ -2191,7 +2311,19 @@ function gotoPly(ply){
 
     currentGame = g;
     ensureStores(g.id);
-    gamePill.textContent = g.title;
+    gamePill.innerHTML = '';
+          const tspan = document.createElement('span');
+          tspan.textContent = g.title;
+          gamePill.appendChild(tspan);
+          if (g.isPriyome){
+            const xb = document.createElement('button');
+            xb.className = 'miniX';
+            xb.type = 'button';
+            xb.textContent = '✕';
+            xb.title = 'Delete Priyome game';
+            xb.addEventListener('click', (ev)=>{ ev.stopPropagation(); deletePriyomeGame(g.id); });
+            gamePill.appendChild(xb);
+          }
 
     drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
 
@@ -2235,6 +2367,7 @@ function gotoPly(ply){
 
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
     updateBottomCard();
+    syncPriyomeTerminal();
     renderGameList();
   }
 
@@ -2356,14 +2489,12 @@ function gotoPly(ply){
   };
 
   document.getElementById('btnSquares').onclick = () => {
-    if (isQuerySetupMode) return;
     setTool(tool===Tool.SQUARES ? Tool.NONE : Tool.SQUARES);
   };
   document.getElementById('btnArrows').onclick = () => {
-    if (isQuerySetupMode) return;
     setTool(tool===Tool.ARROWS ? Tool.NONE : Tool.ARROWS);
   };
-  document.getElementById('btnClear').onclick = () => { if(currentGame && !isQuerySetupMode){ clearAll(currentGame.id); } };
+  document.getElementById('btnClear').onclick = () => { if(currentGame){ clearAll(currentGame.id); } };
 
   annoTextEl.addEventListener('input', () => {
     if (!currentGame) return;
@@ -2377,6 +2508,7 @@ function gotoPly(ply){
 
   window.addEventListener('resize', () => {
     sizeBoardSquare();
+    positionMainOverlayToGrid();
     redrawDrawings();
     if (board && typeof board.resize === 'function') board.resize();
     resizeMiniBoards();
@@ -3065,8 +3197,21 @@ async function runCqlEvalFromManifest(ref){
   }
   if (btnPlayFromHere){
     btnPlayFromHere.addEventListener('click', () => {
+      // Commit the CURRENT setup board state into the existing Priyome game (no new game).
       const id = ensureSetupDraftGame();
       if (!id) return;
+      const prev = updateSetupPreview();
+      const g = GAMES.find(x => x.id === id);
+      if (g && prev){
+        const tags0 = drawTagsCommentFor(id, 0);
+        g.pgn = buildSetupPgn(prev.fen, g.title, tags0);
+        // also update the linked Priyome entry FEN so the mini board stays correct
+        if (g.priyomeId){
+          const p = PRIYOMES.find(pp => pp.id === g.priyomeId);
+          if (p) p.fen = prev.fen;
+        }
+      }
+
       setQuerySetupMode(false);
       loadGame(id);
       jumpTo(0);
@@ -3185,7 +3330,9 @@ async function runCqlEvalFromManifest(ref){
     const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('data-mini-overlay','1');
     svg.style.position = 'absolute';
-    svg.style.inset = '0';
+    // don't use inset; we'll align to the internal 8x8 grid
+    svg.style.left = '0';
+    svg.style.top = '0';
     svg.style.width = '100%';
     svg.style.height = '100%';
     svg.style.pointerEvents = 'none';
@@ -3196,20 +3343,36 @@ async function runCqlEvalFromManifest(ref){
     containerEl.style.position = 'relative';
     containerEl.appendChild(svg);
 
+    positionMiniOverlayToGrid();
+    setTimeout(positionMiniOverlayToGrid, 0);
+    window.addEventListener('resize', positionMiniOverlayToGrid);
+
+
+    function positionMiniOverlayToGrid(){
+      const grid = containerEl.querySelector('.board-b72b1');
+      if (!grid) return;
+      const cr = containerEl.getBoundingClientRect();
+      const gr = grid.getBoundingClientRect();
+      svg.style.left = (gr.left - cr.left) + 'px';
+      svg.style.top  = (gr.top  - cr.top)  + 'px';
+      svg.style.width  = gr.width + 'px';
+      svg.style.height = gr.height + 'px';
+    }
+
     const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
     svg.appendChild(defs);
 
     for (const c of ['G','R','B','Y']){
       const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
       marker.setAttribute('id',`miniArrowHead_${containerEl.id}_${c}`);
-      marker.setAttribute('markerWidth','6');
-      marker.setAttribute('markerHeight','6');
-      marker.setAttribute('refX','5.2');
-      marker.setAttribute('refY','3');
+      marker.setAttribute('markerWidth','5');
+      marker.setAttribute('markerHeight','5');
+      marker.setAttribute('refX','4.6');
+      marker.setAttribute('refY','2.5');
       marker.setAttribute('orient','auto');
-      marker.setAttribute('markerUnits','strokeWidth');
+      marker.setAttribute('markerUnits','userSpaceOnUse');
       const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-      path.setAttribute('d','M0,0 L6,3 L0,6 Z');
+      path.setAttribute('d','M0,0 L5,2.5 L0,5 L1.2,2.5 Z');
       path.setAttribute('fill', colorHex(c));
       marker.appendChild(path);
       defs.appendChild(marker);
@@ -3230,7 +3393,9 @@ async function runCqlEvalFromManifest(ref){
       rect.setAttribute('width', size);
       rect.setAttribute('height', size);
       rect.setAttribute('fill', colorHex(c));
-      rect.setAttribute('opacity', '0.16');
+      rect.setAttribute('opacity', '0.82');
+    rect.setAttribute('shape-rendering','crispEdges');
+      rect.setAttribute('shape-rendering','crispEdges');
       svg.appendChild(rect);
     }
 
@@ -3238,7 +3403,7 @@ async function runCqlEvalFromManifest(ref){
       const a = sqToXY(from), b = sqToXY(to);
       const dx=b.x-a.x, dy=b.y-a.y;
       const len=Math.hypot(dx,dy)||1;
-      const shrink=4;
+      const shrink=4.6;
       const ux=dx/len, uy=dy/len;
 
       const line = document.createElementNS('http://www.w3.org/2000/svg','line');
@@ -3247,7 +3412,8 @@ async function runCqlEvalFromManifest(ref){
       line.setAttribute('x2', b.x - ux*shrink);
       line.setAttribute('y2', b.y - uy*shrink);
       line.setAttribute('stroke', colorHex(c));
-      line.setAttribute('stroke-width', '1.7');
+      line.setAttribute('stroke-width', '0.34');
+    line.setAttribute('stroke-linecap','round');
       line.setAttribute('opacity', '0.92');
       line.setAttribute('marker-end', `url(#miniArrowHead_${containerEl.id}_${c})`);
       svg.appendChild(line);
@@ -3372,8 +3538,9 @@ async function runCqlEvalFromManifest(ref){
     setupHint.innerHTML = 'Drag pieces to set a position. This immediately creates a new game in the current study. Click <b>Play from here</b> when ready.';
     setQuerySetupMode(true);
 
-    // Create the draft game immediately so drawings (arrows/squares) have a stable bucket
-    // and the game exists inside the current study right away.
+    // Create the draft game AND its linked Priyome entry immediately so:
+    // - drawings have a stable bucket
+    // - Priyomes tab shows the new item right away
     // Default to a clean start position unless the board already shows something.
     try {
       if (board) setBoardFen('setup mode init', 'start', false);
@@ -3384,9 +3551,48 @@ async function runCqlEvalFromManifest(ref){
         if (g){
           currentGame = g;
           ensureStores(g.id);
-          gamePill.textContent = g.title;
+          // Ensure we have a Priyome entry linked immediately (no separate Add step)
+          if (!g.priyomeId){
+            const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+            const fen = boardObjToFen(board.position());
+            addPriyome({
+              id: pid,
+              user: true,
+              title: g.title,
+              subtitle: 'User-created',
+              fen,
+              gameId: g.id,
+              study: currentStudyName,
+              cqlref: null,
+              miniSquares: {},
+              miniArrows: [],
+            });
+            g.isPriyome = true;
+            g.priyomeId = pid;
+            selectedPriyomeId = pid;
+          }
+
+          // Refresh the pill so the delete ✕ appears for Priyome games
+          // (Do NOT call loadGame() here; it would exit setup mode.)
+          gamePill.innerHTML = '';
+          {
+            const tspan = document.createElement('span');
+            tspan.textContent = g.title;
+            gamePill.appendChild(tspan);
+            if (g.isPriyome){
+              const xb = document.createElement('button');
+              xb.className = 'miniX';
+              xb.type = 'button';
+              xb.textContent = '✕';
+              xb.title = 'Delete Priyome game';
+              xb.addEventListener('click', (ev)=>{ ev.stopPropagation(); deletePriyomeGame(g.id); });
+              gamePill.appendChild(xb);
+            }
+          }
           document.getElementById('studyPill').textContent = `${currentStudyName} • ${currentStudy().gameIds.length} games`;
           renderGameList();
+          renderPriyomes();
+          setTimeout(() => { resizeMiniBoards(); }, 0);
         }
       }
       updateSetupPreview();
@@ -3404,33 +3610,49 @@ async function runCqlEvalFromManifest(ref){
   btnAddPriyome.addEventListener('click', () => {
     if (!isQuerySetupMode || !board) return;
 
-    const posFen = board.fen ? board.fen() : null;
-    // chessboard.js v1.0 provides board.fen() in API; if unavailable, fall back to current game fen
-    const fen = (typeof posFen === 'string' && posFen.trim()) ? posFen : (game ? game.fen() : '8/8/8/8/8/8/8/8');
+    // Ensure we have a real game inside the current study (no naming prompt).
+    const gid = ensureSetupDraftGame();
+    if (!gid) return;
 
-    const id = `custom_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const g = GAMES.find(x => x.id === gid);
+    if (!g) return;
+
+    // Tie this game to a Priyome entry
+    const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const title = g.title || `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
+
+    const fen = (typeof board.fen === 'function' ? board.fen() : (game ? game.fen() : '8/8/8/8/8/8/8/8'));
+
     addPriyome({
-      id,
-      title: `Custom ${PRIYOMES.filter(p => p.id.startsWith('custom_')).length + 1}`,
-      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created position',
+      id: pid,
+      user: true,
+      title,
+      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
       fen,
+      gameId: gid,
+      study: currentStudyName,
       cqlref: setupImportedCqlRef || null,
       miniSquares: setupImportedMiniSquares || {},
       miniArrows:  setupImportedMiniArrows  || [],
     });
 
-    selectedPriyomeId = id;
-    setQuerySetupMode(false);
-    setTab('priyomes');
+    g.isPriyome = true;
+    g.priyomeId = pid;
 
-    // scroll list to bottom and re-render
+    selectedPriyomeId = pid;
+    currentGame = g;
+    ensureStores(g.id);
+
+    // Stay in setup/edit mode, but switch to Priyomes tab and show the editor immediately.
+    setTab('priyomes');
     renderPriyomes();
     setTimeout(() => {
       prListEl.scrollTop = prListEl.scrollHeight;
       resizeMiniBoards();
+      redrawDrawings();
     }, 0);
 
-    logLine('OK', `Added new Priyome: ${id}`);
+    logLine('OK', `Added new Priyome ${pid} tied to game ${gid}`);
   });
 
   // ---------- boot ----------
