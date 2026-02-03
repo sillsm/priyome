@@ -203,7 +203,8 @@
     }
     #overlay{
       position:absolute;
-      inset:0;
+      left:0;
+      top:0;
       width:100%;
       height:100%;
       pointer-events:none;
@@ -446,7 +447,7 @@
     .warnLine{color:#92400e}
 
     /* Eval list */
-    .evalList{display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
+    .evalList{display:flex; flex-direction:column; gap:10px; min-height:0; flex:0 0 auto;}
     .evalCard{
       border:1px solid var(--border);
       background: rgba(15,23,42,.02);
@@ -458,11 +459,6 @@
     .evalDesc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.35}
     .evalBtns{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
     .evalBtns button{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
-    @media (max-width: 520px){
-      .evalTop{ flex-direction:column; align-items:flex-start; }
-      .evalBtns{ width:100%; justify-content:flex-start; }
-    }
-
     
     /* bottom card */
     .bottomGrid{
@@ -617,13 +613,6 @@
   
     .miniX{ margin-left:8px; background: rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.55); color:#dc2626; border-radius:10px; padding:0 6px; line-height:18px; font-size:12px; cursor:pointer; font-weight:900; }
     .miniX:hover{ border-color: rgba(255,255,255,.35); }
-
-    @media (max-width: 980px){
-      .prList{ overflow: visible; max-height:none; }
-    }
-
-    .xBtn{ color:#dc2626; font-weight:900; margin-left:6px; }
-    .xBtn:hover{ filter:brightness(1.1); }
 </style>
 </head>
 
@@ -691,7 +680,6 @@
           <button class="smallBtn" id="btnAddPriyome" type="button">Add</button>
           <button class="smallBtn" id="btnCancelPriyome" type="button">Cancel</button>
           <button class="smallBtn" id="btnPlayFromHere" type="button">Play from here</button>
-          <button class="smallBtn" id="btnResetInitial" type="button">Reset initial position</button>
           <button class="smallBtn" id="btnSetupImportPgn" type="button">Import from PGN</button>
           <input id="setupPgnFile" type="file" accept=".pgn" hidden />
           <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
@@ -882,6 +870,7 @@
     menu.classList.toggle('open');
     sizeBoardSquare();
     if (board && typeof board.resize === 'function') board.resize();
+    positionMainOverlayToGrid();
     redrawDrawings();
     resizeMiniBoards();
   });
@@ -1570,14 +1559,6 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
 
 ${comment ? (comment + " ") : ""}*`;
   }
-  function startFenFromPgn(pgnText){
-    try{
-      const h = parseHeaders(pgnText);
-      if (h && h.SetUp === "1" && h.FEN) return h.FEN;
-    }catch(_e){}
-    return 'start';
-  }
-
 
   function updateSetupPreview(){
     if (!isQuerySetupMode || !board) return null;
@@ -1602,7 +1583,7 @@ ${comment ? (comment + " ") : ""}*`;
     const pgn = buildSetupPgn(prev.fen, title, tags0);
     const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
-    GAMES.unshift({ id:newId, title, opening:'Priyome', result:'*', pgn, isPriyome:true, priyomeEdit:true });
+    GAMES.unshift({ id:newId, title, opening:'Priyome', result:'*', pgn, isPriyome:true });
 
     // carry drawings made in setup mode, if any
     if (drawings[setupDraftDrawId]){
@@ -1645,14 +1626,25 @@ function sizeBoardSquare(){
   const availW = Math.max(0, areaRect.width  - padX);
   const availH = Math.max(0, areaRect.height - padY);
 
-  const maxSide = 800;
+  const inPiecesMode = !!isQuerySetupMode;
+  const maxSide = inPiecesMode ? 600 : 800;
 
-  // Always keep the board wrapper perfectly square.
-  // (sparePieces will render its tray outside the board grid; stretching the board breaks overlays.)
-  const side = Math.floor(Math.min(maxSide, availW, availH));
+  let side;
+  let height;
+
+  if (inPiecesMode){
+    // Keep the "pieces mode" taller board, but ensure it fits in the panel.
+    side = Math.floor(Math.min(maxSide, availW, availH / 1.3));
+    height = Math.floor(side * 1.3);
+  } else {
+    side = Math.floor(Math.min(maxSide, availW, availH));
+    height = side;
+  }
 
   boardWrap.style.width  = side + 'px';
-  boardWrap.style.height = side + 'px';
+  boardWrap.style.height = height + 'px';
+
+  positionMainOverlayToGrid();
 }
 
   // Use ResizeObserver to keep the board sized like layout.html
@@ -1683,14 +1675,14 @@ function sizeBoardSquare(){
       if (!overlay.querySelector(`#arrowHead${c}`)){
         const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
         marker.setAttribute('id',`arrowHead${c}`);
-        marker.setAttribute('markerWidth','4');
-        marker.setAttribute('markerHeight','4');
-        marker.setAttribute('refX','3.6');
-        marker.setAttribute('refY','2');
+        marker.setAttribute('markerWidth','5');
+        marker.setAttribute('markerHeight','5');
+        marker.setAttribute('refX','4.6');
+        marker.setAttribute('refY','2.5');
         marker.setAttribute('orient','auto');
-        marker.setAttribute('markerUnits','strokeWidth');
+        marker.setAttribute('markerUnits','userSpaceOnUse');
         const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-        path.setAttribute('d','M0,0 L4,2 L0,4 L0.9,2 Z');
+        path.setAttribute('d','M0,0 L5,2.5 L0,5 L1.2,2.5 Z');
         path.setAttribute('fill', colorHex(c));
         marker.appendChild(path);
         defs.appendChild(marker);
@@ -1707,6 +1699,27 @@ function sizeBoardSquare(){
       return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
     }
   }
+  function positionMainOverlayToGrid(){
+    // In setup mode, chessboard.js adds a spare-pieces strip inside #board, making #boardWrap taller than the 8x8 grid.
+    // Align overlay to the actual grid (div.board-b72b1), not the entire wrap.
+    const wrap = boardWrap;
+    const grid = wrap ? wrap.querySelector('.board-b72b1') : null;
+    if (!wrap || !overlay) return;
+    if (!grid){
+      overlay.style.left = '0px';
+      overlay.style.top = '0px';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      return;
+    }
+    const wr = wrap.getBoundingClientRect();
+    const gr = grid.getBoundingClientRect();
+    overlay.style.left = (gr.left - wr.left) + 'px';
+    overlay.style.top  = (gr.top  - wr.top)  + 'px';
+    overlay.style.width  = gr.width + 'px';
+    overlay.style.height = gr.height + 'px';
+  }
+
 
   function drawSquare(sq, c){
     const {x,y} = squareToXY(sq);
@@ -1727,7 +1740,7 @@ function sizeBoardSquare(){
     const a = squareToXY(from), b = squareToXY(to);
     const dx=b.x-a.x, dy=b.y-a.y;
     const len=Math.hypot(dx,dy)||1;
-    const shrink=3.8;
+    const shrink=4.6;
     const ux=dx/len, uy=dy/len;
 
     const line = document.createElementNS('http://www.w3.org/2000/svg','line');
@@ -1736,7 +1749,7 @@ function sizeBoardSquare(){
     line.setAttribute('x2', b.x - ux*shrink);
     line.setAttribute('y2', b.y - uy*shrink);
     line.setAttribute('stroke', colorHex(c));
-    line.setAttribute('stroke-width', '0.18');
+    line.setAttribute('stroke-width', '0.34');
     line.setAttribute('stroke-linecap','round');
     line.setAttribute('opacity', '0.92');
     line.setAttribute('marker-end', `url(#arrowHead${c})`);
@@ -1751,13 +1764,13 @@ function sizeBoardSquare(){
     const d = currentDraw();
 
     // squares
-    for (const sq of Object.keys(d.squares || {})){
+    for (const sq of Object.keys(d.squares)){
       const c = d.squares[sq];
       if (c) drawSquare(sq, c);
     }
 
     // arrows
-    for (const ar of (d.arrows || [])){
+    for (const ar of d.arrows){
       drawArrow(ar.from, ar.to, ar.color || 'G');
     }
 
@@ -1896,14 +1909,6 @@ function sizeBoardSquare(){
       d.squares[sq] = toolColor;
       logLine('OK', `Square ${sq} => ${toolColor} @ ply ${ply}`);
     }
-    // keep linked Priyome mini overlays in sync when editing ply 0
-    if (currentGame && currentGame.isPriyome && currentGame.priyomeId && ply === 0){
-      const p = PRIYOMES.find(pp => pp.id === currentGame.priyomeId);
-      if (p){
-        p.miniSquares = JSON.parse(JSON.stringify(d.squares || {}));
-        p.miniArrows  = JSON.parse(JSON.stringify(d.arrows  || []));
-      }
-    }
     redrawDrawings();
     syncDrawingsToPgn();
   }
@@ -1933,14 +1938,6 @@ function sizeBoardSquare(){
       logLine('OK', `Arrow ${from}->${to} added (${toolColor}) @ ply ${ply}`);
     }
 
-    // keep linked Priyome mini overlays in sync when editing ply 0
-    if (currentGame && currentGame.isPriyome && currentGame.priyomeId && ply === 0){
-      const p = PRIYOMES.find(pp => pp.id === currentGame.priyomeId);
-      if (p){
-        p.miniSquares = JSON.parse(JSON.stringify(d.squares || {}));
-        p.miniArrows  = JSON.parse(JSON.stringify(d.arrows  || []));
-      }
-    }
     redrawDrawings();
     syncDrawingsToPgn();
   }
@@ -2136,7 +2133,6 @@ function gotoPly(ply){
   function onDragStart(source, piece){
     // In setup mode, allow dragging any piece freely
     if (isQuerySetupMode) {
-      if (tool !== Tool.NONE) return false;
       isDraggingPiece = true;
       return true;
     }
@@ -2182,13 +2178,13 @@ function gotoPly(ply){
       setBoardFen('onSnapEnd', game.fen(), false);
     }
     if (isQuerySetupMode) updateSetupPreview();
+    positionMainOverlayToGrid();
+    redrawDrawings();
   }
 
   document.addEventListener('touchmove', (e) => {
     if (isDraggingPiece) e.preventDefault();
   }, { passive:false });
-
-  document.addEventListener('touchend', () => { isDraggingPiece = false; }, { passive:true });
 
   window.addEventListener('mouseup', () => { isDraggingPiece = false; });
 
@@ -2314,10 +2310,6 @@ function renderGameList(){
 
     currentGame = g;
     ensureStores(g.id);
-
-    // Priyome games stay in edit/setup mode until you click "Play from here".
-    if (g.isPriyome && g.priyomeEdit) setQuerySetupMode(true);
-    else setQuerySetupMode(false);
     gamePill.innerHTML = '';
           const tspan = document.createElement('span');
           tspan.textContent = g.title;
@@ -2503,49 +2495,6 @@ function renderGameList(){
   };
   document.getElementById('btnClear').onclick = () => { if(currentGame){ clearAll(currentGame.id); } };
 
-  document.getElementById('btnResetInitial').onclick = () => {
-    if (!currentGame || !currentGame.isPriyome) return;
-
-    // Clear moves but keep current setup FEN from headers, then re-enter setup mode.
-    const fen0 = startFenFromPgn(currentGame.pgn);
-    const tags0 = drawTagsCommentFor(currentGame.id, 0);
-    currentGame.pgn = buildSetupPgn(fen0, currentGame.title, tags0);
-
-    // Prune drawings to ply 0 only (keep current ply-0 overlays)
-    if (drawings[currentGame.id]){
-      const keep0 = drawings[currentGame.id]["0"]
-        ? JSON.parse(JSON.stringify(drawings[currentGame.id]["0"]))
-        : { squares:Object.create(null), arrows:[] };
-      drawings[currentGame.id] = Object.create(null);
-      drawings[currentGame.id]["0"] = keep0;
-    }
-
-    currentGame.priyomeEdit = true;
-
-    // Ensure the setup board shows the stored start fen
-    setQuerySetupMode(true);
-    try { setBoardFen('reset initial position', fen0, false); } catch(_e){}
-
-    // Sync linked Priyome mini overlays
-    if (currentGame.priyomeId){
-      const pr = PRIYOMES.find(pp => pp.id === currentGame.priyomeId);
-      if (pr){
-        const d0 = drawings[currentGame.id]?.["0"];
-        pr.fen = fen0;
-        pr.miniSquares = d0 ? JSON.parse(JSON.stringify(d0.squares || {})) : {};
-        pr.miniArrows  = d0 ? JSON.parse(JSON.stringify(d0.arrows  || [])) : [];
-      }
-      renderPriyomes();
-      setTimeout(resizeMiniBoards, 0);
-    }
-
-    updateSetupPreview();
-    redrawDrawings();
-    syncDrawingsToPgn();
-    logLine('OK', 'Priyome reset: cleared moves and returned to edit mode.');
-  };
-
-
   annoTextEl.addEventListener('input', () => {
     if (!currentGame) return;
     if (isQuerySetupMode) return;
@@ -2558,6 +2507,7 @@ function renderGameList(){
 
   window.addEventListener('resize', () => {
     sizeBoardSquare();
+    positionMainOverlayToGrid();
     redrawDrawings();
     if (board && typeof board.resize === 'function') board.resize();
     resizeMiniBoards();
@@ -3252,7 +3202,6 @@ async function runCqlEvalFromManifest(ref){
       const prev = updateSetupPreview();
       const g = GAMES.find(x => x.id === id);
       if (g && prev){
-        g.priyomeEdit = false;
         const tags0 = drawTagsCommentFor(id, 0);
         g.pgn = buildSetupPgn(prev.fen, g.title, tags0);
         // also update the linked Priyome entry FEN so the mini board stays correct
@@ -3267,30 +3216,6 @@ async function runCqlEvalFromManifest(ref){
       jumpTo(0);
       setTab('moves');
     });
-
-    const btnResetInitial = document.getElementById('btnResetInitial');
-    if (btnResetInitial){
-      btnResetInitial.addEventListener('click', () => {
-        if (!currentGame || !currentGame.isPriyome) return;
-        const fen0 = startFenFromPgn(currentGame.pgn);
-        const tags0 = drawTagsCommentFor(currentGame.id, 0);
-        currentGame.pgn = buildSetupPgn(fen0, currentGame.title, tags0);
-
-        if (drawings[currentGame.id]){
-          const keep0 = drawings[currentGame.id]["0"] ? JSON.parse(JSON.stringify(drawings[currentGame.id]["0"])) : { squares:Object.create(null), arrows:[] };
-          drawings[currentGame.id] = Object.create(null);
-          drawings[currentGame.id]["0"] = keep0;
-        }
-
-        currentGame.priyomeEdit = true;
-        setQuerySetupMode(true);
-        try { setBoardFen('reset initial position', fen0, false); } catch(_e){}
-        updateSetupPreview();
-        redrawDrawings();
-        syncDrawingsToPgn();
-        logLine('OK', 'Priyome reset: cleared moves and returned to edit mode.');
-      });
-    }
   }
 
 
@@ -3359,15 +3284,6 @@ async function runCqlEvalFromManifest(ref){
         renderPriyomes();
         setTimeout(() => { resizeMiniBoards(); }, 0);
 
-        // If this Priyome is tied to a game, select it and keep edit mode until "Play from here".
-        if (p.gameId){
-          const g = GAMES.find(x => x.id === p.gameId);
-          if (g){
-            loadGame(g.id);
-            if (g.isPriyome && g.priyomeEdit) setQuerySetupMode(true);
-          }
-        }
-
         if (p.cqlref){
           try{
             await loadCqlByRef(p.cqlref);
@@ -3410,20 +3326,37 @@ async function runCqlEvalFromManifest(ref){
     // Avoid duplicates
     if (containerEl.querySelector('svg[data-mini-overlay="1"]')) return;
 
-    // Chessboard.js renders the real 8x8 grid inside .board-b72b1; overlay THAT element
-    const gridEl = containerEl.querySelector('.board-b72b1') || containerEl;
-    gridEl.style.position = 'relative';
-
     const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('data-mini-overlay','1');
     svg.style.position = 'absolute';
-    svg.style.inset = '0';
+    // don't use inset; we'll align to the internal 8x8 grid
+    svg.style.left = '0';
+    svg.style.top = '0';
     svg.style.width = '100%';
     svg.style.height = '100%';
     svg.style.pointerEvents = 'none';
-    svg.setAttribute('viewBox','0 0 8 8');
+    svg.setAttribute('viewBox','0 0 100 100');
     svg.setAttribute('preserveAspectRatio','none');
-    gridEl.appendChild(svg);
+
+    // container needs position:relative; chessboardjs uses internal div, so we wrap with relative by styling here
+    containerEl.style.position = 'relative';
+    containerEl.appendChild(svg);
+
+    positionMiniOverlayToGrid();
+    setTimeout(positionMiniOverlayToGrid, 0);
+    window.addEventListener('resize', positionMiniOverlayToGrid);
+
+
+    function positionMiniOverlayToGrid(){
+      const grid = containerEl.querySelector('.board-b72b1');
+      if (!grid) return;
+      const cr = containerEl.getBoundingClientRect();
+      const gr = grid.getBoundingClientRect();
+      svg.style.left = (gr.left - cr.left) + 'px';
+      svg.style.top  = (gr.top  - cr.top)  + 'px';
+      svg.style.width  = gr.width + 'px';
+      svg.style.height = gr.height + 'px';
+    }
 
     const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
     svg.appendChild(defs);
@@ -3431,44 +3364,45 @@ async function runCqlEvalFromManifest(ref){
     for (const c of ['G','R','B','Y']){
       const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
       marker.setAttribute('id',`miniArrowHead_${containerEl.id}_${c}`);
-      marker.setAttribute('markerWidth','4');
-      marker.setAttribute('markerHeight','4');
-      marker.setAttribute('refX','3.6');
-      marker.setAttribute('refY','2');
+      marker.setAttribute('markerWidth','5');
+      marker.setAttribute('markerHeight','5');
+      marker.setAttribute('refX','4.6');
+      marker.setAttribute('refY','2.5');
       marker.setAttribute('orient','auto');
-      marker.setAttribute('markerUnits','strokeWidth');
+      marker.setAttribute('markerUnits','userSpaceOnUse');
       const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-      path.setAttribute('d','M0,0 L4,2 L0,4 L0.9,2 Z');
+      path.setAttribute('d','M0,0 L5,2.5 L0,5 L1.2,2.5 Z');
       path.setAttribute('fill', colorHex(c));
       marker.appendChild(path);
       defs.appendChild(marker);
     }
 
-    function sqToCenter(sq){
+    function sqToXY(sq){
       const f = sq.charCodeAt(0)-97;
       const r = parseInt(sq[1],10)-1;
-      return { x:f+0.5, y:(7-r)+0.5 };
+      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
     }
 
     function drawMiniSquare(sq, c){
-      const f = sq.charCodeAt(0)-97;
-      const r = parseInt(sq[1],10)-1;
+      const {x,y} = sqToXY(sq);
+      const size = 12.5;
       const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      rect.setAttribute('x', f);
-      rect.setAttribute('y', (7-r));
-      rect.setAttribute('width', 1);
-      rect.setAttribute('height', 1);
+      rect.setAttribute('x', x - size/2);
+      rect.setAttribute('y', y - size/2);
+      rect.setAttribute('width', size);
+      rect.setAttribute('height', size);
       rect.setAttribute('fill', colorHex(c));
-      rect.setAttribute('opacity', '0.55');
+      rect.setAttribute('opacity', '0.82');
+    rect.setAttribute('shape-rendering','crispEdges');
       rect.setAttribute('shape-rendering','crispEdges');
       svg.appendChild(rect);
     }
 
     function drawMiniArrow(from,to,c){
-      const a = sqToCenter(from), b = sqToCenter(to);
+      const a = sqToXY(from), b = sqToXY(to);
       const dx=b.x-a.x, dy=b.y-a.y;
       const len=Math.hypot(dx,dy)||1;
-      const shrink=0.30;
+      const shrink=4.6;
       const ux=dx/len, uy=dy/len;
 
       const line = document.createElementNS('http://www.w3.org/2000/svg','line');
@@ -3477,18 +3411,22 @@ async function runCqlEvalFromManifest(ref){
       line.setAttribute('x2', b.x - ux*shrink);
       line.setAttribute('y2', b.y - uy*shrink);
       line.setAttribute('stroke', colorHex(c));
-      line.setAttribute('stroke-width', '0.10');
-      line.setAttribute('stroke-linecap','round');
+      line.setAttribute('stroke-width', '0.34');
+    line.setAttribute('stroke-linecap','round');
       line.setAttribute('opacity', '0.92');
       line.setAttribute('marker-end', `url(#miniArrowHead_${containerEl.id}_${c})`);
       svg.appendChild(line);
     }
 
+    // render overlays
     const sqs = pr.miniSquares || {};
-    for (const k of Object.keys(sqs)) drawMiniSquare(k, sqs[k]);
-
+    for (const k of Object.keys(sqs)){
+      drawMiniSquare(k, sqs[k]);
+    }
     const ars = pr.miniArrows || pr.arrows || [];
-    for (const a of ars) drawMiniArrow(a.from, a.to, a.color || 'G');
+    for (const a of ars){
+      drawMiniArrow(a.from, a.to, a.color || 'G');
+    }
   }
 
   function resizeMiniBoards(){
@@ -3540,9 +3478,6 @@ async function runCqlEvalFromManifest(ref){
 
     setupRow.classList.toggle('open', isQuerySetupMode);
 
-    const btnResetInitial = document.getElementById('btnResetInitial');
-    if (btnResetInitial) btnResetInitial.style.display = (currentGame && currentGame.isPriyome) ? '' : 'none';
-
     if (!board){
       ensureMainBoard();
     }
@@ -3561,7 +3496,7 @@ async function runCqlEvalFromManifest(ref){
         draggable: true,
         dropOffBoard: 'trash',
         sparePieces: true,
-        position: (currentGame ? startFenFromPgn(currentGame.pgn) : 'start'),
+        position: '8/8/8/8/8/8/8/8',
         pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
         onDragStart, onDrop, onSnapEnd
       });
@@ -3702,7 +3637,6 @@ async function runCqlEvalFromManifest(ref){
 
     g.isPriyome = true;
     g.priyomeId = pid;
-    g.priyomeEdit = true;
 
     selectedPriyomeId = pid;
     currentGame = g;
