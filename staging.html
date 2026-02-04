@@ -631,6 +631,7 @@
         <!-- MOVED: Prev/Next removed from hamburger per request -->
         <button id="btnFlip">Flip</button>
         <button id="btnReset">Reset</button>
+        <button id="btnResetInitialPos" style="display:none">Reset initial position</button>
 
         <button id="btnSquares">Squares</button>
         <button id="btnArrows">Arrows</button>
@@ -677,12 +678,12 @@
         <!-- shown only during query-setup mode -->
         <div class="setupRow" id="setupRow">
           <span class="kbd">Query setup mode</span>
-          <button class="smallBtn" id="btnAddPriyome" type="button">Add</button>
+          <button class="smallBtn" id="btnResetInitial" type="button">Reset initial position</button>
           <button class="smallBtn" id="btnCancelPriyome" type="button">Cancel</button>
           <button class="smallBtn" id="btnPlayFromHere" type="button">Play from here</button>
           <button class="smallBtn" id="btnSetupImportPgn" type="button">Import from PGN</button>
           <input id="setupPgnFile" type="file" accept=".pgn" hidden />
-          <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
+          <span class="hint" id="setupHint">Drag pieces to set a position. Your Priyome is saved automatically. Click <b>Play from here</b> when ready.</span>
         </div>
 
       </div>
@@ -710,7 +711,7 @@
       <!-- Priyomes tab -->
       <div class="pane" id="panePriyomes">
         <div class="hint">
-          Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board; click <b>Add</b> under the board to save.
+          Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board; your Priyome is saved automatically. Click <b>Play from here</b> when ready.
         </div>
 
         <div class="priyomesGrid">
@@ -1185,7 +1186,7 @@ async function bootLoadDefaultStudies() {
 
   // Setup mode DOM
   const setupRow = document.getElementById('setupRow');
-  const btnAddPriyome = document.getElementById('btnAddPriyome');
+  const btnAddPriyome = document.getElementById('btnAddPriyome'); // removed from UI
   const btnCancelPriyome = document.getElementById('btnCancelPriyome');
   const btnSetupImportPgn = document.getElementById('btnSetupImportPgn');
   const setupPgnFile = document.getElementById('setupPgnFile');
@@ -1563,6 +1564,17 @@ ${comment ? (comment + " ") : ""}*`;
   function updateSetupPreview(){
     if (!isQuerySetupMode || !board) return null;
     const fen = boardObjToFen(board.position());
+
+    // Persist setup position for user Priyome drafts so navigation won't exit setup state.
+    try {
+      if (currentGame && isUserPriyomeGame(currentGame) && currentGame.priyomeSetupLocked){
+        currentGame.priyomeSetupFen = fen;
+        if (!currentGame.priyomeInitialFen) currentGame.priyomeInitialFen = fen;
+        const p = getPriyomeByGame(currentGame);
+        if (p) p.fen = fen;
+      }
+    } catch {}
+
     const pgn = buildSetupPgn(fen, `Setup ${todayYMD()}`);
 
     // Live preview in the bottom card (FEN + PGN) during setup mode
@@ -2307,9 +2319,14 @@ function renderGameList(){
     if (!g) return;
 
     // leaving setup mode when loading games
-    if (isQuerySetupMode) setQuerySetupMode(false);
+    // NOTE: user-created Priyomes remain in setup mode until 'Play from here'.
 
     currentGame = g;
+    const keepSetup = shouldStayInSetupMode(currentGame);
+    if (isQuerySetupMode && !keepSetup) setQuerySetupMode(false);
+    if (!isQuerySetupMode && keepSetup) setQuerySetupMode(true);
+    updatePriyomeButtons();
+
     ensureStores(g.id);
     gamePill.innerHTML = '';
           const tspan = document.createElement('span');
@@ -2361,6 +2378,16 @@ function renderGameList(){
 
     sizeBoardSquare();
     ensureMainBoard();
+
+    if (keepSetup){
+      // In setup mode, we show the editable setup position, not the move playback.
+      setBoardFen('priyome setup: restore', getSetupFenForGame(g), false);
+      updateSetupPreview();
+      redrawDrawings();
+      updatePriyomeButtons();
+      // Keep UI focused on Moves tab when coming from Games list.
+      return;
+    }
 
     const target = startAtFirst ? 0 : verboseHistory.length;
     jumpTo(target);
@@ -3204,6 +3231,9 @@ async function runCqlEvalFromManifest(ref){
       const g = GAMES.find(x => x.id === id);
       if (g && prev){
         const tags0 = drawTagsCommentFor(id, 0);
+        // Lock initial position the first time; allow resetting back to it later.
+        if (!g.priyomeInitialFen) g.priyomeInitialFen = prev.fen;
+        g.priyomeSetupFen = prev.fen;
         g.pgn = buildSetupPgn(prev.fen, g.title, tags0);
         // also update the linked Priyome entry FEN so the mini board stays correct
         if (g.priyomeId){
@@ -3212,6 +3242,8 @@ async function runCqlEvalFromManifest(ref){
         }
       }
 
+      // Exiting setup mode is the explicit 'commit' action.
+      if (g) g.priyomeSetupLocked = false;
       setQuerySetupMode(false);
       loadGame(id);
       jumpTo(0);
@@ -3472,7 +3504,41 @@ async function runCqlEvalFromManifest(ref){
     updateQueryUi();
   });
 
-  function setQuerySetupMode(on){
+  
+  // -------- Priyome setup lock (user-created) --------
+  function getPriyomeByGame(g){
+    if (!g) return null;
+    if (g.priyomeId) return PRIYOMES.find(p => p.id === g.priyomeId) || null;
+    return null;
+  }
+  function isUserPriyomeGame(g){
+    const p = getPriyomeByGame(g);
+    return !!(p && p.user);
+  }
+  function shouldStayInSetupMode(g){
+    return !!(g && isUserPriyomeGame(g) && g.priyomeSetupLocked);
+  }
+  function getInitialFenForGame(g){
+    if (!g) return 'start';
+    if (g.priyomeInitialFen && String(g.priyomeInitialFen).trim()) return String(g.priyomeInitialFen).trim();
+    const p = getPriyomeByGame(g);
+    if (p && p.fen) return String(p.fen).trim();
+    return 'start';
+  }
+  function getSetupFenForGame(g){
+    if (!g) return getInitialFenForGame(g);
+    if (g.priyomeSetupFen && String(g.priyomeSetupFen).trim()) return String(g.priyomeSetupFen).trim();
+    return getInitialFenForGame(g);
+  }
+  function updatePriyomeButtons(){
+    const g = currentGame;
+    const show = !!(g && isUserPriyomeGame(g));
+    const b1 = document.getElementById('btnResetInitial');
+    const b2 = document.getElementById('btnResetInitialPos');
+    if (b1) b1.style.display = show ? '' : 'none';
+    if (b2) b2.style.display = show ? '' : 'none';
+  }
+function setQuerySetupMode(on){
     isQuerySetupMode = !!on;
 
     // keep drawing tools available in setup mode
@@ -3497,7 +3563,7 @@ async function runCqlEvalFromManifest(ref){
         draggable: true,
         dropOffBoard: 'trash',
         sparePieces: true,
-        position: '8/8/8/8/8/8/8/8',
+        position: (currentGame && shouldStayInSetupMode(currentGame)) ? getSetupFenForGame(currentGame) : '8/8/8/8/8/8/8/8',
         pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
         onDragStart, onDrop, onSnapEnd
       });
@@ -3523,6 +3589,8 @@ async function runCqlEvalFromManifest(ref){
       redrawDrawings();
       logLine('OK', 'Exited query setup mode.');
     }
+
+    updatePriyomeButtons();
 
     // keep sizing stable
     sizeBoardSquare();
@@ -3551,6 +3619,11 @@ async function runCqlEvalFromManifest(ref){
         if (g){
           currentGame = g;
           ensureStores(g.id);
+          // User-created Priyomes stay in setup mode until 'Play from here'.
+          g.priyomeSetupLocked = true;
+          try { g.priyomeSetupFen = boardObjToFen(board.position()); } catch {}
+          if (!g.priyomeInitialFen) { try { g.priyomeInitialFen = g.priyomeSetupFen || 'start'; } catch {} }
+
           // Ensure we have a Priyome entry linked immediately (no separate Add step)
           if (!g.priyomeId){
             const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -3607,34 +3680,37 @@ async function runCqlEvalFromManifest(ref){
     setQuerySetupMode(false);
   });
 
-  btnAddPriyome.addEventListener('click', () => {
-    if (!isQuerySetupMode || !board) return;
 
-    // Ensure we have a real game inside the current study (no naming prompt).
-    const gid = ensureSetupDraftGame();
-    if (!gid) return;
+  const btnResetInitial = document.getElementById('btnResetInitial');
+  const btnResetInitialPos = document.getElementById('btnResetInitialPos');
 
-    const g = GAMES.find(x => x.id === gid);
-    if (!g) return;
+  function resetToInitialPosition(){
+    const g = currentGame;
+    if (!g || !isUserPriyomeGame(g)) return;
 
-    // Tie this game to a Priyome entry
-    const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const title = g.title || `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
+    const f0 = getInitialFenForGame(g);
 
-    const fen = (typeof board.fen === 'function' ? board.fen() : (game ? game.fen() : '8/8/8/8/8/8/8/8'));
+    if (isQuerySetupMode){
+      setBoardFen('priyome setup: reset initial', f0, false);
+      // Persist to setup fen so navigation keeps it
+      try { g.priyomeSetupFen = f0; const p = getPriyomeByGame(g); if (p) p.fen = f0; } catch {}
+      updateSetupPreview();
+      redrawDrawings();
+      return;
+    }
 
-    addPriyome({
-      id: pid,
-      user: true,
-      title,
-      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
-      fen,
-      gameId: gid,
-      study: currentStudyName,
-      cqlref: setupImportedCqlRef || null,
-      miniSquares: setupImportedMiniSquares || {},
-      miniArrows:  setupImportedMiniArrows  || [],
-    });
+    // In play mode, jump to the start (ply 0) which corresponds to the PGN start position.
+    try { jumpTo(0); } catch { 
+      // fallback: behave like Reset (start of line)
+      try { game.reset(); } catch {}
+      try { setBoardFen('priyome: reset initial (fallback)', f0, false); } catch {}
+    }
+    redrawDrawings();
+  }
+
+  if (btnResetInitial) btnResetInitial.addEventListener('click', resetToInitialPosition);
+  if (btnResetInitialPos) btnResetInitialPos.addEventListener('click', resetToInitialPosition);
+
 
     g.isPriyome = true;
     g.priyomeId = pid;
