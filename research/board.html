@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Vanilla Chess — Moves + Arrows + Squares + SAN/PGN (Mobile Correct)</title>
+<style>
+:root{
+  --light:#f0d9b5;
+  --dark:#b58863;
+  --dot:#3ddc84;
+
+  --cR:#e53935;
+  --cB:#1e88e5;
+  --cY:#fdd835;
+  --cG:#43a047;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background:#0e1116;
+  color:#eee;
+  display:flex;
+  flex-direction:column;
+  overscroll-behavior:none;
+  touch-action:none; /* prevent page scroll/zoom gestures */
+  user-select:none;
+}
+
+header{
+  background:#141923;
+  padding:8px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  align-items:center;
+}
+
+button, input{
+  background:#222838;
+  color:#eee;
+  border:1px solid #333;
+  border-radius:8px;
+  padding:7px 10px;
+  font-size:14px;
+}
+
+button.active{
+  outline:2px solid rgba(255,255,255,.35);
+}
+
+.pig{
+  width:34px; height:34px; padding:0; border-radius:10px;
+  border:1px solid #333;
+}
+.pig.active{ outline:2px solid rgba(255,255,255,.5); }
+
+#pgn{
+  margin:0;
+  padding:8px;
+  background:#0b0f19;
+  font-size:12px;
+  line-height:1.35;
+  max-height:9em;
+  overflow:auto;
+  white-space:pre-wrap;
+}
+
+#wrap{ flex:1; display:grid; place-items:center; }
+
+#board{
+  position:relative;
+  display:grid;
+  grid-template:repeat(8,1fr)/repeat(8,1fr);
+  touch-action:none;
+}
+
+.sq{
+  position:relative;
+  display:grid;
+  place-items:center;
+  font-size:clamp(24px,6vw,52px);
+}
+
+.light{background:var(--light)}
+.dark{background:var(--dark)}
+
+.dot{
+  width:22%;
+  height:22%;
+  background:var(--dot);
+  border-radius:50%;
+  opacity:.95;
+}
+
+.piece{
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
+  cursor:grab;
+}
+
+canvas{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+}
+
+.sqmark{
+  position:absolute;
+  inset:0;
+  opacity:.35;
+}
+.sqmark.R{ background:var(--cR); }
+.sqmark.B{ background:var(--cB); }
+.sqmark.Y{ background:var(--cY); opacity:.28; }
+.sqmark.G{ background:var(--cG); opacity:.30; }
+
+#ghost{
+  position:fixed;
+  z-index:9999;
+  pointer-events:none;
+  font-size:clamp(24px,6vw,52px);
+  transform:translate(-50%,-50%);
+  display:none;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <button onclick="API.initial()">Initial</button>
+  <button onclick="API.clear()">Clear</button>
+  <button onclick="API.flip()">Flip</button>
+  <button onclick="API.toggleSetup()">Setup</button>
+
+  <button id="btnMoves" onclick="setMode('moves')" class="active">MOVES</button>
+  <button id="btnArrows" onclick="setMode('arrows')">ARROWS</button>
+  <button id="btnSquares" onclick="setMode('squares')">SQUARES</button>
+
+  <span style="opacity:.85;margin-left:6px">Pigment:</span>
+  <button class="pig active" id="pigR" onclick="setPig('R')" style="background:var(--cR)"></button>
+  <button class="pig" id="pigB" onclick="setPig('B')" style="background:var(--cB)"></button>
+  <button class="pig" id="pigY" onclick="setPig('Y')" style="background:var(--cY)"></button>
+  <button class="pig" id="pigG" onclick="setPig('G')" style="background:var(--cG)"></button>
+
+  <button onclick="API.clearMarks()">Clear Marks</button>
+</header>
+
+<pre id="pgn"></pre>
+
+<div id="wrap">
+  <div id="board">
+    <canvas id="overlay"></canvas>
+  </div>
+</div>
+
+<div id="ghost"></div>
+
+<script>
+/* =================== CORE HELPERS =================== */
+const boardEl = document.getElementById("board");
+const canvas = document.getElementById("overlay");
+const ctx = canvas.getContext("2d");
+const ghost = document.getElementById("ghost");
+const pgnEl = document.getElementById("pgn");
+
+const files="abcdefgh";
+const ranks="12345678";
+
+const idx=(f,r)=>(7-r)*8+f;
+const FR=i=>[i%8,7-Math.floor(i/8)];
+const inB=(f,r)=>f>=0&&f<8&&r>=0&&r<8;
+
+const isW=p=>p && p===p.toUpperCase();
+const other = c => c==="w" ? "b" : "w";
+const pieceType = p => p.toLowerCase();
+
+function sqName(i){
+  const [f,r]=FR(i);
+  return files[f] + (r+1);
+}
+function parseSq(s){
+  const f=files.indexOf(s[0]);
+  const r=(+s[1])-1;
+  return idx(f,r);
+}
+function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
+
+/* =================== UI STATE =================== */
+let mode = "moves";    // moves | arrows | squares
+let pigment = "R";     // R B Y G
+let flipped = false;
+let setupMode = false;
+
+/* square marks: Map idx -> pigment */
+let sqMarks = new Map();
+/* arrows: array of {a,b,c} where a,b are idx, c pigment */
+let arrows = [];
+
+/* =================== CHESS STATE =================== */
+let board = Array(64).fill(null);
+let side = "w";
+let castling = {K:true,Q:true,k:true,q:true};
+let ep = null; // idx or null
+let halfmove = 0;
+let fullmove = 1;
+
+let selected = null;
+let legalTargets = [];
+
+let drag = null; // {from, piece, pointerId}
+
+/* Annotations tied to ply index (0-based ply count) */
+let annotationsByPly = new Map(); // ply -> array of strings like "%draw R a2a4"
+
+/* SAN move log (one SAN per ply) */
+let sanLog = [];
+
+/* =================== RESIZE =================== */
+function resize(){
+  const wrap = document.getElementById("wrap");
+  const s = Math.min(wrap.clientWidth, wrap.clientHeight);
+  boardEl.style.width = boardEl.style.height = s + "px";
+  canvas.width = canvas.height = s;
+  drawArrows();
+}
+addEventListener("resize", resize);
+
+/* =================== RENDER =================== */
+function render(){
+  boardEl.innerHTML = "";
+  boardEl.appendChild(canvas);
+
+  for(let ui=0; ui<64; ui++){
+    const bi = flipped ? 63-ui : ui;
+
+    const sq = document.createElement("div");
+    sq.className = "sq " + (((bi + Math.floor(bi/8))%2) ? "dark" : "light");
+    sq.dataset.idx = bi;
+
+    // square mark overlay
+    const m = sqMarks.get(bi);
+    if(m){
+      const ov = document.createElement("div");
+      ov.className = "sqmark " + m;
+      sq.appendChild(ov);
+    }
+
+    // legal dot (moves mode only)
+    if(mode==="moves" && legalTargets.includes(bi)){
+      const d = document.createElement("div");
+      d.className = "dot";
+      sq.appendChild(d);
+    }
+
+    const p = board[bi];
+    if(p){
+      const el = document.createElement("div");
+      el.className = "piece";
+      el.textContent = p;
+
+      // pointer down on piece
+      el.onpointerdown = (e) => onPieceDown(bi, e);
+      sq.appendChild(el);
+    }
+
+    // pointer down on square (for arrows start or squares toggle or selection)
+    sq.onpointerdown = (e) => onSquareDown(bi, e);
+    sq.onpointerup = (e) => onSquareUp(bi, e);
+
+    boardEl.appendChild(sq);
+  }
+
+  drawArrows();
+  updatePGN();
+}
+
+/* =================== MODE / PIGMENT =================== */
+function setMode(m){
+  mode=m;
+  document.getElementById("btnMoves").classList.toggle("active", m==="moves");
+  document.getElementById("btnArrows").classList.toggle("active", m==="arrows");
+  document.getElementById("btnSquares").classList.toggle("active", m==="squares");
+
+  // clear transient selection when switching tools
+  selected=null;
+  legalTargets=[];
+  drag=null;
+  ghost.style.display="none";
+  render();
+}
+
+function setPig(p){
+  pigment=p;
+  for(const k of ["R","B","Y","G"]){
+    document.getElementById("pig"+k).classList.toggle("active", k===p);
+  }
+}
+
+/* =================== MOBILE-SAFE POINTER HANDLING =================== */
+function preventAll(e){
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function squareFromEvent(e){
+  const r = boardEl.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  const y = e.clientY - r.top;
+  const f = Math.max(0, Math.min(7, Math.floor(x / (r.width/8))));
+  const rk = Math.max(0, Math.min(7, 7 - Math.floor(y / (r.height/8))));
+  return idx(f, rk);
+}
+
+/* =================== ARROWS TOOL =================== */
+let arrowStart = null;
+
+function onSquareDown(i,e){
+  preventAll(e);
+
+  if(mode==="arrows"){
+    // start arrow on pointerdown
+    arrowStart = i;
+    boardEl.setPointerCapture(e.pointerId);
+    return;
+  }
+
+  if(mode==="squares"){
+    // toggle square mark on tap
+    const cur = sqMarks.get(i);
+    if(cur===pigment) sqMarks.delete(i);
+    else sqMarks.set(i, pigment);
+    recordAnnotation(`%sq ${pigment} ${sqName(i)}`);
+    render();
+    return;
+  }
+
+  // moves mode: clicking empty square clears selection
+  if(mode==="moves"){
+    if(!drag){
+      selected=null;
+      legalTargets=[];
+      render();
+    }
+  }
+}
+
+function onSquareUp(i,e){
+  preventAll(e);
+
+  if(mode==="arrows" && arrowStart!==null){
+    const a = arrowStart;
+    const b = i;
+    arrowStart = null;
+    if(a!==b){
+      arrows.push({a,b,c:pigment});
+      recordAnnotation(`%draw ${pigment} ${sqName(a)}${sqName(b)}`);
+      drawArrows();
+      updatePGN();
+    }
+    return;
+  }
+
+  // moves: tap-to-move if selected and legal
+  if(mode==="moves" && selected!==null && legalTargets.includes(i) && !drag){
+    makeMove(selected, i);
+    selected=null;
+    legalTargets=[];
+    render();
+  }
+}
+
+/* =================== SQUARES TOOL (done above) =================== */
+
+/* =================== MOVE TOOL: SELECTION + DRAG =================== */
+function onPieceDown(i,e){
+  preventAll(e);
+
+  // In arrows/squares mode, pieces should not start drags or selection.
+  if(mode!=="moves") return;
+
+  const p = board[i];
+  if(!p) return;
+  if(!setupMode){
+    if((side==="w") !== isW(p)) return;
+  }
+
+  // compute legal squares
+  selected = i;
+  legalTargets = setupMode ? [] : legalMovesFrom(i);
+
+  // start mobile-friendly drag
+  drag = { from:i, piece:p, pointerId:e.pointerId };
+  ghost.textContent = p;
+  ghost.style.left = e.clientX + "px";
+  ghost.style.top  = e.clientY + "px";
+  ghost.style.display = "block";
+
+  // hide piece at source while dragging by temporarily clearing it
+  board[i] = null;
+
+  boardEl.setPointerCapture(e.pointerId);
+  boardEl.onpointermove = onDragMove;
+  boardEl.onpointerup = onDragEnd;
+
+  render();
+}
+
+function onDragMove(e){
+  preventAll(e);
+  if(!drag) return;
+  ghost.style.left = e.clientX + "px";
+  ghost.style.top  = e.clientY + "px";
+}
+
+function onDragEnd(e){
+  preventAll(e);
+  if(!drag) return;
+
+  const dropSq = squareFromEvent(e);
+  const from = drag.from;
+  const piece = drag.piece;
+
+  // restore piece to board to validate/move
+  board[from] = piece;
+
+  const ok = setupMode ? true : legalTargets.includes(dropSq);
+  if(ok && dropSq !== from){
+    makeMove(from, dropSq);
+  }
+
+  drag=null;
+  ghost.style.display="none";
+  boardEl.onpointermove = null;
+  boardEl.onpointerup = null;
+
+  selected=null;
+  legalTargets=[];
+
+  render();
+}
+
+/* =================== ANNOTATION / PGN OUTPUT =================== */
+function plyIndex(){
+  return sanLog.length; // next ply to be played
+}
+function recordAnnotation(tag){
+  const ply = Math.max(0, plyIndex()-1); // attach to last move if exists; else 0
+  const arr = annotationsByPly.get(ply) || [];
+  // keep only the payload (we will wrap in braces in PGN)
+  arr.push(tag);
+  annotationsByPly.set(ply, arr);
+}
+function updatePGN(){
+  pgnEl.textContent = API.toPGN();
+}
+
+/* =================== CHESS: MOVE GENERATION =================== */
+
+function kingIndex(color){
+  const K = (color==="w") ? "K" : "k";
+  return board.findIndex(x=>x===K);
+}
+
+function attacked(square, byColor){
+  // is square attacked by byColor?
+  for(let i=0;i<64;i++){
+    const p=board[i];
+    if(!p) continue;
+    if((byColor==="w") !== isW(p)) continue;
+    const moves = pseudoMoves(i, true);
+    if(moves.includes(square)) return true;
+  }
+  return false;
+}
+
+function pseudoMoves(i, forAttack=false){
+  const p=board[i];
+  if(!p) return [];
+  const t = pieceType(p);
+  const [f,r]=FR(i);
+  const out=[];
+  const dir = isW(p) ? 1 : -1;
+
+  const push = (nf,nr)=>{
+    if(!inB(nf,nr)) return;
+    const ni=idx(nf,nr);
+    const occ=board[ni];
+    if(!occ || isW(occ)!==isW(p)) out.push(ni);
+  };
+
+  if(t==="p"){
+    // attacks are diagonals
+    for(const df of [-1,1]){
+      const nf=f+df, nr=r+dir;
+      if(inB(nf,nr)) out.push(idx(nf,nr));
+    }
+    if(forAttack) return out;
+
+    // forward 1
+    const nr1=r+dir;
+    if(inB(f,nr1)){
+      const i1=idx(f,nr1);
+      if(!board[i1]){
+        out.push(i1);
+        // forward 2 from start rank
+        const startRank = isW(p) ? 1 : 6;
+        const nr2=r+2*dir;
+        if(r===startRank && inB(f,nr2)){
+          const i2=idx(f,nr2);
+          if(!board[i2]) out.push(i2);
+        }
+      }
+    }
+    // captures + en passant
+    for(const df of [-1,1]){
+      const nf=f+df, nr=r+dir;
+      if(!inB(nf,nr)) continue;
+      const ni=idx(nf,nr);
+      const occ=board[ni];
+      if(occ && isW(occ)!==isW(p)) out.push(ni);
+      if(ep!==null && ni===ep) out.push(ni);
+    }
+    return out;
+  }
+
+  const dirs = {
+    n:[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]],
+    b:[[1,1],[1,-1],[-1,1],[-1,-1]],
+    r:[[1,0],[-1,0],[0,1],[0,-1]],
+    q:[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]],
+    k:[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]
+  }[t];
+
+  if(t==="n" || t==="k"){
+    for(const [df,dr] of dirs){
+      push(f+df, r+dr);
+    }
+    // castling (only when not forAttack)
+    if(t==="k" && !forAttack){
+      const color = isW(p) ? "w" : "b";
+      const homeRank = (color==="w") ? 0 : 7;
+      const kingHome = idx(4, homeRank);
+      if(i===kingHome){
+        const inCheck = attacked(kingHome, other(color));
+        if(!inCheck){
+          // king side
+          if((color==="w"?castling.K:castling.k)){
+            const f1=idx(5,homeRank), g1=idx(6,homeRank);
+            if(!board[f1] && !board[g1] &&
+               !attacked(f1, other(color)) && !attacked(g1, other(color))){
+              out.push(g1);
+            }
+          }
+          // queen side
+          if((color==="w"?castling.Q:castling.q)){
+            const d1=idx(3,homeRank), c1=idx(2,homeRank), b1=idx(1,homeRank);
+            if(!board[d1] && !board[c1] && !board[b1] &&
+               !attacked(d1, other(color)) && !attacked(c1, other(color))){
+              out.push(c1);
+            }
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  // sliders
+  for(const [df,dr] of dirs){
+    let nf=f+df, nr=r+dr;
+    while(inB(nf,nr)){
+      const ni=idx(nf,nr);
+      const occ=board[ni];
+      if(occ){
+        if(isW(occ)!==isW(p)) out.push(ni);
+        break;
+      }
+      out.push(ni);
+      nf+=df; nr+=dr;
+    }
+  }
+  return out;
+}
+
+function legalMovesFrom(from){
+  const p=board[from];
+  if(!p) return [];
+  const color = isW(p) ? "w" : "b";
+
+  const candidates = pseudoMoves(from, false);
+  const res=[];
+
+  for(const to of candidates){
+    const snap = snapshot();
+    applyMoveNoSAN(from, to);
+    const k = kingIndex(color);
+    const ok = !attacked(k, other(color));
+    restore(snap);
+    if(ok) res.push(to);
+  }
+  return res;
+}
+
+/* =================== APPLY MOVE + SAN =================== */
+function snapshot(){
+  return {
+    board: board.slice(),
+    side,
+    castling: clone(castling),
+    ep,
+    halfmove,
+    fullmove
+  };
+}
+function restore(s){
+  board = s.board.slice();
+  side = s.side;
+  castling = clone(s.castling);
+  ep = s.ep;
+  halfmove = s.halfmove;
+  fullmove = s.fullmove;
+}
+
+function applyMoveNoSAN(from, to){
+  const p = board[from];
+  const t = pieceType(p);
+  const color = isW(p) ? "w" : "b";
+  const their = other(color);
+
+  // clear ep unless set by pawn double
+  let newEp = null;
+
+  // captures?
+  let captured = board[to] !== null;
+
+  // en passant capture
+  if(t==="p" && ep!==null && to===ep && !board[to]){
+    const [tf,tr]=FR(to);
+    const capSq = idx(tf, tr + (color==="w" ? -1 : 1));
+    board[capSq] = null;
+    captured = true;
+  }
+
+  // move piece
+  board[to] = board[from];
+  board[from] = null;
+
+  // promotion (auto queen)
+  if(t==="p"){
+    const [,tr]=FR(to);
+    if((color==="w" && tr===7) || (color==="b" && tr===0)){
+      board[to] = (color==="w") ? "Q" : "q";
+    }
+  }
+
+  // castling rook move
+  if(t==="k"){
+    const [ff,fr]=FR(from);
+    const [tf,tr]=FR(to);
+    if(fr===tr && Math.abs(tf-ff)===2){
+      // king side
+      if(tf===6){
+        const rookFrom = idx(7, fr);
+        const rookTo   = idx(5, fr);
+        board[rookTo] = board[rookFrom];
+        board[rookFrom]=null;
+      }else if(tf===2){
+        const rookFrom = idx(0, fr);
+        const rookTo   = idx(3, fr);
+        board[rookTo] = board[rookFrom];
+        board[rookFrom]=null;
+      }
+    }
+  }
+
+  // update castling rights if king/rook moved or rook captured
+  if(p==="K"){ castling.K=false; castling.Q=false; }
+  if(p==="k"){ castling.k=false; castling.q=false; }
+  if(p==="R"){
+    if(from===idx(0,0)) castling.Q=false;
+    if(from===idx(7,0)) castling.K=false;
+  }
+  if(p==="r"){
+    if(from===idx(0,7)) castling.q=false;
+    if(from===idx(7,7)) castling.k=false;
+  }
+  // rook captured affects rights
+  if(captured){
+    if(to===idx(0,0)) castling.Q=false;
+    if(to===idx(7,0)) castling.K=false;
+    if(to===idx(0,7)) castling.q=false;
+    if(to===idx(7,7)) castling.k=false;
+  }
+
+  // set ep square if pawn moved two
+  if(t==="p"){
+    const [ff,fr]=FR(from);
+    const [tf,tr]=FR(to);
+    if(ff===tf && Math.abs(tr-fr)===2){
+      newEp = idx(tf, (fr+tr)/2);
+    }
+  }
+  ep = newEp;
+
+  // clocks
+  if(t==="p" || captured) halfmove=0;
+  else halfmove++;
+
+  // side/fullmove
+  side = their;
+  if(side==="w") fullmove++;
+}
+
+function makeMove(from, to){
+  // setup mode: allow free moves with no SAN/turn semantics
+  if(setupMode){
+    board[to]=board[from];
+    board[from]=null;
+    // still update PGN annotations “working pgn” (as comments at ply 0)
+    recordAnnotation(`%move ${sqName(from)}${sqName(to)}`);
+    render();
+    return;
+  }
+
+  // generate SAN based on current position
+  const san = computeSAN(from, to);
+
+  applyMoveNoSAN(from, to);
+
+  sanLog.push(san);
+  updatePGN();
+}
+
+function computeSAN(from, to){
+  const p = board[from];
+  const t = pieceType(p);
+  const color = isW(p) ? "w" : "b";
+  const their = other(color);
+
+  // castling
+  if(t==="k"){
+    const [ff,fr]=FR(from);
+    const [tf,tr]=FR(to);
+    if(fr===tr && Math.abs(tf-ff)===2){
+      const s = (tf===6) ? "O-O" : "O-O-O";
+      // check/mate suffix after applying (simulate)
+      const snap = snapshot();
+      applyMoveNoSAN(from,to);
+      const suffix = checkSuffix(their);
+      restore(snap);
+      return s + suffix;
+    }
+  }
+
+  const dest = sqName(to);
+
+  // capture?
+  let isCap = !!board[to];
+
+  // en passant capture detect
+  if(t==="p" && ep!==null && to===ep && !board[to]) isCap = true;
+
+  // piece letter (empty for pawn)
+  const pieceLetter = (t==="p") ? "" : t.toUpperCase();
+
+  // disambiguation
+  let disamb = "";
+  if(t!=="p" && t!=="k"){
+    // if another same-type piece can also move to 'to'
+    const others = [];
+    for(let i=0;i<64;i++){
+      if(i===from) continue;
+      if(board[i] && pieceType(board[i])===t && (isW(board[i])===isW(p))){
+        const lm = legalMovesFrom(i);
+        if(lm.includes(to)) others.push(i);
+      }
+    }
+    if(others.length){
+      const [ff,fr]=FR(from);
+      const sameFile = others.some(i=>FR(i)[0]===ff);
+      const sameRank = others.some(i=>FR(i)[1]===fr);
+      if(!sameFile) disamb = files[ff];
+      else if(!sameRank) disamb = (fr+1);
+      else disamb = files[ff] + (fr+1);
+    }
+  }
+
+  // pawn capture notation includes file
+  let capMark = isCap ? "x" : "";
+  let pawnFromFile = "";
+  if(t==="p" && isCap){
+    pawnFromFile = files[FR(from)[0]];
+  }
+
+  // promotion (auto Q)
+  let promo = "";
+  if(t==="p"){
+    const [,tr]=FR(to);
+    if((color==="w" && tr===7) || (color==="b" && tr===0)){
+      promo = "=Q";
+    }
+  }
+
+  // check/mate suffix (simulate)
+  const snap = snapshot();
+  applyMoveNoSAN(from,to);
+  const suffix = checkSuffix(their);
+  restore(snap);
+
+  return (pieceLetter + disamb + pawnFromFile + capMark + dest + promo + suffix).replace("x", isCap ? "x" : "");
+}
+
+function checkSuffix(sideToTest){
+  // sideToTest is the side that will be to-move after the move we simulated
+  const k = kingIndex(sideToTest);
+  const inCheck = attacked(k, other(sideToTest));
+  if(!inCheck) return "";
+
+  // mate if no legal moves exist
+  for(let i=0;i<64;i++){
+    const p=board[i];
+    if(!p) continue;
+    if((sideToTest==="w") !== isW(p)) continue;
+    if(legalMovesFrom(i).length) return "+";
+  }
+  return "#";
+}
+
+/* =================== DRAW ARROWS =================== */
+function drawArrows(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const s = canvas.width/8;
+
+  for(const ar of arrows){
+    const a = ar.a, b = ar.b, c = ar.c;
+    const ax=(a%8 + .5)*s, ay=(Math.floor(a/8)+.5)*s;
+    const bx=(b%8 + .5)*s, by=(Math.floor(b/8)+.5)*s;
+
+    const col = getPigColor(c);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = s*0.12;
+    ctx.lineCap = "round";
+
+    ctx.beginPath();
+    ctx.moveTo(ax,ay);
+    ctx.lineTo(bx,by);
+    ctx.stroke();
+
+    // simple arrow head
+    const ang = Math.atan2(by-ay, bx-ax);
+    const head = s*0.28;
+    ctx.beginPath();
+    ctx.moveTo(bx,by);
+    ctx.lineTo(bx - head*Math.cos(ang-0.5), by - head*Math.sin(ang-0.5));
+    ctx.moveTo(bx,by);
+    ctx.lineTo(bx - head*Math.cos(ang+0.5), by - head*Math.sin(ang+0.5));
+    ctx.stroke();
+  }
+}
+
+function getPigColor(p){
+  const styles = getComputedStyle(document.documentElement);
+  if(p==="R") return styles.getPropertyValue("--cR").trim();
+  if(p==="B") return styles.getPropertyValue("--cB").trim();
+  if(p==="Y") return styles.getPropertyValue("--cY").trim();
+  return styles.getPropertyValue("--cG").trim();
+}
+
+/* =================== API / PGN =================== */
+const API = {
+  clear(){
+    board.fill(null);
+    side="w"; ep=null; halfmove=0; fullmove=1;
+    castling={K:true,Q:true,k:true,q:true};
+    sanLog=[]; annotationsByPly.clear();
+    sqMarks.clear(); arrows=[];
+    selected=null; legalTargets=[];
+    render();
+  },
+  initial(){
+    API.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  },
+  flip(){ flipped=!flipped; render(); },
+  toggleSetup(){ setupMode=!setupMode; selected=null; legalTargets=[]; render(); },
+  clearMarks(){
+    sqMarks.clear();
+    arrows=[];
+    recordAnnotation("%clear");
+    render();
+  },
+  loadFEN(fen){
+    const parts = fen.trim().split(/\s+/);
+    const placement = parts[0] || "";
+    const active = parts[1] || "w";
+    const castles = parts[2] || "-";
+    const epsq = parts[3] || "-";
+    const hm = +(parts[4]||"0");
+    const fm = +(parts[5]||"1");
+
+    board.fill(null);
+    let i=0;
+    for(const c of placement){
+      if(c==="/") continue;
+      if(/\d/.test(c)) i += +c;
+      else board[i++] = c;
+    }
+
+    side = (active==="b") ? "b" : "w";
+    castling = {K:false,Q:false,k:false,q:false};
+    if(castles.includes("K")) castling.K=true;
+    if(castles.includes("Q")) castling.Q=true;
+    if(castles.includes("k")) castling.k=true;
+    if(castles.includes("q")) castling.q=true;
+
+    ep = (epsq==="-" ? null : parseSq(epsq));
+    halfmove = hm; fullmove = fm;
+
+    sanLog=[]; annotationsByPly.clear();
+    sqMarks.clear(); arrows=[];
+    selected=null; legalTargets=[];
+    render();
+  },
+  toPGN(){
+    // build PGN with SAN + annotations as comments right after the SAN
+    let out = "";
+    for(let ply=0; ply<sanLog.length; ply++){
+      if(ply%2===0) out += (Math.floor(ply/2)+1) + ". ";
+      out += sanLog[ply];
+
+      const ann = annotationsByPly.get(ply);
+      if(ann && ann.length){
+        // wrap each token as a single comment block (compact)
+        // Example: {[%draw R a2a4] [%sq Y e4]}
+        out += " {";
+        for(const t of ann) out += "[%" + t.replace(/^%/,"") + "] ";
+        out = out.trimEnd() + "} ";
+      } else {
+        out += " ";
+      }
+    }
+    // if no moves yet but we have annotations, attach them at start
+    if(!sanLog.length){
+      const ann = annotationsByPly.get(0);
+      if(ann && ann.length){
+        out += "{";
+        for(const t of ann) out += "[%" + t.replace(/^%/,"") + "] ";
+        out = out.trimEnd() + "} ";
+      }
+    }
+    return out.trim();
+  }
+};
+
+function updatePGN(){
+  pgnEl.textContent = API.toPGN();
+}
+
+/* =================== BOOT =================== */
+resize();
+API.initial();
+setMode("moves");
+setPig("R");
+
+/* initial PGN display */
+updatePGN();
+</script>
+</body>
+</html>
