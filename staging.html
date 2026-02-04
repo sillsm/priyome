@@ -712,7 +712,7 @@
       <!-- Priyomes tab -->
       <div class="pane" id="panePriyomes">
         <div class="hint">
-          Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board; click <b>Add</b> under the board to save.
+          Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board and creates a Priyome immediately. Click <b>Play from here</b> to exit setup mode.
         </div>
 
         <div class="priyomesGrid">
@@ -1523,23 +1523,17 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
 
   // Setup-draft game (for query setup mode)
   let setupDraftId = null;                 // game id once created
+  let setupDraftInitialFen = null;       // latest setup-mode FEN (even before game exists)
+  let setupDraftForceSetup = false;      // stays true until 'Play from here'
   const setupDraftDrawId = '__setup__';
   // Priyome: per-game setup persistence + initial position reset (no control-flow short-circuits)
   function isUserPriyomeGame(g){
-    if (!g) return false;
-    if (!g.isPriyome || !g.priyomeId) return false;
-    const p = PRIYOMES.find(pp => pp.id === g.priyomeId);
-    return !!(p && p.user);
+    return !!(g && g.isPriyome && g.user === true);
   }
 
   function priyomeInitialFenFor(g){
     if (!g) return null;
-    if (g.priyomeInitialFen) return g.priyomeInitialFen;
-    if (g.priyomeId){
-      const p = PRIYOMES.find(pp => pp.id === g.priyomeId);
-      if (p && (p.initialFen || p.fen)) return (p.initialFen || p.fen);
-    }
-    return null;
+    return g.priyomeInitialFen || null;
   }
 
   function updatePriyomeResetUi(){
@@ -1550,7 +1544,7 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
     if (b2) b2.style.display = (show && isQuerySetupMode) ? '' : 'none';
   }
 
-  function resetPriyomeInitialPosition(){
+function resetPriyomeInitialPosition(){
     if (!currentGame || !game) return;
     if (!isUserPriyomeGame(currentGame)) return;
     const fen = priyomeInitialFenFor(currentGame);
@@ -1610,9 +1604,21 @@ ${comment ? (comment + " ") : ""}*`;
   function updateSetupPreview(){
     if (!isQuerySetupMode || !board) return null;
     const fen = boardObjToFen(board.position());
-            // Persist initial position + force setup until 'Play from here'
-            g.priyomeInitialFen = fen;
-            g.forceSetup = true;
+
+    // Setup mode always tracks a would-be "initial" position for the (soon-to-be) Priyome game.
+    setupDraftInitialFen = fen;
+    setupDraftForceSetup = true;
+
+    // If the draft game already exists, keep its persisted fields in sync (no globals/redeclares).
+    if (setupDraftId){
+      const gg = GAMES.find(x => x && x.id === setupDraftId);
+      if (gg){
+        gg.priyomeInitialFen = fen;
+        gg.forceSetup = true;
+        gg.user = true;
+        gg.isPriyome = true;
+      }
+    }
 
     const pgn = buildSetupPgn(fen, `Setup ${todayYMD()}`);
 
@@ -1629,12 +1635,43 @@ ${comment ? (comment + " ") : ""}*`;
     if (!prev) return null;
     if (setupDraftId) return setupDraftId;
 
-    const title = `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
+    const nUser = GAMES.filter(g => g && g.isPriyome && g.user === true).length;
+    const title = `Priyome ${nUser + 1}`;
     const tags0 = drawTagsCommentFor(setupDraftDrawId, 0);
     const pgn = buildSetupPgn(prev.fen, title, tags0);
     const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
-    GAMES.unshift({ id:newId, title, opening:'Priyome', result:'*', pgn, isPriyome:true });
+    const newGame = {
+      id:newId,
+      title,
+      opening:'Priyome',
+      result:'*',
+      pgn,
+      isPriyome:true,
+      user:true,
+      forceSetup:true,
+      priyomeInitialFen: prev.fen
+    };
+    GAMES.unshift(newGame);
+
+    // Create a matching Priyome entry immediately (no "Add" step).
+    // Store linkage on the game object so we don't duplicate.
+    try{
+      const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      newGame.priyomeId = pid;
+      if (typeof addPriyome === 'function'){
+        addPriyome({
+          id: pid,
+          user: true,
+          title,
+          subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
+          fen: prev.fen,
+          gameId: newId,
+          study: currentStudyName,
+          cqlref: setupImportedCqlRef || null
+        });
+      }
+    }catch(_e){}
 
     // carry drawings made in setup mode, if any
     if (drawings[setupDraftDrawId]){
@@ -1645,6 +1682,7 @@ ${comment ? (comment + " ") : ""}*`;
     setCurrentStudy(currentStudyName);
 
     setupDraftId = newId;
+    updatePriyomeResetUi();
     return newId;
   }
 
@@ -2344,7 +2382,29 @@ function renderGameList(){
     });
     if (typeof board.resize === 'function') board.resize();
     logLine('OK', 'Chessboard initialized.');
-  
+
+    // Mobile UX: prevent long-press context menu + page scroll while actively dragging a piece.
+    // (No control-flow changes; we only gate on isDraggingPiece.)
+    try{
+      const el = boardArea || document.getElementById('boardArea');
+      if (el && !el._priyomeNoCtx){
+        el._priyomeNoCtx = true;
+
+        el.addEventListener('contextmenu', (e) => { e.preventDefault(); }, { passive:false });
+
+        el.addEventListener('wheel', (e) => {
+          if (isDraggingPiece) e.preventDefault();
+        }, { passive:false });
+
+        el.addEventListener('touchmove', (e) => {
+          if (isDraggingPiece) e.preventDefault();
+        }, { passive:false });
+
+        el.addEventListener('touchstart', (e) => {
+          if (isDraggingPiece) e.preventDefault();
+        }, { passive:false });
+      }
+    }catch(_e){}
 
     ensureBoardRO();
     sizeBoardSquare();
@@ -3604,6 +3664,8 @@ async function runCqlEvalFromManifest(ref){
       logLine('OK', 'Exited query setup mode.');
     }
 
+    updatePriyomeResetUi();
+
     // keep sizing stable
     sizeBoardSquare();
     setTimeout(() => { if (board && typeof board.resize === 'function') board.resize(); }, 0);
@@ -3692,33 +3754,39 @@ async function runCqlEvalFromManifest(ref){
     setQuerySetupMode(false);
   });
   if (btnAddPriyome) btnAddPriyome.addEventListener('click', () => {
-    if (!isQuerySetupMode || !board) return;
-
-    // Ensure we have a real game inside the current study (no naming prompt).
+    // "Add" is deprecated (Priyomes are created immediately). Keep this handler harmless.
+    if (!isQuerySetupMode) return;
     const gid = ensureSetupDraftGame();
     if (!gid) return;
-
-    const g = GAMES.find(x => x.id === gid);
-    if (!g) return;
-
-    // Tie this game to a Priyome entry
-    const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const title = g.title || `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
-
-    const fen = (typeof board.fen === 'function' ? board.fen() : (game ? game.fen() : '8/8/8/8/8/8/8/8'));
-
-    addPriyome({
-      id: pid,
-      user: true,
-      title,
-      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
-      fen,
-      gameId: gid,
-      study: currentStudyName,
-      cqlref: setupImportedCqlRef || null,
-      miniSquares: setupImportedMiniSquares || {},
-      miniArrows:  setupImportedMiniArrows  || [],
-    });
+    const gg = GAMES.find(x => x && x.id === gid);
+    if (gg && gg.priyomeId){
+      logLine('OK', 'Priyome already created for this setup.');
+      return;
+    }
+    // If somehow missing linkage, create it now (same as ensureSetupDraftGame path).
+    if (gg){
+      try{
+        const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        gg.priyomeId = pid;
+        gg.user = true;
+        gg.isPriyome = true;
+        gg.forceSetup = true;
+        gg.priyomeInitialFen = gg.priyomeInitialFen || setupDraftInitialFen || (game ? game.fen() : null);
+        if (typeof addPriyome === 'function'){
+          addPriyome({
+            id: pid,
+            user: true,
+            title: gg.title || 'Priyome',
+            subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
+            fen: gg.priyomeInitialFen || (game ? game.fen() : '8/8/8/8/8/8/8/8'),
+            gameId: gid,
+            study: currentStudyName,
+            cqlref: setupImportedCqlRef || null
+          });
+        }
+      }catch(_e){}
+    }
+  });
 
     g.isPriyome = true;
     g.priyomeId = pid;
