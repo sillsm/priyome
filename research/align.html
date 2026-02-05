@@ -1,0 +1,1752 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Scratch Chessboard — Top Half Fixed + Legal Moves + FEN/PGN + Marks</title>
+<style>
+  :root{
+    --bg:#0e1116; --text:#e5e7eb; --muted:#9ca3af; --border:rgba(255,255,255,.10);
+    --light:#f0d9b5; --dark:#b58863;
+    --cR:#dc2626; --cB:#2563eb; --cY:#d97706; --cG:#16a34a;
+    --dot:#3ddc84;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    overflow:hidden;
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    overscroll-behavior:none; touch-action:none;
+  }
+
+  .page{ height:100vh; display:grid; grid-template-rows:55vh 1fr; }
+  .boardBand{
+    display:flex; flex-direction:column; min-height:0;
+    border-bottom:1px solid var(--border);
+    background:rgba(14,17,22,.98);
+  }
+  .topbar{
+    flex:0 0 auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+    padding:10px;
+  }
+  .below{
+    min-height:0; overflow:auto; -webkit-overflow-scrolling:touch;
+    padding:10px; display:grid; gap:10px;
+  }
+  .card{
+    background:rgba(11,15,25,.72);
+    border:1px solid var(--border); border-radius:12px; padding:10px;
+  }
+  .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .hint{ font-size:12px; color:var(--muted); line-height:1.35; }
+  button, input, textarea, select{
+    background:rgba(255,255,255,.06);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:10px;
+    padding:8px 10px;
+    font-size:13px;
+  }
+  button.active{ outline:2px solid rgba(255,255,255,.22); }
+  .pig{ width:34px; height:34px; padding:0; border-radius:10px; }
+  textarea{
+    width:100%;
+    min-height:120px;
+    resize:vertical;
+    background:rgba(255,255,255,.04);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size:12px; line-height:1.35;
+    border-radius:12px;
+  }
+
+  .boardArea{
+    position:relative; flex:1 1 auto; min-height:0;
+    padding:10px; display:grid; place-items:center; overflow:hidden;
+  }
+  #board{
+    position:relative; width:0; height:0; /* JS sets square px size */
+    display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr);
+    border-radius:0; overflow:hidden; touch-action:none;
+  }
+  .sq{
+    width:100%; height:100%; aspect-ratio:1/1;
+    display:grid; place-items:center; position:relative;
+    font-size:clamp(26px,6vw,56px);
+    touch-action:none;
+  }
+  .light{ background:var(--light); } .dark{ background:var(--dark); }
+  .piece{ cursor:grab; touch-action:none; -webkit-user-select:none; user-select:none; }
+
+  #overlay{
+    position:absolute; inset:0; width:100%; height:100%;
+    pointer-events:none; z-index:10;
+  }
+
+  .selRing{
+    position:absolute; inset:0;
+    outline:3px solid rgba(255,255,255,.35);
+    outline-offset:-3px;
+    pointer-events:none;
+    z-index:9;
+  }
+  .dot{
+    width:22%; height:22%;
+    background:var(--dot);
+    border-radius:50%;
+    opacity:.95;
+    z-index:8;
+    pointer-events:none;
+  }
+
+  #ghost{
+    position:fixed; z-index:99999; pointer-events:none;
+    transform:translate(-50%,-50%);
+    font-size:clamp(26px,6vw,56px);
+    display:none;
+  }
+
+  .palette{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .palBtn{
+    width:44px; height:44px; border-radius:12px;
+    display:grid; place-items:center; font-size:26px;
+    background:rgba(255,255,255,.06);
+    border:1px solid var(--border);
+  }
+  .palBtn.active{ outline:2px solid rgba(255,255,255,.22); }
+
+  #statusLine{ font-size:12px; color:var(--muted); }
+  .mini{ font-size:12px; padding:6px 8px; border-radius:9px; }
+  .pill{
+    padding:4px 8px; border-radius:999px;
+    border:1px solid var(--border);
+    background:rgba(255,255,255,.04);
+    font-size:12px;
+  }
+
+  /* Promotion modal */
+  #promoModal{
+    position:fixed; inset:0;
+    display:none; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.55);
+    z-index:100000;
+  }
+  #promoCard{
+    background:rgba(11,15,25,.98);
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:16px;
+    padding:14px;
+    min-width:280px;
+  }
+  #promoRow{ display:flex; gap:10px; justify-content:center; margin-top:10px; }
+  .promoBtn{ width:56px; height:56px; font-size:30px; border-radius:14px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="boardBand">
+    <div class="topbar">
+      <div class="row">
+        <button id="mMoves" class="active">MOVES</button>
+        <button id="mArrows">ARROWS</button>
+        <button id="mSquares">SQUARES</button>
+      </div>
+
+      <div class="row">
+        <span class="hint">Pigment:</span>
+        <button class="pig" id="pR" title="Red" style="background:var(--cR)"></button>
+        <button class="pig" id="pB" title="Blue" style="background:var(--cB)"></button>
+        <button class="pig" id="pY" title="Yellow" style="background:var(--cY)"></button>
+        <button class="pig" id="pG" title="Green" style="background:var(--cG)"></button>
+      </div>
+
+      <div class="row" style="margin-left:auto">
+        <span class="pill" id="turnPill">White to move</span>
+        <button id="btnSetup">Setup: OFF</button>
+        <button id="btnFlip">Flip</button>
+        <button id="btnClearMarks">Clear Marks</button>
+        <button id="btnReset">Reset</button>
+      </div>
+    </div>
+
+    <div class="boardArea" id="boardArea">
+      <div id="board">
+        <svg id="overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="below">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="hint">
+          <b>MOVES</b>: drag or tap-to-move (legal moves only). Green dots = legal.<br>
+          <b>ARROWS</b>: press+drag from square to square. <b>SQUARES</b>: tap to toggle.
+        </div>
+        <div id="statusLine"></div>
+      </div>
+    </div>
+
+    <div class="card" id="setupCard" style="display:none">
+      <div class="row" style="justify-content:space-between">
+        <div class="hint"><b>Setup palette</b> (tap a piece, then tap board squares)</div>
+        <div class="hint">Selected: <span id="selPieceLabel">P</span></div>
+      </div>
+      <div class="palette" id="palette" style="margin-top:8px"></div>
+      <div class="hint" style="margin-top:8px">
+        Setup mode lets you place pieces freely. Move legality still works after you exit setup (including castling/EP based on FEN state).
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div class="hint"><b>PGN Tags</b> (editable)</div>
+        <div class="row">
+          <button class="mini" id="btnPrev">◀ Prev</button>
+          <button class="mini" id="btnNext">Next ▶</button>
+          <button class="mini" id="btnUndo">Undo</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:8px">
+        <span class="hint">Event</span><input id="tagEvent" value="Casual Game" size="14">
+        <span class="hint">Site</span><input id="tagSite" value="Local" size="10">
+        <span class="hint">Date</span><input id="tagDate" value="2026.02.04" size="10">
+      </div>
+      <div class="row" style="margin-top:6px">
+        <span class="hint">White</span><input id="tagWhite" value="White" size="10">
+        <span class="hint">Black</span><input id="tagBlack" value="Black" size="10">
+        <span class="hint">Result</span>
+        <select id="tagResult">
+          <option value="*">*</option>
+          <option value="1-0">1-0</option>
+          <option value="0-1">0-1</option>
+          <option value="1/2-1/2">1/2-1/2</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="hint"><b>FEN</b></div>
+        <div class="row">
+          <button class="mini" id="btnExportFEN">Export FEN</button>
+          <button class="mini" id="btnLoadFEN">Load FEN</button>
+        </div>
+      </div>
+      <textarea id="fenBox" spellcheck="false"></textarea>
+      <div class="hint" style="margin-top:6px">
+        Format: <code>piecePlacement side castling ep halfmove fullmove</code>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="hint"><b>PGN</b> (export includes marks via [%csl]/[%cal])</div>
+        <div class="row">
+          <button class="mini" id="btnExportPGN">Export PGN</button>
+          <button class="mini" id="btnLoadPGN">Load PGN</button>
+        </div>
+      </div>
+      <textarea id="pgnBox" spellcheck="false"></textarea>
+      <div class="hint" style="margin-top:6px">
+        Import parses mainline SAN (ignores variations/comments except it *does* read [%csl]/[%cal] when present).
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div class="hint"><b>Dump (proof marks exist + current ply)</b></div>
+        <button class="mini" id="btnDump">Dump</button>
+      </div>
+      <textarea id="dumpBox" spellcheck="false"></textarea>
+    </div>
+  </div>
+</div>
+
+<div id="ghost"></div>
+
+<div id="promoModal">
+  <div id="promoCard">
+    <div class="hint"><b>Choose promotion</b></div>
+    <div id="promoRow"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* =========================
+     Helpers / board indexing
+  ========================== */
+  const files="abcdefgh";
+  const idx=(f,r)=>(7-r)*8+f;               // internal: a8=0 ... h1=63
+  const FR=i=>[i%8, 7-Math.floor(i/8)];     // -> file 0..7, rank 0..7 (rank 0 = 1st rank)
+  const sqName=i=>{ const [f,r]=FR(i); return files[f]+(r+1); };
+  const parseSq=s=>idx(s.charCodeAt(0)-97, (+s[1])-1);
+  const inB=(f,r)=>f>=0 && f<8 && r>=0 && r<8;
+  const isW=p=>p && p===p.toUpperCase();
+  const pt=p=>p.toLowerCase();
+  const other=c=>c==="w"?"b":"w";
+
+  /* =========================
+     DOM
+  ========================== */
+  const boardArea = document.getElementById("boardArea");
+  const boardEl   = document.getElementById("board");
+  const overlay   = document.getElementById("overlay");
+  const ghost     = document.getElementById("ghost");
+
+  const turnPill  = document.getElementById("turnPill");
+  const statusLine= document.getElementById("statusLine");
+
+  const setupCard = document.getElementById("setupCard");
+  const paletteEl = document.getElementById("palette");
+  const selPieceLabel = document.getElementById("selPieceLabel");
+
+  const tagEvent = document.getElementById("tagEvent");
+  const tagSite  = document.getElementById("tagSite");
+  const tagDate  = document.getElementById("tagDate");
+  const tagWhite = document.getElementById("tagWhite");
+  const tagBlack = document.getElementById("tagBlack");
+  const tagResult= document.getElementById("tagResult");
+
+  const fenBox  = document.getElementById("fenBox");
+  const pgnBox  = document.getElementById("pgnBox");
+  const dumpBox = document.getElementById("dumpBox");
+
+  const promoModal = document.getElementById("promoModal");
+  const promoRow   = document.getElementById("promoRow");
+
+  function cssColor(c){
+    const st=getComputedStyle(document.documentElement);
+    return (c==="R")?st.getPropertyValue("--cR").trim()
+      : (c==="B")?st.getPropertyValue("--cB").trim()
+      : (c==="Y")?st.getPropertyValue("--cY").trim()
+      : st.getPropertyValue("--cG").trim();
+  }
+
+  /* =========================
+     State
+  ========================== */
+  const S = {
+    flipped:false,
+    mode:"moves",
+    pig:"R",
+    setup:false,
+
+    board:Array(64).fill(null),
+    side:"w",
+    castling:{K:true,Q:true,k:true,q:true},
+    ep:null,          // square index or null
+    halfmove:0,
+    fullmove:1,
+
+    // UI selection & move hints
+    tapSelected:null,  // fromSq
+    legalTo:[],        // list of squares (string) legal destinations from tapSelected
+
+    // Drag state
+    drag:null,         // {fromSq, piece, pointerId}
+    arrowDrag:null,    // {fromSq,toSq,pointerId}
+
+    // Marks are stored per ply (so they can be embedded in PGN properly).
+    // key: ply number (0 at initial), value: { sqMarks: Map("e4"->"R"), arrows:[{from,to,color}] }
+    marksByPly:new Map(),
+
+    // Move history (linear)
+    // Each entry: { fenBefore, move:{from,to,piece,captured,promo,epCapture,castle,rookMove}, san, marksAfter }
+    history:[],
+    ply:0,     // 0 means start position, 1 after first move, etc.
+
+    setupPiece:"P",
+
+    // promotion resolver
+    pendingPromotion:null
+  };
+
+  function marksForPly(ply){
+    if(!S.marksByPly.has(ply)){
+      S.marksByPly.set(ply, { sqMarks:new Map(), arrows:[] });
+    }
+    return S.marksByPly.get(ply);
+  }
+  function curMarks(){ return marksForPly(S.ply); }
+
+  /* =========================
+     FEN
+  ========================== */
+  function loadFEN(fen){
+    const parts=fen.trim().split(/\s+/);
+    if(parts.length<1) return;
+
+    const placement=parts[0];
+    S.board.fill(null);
+    let i=0;
+    for(const ch of placement){
+      if(ch==="/") continue;
+      if(ch>="1" && ch<="8"){ i += (ch.charCodeAt(0)-48); }
+      else S.board[i++] = ch;
+    }
+
+    S.side = (parts[1]==="b") ? "b" : "w";
+
+    const cs = parts[2] || "-";
+    S.castling = {K:cs.includes("K"),Q:cs.includes("Q"),k:cs.includes("k"),q:cs.includes("q")};
+
+    const ep = parts[3] || "-";
+    S.ep = (ep !== "-" && ep.length===2) ? parseSq(ep) : null;
+
+    S.halfmove = +(parts[4] || 0);
+    S.fullmove = +(parts[5] || 1);
+
+    // reset history
+    S.history = [];
+    S.ply = 0;
+    S.marksByPly.clear();
+    S.tapSelected=null; S.legalTo=[];
+    S.drag=null; ghost.style.display="none";
+    redrawAll();
+  }
+
+  function exportFEN(){
+    // piece placement
+    let out="";
+    for(let r=7;r>=0;r--){
+      let empty=0;
+      for(let f=0;f<8;f++){
+        const p=S.board[idx(f,r)];
+        if(!p) empty++;
+        else{
+          if(empty){ out+=empty; empty=0; }
+          out+=p;
+        }
+      }
+      if(empty) out+=empty;
+      if(r) out+="/";
+    }
+    const cs = (S.castling.K?"K":"")+(S.castling.Q?"Q":"")+(S.castling.k?"k":"")+(S.castling.q?"q":"") || "-";
+    const ep = (S.ep==null) ? "-" : sqName(S.ep);
+    return `${out} ${S.side} ${cs} ${ep} ${S.halfmove} ${S.fullmove}`;
+  }
+
+  /* =========================
+     Overlay (SVG) drawing
+  ========================== */
+  function clearOverlay(){ overlay.innerHTML=""; }
+
+  function ensureDefs(){
+    let defs = overlay.querySelector("defs");
+    if(!defs){
+      defs=document.createElementNS("http://www.w3.org/2000/svg","defs");
+      overlay.appendChild(defs);
+    }
+    for(const c of ["R","B","Y","G"]){
+      if(defs.querySelector("#arrowHead_"+c)) continue;
+      const marker=document.createElementNS("http://www.w3.org/2000/svg","marker");
+      marker.setAttribute("id","arrowHead_"+c);
+      marker.setAttribute("markerWidth","5");
+      marker.setAttribute("markerHeight","5");
+      marker.setAttribute("refX","4.6");
+      marker.setAttribute("refY","2.5");
+      marker.setAttribute("orient","auto");
+      marker.setAttribute("markerUnits","userSpaceOnUse");
+
+      const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+      path.setAttribute("d","M0,0 L5,2.5 L0,5 L1.2,2.5 Z");
+      path.setAttribute("fill", cssColor(c));
+      marker.appendChild(path);
+      defs.appendChild(marker);
+    }
+  }
+
+  function squareCenter(sq){
+    let f = sq.charCodeAt(0)-97;
+    let r = (+sq[1])-1;
+    if(!S.flipped){
+      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
+    }else{
+      return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
+    }
+  }
+
+  function drawSquareMark(sq,c){
+    const {x,y}=squareCenter(sq);
+    const size=12.5;
+    const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
+    rect.setAttribute("x", x-size/2);
+    rect.setAttribute("y", y-size/2);
+    rect.setAttribute("width", size);
+    rect.setAttribute("height", size);
+    rect.setAttribute("fill", cssColor(c));
+    rect.setAttribute("opacity", (c==="Y")?"0.45":"0.55");
+    rect.setAttribute("shape-rendering","crispEdges");
+    overlay.appendChild(rect);
+  }
+
+  function drawArrow(from,to,c){
+    const a=squareCenter(from), b=squareCenter(to);
+    const dx=b.x-a.x, dy=b.y-a.y;
+    const len=Math.hypot(dx,dy) || 1;
+    const ux=dx/len, uy=dy/len;
+    const shrink=4.6;
+
+    const line=document.createElementNS("http://www.w3.org/2000/svg","line");
+    line.setAttribute("x1", a.x);
+    line.setAttribute("y1", a.y);
+    line.setAttribute("x2", b.x-ux*shrink);
+    line.setAttribute("y2", b.y-uy*shrink);
+    line.setAttribute("stroke", cssColor(c));
+    line.setAttribute("stroke-width", "0.34");
+    line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("opacity", "0.92");
+    line.setAttribute("marker-end", "url(#arrowHead_"+c+")");
+    overlay.appendChild(line);
+  }
+
+  function redrawOverlay(){
+    clearOverlay();
+    ensureDefs();
+
+    // marks for current ply
+    const m = curMarks();
+
+    // squares first, then arrows
+    for(const [sq,c] of m.sqMarks.entries()) drawSquareMark(sq,c);
+    for(const ar of m.arrows) drawArrow(ar.from, ar.to, ar.color);
+
+    // live preview arrow
+    if(S.mode==="arrows" && S.arrowDrag?.fromSq && S.arrowDrag?.toSq && S.arrowDrag.fromSq!==S.arrowDrag.toSq){
+      drawArrow(S.arrowDrag.fromSq, S.arrowDrag.toSq, S.pig);
+    }
+  }
+
+  /* =========================
+     Board sizing & mapping
+  ========================== */
+  function resizeBoard(){
+    const r = boardArea.getBoundingClientRect();
+    const cs = getComputedStyle(boardArea);
+    const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
+    const padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
+    const w = Math.max(0, r.width - padX);
+    const h = Math.max(0, r.height - padY);
+    const s = Math.floor(Math.min(w,h));
+    boardEl.style.width = s+"px";
+    boardEl.style.height = s+"px";
+    redrawOverlay();
+  }
+
+  function eventToSquare(ev){
+    const br=boardEl.getBoundingClientRect();
+    const x=ev.clientX - br.left;
+    const y=ev.clientY - br.top;
+    const s=br.width/8;
+    let f=Math.max(0, Math.min(7, Math.floor(x/s)));
+    let r=Math.max(0, Math.min(7, 7-Math.floor(y/s)));
+    if(S.flipped){ f=7-f; r=7-r; }
+    return String.fromCharCode(97+f) + (r+1);
+  }
+
+  /* =========================
+     Minimal legality engine
+  ========================== */
+  function kingIndex(color){
+    const K = (color==="w") ? "K" : "k";
+    return S.board.findIndex(x=>x===K);
+  }
+
+  function attacked(squareIndex, byColor){
+    const [sf,sr]=FR(squareIndex);
+
+    // pawns
+    if(byColor==="w"){
+      for(const df of [-1,1]){
+        const f=sf+df, r=sr-1;
+        if(inB(f,r) && S.board[idx(f,r)]==="P") return true;
+      }
+    }else{
+      for(const df of [-1,1]){
+        const f=sf+df, r=sr+1;
+        if(inB(f,r) && S.board[idx(f,r)]==="p") return true;
+      }
+    }
+
+    // knights
+    const knightD=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
+    const nChar = byColor==="w" ? "N" : "n";
+    for(const [df,dr] of knightD){
+      const f=sf+df, r=sr+dr;
+      if(inB(f,r) && S.board[idx(f,r)]===nChar) return true;
+    }
+
+    // kings
+    const kChar = byColor==="w" ? "K" : "k";
+    for(let df=-1;df<=1;df++){
+      for(let dr=-1;dr<=1;dr++){
+        if(!df && !dr) continue;
+        const f=sf+df, r=sr+dr;
+        if(inB(f,r) && S.board[idx(f,r)]===kChar) return true;
+      }
+    }
+
+    // sliders
+    const rookLike = new Set([byColor==="w"?"R":"r", byColor==="w"?"Q":"q"]);
+    const bishopLike = new Set([byColor==="w"?"B":"b", byColor==="w"?"Q":"q"]);
+
+    const ortho=[[1,0],[-1,0],[0,1],[0,-1]];
+    for(const [df,dr] of ortho){
+      let f=sf+df, r=sr+dr;
+      while(inB(f,r)){
+        const p=S.board[idx(f,r)];
+        if(p){ if(rookLike.has(p)) return true; break; }
+        f+=df; r+=dr;
+      }
+    }
+
+    const diag=[[1,1],[1,-1],[-1,1],[-1,-1]];
+    for(const [df,dr] of diag){
+      let f=sf+df, r=sr+dr;
+      while(inB(f,r)){
+        const p=S.board[idx(f,r)];
+        if(p){ if(bishopLike.has(p)) return true; break; }
+        f+=df; r+=dr;
+      }
+    }
+
+    return false;
+  }
+
+  function genPseudo(fromIdx, forAttack=false){
+    const p=S.board[fromIdx];
+    if(!p) return [];
+    const t=pt(p);
+    const color=isW(p)?"w":"b";
+    const [f,r]=FR(fromIdx);
+    const out=[];
+    const dir = (color==="w") ? 1 : -1;
+
+    const push=(nf,nr)=>{
+      if(!inB(nf,nr)) return;
+      const to=idx(nf,nr);
+      const occ=S.board[to];
+      if(!occ || isW(occ)!==isW(p)) out.push(to);
+    };
+
+    if(t==="p"){
+      if(forAttack){
+        for(const df of [-1,1]){
+          const nf=f+df, nr=r+dir;
+          if(inB(nf,nr)) out.push(idx(nf,nr));
+        }
+        return out;
+      }
+
+      // forward
+      const r1=r+dir;
+      if(inB(f,r1)){
+        const to1=idx(f,r1);
+        if(!S.board[to1]){
+          out.push(to1);
+          // double from start
+          const startRank=(color==="w")?1:6;
+          if(r===startRank){
+            const r2=r+2*dir;
+            const to2=idx(f,r2);
+            if(inB(f,r2) && !S.board[to2]) out.push(to2);
+          }
+        }
+      }
+
+      // captures and ep
+      for(const df of [-1,1]){
+        const nf=f+df, nr=r+dir;
+        if(!inB(nf,nr)) continue;
+        const to=idx(nf,nr);
+        const occ=S.board[to];
+        if(occ && (isW(occ)!==isW(p))) out.push(to);
+        else if(S.ep!=null && to===S.ep) out.push(to);
+      }
+      return out;
+    }
+
+    if(t==="n"){
+      const D=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
+      for(const [df,dr] of D) push(f+df,r+dr);
+      return out;
+    }
+
+    if(t==="k"){
+      for(let df=-1;df<=1;df++){
+        for(let dr=-1;dr<=1;dr++){
+          if(!df && !dr) continue;
+          push(f+df,r+dr);
+        }
+      }
+      if(!forAttack){
+        const homeRank = (color==="w") ? 0 : 7;
+        const kingHome = idx(4,homeRank);
+        if(fromIdx===kingHome && !attacked(kingHome, other(color))){
+          // king-side
+          if((color==="w")?S.castling.K:S.castling.k){
+            const f1=idx(5,homeRank), g1=idx(6,homeRank);
+            if(!S.board[f1] && !S.board[g1] && !attacked(f1, other(color)) && !attacked(g1, other(color))) out.push(g1);
+          }
+          // queen-side
+          if((color==="w")?S.castling.Q:S.castling.q){
+            const d1=idx(3,homeRank), c1=idx(2,homeRank), b1=idx(1,homeRank);
+            if(!S.board[d1] && !S.board[c1] && !S.board[b1] && !attacked(d1, other(color)) && !attacked(c1, other(color))) out.push(c1);
+          }
+        }
+      }
+      return out;
+    }
+
+    const sliders = {
+      b:[[1,1],[1,-1],[-1,1],[-1,-1]],
+      r:[[1,0],[-1,0],[0,1],[0,-1]],
+      q:[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]],
+    }[t];
+
+    for(const [df,dr] of sliders){
+      let nf=f+df, nr=r+dr;
+      while(inB(nf,nr)){
+        const to=idx(nf,nr);
+        const occ=S.board[to];
+        if(occ){ if(isW(occ)!==isW(p)) out.push(to); break; }
+        out.push(to);
+        nf+=df; nr+=dr;
+      }
+    }
+    return out;
+  }
+
+  function snapshot(){
+    return {
+      board:S.board.slice(),
+      side:S.side,
+      castling:{...S.castling},
+      ep:S.ep,
+      halfmove:S.halfmove,
+      fullmove:S.fullmove
+    };
+  }
+  function restore(snap){
+    S.board = snap.board.slice();
+    S.side = snap.side;
+    S.castling = {...snap.castling};
+    S.ep = snap.ep;
+    S.halfmove = snap.halfmove;
+    S.fullmove = snap.fullmove;
+  }
+
+  function applyMoveRaw(fromIdx,toIdx,promoLetter /* "Q" etc or null */){
+    const p=S.board[fromIdx];
+    const t=pt(p);
+    const color=isW(p)?"w":"b";
+    const their=other(color);
+
+    let capturedPiece = S.board[toIdx];
+    let epCapture=false;
+    let castle=false;
+    let rookMove=null;
+
+    // en passant capture
+    if(t==="p" && S.ep!=null && toIdx===S.ep && !S.board[toIdx]){
+      const [tf,tr]=FR(toIdx);
+      const capSq = idx(tf, tr + (color==="w" ? -1 : 1));
+      capturedPiece = S.board[capSq];
+      S.board[capSq]=null;
+      epCapture=true;
+    }
+
+    // castling rook move
+    if(t==="k"){
+      const [ff,fr]=FR(fromIdx);
+      const [tf,tr]=FR(toIdx);
+      if(fr===tr && Math.abs(tf-ff)===2){
+        castle=true;
+        if(tf===6){
+          const rookFrom=idx(7,fr), rookTo=idx(5,fr);
+          S.board[rookTo]=S.board[rookFrom];
+          S.board[rookFrom]=null;
+          rookMove={from:rookFrom,to:rookTo};
+        }else if(tf===2){
+          const rookFrom=idx(0,fr), rookTo=idx(3,fr);
+          S.board[rookTo]=S.board[rookFrom];
+          S.board[rookFrom]=null;
+          rookMove={from:rookFrom,to:rookTo};
+        }
+      }
+    }
+
+    // move piece
+    S.board[toIdx]=S.board[fromIdx];
+    S.board[fromIdx]=null;
+
+    // promotion
+    let promoApplied=null;
+    if(t==="p"){
+      const [,tr]=FR(toIdx);
+      const last=(color==="w")?7:0;
+      if(tr===last){
+        const want = promoLetter || "Q";
+        promoApplied=want;
+        S.board[toIdx] = (color==="w") ? want : want.toLowerCase();
+      }
+    }
+
+    // update castling rights
+    if(p==="K"){ S.castling.K=false; S.castling.Q=false; }
+    if(p==="k"){ S.castling.k=false; S.castling.q=false; }
+    if(p==="R"){
+      if(fromIdx===idx(0,0)) S.castling.Q=false;
+      if(fromIdx===idx(7,0)) S.castling.K=false;
+    }
+    if(p==="r"){
+      if(fromIdx===idx(0,7)) S.castling.q=false;
+      if(fromIdx===idx(7,7)) S.castling.k=false;
+    }
+    if(capturedPiece){
+      if(toIdx===idx(0,0)) S.castling.Q=false;
+      if(toIdx===idx(7,0)) S.castling.K=false;
+      if(toIdx===idx(0,7)) S.castling.q=false;
+      if(toIdx===idx(7,7)) S.castling.k=false;
+    }
+
+    // en passant target
+    let newEp=null;
+    if(t==="p"){
+      const [ff,fr]=FR(fromIdx);
+      const [tf,tr]=FR(toIdx);
+      if(ff===tf && Math.abs(tr-fr)===2) newEp = idx(tf, (fr+tr)/2);
+    }
+    S.ep=newEp;
+
+    // clocks
+    S.halfmove = (t==="p" || capturedPiece) ? 0 : (S.halfmove+1);
+    S.side=their;
+    if(S.side==="w") S.fullmove++;
+
+    return {piece:p, captured:capturedPiece, promo:promoApplied, epCapture, castle, rookMove};
+  }
+
+  function legalMovesFrom(fromIdx){
+    const p=S.board[fromIdx];
+    if(!p) return [];
+    const color=isW(p)?"w":"b";
+    if(color!==S.side) return [];
+    const pseudo=genPseudo(fromIdx,false);
+    const res=[];
+    for(const toIdx of pseudo){
+      const snap=snapshot();
+      applyMoveRaw(fromIdx,toIdx,null);
+      const k=kingIndex(color);
+      const ok=(k>=0)&&!attacked(k, other(color));
+      restore(snap);
+      if(ok) res.push(toIdx);
+    }
+    return res;
+  }
+
+  function allLegalMoves(color){
+    const out=[];
+    for(let i=0;i<64;i++){
+      const p=S.board[i];
+      if(!p) continue;
+      if((isW(p)?"w":"b")!==color) continue;
+      const tos=legalMovesFrom(i);
+      for(const to of tos) out.push({from:i,to});
+    }
+    return out;
+  }
+
+  function isInCheck(color){
+    const k=kingIndex(color);
+    if(k<0) return false;
+    return attacked(k, other(color));
+  }
+
+  function gameStatus(){
+    const color=S.side;
+    const moves=allLegalMoves(color);
+    const inCheck=isInCheck(color);
+    if(moves.length===0){
+      if(inCheck) return {type:"mate", text:(color==="w"?"White":"Black")+" is checkmated"};
+      return {type:"stalemate", text:"Stalemate"};
+    }
+    if(S.halfmove>=100) return {type:"50move", text:"50-move rule claimable"};
+    if(inCheck) return {type:"check", text:(color==="w"?"White":"Black")+" is in check"};
+    return {type:"ok", text:""};
+  }
+
+  /* =========================
+     SAN generation (minimal)
+  ========================== */
+  function pieceLetter(p){ // returns SAN piece letter or ""
+    const t=pt(p);
+    if(t==="p") return "";
+    return t.toUpperCase();
+  }
+
+  function disambiguation(fromIdx,toIdx,p){
+    const t=pt(p);
+    if(t==="p" || t==="k") return "";
+
+    const color=isW(p)?"w":"b";
+    // find other same-type pieces that can also go to toIdx
+    const others=[];
+    for(let i=0;i<64;i++){
+      if(i===fromIdx) continue;
+      const q=S.board[i];
+      if(!q) continue;
+      if(q!==p) continue; // same exact letter (so same color/type)
+      const tos=legalMovesFrom(i);
+      if(tos.includes(toIdx)) others.push(i);
+    }
+    if(others.length===0) return "";
+
+    const [ff,fr]=FR(fromIdx);
+    let needFile=false, needRank=false;
+
+    // if any other shares same file, file alone not enough
+    // if any other shares same rank, rank alone not enough
+    const shareFile = others.some(i=>FR(i)[0]===ff);
+    const shareRank = others.some(i=>FR(i)[1]===fr);
+
+    if(!shareFile) needFile=true;
+    else if(!shareRank) needRank=true;
+    else { needFile=true; needRank=true; }
+
+    let s="";
+    if(needFile) s+=files[ff];
+    if(needRank) s+=(fr+1);
+    return s;
+  }
+
+  function moveToSAN(fromIdx,toIdx, moveInfoBeforeFinalize){
+    // moveInfoBeforeFinalize: {piece,captured,epCapture,castle,promo} from applyMoveRaw result
+    const p = moveInfoBeforeFinalize.piece;
+    const t = pt(p);
+    const color=isW(p)?"w":"b";
+
+    // Castling
+    if(moveInfoBeforeFinalize.castle){
+      const [ff,]=FR(fromIdx); const [tf,]=FR(toIdx);
+      return (tf>ff) ? "O-O" : "O-O-O";
+    }
+
+    const cap = !!moveInfoBeforeFinalize.captured || moveInfoBeforeFinalize.epCapture;
+    let san="";
+
+    if(t==="p"){
+      if(cap){
+        const [ff,]=FR(fromIdx);
+        san += files[ff] + "x" + sqName(toIdx);
+      }else{
+        san += sqName(toIdx);
+      }
+      if(moveInfoBeforeFinalize.promo){
+        san += "=" + moveInfoBeforeFinalize.promo.toUpperCase();
+      }
+    }else{
+      san += pieceLetter(p);
+      san += disambiguation(fromIdx,toIdx,p);
+      if(cap) san += "x";
+      san += sqName(toIdx);
+    }
+
+    // check / mate suffix requires position after move (already applied)
+    const their=other(color);
+    const inCheck=isInCheck(their);
+    if(inCheck){
+      const theirMoves=allLegalMoves(their);
+      san += (theirMoves.length===0) ? "#" : "+";
+    }
+    return san;
+  }
+
+  /* =========================
+     Promotion modal
+  ========================== */
+  function showPromotion(color, cb){
+    promoRow.innerHTML="";
+    const letters=["Q","R","B","N"];
+    for(const L of letters){
+      const btn=document.createElement("button");
+      btn.className="promoBtn";
+      btn.textContent = (color==="w") ? L : L.toLowerCase();
+      btn.onclick=()=>{
+        promoModal.style.display="none";
+        cb(L);
+      };
+      promoRow.appendChild(btn);
+    }
+    promoModal.style.display="flex";
+  }
+
+  /* =========================
+     Applying a legal move (UI)
+  ========================== */
+  function doMove(fromSq,toSq){
+    const fromIdx=parseSq(fromSq);
+    const toIdx=parseSq(toSq);
+    const p=S.board[fromIdx];
+    if(!p) return;
+
+    // must be legal
+    const legal=legalMovesFrom(fromIdx);
+    if(!legal.includes(toIdx)) return;
+
+    const color=isW(p)?"w":"b";
+    const snapBefore = snapshot();
+    const fenBefore = exportFEN();
+
+    // promotion check pre-move (need rank)
+    const t=pt(p);
+    let needsPromo=false;
+    if(t==="p"){
+      const [,tr]=FR(toIdx);
+      needsPromo = (color==="w") ? (tr===7) : (tr===0);
+    }
+
+    const finalize = (promoLetterOrNull)=>{
+      // restore to ensure we apply once cleanly
+      restore(snapBefore);
+
+      const moveInfo = applyMoveRaw(fromIdx,toIdx,promoLetterOrNull);
+
+      // SAN needs post-move position, so now compute san
+      const san = moveToSAN(fromIdx,toIdx,moveInfo);
+
+      // trim history if we were midline and made a new move
+      if(S.ply < S.history.length){
+        S.history = S.history.slice(0, S.ply);
+        // also clear marks beyond
+        for(const k of [...S.marksByPly.keys()]){
+          if(k > S.ply) S.marksByPly.delete(k);
+        }
+      }
+
+      // move made: increment ply and store
+      // marks are associated with ply AFTER the move; keep current marks at ply as-is (for commentary at that ply).
+      S.history.push({
+        fenBefore,
+        snapBefore,
+        from:fromSq, to:toSq,
+        moveInfo,
+        san,
+      });
+      S.ply = S.history.length;
+
+      // after move, clear selection
+      S.tapSelected=null; S.legalTo=[];
+      redrawAll();
+    };
+
+    if(needsPromo){
+      showPromotion(color, (L)=>finalize(L));
+    }else{
+      finalize(null);
+    }
+  }
+
+  function undo(){
+    if(S.history.length===0) return;
+    const last = S.history.pop();
+    restore(last.snapBefore);
+    S.ply = S.history.length;
+    S.tapSelected=null; S.legalTo=[];
+    redrawAll();
+  }
+
+  function gotoPly(ply){
+    ply=Math.max(0, Math.min(ply, S.history.length));
+    // restore initial from first history's snapBefore chain:
+    // easiest: reload from earliest snapBefore + reapply moves up to ply.
+    // But we stored snapBefore for each move; to go to ply N, restore snapBefore of move N (or initial if 0) then apply N moves? expensive.
+    // We'll rebuild from the starting position of ply0: use snapBefore of first move if exists, else current.
+    // So we store initial snapshot separately at load/reset.
+    const base = S.initialSnap;
+    restore(base);
+
+    for(let i=0;i<ply;i++){
+      const h=S.history[i];
+      // apply raw from squares at that time; we can replay using SAN is hard,
+      // but we have from/to in history.
+      const fromIdx=parseSq(h.from), toIdx=parseSq(h.to);
+      applyMoveRaw(fromIdx,toIdx, h.moveInfo?.promo ? h.moveInfo.promo.toUpperCase() : null);
+    }
+    S.ply = ply;
+    S.tapSelected=null; S.legalTo=[];
+    redrawAll();
+  }
+
+  /* =========================
+     PGN export/import
+  ========================== */
+  function buildMarksComment(ply){
+    const m = marksForPly(ply);
+    const csl=[];
+    for(const [sq,c] of m.sqMarks.entries()){
+      csl.push(c + sq);
+    }
+    const cal=[];
+    for(const a of m.arrows){
+      cal.push(a.color + a.from + a.to);
+    }
+    let out=[];
+    if(csl.length) out.push(`[%csl ${csl.join(",")}]`);
+    if(cal.length) out.push(`[%cal ${cal.join(",")}]`);
+    if(!out.length) return "";
+    return "{ " + out.join(" ") + " }";
+  }
+
+  function exportPGN(){
+    const tags = [
+      ["Event", tagEvent.value || ""],
+      ["Site",  tagSite.value  || ""],
+      ["Date",  tagDate.value  || ""],
+      ["Round", "1"],
+      ["White", tagWhite.value || ""],
+      ["Black", tagBlack.value || ""],
+      ["Result", tagResult.value || "*"],
+    ];
+
+    let pgn = tags.map(([k,v])=>`[${k} "${v.replaceAll('"','\\"')}"]`).join("\n") + "\n\n";
+
+    // moves with optional marks comments at each ply (including ply0 pre-move)
+    // Convention: put ply0 marks right after tags before movetext.
+    const pre = buildMarksComment(0);
+    if(pre) pgn += pre + "\n";
+
+    let moveNum=1;
+    for(let i=0;i<S.history.length;i++){
+      if(i%2===0) pgn += moveNum++ + ". ";
+      pgn += S.history[i].san + " ";
+      const cm = buildMarksComment(i+1);
+      if(cm) pgn += cm + " ";
+    }
+
+    pgn += (tagResult.value || "*");
+    return pgn.trim();
+  }
+
+  function parsePGNMainline(pgnText){
+    // Extremely pragmatic:
+    // - parse tag pairs
+    // - strip comments except keep [%csl]/[%cal]
+    // - strip variations ( ... ) entirely
+    // - tokenize SAN moves
+    const text = pgnText.replace(/\r/g,"");
+
+    // tags
+    const tagRe=/^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    const tags={};
+    let m;
+    while((m=tagRe.exec(text))!==null){
+      tags[m[1]]=m[2];
+    }
+    if(tags.Event!=null) tagEvent.value=tags.Event;
+    if(tags.Site!=null) tagSite.value=tags.Site;
+    if(tags.Date!=null) tagDate.value=tags.Date;
+    if(tags.White!=null) tagWhite.value=tags.White;
+    if(tags.Black!=null) tagBlack.value=tags.Black;
+    if(tags.Result!=null) tagResult.value=tags.Result;
+
+    // remove variations
+    let t = text;
+    // crude but effective nested removal
+    while(/\([^()]*\)/.test(t)) t = t.replace(/\([^()]*\)/g, " ");
+
+    // extract and preserve csl/cal comments by converting to markers in stream
+    // We'll turn "{ [%csl ...] [%cal ...] }" into tokens like "__CMT__[%csl ...]|[%cal ...]"
+    const comments=[];
+    t = t.replace(/\{([^}]*)\}/g, (_,inner)=>{
+      const keep = [];
+      const csl = inner.match(/\[%csl\s+([^\]]+)\]/);
+      const cal = inner.match(/\[%cal\s+([^\]]+)\]/);
+      if(csl) keep.push("%csl "+csl[1].trim());
+      if(cal) keep.push("%cal "+cal[1].trim());
+      if(!keep.length) return " ";
+      comments.push(keep.join(" | "));
+      return ` __CMT_${comments.length-1}__ `;
+    });
+
+    // remove NAGs
+    t = t.replace(/\$\d+/g," ");
+
+    // keep movetext after tags
+    t = t.replace(/^\s*\[[^\]]*\]\s*$/gm," ");
+    // remove move numbers like "12." or "12..."
+    t = t.replace(/\b\d+\.(\.\.)?/g," ");
+    // normalize
+    t = t.replace(/\s+/g," ").trim();
+
+    const tokens = t.length ? t.split(" ") : [];
+
+    return {tokens, comments};
+  }
+
+  function sanToMove(san){
+    // Returns {fromIdx,toIdx,promoLetterOrNull} by searching legal moves that match SAN.
+    // Handles: O-O, O-O-O, captures, checks, mates, promotions, disambiguation.
+    const clean = san.replace(/[+#]$/g,"").trim();
+    if(clean === "O-O" || clean === "0-0"){
+      const homeRank = (S.side==="w")?0:7;
+      return {from:idx(4,homeRank), to:idx(6,homeRank), promo:null};
+    }
+    if(clean === "O-O-O" || clean === "0-0-0"){
+      const homeRank = (S.side==="w")?0:7;
+      return {from:idx(4,homeRank), to:idx(2,homeRank), promo:null};
+    }
+
+    // promotion
+    let promo=null;
+    const promoM = clean.match(/=([QRBN])/);
+    if(promoM) promo=promoM[1];
+    const core = clean.replace(/=([QRBN])/,"");
+
+    // Determine piece type
+    let pieceType="p";
+    let rest=core;
+    const first=core[0];
+    if("KQRBN".includes(first)){
+      pieceType=first.toLowerCase();
+      rest=core.slice(1);
+    }
+
+    // capture?
+    const isCap = rest.includes("x");
+    rest = rest.replace("x","");
+
+    // destination square is last 2 chars
+    const dest = rest.slice(-2);
+    if(!/^[a-h][1-8]$/.test(dest)) return null;
+    const toIdx = parseSq(dest);
+
+    // disambiguation (may be file, rank, or both) is whatever remains before dest
+    const dis = rest.slice(0, -2);
+
+    let disFile=null, disRank=null;
+    if(dis.length===1){
+      if(/[a-h]/.test(dis)) disFile = dis;
+      else if(/[1-8]/.test(dis)) disRank = +dis;
+    }else if(dis.length===2){
+      if(/[a-h]/.test(dis[0]) && /[1-8]/.test(dis[1])){
+        disFile=dis[0]; disRank=+dis[1];
+      }
+    }else if(dis.length>0){
+      // pawn capture SAN like "exd5": for pawn, dis is file of from
+      if(pieceType==="p" && /^[a-h]$/.test(dis)) disFile=dis;
+    }
+
+    // find matching legal moves
+    const color=S.side;
+    const wantPieces = [];
+    for(let i=0;i<64;i++){
+      const p=S.board[i];
+      if(!p) continue;
+      if((isW(p)?"w":"b")!==color) continue;
+      if(pt(p)!==pieceType) continue;
+
+      if(disFile!=null){
+        const [f,]=FR(i);
+        if(files[f]!==disFile) continue;
+      }
+      if(disRank!=null){
+        const [,r]=FR(i);
+        if((r+1)!==disRank) continue;
+      }
+
+      const tos=legalMovesFrom(i);
+      if(tos.includes(toIdx)) wantPieces.push(i);
+    }
+
+    if(wantPieces.length!==1) return null;
+    return {from:wantPieces[0], to:toIdx, promo};
+  }
+
+  function applyPGN(pgnText){
+    const parsed = parsePGNMainline(pgnText);
+    const {tokens, comments} = parsed;
+
+    // start from current position (usually initial); reset history and marks.
+    const baseFen = exportFEN(); // keep current as base unless PGN provides FEN tag (we'll support it)
+    const {tokens:tok2, comments:com2} = parsed;
+
+    // handle FEN tag if present
+    // (common: [FEN "..."] [SetUp "1"])
+    const fenTagMatch = pgnText.match(/^\s*\[FEN\s+"([^"]+)"\]\s*$/m);
+    if(fenTagMatch){
+      loadFEN(fenTagMatch[1]);
+    }else{
+      // reset to initial
+      loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    }
+
+    // Now parse and play tokens
+    // Comments tokens for marks apply at current ply at the moment encountered.
+    for(const tok of tok2){
+      if(/^(__CMT_\d+__)$/i.test(tok)){
+        const id = +tok.match(/__CMT_(\d+)__/i)[1];
+        const payload = com2[id] || "";
+        // payload like "%csl Re4,Gd5 | %cal Re2e4,Gg1f3"
+        const parts = payload.split("|").map(s=>s.trim());
+        const m = curMarks();
+        for(const part of parts){
+          if(part.startsWith("%csl ")){
+            const list = part.slice(5).split(",").map(s=>s.trim()).filter(Boolean);
+            for(const it of list){
+              const c = it[0];
+              const sq = it.slice(1);
+              if(/^[RBYG]$/.test(c) && /^[a-h][1-8]$/.test(sq)){
+                m.sqMarks.set(sq,c);
+              }
+            }
+          }else if(part.startsWith("%cal ")){
+            const list = part.slice(5).split(",").map(s=>s.trim()).filter(Boolean);
+            for(const it of list){
+              const c = it[0];
+              const from = it.slice(1,3);
+              const to   = it.slice(3,5);
+              if(/^[RBYG]$/.test(c) && /^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)){
+                const key = `${c}:${from}-${to}`;
+                const j = m.arrows.findIndex(a=>`${a.color}:${a.from}-${a.to}`===key);
+                if(j<0) m.arrows.push({from,to,color:c});
+              }
+            }
+          }
+        }
+        continue;
+      }
+
+      if(tok==="1-0"||tok==="0-1"||tok==="1/2-1/2"||tok==="*"){
+        tagResult.value=tok;
+        continue;
+      }
+
+      const mv = sanToMove(tok);
+      if(!mv){
+        // stop on first unparseable token
+        break;
+      }
+
+      // apply move (including promo)
+      const fromIdx=mv.from, toIdx=mv.to;
+      const fromSq=sqName(fromIdx), toSq=sqName(toIdx);
+      const p=S.board[fromIdx];
+      const t=pt(p);
+      const color=isW(p)?"w":"b";
+
+      const snapBefore=snapshot();
+      const fenBefore=exportFEN();
+
+      // apply raw with promo if any
+      const moveInfo = applyMoveRaw(fromIdx,toIdx,mv.promo);
+
+      // compute san from our engine’s view (might differ slightly in notation, acceptable)
+      const san = moveToSAN(fromIdx,toIdx,moveInfo);
+
+      S.history.push({fenBefore,snapBefore,from:fromSq,to:toSq,moveInfo,san});
+      S.ply = S.history.length;
+    }
+
+    // store initial snapshot for navigation
+    S.initialSnap = snapshot();
+    S.tapSelected=null; S.legalTo=[];
+    redrawAll();
+  }
+
+  /* =========================
+     UI: setup + palette
+  ========================== */
+  function buildPalette(){
+    paletteEl.innerHTML="";
+    const pieces=["K","Q","R","B","N","P","k","q","r","b","n","p","·"];
+    for(const p of pieces){
+      const b=document.createElement("button");
+      b.className="palBtn"+(p===S.setupPiece?" active":"");
+      b.textContent=p;
+      b.onclick=()=>{
+        S.setupPiece=p;
+        selPieceLabel.textContent=p;
+        buildPalette();
+      };
+      paletteEl.appendChild(b);
+    }
+  }
+
+  function toggleSetup(){
+    S.setup=!S.setup;
+    document.getElementById("btnSetup").textContent = "Setup: " + (S.setup ? "ON" : "OFF");
+    setupCard.style.display = S.setup ? "block" : "none";
+    if(S.setup) buildPalette();
+    // clear selection/drag
+    S.tapSelected=null; S.legalTo=[];
+    S.drag=null; ghost.style.display="none";
+    redrawAll();
+  }
+
+  /* =========================
+     Rendering board
+  ========================== */
+  function getPieceAt(sq){ return S.board[parseSq(sq)]; }
+  function setPieceAt(sq,p){ S.board[parseSq(sq)] = p; }
+
+  function beginDragPiece(fromSq, piece, pointerId, x, y){
+    S.drag = {fromSq, piece, pointerId};
+    ghost.textContent = piece;
+    ghost.style.left = x+"px";
+    ghost.style.top  = y+"px";
+    ghost.style.display="block";
+  }
+  function updateGhost(x,y){
+    ghost.style.left=x+"px"; ghost.style.top=y+"px";
+  }
+  function endDragPiece(dropSq){
+    if(!S.drag) return;
+    const {fromSq} = S.drag;
+
+    // if dropped off-board: cancel
+    if(!dropSq){
+      S.drag=null; ghost.style.display="none";
+      redrawAll();
+      return;
+    }
+
+    // in setup, drag acts like place piece (free move)
+    if(S.setup){
+      setPieceAt(dropSq, S.drag.piece);
+      setPieceAt(fromSq, null);
+      S.drag=null; ghost.style.display="none";
+      redrawAll();
+      return;
+    }
+
+    // normal play: must be legal if moving side piece
+    doMove(fromSq, dropSq);
+    S.drag=null; ghost.style.display="none";
+    redrawAll();
+  }
+
+  function render(){
+    // keep overlay node
+    const keep = overlay;
+    boardEl.innerHTML="";
+    boardEl.appendChild(keep);
+
+    for(let ui=0; ui<64; ui++){
+      const bi = S.flipped ? (63-ui) : ui;
+      const sqStr = sqName(bi);
+      const sq=document.createElement("div");
+      sq.className="sq " + (((bi + Math.floor(bi/8))%2) ? "dark" : "light");
+      sq.dataset.sq=sqStr;
+
+      // selection ring + legal dots
+      if(S.tapSelected === sqStr){
+        const ring=document.createElement("div");
+        ring.className="selRing";
+        sq.appendChild(ring);
+      }
+      if(S.legalTo.includes(sqStr)){
+        const dot=document.createElement("div");
+        dot.className="dot";
+        sq.appendChild(dot);
+      }
+
+      const piece=getPieceAt(sqStr);
+      if(piece){
+        const el=document.createElement("div");
+        el.className="piece";
+        el.textContent=piece;
+
+        el.addEventListener("pointerdown", (e)=>{
+          e.preventDefault(); e.stopPropagation();
+
+          if(S.mode!=="moves") return;
+
+          // setup: drag freely
+          if(S.setup){
+            beginDragPiece(sqStr, piece, e.pointerId, e.clientX, e.clientY);
+            boardEl.setPointerCapture(e.pointerId);
+            return;
+          }
+
+          // normal: only side-to-move can be moved
+          if((isW(piece)?"w":"b") !== S.side) return;
+
+          // tap selection updates legal dots
+          S.tapSelected = sqStr;
+          S.legalTo = legalMovesFrom(parseSq(sqStr)).map(i=>sqName(i));
+
+          beginDragPiece(sqStr, piece, e.pointerId, e.clientX, e.clientY);
+          boardEl.setPointerCapture(e.pointerId);
+          redrawAll();
+        }, {passive:false});
+
+        sq.appendChild(el);
+      }
+
+      // square interactions
+      sq.addEventListener("pointerdown", (e)=>{
+        e.preventDefault(); e.stopPropagation();
+        const sqS=sq.dataset.sq;
+
+        // Setup placement by tapping square
+        if(S.setup && S.mode==="moves"){
+          const p = S.setupPiece;
+          setPieceAt(sqS, (p==="·")?null:p);
+          redrawAll();
+          return;
+        }
+
+        if(S.mode==="squares"){
+          const m=curMarks();
+          const cur=m.sqMarks.get(sqS);
+          if(cur===S.pig) m.sqMarks.delete(sqS);
+          else m.sqMarks.set(sqS, S.pig);
+          redrawAll();
+          return;
+        }
+
+        if(S.mode==="arrows"){
+          S.arrowDrag = {fromSq:sqS, toSq:sqS, pointerId:e.pointerId};
+          boardEl.setPointerCapture(e.pointerId);
+          redrawAll();
+          return;
+        }
+
+        // MOVES tap-to-move if not dragging
+        if(S.mode==="moves" && !S.drag && !S.setup){
+          const p=getPieceAt(sqS);
+
+          if(S.tapSelected){
+            const from=S.tapSelected;
+            if(from===sqS){
+              S.tapSelected=null; S.legalTo=[];
+              redrawAll();
+              return;
+            }
+            // try move
+            doMove(from, sqS);
+            S.tapSelected=null; S.legalTo=[];
+            redrawAll();
+            return;
+          }else{
+            if(p && (isW(p)?"w":"b")===S.side){
+              S.tapSelected=sqS;
+              S.legalTo = legalMovesFrom(parseSq(sqS)).map(i=>sqName(i));
+              redrawAll();
+            }
+          }
+        }
+      }, {passive:false});
+
+      boardEl.appendChild(sq);
+    }
+
+    redrawOverlay();
+  }
+
+  /* =========================
+     Global pointer handlers
+  ========================== */
+  function onPointerMove(e){
+    if(S.drag && e.pointerId===S.drag.pointerId){
+      e.preventDefault();
+      updateGhost(e.clientX,e.clientY);
+      return;
+    }
+    if(S.arrowDrag && e.pointerId===S.arrowDrag.pointerId){
+      e.preventDefault();
+      const toSq=eventToSquare(e);
+      S.arrowDrag.toSq=toSq;
+      redrawOverlay();
+    }
+  }
+
+  function onPointerUp(e){
+    if(S.drag && e.pointerId===S.drag.pointerId){
+      e.preventDefault();
+      const br=boardEl.getBoundingClientRect();
+      const inside = e.clientX>=br.left && e.clientX<=br.right && e.clientY>=br.top && e.clientY<=br.bottom;
+      const dropSq = inside ? eventToSquare(e) : null;
+      endDragPiece(dropSq);
+      return;
+    }
+    if(S.arrowDrag && e.pointerId===S.arrowDrag.pointerId){
+      e.preventDefault();
+      const from=S.arrowDrag.fromSq;
+      const to=S.arrowDrag.toSq;
+      if(from && to && from!==to){
+        const m=curMarks();
+        const key=`${S.pig}:${from}-${to}`;
+        const j=m.arrows.findIndex(a=>`${a.color}:${a.from}-${a.to}`===key);
+        if(j>=0) m.arrows.splice(j,1);
+        else m.arrows.push({from,to,color:S.pig});
+      }
+      S.arrowDrag=null;
+      redrawAll();
+    }
+  }
+
+  function onPointerCancel(e){
+    if(S.drag && e.pointerId===S.drag.pointerId){
+      S.drag=null; ghost.style.display="none";
+      redrawAll();
+    }
+    if(S.arrowDrag && e.pointerId===S.arrowDrag.pointerId){
+      S.arrowDrag=null;
+      redrawAll();
+    }
+  }
+
+  /* =========================
+     UI helpers
+  ========================== */
+  function setMode(m){
+    S.mode=m;
+    document.getElementById("mMoves").classList.toggle("active", m==="moves");
+    document.getElementById("mArrows").classList.toggle("active", m==="arrows");
+    document.getElementById("mSquares").classList.toggle("active", m==="squares");
+    S.arrowDrag=null;
+    redrawAll();
+  }
+
+  function setPig(p){
+    S.pig=p;
+    for(const k of ["R","B","Y","G"]){
+      document.getElementById("p"+k).classList.toggle("active", k===p);
+    }
+    redrawAll();
+  }
+
+  function updateTurnUI(){
+    turnPill.textContent = (S.side==="w" ? "White to move" : "Black to move");
+    const st=gameStatus();
+    statusLine.textContent = st.text ? st.text : "";
+  }
+
+  function redrawAll(){
+    updateTurnUI();
+    fenBox.value = exportFEN();
+    // keep pgn box “live” but don’t clobber if user is editing a long PGN:
+    // only refresh if it exactly equals last export or empty.
+    const cur = pgnBox.value.trim();
+    if(cur==="" || cur === (S._lastExportPGN||"")){
+      const exp = exportPGN();
+      S._lastExportPGN = exp;
+      pgnBox.value = exp;
+    }
+    render();
+    redrawOverlay();
+  }
+
+  /* =========================
+     Dump
+  ========================== */
+  function dump(){
+    const m=curMarks();
+    const sqs=[...m.sqMarks.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+    const ars=m.arrows.slice().sort((a,b)=>(a.from+a.to+a.color).localeCompare(b.from+b.to+b.color));
+    let out=`Ply: ${S.ply}/${S.history.length}\nSide: ${S.side}\n\nSquares:\n`;
+    for(const [sq,c] of sqs) out+=`  ${sq} ${c}\n`;
+    out+="\nArrows:\n";
+    for(const a of ars) out+=`  ${a.from}${a.to} ${a.color}\n`;
+    dumpBox.value=out.trim();
+  }
+
+  /* =========================
+     Wire buttons
+  ========================== */
+  document.getElementById("mMoves").onclick=()=>setMode("moves");
+  document.getElementById("mArrows").onclick=()=>setMode("arrows");
+  document.getElementById("mSquares").onclick=()=>setMode("squares");
+
+  document.getElementById("pR").onclick=()=>setPig("R");
+  document.getElementById("pB").onclick=()=>setPig("B");
+  document.getElementById("pY").onclick=()=>setPig("Y");
+  document.getElementById("pG").onclick=()=>setPig("G");
+
+  document.getElementById("btnSetup").onclick=toggleSetup;
+  document.getElementById("btnFlip").onclick=()=>{ S.flipped=!S.flipped; redrawAll(); };
+  document.getElementById("btnClearMarks").onclick=()=>{
+    const m=curMarks();
+    m.sqMarks.clear();
+    m.arrows.length=0;
+    S.arrowDrag=null;
+    redrawAll();
+  };
+  document.getElementById("btnReset").onclick=()=>{
+    loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  };
+
+  document.getElementById("btnExportFEN").onclick=()=>{ fenBox.value=exportFEN(); };
+  document.getElementById("btnLoadFEN").onclick=()=>{
+    loadFEN(fenBox.value);
+  };
+
+  document.getElementById("btnExportPGN").onclick=()=>{
+    const exp=exportPGN();
+    S._lastExportPGN = exp;
+    pgnBox.value=exp;
+  };
+  document.getElementById("btnLoadPGN").onclick=()=>{
+    applyPGN(pgnBox.value);
+    // update export snapshot
+    const exp=exportPGN();
+    S._lastExportPGN = exp;
+    pgnBox.value=exp;
+  };
+
+  document.getElementById("btnDump").onclick=dump;
+
+  document.getElementById("btnUndo").onclick=undo;
+  document.getElementById("btnPrev").onclick=()=>gotoPly(S.ply-1);
+  document.getElementById("btnNext").onclick=()=>gotoPly(S.ply+1);
+
+  // prevent context menu
+  document.addEventListener("contextmenu", e=>e.preventDefault(), {passive:false});
+
+  // global pointer
+  window.addEventListener("pointermove", onPointerMove, {passive:false});
+  window.addEventListener("pointerup", onPointerUp, {passive:false});
+  window.addEventListener("pointercancel", onPointerCancel, {passive:false});
+
+  // resize
+  const onResize=()=>resizeBoard();
+  window.addEventListener("resize", onResize);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", onResize);
+    window.visualViewport.addEventListener("scroll", onResize);
+  }
+
+  // capture tag edits into PGN refresh
+  for(const el of [tagEvent,tagSite,tagDate,tagWhite,tagBlack,tagResult]){
+    el.addEventListener("input", ()=>{ S._lastExportPGN = exportPGN(); pgnBox.value=S._lastExportPGN; });
+    el.addEventListener("change", ()=>{ S._lastExportPGN = exportPGN(); pgnBox.value=S._lastExportPGN; });
+  }
+
+  /* =========================
+     Boot
+  ========================== */
+  function init(){
+    // initial snap for navigation
+    loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    S.initialSnap = snapshot();
+    setMode("moves");
+    setPig("R");
+    resizeBoard();
+    redrawAll();
+    requestAnimationFrame(resizeBoard);
+  }
+  init();
+
+})();
+</script>
+</body>
+</html>
