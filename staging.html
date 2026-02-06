@@ -3560,10 +3560,9 @@ async function runCqlEvalFromManifest(ref){
 
   function setQuerySetupMode(on, opts = {}){
   const persist = opts.persist !== false;
-  // Guard: if already in desired mode and this call would persist, do nothing (prevents flicker)
-  if (persist && typeof gs === 'function' && currentGame && gs().setupMode === !!on) {
-    return;
-  }
+  // Guard: prevent redundant state flips during re-render
+  if (persist && currentGame && typeof gs === 'function' && gs().setupMode === !!on) return;
+const persist = opts.persist !== false;
 
     const mode = !!on;
     const persist = (opts && Object.prototype.hasOwnProperty.call(opts,'persist')) ? !!opts.persist : true;
@@ -3790,7 +3789,6 @@ async function runCqlEvalFromManifest(ref){
     logLine('ERR', `Boot exception: ${e && e.stack ? e.stack : String(e)}`);
     setTab('errors');
   }
-
 })();
 </script>
 </body>
