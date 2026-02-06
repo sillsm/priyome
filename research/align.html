@@ -3,12 +3,16 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<title>Scratch Chessboard — Top Half Fixed + Legal Moves + FEN/PGN + Marks</title>
+<title>Refactor Chessboard — Game API + Views + Variations + Marks</title>
 <style>
   :root{
-    --bg:#0e1116; --text:#e5e7eb; --muted:#9ca3af; --border:rgba(255,255,255,.10);
+    --bg:#0e1116; --text:#e5e7eb; --muted:#9ca3af; --border:rgba(255,255,255,.12);
+    --card:rgba(11,15,25,.72);
+
     --light:#f0d9b5; --dark:#b58863;
+
     --cR:#dc2626; --cB:#2563eb; --cY:#d97706; --cG:#16a34a;
+
     --dot:#3ddc84;
   }
   *{ box-sizing:border-box; }
@@ -36,7 +40,7 @@
     padding:10px; display:grid; gap:10px;
   }
   .card{
-    background:rgba(11,15,25,.72);
+    background:var(--card);
     border:1px solid var(--border); border-radius:12px; padding:10px;
   }
   .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -63,61 +67,124 @@
 
   .boardArea{
     position:relative; flex:1 1 auto; min-height:0;
+    width:100%; height:100%;
     padding:10px; display:grid; place-items:center; overflow:hidden;
   }
-  #board{
-    position:relative; width:0; height:0; /* JS sets square px size */
-    display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr);
-    border-radius:0; overflow:hidden; touch-action:none;
-  }
-  .sq{
-    width:100%; height:100%; aspect-ratio:1/1;
-    display:grid; place-items:center; position:relative;
-    font-size:clamp(26px,6vw,56px);
+
+  /* Board shell: always square, min 115px (also used by miniboard) */
+  .boardShell{
+    width:100%;
+    height:100%;
+    aspect-ratio: 1 / 1;
+    min-width:115px; min-height:115px;
+    max-width:100%; max-height:100%;
+    position:relative;
     touch-action:none;
   }
-  .light{ background:var(--light); } .dark{ background:var(--dark); }
-  .piece{ cursor:grab; touch-action:none; -webkit-user-select:none; user-select:none; }
-
-  #overlay{
-    position:absolute; inset:0; width:100%; height:100%;
-    pointer-events:none; z-index:10;
+  .boardShell.mini{
+    width:115px; height:115px;
+    min-width:115px; min-height:115px;
+    max-width:115px; max-height:115px;
   }
 
+  /* 3 layers: squares -> marks/overlay (SVG) -> pieces */
+  .boardGrid{
+    position:absolute; inset:0;
+    display:grid;
+    grid-template-columns:repeat(8,1fr);
+    grid-template-rows:repeat(8,1fr);
+    overflow:hidden;
+  }
+  .sq{
+    position:relative;
+    width:100%; height:100%;
+    background:var(--light);
+    display:block;
+  }
+  .sq.dark{ background:var(--dark); }
+  .sqLabel{
+    position:absolute; left:4px; top:3px;
+    font-size:10px; color:rgba(0,0,0,.42);
+    mix-blend-mode:multiply;
+    pointer-events:none;
+    z-index:1;
+  }
+  .sqLabel.flip{
+    left:auto; right:4px;
+  }
+
+  /* legal dot layer per-square (still under pieces) */
+  .dot{
+    position:absolute;
+    width:22%; height:22%;
+    left:39%; top:39%;
+    background:var(--dot);
+    border-radius:999px;
+    opacity:.95;
+    pointer-events:none;
+    z-index:2;
+  }
   .selRing{
     position:absolute; inset:0;
-    outline:3px solid rgba(255,255,255,.35);
+    outline:3px solid rgba(255,255,255,.38);
     outline-offset:-3px;
     pointer-events:none;
-    z-index:9;
-  }
-  .dot{
-    width:22%; height:22%;
-    background:var(--dot);
-    border-radius:50%;
-    opacity:.95;
-    z-index:8;
-    pointer-events:none;
+    z-index:2;
   }
 
+  /* SVG overlay for square color marks + arrows */
+  svg.overlay{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    pointer-events:none;
+    z-index:3;
+  }
+
+  /* Pieces: absolutely positioned in a single layer, always above marks */
+  .piecesLayer{
+    position:absolute; inset:0;
+    pointer-events:none; /* re-enabled via pointer events on .piece */
+    z-index:4;
+  }
+  .piece{
+    position:absolute;
+    width:12.5%;
+    height:12.5%;
+    left:0; top:0;
+    will-change:left,top;
+    pointer-events:auto;
+    touch-action:none;
+  }
+  .piece img{
+    width:100%; height:100%;
+    display:block;
+    -webkit-user-drag:none;
+    user-select:none;
+  }
+
+  /* Drag ghost */
   #ghost{
     position:fixed; z-index:99999; pointer-events:none;
     transform:translate(-50%,-50%);
-    font-size:clamp(26px,6vw,56px);
+    width:48px; height:48px;
     display:none;
   }
+  #ghost img{ width:100%; height:100%; display:block; }
 
   .palette{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .palBtn{
     width:44px; height:44px; border-radius:12px;
-    display:grid; place-items:center; font-size:26px;
+    display:grid; place-items:center;
     background:rgba(255,255,255,.06);
     border:1px solid var(--border);
+    padding:6px;
   }
+  .palBtn img{ width:100%; height:100%; object-fit:contain; }
   .palBtn.active{ outline:2px solid rgba(255,255,255,.22); }
+  .palBtn.empty{ font-size:18px; }
 
   #statusLine{ font-size:12px; color:var(--muted); }
-  .mini{ font-size:12px; padding:6px 8px; border-radius:9px; }
+  .miniBtn{ font-size:12px; padding:6px 8px; border-radius:9px; }
   .pill{
     padding:4px 8px; border-radius:999px;
     border:1px solid var(--border);
@@ -140,7 +207,47 @@
     min-width:280px;
   }
   #promoRow{ display:flex; gap:10px; justify-content:center; margin-top:10px; }
-  .promoBtn{ width:56px; height:56px; font-size:30px; border-radius:14px; }
+  .promoBtn{ width:56px; height:56px; border-radius:14px; padding:8px; }
+  .promoBtn img{ width:100%; height:100%; object-fit:contain; display:block; }
+
+  /* Context menu (for promote/delete variation) */
+  #ctxMenu{
+    position:fixed;
+    display:none;
+    z-index:200000;
+    background:rgba(11,15,25,.98);
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:12px;
+    padding:6px;
+    min-width:190px;
+    box-shadow:0 14px 40px rgba(0,0,0,.5);
+  }
+  #ctxMenu button{
+    width:100%;
+    text-align:left;
+    border-radius:10px;
+    padding:9px 10px;
+    margin:2px 0;
+    background:rgba(255,255,255,.06);
+  }
+  .movesLine{
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size:12px;
+    line-height:1.5;
+    word-break:break-word;
+  }
+  .mvTok{
+    display:inline-block;
+    padding:2px 6px;
+    border-radius:10px;
+    margin:1px 2px;
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);
+    cursor:pointer;
+  }
+  .mvTok.current{
+    outline:2px solid rgba(255,255,255,.22);
+  }
 </style>
 </head>
 <body>
@@ -164,6 +271,7 @@
 
       <div class="row" style="margin-left:auto">
         <span class="pill" id="turnPill">White to move</span>
+        <button id="btnMini">Miniboard: OFF</button>
         <button id="btnSetup">Setup: OFF</button>
         <button id="btnFlip">Flip</button>
         <button id="btnClearMarks">Clear Marks</button>
@@ -172,8 +280,10 @@
     </div>
 
     <div class="boardArea" id="boardArea">
-      <div id="board">
-        <svg id="overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      <div class="boardShell" id="boardShell" aria-label="Chessboard">
+        <div class="boardGrid" id="boardGrid"></div>
+        <svg class="overlay" id="overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+        <div class="piecesLayer" id="piecesLayer"></div>
       </div>
     </div>
   </div>
@@ -182,8 +292,9 @@
     <div class="card">
       <div class="row" style="justify-content:space-between;">
         <div class="hint">
-          <b>MOVES</b>: drag or tap-to-move (legal moves only). Green dots = legal.<br>
+          <b>MOVES</b>: drag or tap-to-move (legal only). Green dots = legal.<br>
           <b>ARROWS</b>: press+drag from square to square. <b>SQUARES</b>: tap to toggle.
+          <br><span class="hint">Right-click / long-press a move token to <b>promote</b> that variation or <b>delete from here</b>.</span>
         </div>
         <div id="statusLine"></div>
       </div>
@@ -192,28 +303,36 @@
     <div class="card" id="setupCard" style="display:none">
       <div class="row" style="justify-content:space-between">
         <div class="hint"><b>Setup palette</b> (tap a piece, then tap board squares)</div>
-        <div class="hint">Selected: <span id="selPieceLabel">P</span></div>
+        <div class="hint">Selected: <span id="selPieceLabel">wP</span></div>
       </div>
       <div class="palette" id="palette" style="margin-top:8px"></div>
       <div class="hint" style="margin-top:8px">
-        Setup mode lets you place pieces freely. Move legality still works after you exit setup (including castling/EP based on FEN state).
+        Setup mode lets you place pieces freely. Move legality still works after you exit setup (castling/EP derive from FEN state).
       </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="hint"><b>Move list</b> (click token to jump)</div>
+        <div class="row">
+          <button class="miniBtn" id="btnPrev">◀ Prev</button>
+          <button class="miniBtn" id="btnNext">Next ▶</button>
+          <button class="miniBtn" id="btnUndo">Undo</button>
+        </div>
+      </div>
+      <div class="movesLine" id="movesLine" style="margin-top:8px"></div>
     </div>
 
     <div class="card">
       <div class="row" style="justify-content:space-between">
         <div class="hint"><b>PGN Tags</b> (editable)</div>
-        <div class="row">
-          <button class="mini" id="btnPrev">◀ Prev</button>
-          <button class="mini" id="btnNext">Next ▶</button>
-          <button class="mini" id="btnUndo">Undo</button>
-        </div>
+        <div class="hint">Export updates live on each move.</div>
       </div>
 
       <div class="row" style="margin-top:8px">
         <span class="hint">Event</span><input id="tagEvent" value="Casual Game" size="14">
         <span class="hint">Site</span><input id="tagSite" value="Local" size="10">
-        <span class="hint">Date</span><input id="tagDate" value="2026.02.04" size="10">
+        <span class="hint">Date</span><input id="tagDate" value="2026.02.06" size="10">
       </div>
       <div class="row" style="margin-top:6px">
         <span class="hint">White</span><input id="tagWhite" value="White" size="10">
@@ -232,8 +351,8 @@
       <div class="row" style="justify-content:space-between;">
         <div class="hint"><b>FEN</b></div>
         <div class="row">
-          <button class="mini" id="btnExportFEN">Export FEN</button>
-          <button class="mini" id="btnLoadFEN">Load FEN</button>
+          <button class="miniBtn" id="btnExportFEN">Export FEN</button>
+          <button class="miniBtn" id="btnLoadFEN">Load FEN</button>
         </div>
       </div>
       <textarea id="fenBox" spellcheck="false"></textarea>
@@ -246,20 +365,20 @@
       <div class="row" style="justify-content:space-between;">
         <div class="hint"><b>PGN</b> (export includes marks via [%csl]/[%cal])</div>
         <div class="row">
-          <button class="mini" id="btnExportPGN">Export PGN</button>
-          <button class="mini" id="btnLoadPGN">Load PGN</button>
+          <button class="miniBtn" id="btnExportPGN">Export PGN</button>
+          <button class="miniBtn" id="btnLoadPGN">Load PGN</button>
         </div>
       </div>
       <textarea id="pgnBox" spellcheck="false"></textarea>
       <div class="hint" style="margin-top:6px">
-        Import parses mainline SAN (ignores variations/comments except it *does* read [%csl]/[%cal] when present).
+        Import parses mainline SAN (ignores variations/comments except it <i>does</i> read [%csl]/[%cal] when present).
       </div>
     </div>
 
     <div class="card">
       <div class="row" style="justify-content:space-between">
-        <div class="hint"><b>Dump (proof marks exist + current ply)</b></div>
-        <button class="mini" id="btnDump">Dump</button>
+        <div class="hint"><b>Dump</b> (proof marks exist + node)</div>
+        <button class="miniBtn" id="btnDump">Dump</button>
       </div>
       <textarea id="dumpBox" spellcheck="false"></textarea>
     </div>
@@ -275,9 +394,51 @@
   </div>
 </div>
 
+<div id="ctxMenu">
+  <button id="ctxPromote">Promote this variation</button>
+  <button id="ctxDelete">Delete from here</button>
+  <button id="ctxCancel">Cancel</button>
+</div>
+
 <script>
 (() => {
   "use strict";
+
+  /* ============================================================
+     THESE FUNCTIONS ARE EXPORTED (stable surface for tests)
+
+     window.ChessAPI = {
+       Game,                          // class
+       createGame(),                  // -> Game
+       attachBoardView(boardEl, game, opts?) // -> BoardView
+     }
+
+     Game public methods (the "struct"):
+       - loadPGN(pgnText)
+       - loadFEN(fen)
+       - exportPGN()
+       - exportFEN()
+       - nextMove()
+       - prevMove()
+       - undoMove()                   // alias of prevMove+delete last if on leaf
+       - deleteMoveFromHere()         // deletes current node & subtree
+       - promoteVariationFromHere()   // promotes current node into parent's mainline
+       - makeMoveUCI("e2e4" | "e7e8q")
+       - setMode("moves"|"arrows"|"squares")
+       - setPigment("R"|"B"|"Y"|"G")
+       - toggleSetup(boolean?)
+       - toggleFlip(boolean?)
+       - toggleMini(boolean?)
+       - clearMarks()
+       - getStatus()                  // {type,text}
+       - onChange(fn)                 // subscribe to state updates (for views)
+     ============================================================ */
+
+  /* =========================
+     Piece image set (chessboardjs wiki set)
+  ========================== */
+  const PIECE_BASE = "https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/";
+  const pieceSrc = (code)=> PIECE_BASE + code + ".png"; // code like "wP", "bQ"
 
   /* =========================
      Helpers / board indexing
@@ -288,38 +449,1057 @@
   const sqName=i=>{ const [f,r]=FR(i); return files[f]+(r+1); };
   const parseSq=s=>idx(s.charCodeAt(0)-97, (+s[1])-1);
   const inB=(f,r)=>f>=0 && f<8 && r>=0 && r<8;
-  const isW=p=>p && p===p.toUpperCase();
-  const pt=p=>p.toLowerCase();
-  const other=c=>c==="w"?"b":"w";
 
-  /* =========================
-     DOM
-  ========================== */
-  const boardArea = document.getElementById("boardArea");
-  const boardEl   = document.getElementById("board");
-  const overlay   = document.getElementById("overlay");
-  const ghost     = document.getElementById("ghost");
+  /* ============================================================
+     Game model: state + legality + SAN + PGN + variation tree
+  ============================================================ */
 
-  const turnPill  = document.getElementById("turnPill");
-  const statusLine= document.getElementById("statusLine");
+  function other(c){ return c==="w" ? "b" : "w"; }
+  function isWLetter(p){ return p && p===p.toUpperCase(); }
+  function ptLetter(p){ return p.toLowerCase(); }
 
-  const setupCard = document.getElementById("setupCard");
-  const paletteEl = document.getElementById("palette");
-  const selPieceLabel = document.getElementById("selPieceLabel");
+  // Piece instances for stable DOM identity (animations)
+  let _pieceIdSeq = 1;
+  function makePieceFromLetter(letter){
+    const color = isWLetter(letter) ? "w" : "b";
+    const type = ptLetter(letter); // p n b r q k
+    return { id: String(_pieceIdSeq++), color, type };
+  }
+  function pieceCode(piece){
+    const map = {p:"P", n:"N", b:"B", r:"R", q:"Q", k:"K"};
+    return (piece.color==="w" ? "w" : "b") + map[piece.type];
+  }
 
-  const tagEvent = document.getElementById("tagEvent");
-  const tagSite  = document.getElementById("tagSite");
-  const tagDate  = document.getElementById("tagDate");
-  const tagWhite = document.getElementById("tagWhite");
-  const tagBlack = document.getElementById("tagBlack");
-  const tagResult= document.getElementById("tagResult");
+  // Node in move tree
+  function makeNode(parent=null){
+    return {
+      parent,
+      children: [],
+      mainChildIndex: 0,     // which child is "mainline"
+      // move data for this node (root has null)
+      san: null,
+      uci: null,             // e2e4 or e7e8q
+      moveInfo: null,        // engine details
+      snapBefore: null,      // snapshot before this move (for quick restore)
+      ply: 0,                // ply at this node
+      marks: { sqMarks:new Map(), arrows:[] }, // marks belong to THIS POSITION (i.e., at node)
+    };
+  }
 
-  const fenBox  = document.getElementById("fenBox");
-  const pgnBox  = document.getElementById("pgnBox");
-  const dumpBox = document.getElementById("dumpBox");
+  // Snapshot of engine position
+  function snapshotFrom(state){
+    return {
+      board: state.board.map(p=>p ? ({...p}) : null),
+      side: state.side,
+      castling: {...state.castling},
+      ep: state.ep,
+      halfmove: state.halfmove,
+      fullmove: state.fullmove
+    };
+  }
+  function restoreInto(state, snap){
+    state.board = snap.board.map(p=>p ? ({...p}) : null);
+    state.side = snap.side;
+    state.castling = {...snap.castling};
+    state.ep = snap.ep;
+    state.halfmove = snap.halfmove;
+    state.fullmove = snap.fullmove;
+  }
 
-  const promoModal = document.getElementById("promoModal");
-  const promoRow   = document.getElementById("promoRow");
+  class Game {
+    constructor(){
+      this._listeners = new Set();
+
+      this.tags = {
+        Event:"Casual Game",
+        Site:"Local",
+        Date:"2026.02.06",
+        Round:"1",
+        White:"White",
+        Black:"Black",
+        Result:"*",
+      };
+
+      this.ui = {
+        mode:"moves",
+        pig:"R",
+        flipped:false,
+        setup:false,
+        mini:false,
+      };
+
+      this.state = {
+        board:Array(64).fill(null), // pieces
+        side:"w",
+        castling:{K:true,Q:true,k:true,q:true},
+        ep:null,
+        halfmove:0,
+        fullmove:1,
+      };
+
+      // selection hints (view-managed but stored here for simple tests)
+      this.sel = { fromSq:null, legalTo:[] };
+
+      // Variation tree
+      this.root = makeNode(null);
+      this.root.ply = 0;
+      this.curNode = this.root;
+
+      // Base snapshot at root (initial position)
+      this.initialSnap = null;
+
+      // promotion resolver callback (view uses it)
+      this._pendingPromotion = null;
+
+      // boot
+      this.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    }
+
+    onChange(fn){ this._listeners.add(fn); return ()=>this._listeners.delete(fn); }
+    _emit(){ for(const fn of this._listeners) try{ fn(this); } catch(_){} }
+
+    setMode(m){ this.ui.mode=m; this._emit(); }
+    setPigment(p){ this.ui.pig=p; this._emit(); }
+    toggleFlip(v){ this.ui.flipped = (v==null) ? !this.ui.flipped : !!v; this._emit(); }
+    toggleSetup(v){ this.ui.setup = (v==null) ? !this.ui.setup : !!v; this.sel.fromSq=null; this.sel.legalTo=[]; this._emit(); }
+    toggleMini(v){ this.ui.mini = (v==null) ? !this.ui.mini : !!v; this._emit(); }
+
+    /* -------------------------
+       FEN
+    -------------------------- */
+    loadFEN(fen){
+      const parts=fen.trim().split(/\s+/);
+      if(!parts.length) return;
+
+      const placement=parts[0];
+      this.state.board = Array(64).fill(null);
+      let i=0;
+      for(const ch of placement){
+        if(ch==="/") continue;
+        if(ch>="1" && ch<="8"){ i += (ch.charCodeAt(0)-48); }
+        else this.state.board[i++] = makePieceFromLetter(ch);
+      }
+
+      this.state.side = (parts[1]==="b") ? "b" : "w";
+
+      const cs = parts[2] || "-";
+      this.state.castling = {K:cs.includes("K"),Q:cs.includes("Q"),k:cs.includes("k"),q:cs.includes("q")};
+
+      const ep = parts[3] || "-";
+      this.state.ep = (ep !== "-" && ep.length===2) ? parseSq(ep) : null;
+
+      this.state.halfmove = +(parts[4] || 0);
+      this.state.fullmove = +(parts[5] || 1);
+
+      // reset tree
+      this.root = makeNode(null);
+      this.root.ply = 0;
+      this.curNode = this.root;
+
+      // reset marks
+      this.root.marks = { sqMarks:new Map(), arrows:[] };
+
+      this.initialSnap = snapshotFrom(this.state);
+
+      this.sel.fromSq=null; this.sel.legalTo=[];
+      this._emit();
+    }
+
+    exportFEN(){
+      const S=this.state;
+      let out="";
+      for(let r=7;r>=0;r--){
+        let empty=0;
+        for(let f=0;f<8;f++){
+          const p=S.board[idx(f,r)];
+          if(!p) empty++;
+          else{
+            if(empty){ out+=empty; empty=0; }
+            // back to letters
+            const t = p.type;
+            const letterMap = {p:"p",n:"n",b:"b",r:"r",q:"q",k:"k"};
+            let L = letterMap[t];
+            if(p.color==="w") L = L.toUpperCase();
+            out+=L;
+          }
+        }
+        if(empty) out+=empty;
+        if(r) out+="/";
+      }
+      const cs = (S.castling.K?"K":"")+(S.castling.Q?"Q":"")+(S.castling.k?"k":"")+(S.castling.q?"q":"") || "-";
+      const ep = (S.ep==null) ? "-" : sqName(S.ep);
+      return `${out} ${S.side} ${cs} ${ep} ${S.halfmove} ${S.fullmove}`;
+    }
+
+    /* -------------------------
+       Marks (on current node)
+    -------------------------- */
+    _curMarks(){ return this.curNode.marks; }
+
+    clearMarks(){
+      const m=this._curMarks();
+      m.sqMarks.clear();
+      m.arrows.length=0;
+      this._emit();
+    }
+
+    /* -------------------------
+       Legality engine (adapted to piece objects)
+    -------------------------- */
+    _kingIndex(color){
+      return this.state.board.findIndex(p=>p && p.type==="k" && p.color===color);
+    }
+
+    _attacked(squareIndex, byColor){
+      const S=this.state;
+      const [sf,sr]=FR(squareIndex);
+
+      // pawns
+      if(byColor==="w"){
+        for(const df of [-1,1]){
+          const f=sf+df, r=sr-1;
+          if(inB(f,r)){
+            const p=S.board[idx(f,r)];
+            if(p && p.color==="w" && p.type==="p") return true;
+          }
+        }
+      }else{
+        for(const df of [-1,1]){
+          const f=sf+df, r=sr+1;
+          if(inB(f,r)){
+            const p=S.board[idx(f,r)];
+            if(p && p.color==="b" && p.type==="p") return true;
+          }
+        }
+      }
+
+      // knights
+      const knightD=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
+      for(const [df,dr] of knightD){
+        const f=sf+df, r=sr+dr;
+        if(inB(f,r)){
+          const p=S.board[idx(f,r)];
+          if(p && p.color===byColor && p.type==="n") return true;
+        }
+      }
+
+      // kings
+      for(let df=-1;df<=1;df++){
+        for(let dr=-1;dr<=1;dr++){
+          if(!df && !dr) continue;
+          const f=sf+df, r=sr+dr;
+          if(inB(f,r)){
+            const p=S.board[idx(f,r)];
+            if(p && p.color===byColor && p.type==="k") return true;
+          }
+        }
+      }
+
+      // sliders
+      const ortho=[[1,0],[-1,0],[0,1],[0,-1]];
+      for(const [df,dr] of ortho){
+        let f=sf+df, r=sr+dr;
+        while(inB(f,r)){
+          const p=S.board[idx(f,r)];
+          if(p){
+            if(p.color===byColor && (p.type==="r"||p.type==="q")) return true;
+            break;
+          }
+          f+=df; r+=dr;
+        }
+      }
+
+      const diag=[[1,1],[1,-1],[-1,1],[-1,-1]];
+      for(const [df,dr] of diag){
+        let f=sf+df, r=sr+dr;
+        while(inB(f,r)){
+          const p=S.board[idx(f,r)];
+          if(p){
+            if(p.color===byColor && (p.type==="b"||p.type==="q")) return true;
+            break;
+          }
+          f+=df; r+=dr;
+        }
+      }
+
+      return false;
+    }
+
+    _genPseudo(fromIdx, forAttack=false){
+      const S=this.state;
+      const p=S.board[fromIdx];
+      if(!p) return [];
+      const t=p.type;
+      const color=p.color;
+      const [f,r]=FR(fromIdx);
+      const out=[];
+      const dir = (color==="w") ? 1 : -1;
+
+      const push=(nf,nr)=>{
+        if(!inB(nf,nr)) return;
+        const to=idx(nf,nr);
+        const occ=S.board[to];
+        if(!occ || occ.color!==color) out.push(to);
+      };
+
+      if(t==="p"){
+        if(forAttack){
+          for(const df of [-1,1]){
+            const nf=f+df, nr=r+dir;
+            if(inB(nf,nr)) out.push(idx(nf,nr));
+          }
+          return out;
+        }
+
+        // forward
+        const r1=r+dir;
+        if(inB(f,r1)){
+          const to1=idx(f,r1);
+          if(!S.board[to1]){
+            out.push(to1);
+            // double from start
+            const startRank=(color==="w")?1:6;
+            if(r===startRank){
+              const r2=r+2*dir;
+              const to2=idx(f,r2);
+              if(inB(f,r2) && !S.board[to2]) out.push(to2);
+            }
+          }
+        }
+
+        // captures and ep
+        for(const df of [-1,1]){
+          const nf=f+df, nr=r+dir;
+          if(!inB(nf,nr)) continue;
+          const to=idx(nf,nr);
+          const occ=S.board[to];
+          if(occ && occ.color!==color) out.push(to);
+          else if(S.ep!=null && to===S.ep) out.push(to);
+        }
+        return out;
+      }
+
+      if(t==="n"){
+        const D=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
+        for(const [df,dr] of D) push(f+df,r+dr);
+        return out;
+      }
+
+      if(t==="k"){
+        for(let df=-1;df<=1;df++){
+          for(let dr=-1;dr<=1;dr++){
+            if(!df && !dr) continue;
+            push(f+df,r+dr);
+          }
+        }
+        if(!forAttack){
+          const homeRank = (color==="w") ? 0 : 7;
+          const kingHome = idx(4,homeRank);
+          if(fromIdx===kingHome && !this._attacked(kingHome, other(color))){
+            // king-side
+            if((color==="w")?S.castling.K:S.castling.k){
+              const f1=idx(5,homeRank), g1=idx(6,homeRank);
+              if(!S.board[f1] && !S.board[g1] && !this._attacked(f1, other(color)) && !this._attacked(g1, other(color))) out.push(g1);
+            }
+            // queen-side
+            if((color==="w")?S.castling.Q:S.castling.q){
+              const d1=idx(3,homeRank), c1=idx(2,homeRank), b1=idx(1,homeRank);
+              if(!S.board[d1] && !S.board[c1] && !S.board[b1] && !this._attacked(d1, other(color)) && !this._attacked(c1, other(color))) out.push(c1);
+            }
+          }
+        }
+        return out;
+      }
+
+      const sliders = {
+        b:[[1,1],[1,-1],[-1,1],[-1,-1]],
+        r:[[1,0],[-1,0],[0,1],[0,-1]],
+        q:[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]],
+      }[t];
+
+      for(const [df,dr] of sliders){
+        let nf=f+df, nr=r+dr;
+        while(inB(nf,nr)){
+          const to=idx(nf,nr);
+          const occ=S.board[to];
+          if(occ){ if(occ.color!==color) out.push(to); break; }
+          out.push(to);
+          nf+=df; nr+=dr;
+        }
+      }
+      return out;
+    }
+
+    _applyMoveRaw(fromIdx,toIdx,promoLetter /* "Q" etc or null */){
+      const S=this.state;
+      const p=S.board[fromIdx];
+      const t=p.type;
+      const color=p.color;
+      const their=other(color);
+
+      let capturedPiece = S.board[toIdx];
+      let epCapture=false;
+      let castle=false;
+      let rookMove=null;
+
+      // en passant capture
+      if(t==="p" && S.ep!=null && toIdx===S.ep && !S.board[toIdx]){
+        const [tf,tr]=FR(toIdx);
+        const capSq = idx(tf, tr + (color==="w" ? -1 : 1));
+        capturedPiece = S.board[capSq];
+        S.board[capSq]=null;
+        epCapture=true;
+      }
+
+      // castling rook move
+      if(t==="k"){
+        const [ff,fr]=FR(fromIdx);
+        const [tf,tr]=FR(toIdx);
+        if(fr===tr && Math.abs(tf-ff)===2){
+          castle=true;
+          if(tf===6){
+            const rookFrom=idx(7,fr), rookTo=idx(5,fr);
+            S.board[rookTo]=S.board[rookFrom];
+            S.board[rookFrom]=null;
+            rookMove={from:rookFrom,to:rookTo};
+          }else if(tf===2){
+            const rookFrom=idx(0,fr), rookTo=idx(3,fr);
+            S.board[rookTo]=S.board[rookFrom];
+            S.board[rookFrom]=null;
+            rookMove={from:rookFrom,to:rookTo};
+          }
+        }
+      }
+
+      // move piece
+      S.board[toIdx]=S.board[fromIdx];
+      S.board[fromIdx]=null;
+
+      // promotion
+      let promoApplied=null;
+      if(t==="p"){
+        const [,tr]=FR(toIdx);
+        const last=(color==="w")?7:0;
+        if(tr===last){
+          const want = (promoLetter || "Q").toUpperCase();
+          promoApplied=want;
+          // convert to piece type
+          const map = {Q:"q",R:"r",B:"b",N:"n"};
+          S.board[toIdx].type = map[want] || "q";
+        }
+      }
+
+      // update castling rights
+      if(t==="k"){
+        if(color==="w"){ S.castling.K=false; S.castling.Q=false; }
+        else{ S.castling.k=false; S.castling.q=false; }
+      }
+      if(t==="r"){
+        if(color==="w"){
+          if(fromIdx===idx(0,0)) S.castling.Q=false;
+          if(fromIdx===idx(7,0)) S.castling.K=false;
+        }else{
+          if(fromIdx===idx(0,7)) S.castling.q=false;
+          if(fromIdx===idx(7,7)) S.castling.k=false;
+        }
+      }
+      if(capturedPiece){
+        if(toIdx===idx(0,0)) S.castling.Q=false;
+        if(toIdx===idx(7,0)) S.castling.K=false;
+        if(toIdx===idx(0,7)) S.castling.q=false;
+        if(toIdx===idx(7,7)) S.castling.k=false;
+      }
+
+      // en passant target
+      let newEp=null;
+      if(t==="p"){
+        const [ff,fr]=FR(fromIdx);
+        const [tf,tr]=FR(toIdx);
+        if(ff===tf && Math.abs(tr-fr)===2) newEp = idx(tf, (fr+tr)/2);
+      }
+      S.ep=newEp;
+
+      // clocks
+      S.halfmove = (t==="p" || capturedPiece) ? 0 : (S.halfmove+1);
+      S.side=their;
+      if(S.side==="w") S.fullmove++;
+
+      return {pieceId:p.id, pieceType:t, pieceColor:color, capturedId:capturedPiece?.id || null, promo:promoApplied, epCapture, castle, rookMove};
+    }
+
+    _legalMovesFrom(fromIdx){
+      const S=this.state;
+      const p=S.board[fromIdx];
+      if(!p) return [];
+      if(p.color!==S.side) return [];
+      const pseudo=this._genPseudo(fromIdx,false);
+      const res=[];
+      for(const toIdx of pseudo){
+        const snap=snapshotFrom(S);
+        this._applyMoveRaw(fromIdx,toIdx,null);
+        const k=this._kingIndex(p.color);
+        const ok=(k>=0)&&!this._attacked(k, other(p.color));
+        restoreInto(S, snap);
+        if(ok) res.push(toIdx);
+      }
+      return res;
+    }
+
+    _allLegalMoves(color){
+      const out=[];
+      for(let i=0;i<64;i++){
+        const p=this.state.board[i];
+        if(!p || p.color!==color) continue;
+        const tos=this._legalMovesFrom(i);
+        for(const to of tos) out.push({from:i,to});
+      }
+      return out;
+    }
+
+    _isInCheck(color){
+      const k=this._kingIndex(color);
+      if(k<0) return false;
+      return this._attacked(k, other(color));
+    }
+
+    getStatus(){
+      const color=this.state.side;
+      const moves=this._allLegalMoves(color);
+      const inCheck=this._isInCheck(color);
+      if(moves.length===0){
+        if(inCheck) return {type:"mate", text:(color==="w"?"White":"Black")+" is checkmated"};
+        return {type:"stalemate", text:"Stalemate"};
+      }
+      if(this.state.halfmove>=100) return {type:"50move", text:"50-move rule claimable"};
+      if(inCheck) return {type:"check", text:(color==="w"?"White":"Black")+" is in check"};
+      return {type:"ok", text:""};
+    }
+
+    /* -------------------------
+       SAN generation (minimal)
+    -------------------------- */
+    _pieceSANLetter(type){
+      if(type==="p") return "";
+      return type.toUpperCase();
+    }
+
+    _disambiguation(fromIdx,toIdx,piece){
+      const t=piece.type;
+      if(t==="p" || t==="k") return "";
+
+      const color=piece.color;
+      const others=[];
+      for(let i=0;i<64;i++){
+        if(i===fromIdx) continue;
+        const q=this.state.board[i];
+        if(!q) continue;
+        if(q.color!==color || q.type!==t) continue;
+        const tos=this._legalMovesFrom(i);
+        if(tos.includes(toIdx)) others.push(i);
+      }
+      if(others.length===0) return "";
+
+      const [ff,fr]=FR(fromIdx);
+      const shareFile = others.some(i=>FR(i)[0]===ff);
+      const shareRank = others.some(i=>FR(i)[1]===fr);
+
+      let needFile=false, needRank=false;
+      if(!shareFile) needFile=true;
+      else if(!shareRank) needRank=true;
+      else { needFile=true; needRank=true; }
+
+      let s="";
+      if(needFile) s+=files[ff];
+      if(needRank) s+=(fr+1);
+      return s;
+    }
+
+    _moveToSAN(fromIdx,toIdx, moveInfoBeforeFinalize){
+      const piece = this._pieceById(moveInfoBeforeFinalize.pieceId);
+      const t = moveInfoBeforeFinalize.pieceType;
+      const color = moveInfoBeforeFinalize.pieceColor;
+
+      if(moveInfoBeforeFinalize.castle){
+        const [ff,]=FR(fromIdx); const [tf,]=FR(toIdx);
+        return (tf>ff) ? "O-O" : "O-O-O";
+      }
+
+      const cap = !!moveInfoBeforeFinalize.capturedId || moveInfoBeforeFinalize.epCapture;
+      let san="";
+
+      if(t==="p"){
+        if(cap){
+          const [ff,]=FR(fromIdx);
+          san += files[ff] + "x" + sqName(toIdx);
+        }else{
+          san += sqName(toIdx);
+        }
+        if(moveInfoBeforeFinalize.promo){
+          san += "=" + moveInfoBeforeFinalize.promo.toUpperCase();
+        }
+      }else{
+        san += this._pieceSANLetter(t);
+        san += this._disambiguation(fromIdx,toIdx,piece);
+        if(cap) san += "x";
+        san += sqName(toIdx);
+      }
+
+      // check / mate suffix requires position after move (already applied)
+      const their=other(color);
+      const inCheck=this._isInCheck(their);
+      if(inCheck){
+        const theirMoves=this._allLegalMoves(their);
+        san += (theirMoves.length===0) ? "#" : "+";
+      }
+      return san;
+    }
+
+    _pieceById(id){
+      for(const p of this.state.board) if(p && p.id===id) return p;
+      return null;
+    }
+
+    /* -------------------------
+       Public move API
+    -------------------------- */
+    makeMoveUCI(uci){
+      // uci: e2e4 or e7e8q
+      const from = uci.slice(0,2), to = uci.slice(2,4);
+      const promo = uci.length>=5 ? uci[4].toLowerCase() : null;
+      const fromIdx=parseSq(from);
+      const toIdx=parseSq(to);
+
+      const p=this.state.board[fromIdx];
+      if(!p) return false;
+      if(this.ui.setup){
+        // free move / placement in setup
+        this.state.board[toIdx]=this.state.board[fromIdx];
+        this.state.board[fromIdx]=null;
+        this.sel.fromSq=null; this.sel.legalTo=[];
+        this._emit();
+        return true;
+      }
+
+      const legal=this._legalMovesFrom(fromIdx);
+      if(!legal.includes(toIdx)) return false;
+
+      // promotion?
+      let promoLetter=null;
+      if(p.type==="p"){
+        const [,tr]=FR(toIdx);
+        const last=(p.color==="w")?7:0;
+        if(tr===last){
+          // if not provided, view will prompt; return a "pending" marker
+          if(!promo){
+            this._pendingPromotion = {fromIdx,toIdx};
+            this._emit();
+            return "PROMO";
+          }else{
+            const map = {q:"Q",r:"R",b:"B",n:"N"};
+            promoLetter = map[promo] || "Q";
+          }
+        }
+      }
+
+      this._finalizeMove(fromIdx,toIdx,promoLetter);
+      return true;
+    }
+
+    _finalizeMove(fromIdx,toIdx,promoLetterOrNull){
+      const S=this.state;
+
+      const snapBefore = snapshotFrom(S);
+      const uci = sqName(fromIdx)+sqName(toIdx)+(promoLetterOrNull?promoLetterOrNull.toLowerCase():"");
+      const moveInfo = this._applyMoveRaw(fromIdx,toIdx,promoLetterOrNull);
+      const san = this._moveToSAN(fromIdx,toIdx,moveInfo);
+
+      // Insert into tree from current node
+      const parent = this.curNode;
+      const node = makeNode(parent);
+      node.san = san;
+      node.uci = uci;
+      node.moveInfo = moveInfo;
+      node.snapBefore = snapBefore;
+      node.ply = parent.ply + 1;
+
+      // copy marks for node position default empty
+      node.marks = { sqMarks:new Map(), arrows:[] };
+
+      parent.children.push(node);
+
+      // If parent had no children, that's mainline; otherwise this becomes a variation.
+      if(parent.children.length===1){
+        parent.mainChildIndex = 0;
+      }else{
+        // keep existing mainline, but we still go into this new variation immediately
+        // (user just played it)
+      }
+      this.curNode = node;
+
+      this.sel.fromSq=null; this.sel.legalTo=[];
+      this._pendingPromotion = null;
+      this._emit();
+    }
+
+    resolvePendingPromotion(letter /* "Q"|"R"|"B"|"N" */){
+      if(!this._pendingPromotion) return false;
+      const {fromIdx,toIdx}=this._pendingPromotion;
+      this._finalizeMove(fromIdx,toIdx,letter);
+      return true;
+    }
+
+    prevMove(){
+      if(this.curNode===this.root) return false;
+      // restore to snapshot BEFORE this move, and set node to parent
+      restoreInto(this.state, this.curNode.snapBefore);
+      this.curNode = this.curNode.parent;
+      this.sel.fromSq=null; this.sel.legalTo=[];
+      this._pendingPromotion = null;
+      this._emit();
+      return true;
+    }
+
+    nextMove(){
+      const n=this.curNode;
+      if(!n.children.length) return false;
+      const child = n.children[n.mainChildIndex] || n.children[0];
+      // restore to child's snapBefore then re-apply move from uci
+      // easiest: restore into snapBefore (already stored for child)
+      restoreInto(this.state, child.snapBefore);
+      // then apply again to reach child's position
+      const fromIdx=parseSq(child.uci.slice(0,2));
+      const toIdx=parseSq(child.uci.slice(2,4));
+      const promo = child.uci.length>=5 ? child.uci[4].toUpperCase() : null;
+      this._applyMoveRaw(fromIdx,toIdx,promo || null);
+      this.curNode = child;
+      this.sel.fromSq=null; this.sel.legalTo=[];
+      this._pendingPromotion = null;
+      this._emit();
+      return true;
+    }
+
+    undoMove(){
+      // undo only if we're on leaf (typical "undo last")
+      if(this.curNode===this.root) return false;
+      const parent=this.curNode.parent;
+      // only delete if current node is the most recent child and leaf
+      if(this.curNode.children.length>0) return this.prevMove();
+      const idx = parent.children.indexOf(this.curNode);
+      if(idx>=0) parent.children.splice(idx,1);
+      if(parent.mainChildIndex>=parent.children.length) parent.mainChildIndex = Math.max(0,parent.children.length-1);
+      restoreInto(this.state, this.curNode.snapBefore);
+      this.curNode = parent;
+      this.sel.fromSq=null; this.sel.legalTo=[];
+      this._pendingPromotion = null;
+      this._emit();
+      return true;
+    }
+
+    deleteMoveFromHere(){
+      if(this.curNode===this.root) return false;
+      const parent=this.curNode.parent;
+      const idxChild = parent.children.indexOf(this.curNode);
+      if(idxChild>=0) parent.children.splice(idxChild,1);
+      if(parent.mainChildIndex>=parent.children.length) parent.mainChildIndex = Math.max(0,parent.children.length-1);
+      restoreInto(this.state, this.curNode.snapBefore);
+      this.curNode = parent;
+      this.sel.fromSq=null; this.sel.legalTo=[];
+      this._pendingPromotion = null;
+      this._emit();
+      return true;
+    }
+
+    promoteVariationFromHere(){
+      if(this.curNode===this.root) return false;
+      const parent=this.curNode.parent;
+      const i = parent.children.indexOf(this.curNode);
+      if(i<0) return false;
+      parent.mainChildIndex = i;
+      this._emit();
+      return true;
+    }
+
+    /* -------------------------
+       PGN export/import (mainline-focused)
+    -------------------------- */
+    _buildMarksComment(node){
+      const m = node.marks;
+      const csl=[];
+      for(const [sq,c] of m.sqMarks.entries()){
+        csl.push(c + sq);
+      }
+      const cal=[];
+      for(const a of m.arrows){
+        cal.push(a.color + a.from + a.to);
+      }
+      let out=[];
+      if(csl.length) out.push(`[%csl ${csl.join(",")}]`);
+      if(cal.length) out.push(`[%cal ${cal.join(",")}]`);
+      if(!out.length) return "";
+      return "{ " + out.join(" ") + " }";
+    }
+
+    exportPGN(){
+      // tags
+      const tags = [
+        ["Event", this.tags.Event||""],
+        ["Site",  this.tags.Site||""],
+        ["Date",  this.tags.Date||""],
+        ["Round", this.tags.Round||"1"],
+        ["White", this.tags.White||""],
+        ["Black", this.tags.Black||""],
+        ["Result", this.tags.Result||"*"],
+      ];
+      let pgn = tags.map(([k,v])=>`[${k} "${String(v).replaceAll('"','\\"')}"]`).join("\n") + "\n\n";
+
+      // root marks (ply0)
+      const pre = this._buildMarksComment(this.root);
+      if(pre) pgn += pre + "\n";
+
+      // movetext including variations
+      const walk = (node, moveNumberStart, sideToMoveAtNode /* "w"/"b" */)=>{
+        // node is position node; its children are moves out of it.
+        let s="";
+        let moveNumber = moveNumberStart;
+        let side = sideToMoveAtNode;
+
+        let cur=node;
+        while(cur.children.length){
+          const main = cur.children[cur.mainChildIndex] || cur.children[0];
+
+          // print move number when white to play
+          if(side==="w") s += moveNumber + ". ";
+          else if(side==="b" && cur===node) s += moveNumber + "... ";
+
+          s += main.san + " ";
+          const cm = this._buildMarksComment(main);
+          if(cm) s += cm + " ";
+
+          // variations: any other child than main
+          cur.children.forEach((ch, i)=>{
+            if(ch===main) return;
+            s += "(";
+            // variation starts at same ply/side as main move just printed
+            const varSide = side; // side who played this move
+            const varMoveNumber = moveNumber;
+            if(varSide==="w") s += varMoveNumber + ". ";
+            else s += varMoveNumber + "... ";
+            s += ch.san + " ";
+            const cm2 = this._buildMarksComment(ch);
+            if(cm2) s += cm2 + " ";
+            // then recurse down variation mainline
+            s += walk(ch, (varSide==="w")?varMoveNumber:varMoveNumber+1, other(varSide));
+            s += ") ";
+          });
+
+          // advance
+          cur = main;
+          side = other(side);
+          if(side==="w") moveNumber++;
+        }
+        return s;
+      };
+
+      pgn += walk(this.root, 1, "w");
+      pgn += (this.tags.Result||"*");
+      return pgn.trim();
+    }
+
+    loadPGN(pgnText){
+      // Pragmatic import: mainline SAN only; keep marks via [%csl]/[%cal]; ignore variations.
+      const text = String(pgnText||"").replace(/\r/g,"");
+
+      // tags
+      const tagRe=/^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+      let m;
+      while((m=tagRe.exec(text))!==null){
+        const k=m[1], v=m[2];
+        if(this.tags[k]!=null) this.tags[k]=v;
+      }
+
+      // FEN tag support
+      const fenTagMatch = text.match(/^\s*\[FEN\s+"([^"]+)"\]\s*$/m);
+      if(fenTagMatch){
+        this.loadFEN(fenTagMatch[1]);
+      }else{
+        this.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      }
+
+      // remove nested variations
+      let t = text;
+      while(/\([^()]*\)/.test(t)) t = t.replace(/\([^()]*\)/g, " ");
+
+      // Extract comments, keep csl/cal
+      const comments=[];
+      t = t.replace(/\{([^}]*)\}/g, (_,inner)=>{
+        const keep = [];
+        const csl = inner.match(/\[%csl\s+([^\]]+)\]/);
+        const cal = inner.match(/\[%cal\s+([^\]]+)\]/);
+        if(csl) keep.push("%csl "+csl[1].trim());
+        if(cal) keep.push("%cal "+cal[1].trim());
+        if(!keep.length) return " ";
+        comments.push(keep.join(" | "));
+        return ` __CMT_${comments.length-1}__ `;
+      });
+
+      // strip tags, move numbers, nags
+      t = t.replace(/^\s*\[[^\]]*\]\s*$/gm," ");
+      t = t.replace(/\$\d+/g," ");
+      t = t.replace(/\b\d+\.(\.\.)?/g," ");
+      t = t.replace(/\s+/g," ").trim();
+      const tokens = t.length ? t.split(" ") : [];
+
+      // Apply tokens
+      for(const tok of tokens){
+        if(/^(__CMT_\d+__)$/i.test(tok)){
+          const id = +tok.match(/__CMT_(\d+)__/i)[1];
+          const payload = comments[id] || "";
+          const parts = payload.split("|").map(s=>s.trim());
+          const mks = this._curMarks();
+          for(const part of parts){
+            if(part.startsWith("%csl ")){
+              const list = part.slice(5).split(",").map(s=>s.trim()).filter(Boolean);
+              for(const it of list){
+                const c = it[0];
+                const sq = it.slice(1);
+                if(/^[RBYG]$/.test(c) && /^[a-h][1-8]$/.test(sq)){
+                  mks.sqMarks.set(sq,c);
+                }
+              }
+            }else if(part.startsWith("%cal ")){
+              const list = part.slice(5).split(",").map(s=>s.trim()).filter(Boolean);
+              for(const it of list){
+                const c = it[0];
+                const from = it.slice(1,3);
+                const to   = it.slice(3,5);
+                if(/^[RBYG]$/.test(c) && /^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)){
+                  const key = `${c}:${from}-${to}`;
+                  const j = mks.arrows.findIndex(a=>`${a.color}:${a.from}-${a.to}`===key);
+                  if(j<0) mks.arrows.push({from,to,color:c});
+                }
+              }
+            }
+          }
+          continue;
+        }
+
+        if(tok==="1-0"||tok==="0-1"||tok==="1/2-1/2"||tok==="*"){
+          this.tags.Result=tok;
+          continue;
+        }
+
+        const mv = this._sanToMove(tok);
+        if(!mv) break;
+        const uci = sqName(mv.from)+sqName(mv.to)+(mv.promo ? mv.promo.toLowerCase() : "");
+        const ok = this.makeMoveUCI(uci);
+        if(ok==="PROMO"){
+          // if SAN includes promo, mv.promo will be set; otherwise default to Q
+          this.resolvePendingPromotion(mv.promo || "Q");
+        }
+      }
+
+      this._emit();
+    }
+
+    // SAN -> {from,to,promo} by searching legal moves that match
+    _sanToMove(san){
+      const clean = String(san).replace(/[+#]$/g,"").trim();
+      if(clean === "O-O" || clean === "0-0"){
+        const homeRank = (this.state.side==="w")?0:7;
+        return {from:idx(4,homeRank), to:idx(6,homeRank), promo:null};
+      }
+      if(clean === "O-O-O" || clean === "0-0-0"){
+        const homeRank = (this.state.side==="w")?0:7;
+        return {from:idx(4,homeRank), to:idx(2,homeRank), promo:null};
+      }
+
+      let promo=null;
+      const promoM = clean.match(/=([QRBN])/);
+      if(promoM) promo=promoM[1];
+      const core = clean.replace(/=([QRBN])/,"");
+
+      let pieceType="p";
+      let rest=core;
+      const first=core[0];
+      if("KQRBN".includes(first)){
+        pieceType=first.toLowerCase();
+        rest=core.slice(1);
+      }
+
+      rest = rest.replace("x","");
+      const dest = rest.slice(-2);
+      if(!/^[a-h][1-8]$/.test(dest)) return null;
+      const toIdx = parseSq(dest);
+
+      const dis = rest.slice(0, -2);
+      let disFile=null, disRank=null;
+      if(dis.length===1){
+        if(/[a-h]/.test(dis)) disFile = dis;
+        else if(/[1-8]/.test(dis)) disRank = +dis;
+      }else if(dis.length===2){
+        if(/[a-h]/.test(dis[0]) && /[1-8]/.test(dis[1])){
+          disFile=dis[0]; disRank=+dis[1];
+        }
+      }else if(dis.length>0){
+        if(pieceType==="p" && /^[a-h]$/.test(dis)) disFile=dis;
+      }
+
+      const color=this.state.side;
+      const cand=[];
+      for(let i=0;i<64;i++){
+        const p=this.state.board[i];
+        if(!p || p.color!==color) continue;
+        if(p.type!==pieceType) continue;
+
+        if(disFile!=null){
+          const [f,]=FR(i);
+          if(files[f]!==disFile) continue;
+        }
+        if(disRank!=null){
+          const [,r]=FR(i);
+          if((r+1)!==disRank) continue;
+        }
+
+        const tos=this._legalMovesFrom(i);
+        if(tos.includes(toIdx)) cand.push(i);
+      }
+      if(cand.length!==1) return null;
+      return {from:cand[0], to:toIdx, promo};
+    }
+
+    /* -------------------------
+       Utility: line as tokens from root to curNode
+    -------------------------- */
+    getMainlineTokens(){
+      // tokens along mainline from root
+      const tokens=[];
+      let node=this.root;
+      while(node.children.length){
+        const main=node.children[node.mainChildIndex] || node.children[0];
+        tokens.push(main);
+        node=main;
+      }
+      return tokens;
+    }
+
+    getPathToCurrent(){
+      const path=[];
+      let n=this.curNode;
+      while(n && n!==this.root){
+        path.push(n);
+        n=n.parent;
+      }
+      path.reverse();
+      return path;
+    }
+  }
+
+  // Factory
+  function createGame(){ return new Game(); }
+
+  /* ============================================================
+     BoardView: pure view/controller around a Game instance
+  ============================================================ */
 
   function cssColor(c){
     const st=getComputedStyle(document.documentElement);
@@ -329,1422 +1509,795 @@
       : st.getPropertyValue("--cG").trim();
   }
 
-  /* =========================
-     State
-  ========================== */
-  const S = {
-    flipped:false,
-    mode:"moves",
-    pig:"R",
-    setup:false,
+  class BoardView {
+    constructor(boardShell, game, opts={}){
+      this.el = boardShell;
+      this.grid = opts.gridEl || boardShell.querySelector("#boardGrid");
+      this.overlay = opts.overlayEl || boardShell.querySelector("#overlay");
+      this.piecesLayer = opts.piecesLayerEl || boardShell.querySelector("#piecesLayer");
+      this.ghost = document.getElementById("ghost");
 
-    board:Array(64).fill(null),
-    side:"w",
-    castling:{K:true,Q:true,k:true,q:true},
-    ep:null,          // square index or null
-    halfmove:0,
-    fullmove:1,
+      this.game = game;
 
-    // UI selection & move hints
-    tapSelected:null,  // fromSq
-    legalTo:[],        // list of squares (string) legal destinations from tapSelected
+      // piece DOM cache by piece id
+      this.pieceEls = new Map();
+      // currently dragging
+      this.drag = null; // {pieceId, fromSq, pointerId}
+      // arrow drag
+      this.arrowDrag = null; // {fromSq,toSq,pointerId}
 
-    // Drag state
-    drag:null,         // {fromSq, piece, pointerId}
-    arrowDrag:null,    // {fromSq,toSq,pointerId}
+      // build squares once
+      this._buildSquares();
 
-    // Marks are stored per ply (so they can be embedded in PGN properly).
-    // key: ply number (0 at initial), value: { sqMarks: Map("e4"->"R"), arrows:[{from,to,color}] }
-    marksByPly:new Map(),
+      // subscribe
+      this.unsub = game.onChange(()=>this.render());
 
-    // Move history (linear)
-    // Each entry: { fenBefore, move:{from,to,piece,captured,promo,epCapture,castle,rookMove}, san, marksAfter }
-    history:[],
-    ply:0,     // 0 means start position, 1 after first move, etc.
-
-    setupPiece:"P",
-
-    // promotion resolver
-    pendingPromotion:null
-  };
-
-  function marksForPly(ply){
-    if(!S.marksByPly.has(ply)){
-      S.marksByPly.set(ply, { sqMarks:new Map(), arrows:[] });
-    }
-    return S.marksByPly.get(ply);
-  }
-  function curMarks(){ return marksForPly(S.ply); }
-
-  /* =========================
-     FEN
-  ========================== */
-  function loadFEN(fen){
-    const parts=fen.trim().split(/\s+/);
-    if(parts.length<1) return;
-
-    const placement=parts[0];
-    S.board.fill(null);
-    let i=0;
-    for(const ch of placement){
-      if(ch==="/") continue;
-      if(ch>="1" && ch<="8"){ i += (ch.charCodeAt(0)-48); }
-      else S.board[i++] = ch;
+      // pointer handlers
+      this._wirePointer();
+      this.render();
     }
 
-    S.side = (parts[1]==="b") ? "b" : "w";
-
-    const cs = parts[2] || "-";
-    S.castling = {K:cs.includes("K"),Q:cs.includes("Q"),k:cs.includes("k"),q:cs.includes("q")};
-
-    const ep = parts[3] || "-";
-    S.ep = (ep !== "-" && ep.length===2) ? parseSq(ep) : null;
-
-    S.halfmove = +(parts[4] || 0);
-    S.fullmove = +(parts[5] || 1);
-
-    // reset history
-    S.history = [];
-    S.ply = 0;
-    S.marksByPly.clear();
-    S.tapSelected=null; S.legalTo=[];
-    S.drag=null; ghost.style.display="none";
-    redrawAll();
-  }
-
-  function exportFEN(){
-    // piece placement
-    let out="";
-    for(let r=7;r>=0;r--){
-      let empty=0;
-      for(let f=0;f<8;f++){
-        const p=S.board[idx(f,r)];
-        if(!p) empty++;
-        else{
-          if(empty){ out+=empty; empty=0; }
-          out+=p;
-        }
-      }
-      if(empty) out+=empty;
-      if(r) out+="/";
+    destroy(){
+      this.unsub?.();
     }
-    const cs = (S.castling.K?"K":"")+(S.castling.Q?"Q":"")+(S.castling.k?"k":"")+(S.castling.q?"q":"") || "-";
-    const ep = (S.ep==null) ? "-" : sqName(S.ep);
-    return `${out} ${S.side} ${cs} ${ep} ${S.halfmove} ${S.fullmove}`;
-  }
 
-  /* =========================
-     Overlay (SVG) drawing
-  ========================== */
-  function clearOverlay(){ overlay.innerHTML=""; }
+    _buildSquares(){
+      this.grid.innerHTML="";
+      for(let ui=0; ui<64; ui++){
+        const sq=document.createElement("div");
+        sq.className="sq";
+        sq.dataset.ui = String(ui);
+        sq.dataset.sq = ""; // set in render via flip mapping
+        const label=document.createElement("span");
+        label.className="sqLabel";
+        sq.appendChild(label);
 
-  function ensureDefs(){
-    let defs = overlay.querySelector("defs");
-    if(!defs){
-      defs=document.createElementNS("http://www.w3.org/2000/svg","defs");
-      overlay.appendChild(defs);
-    }
-    for(const c of ["R","B","Y","G"]){
-      if(defs.querySelector("#arrowHead_"+c)) continue;
-      const marker=document.createElementNS("http://www.w3.org/2000/svg","marker");
-      marker.setAttribute("id","arrowHead_"+c);
-      marker.setAttribute("markerWidth","5");
-      marker.setAttribute("markerHeight","5");
-      marker.setAttribute("refX","4.6");
-      marker.setAttribute("refY","2.5");
-      marker.setAttribute("orient","auto");
-      marker.setAttribute("markerUnits","userSpaceOnUse");
-
-      const path=document.createElementNS("http://www.w3.org/2000/svg","path");
-      path.setAttribute("d","M0,0 L5,2.5 L0,5 L1.2,2.5 Z");
-      path.setAttribute("fill", cssColor(c));
-      marker.appendChild(path);
-      defs.appendChild(marker);
-    }
-  }
-
-  function squareCenter(sq){
-    let f = sq.charCodeAt(0)-97;
-    let r = (+sq[1])-1;
-    if(!S.flipped){
-      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
-    }else{
-      return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
-    }
-  }
-
-  function drawSquareMark(sq,c){
-    const {x,y}=squareCenter(sq);
-    const size=12.5;
-    const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
-    rect.setAttribute("x", x-size/2);
-    rect.setAttribute("y", y-size/2);
-    rect.setAttribute("width", size);
-    rect.setAttribute("height", size);
-    rect.setAttribute("fill", cssColor(c));
-    rect.setAttribute("opacity", (c==="Y")?"0.45":"0.55");
-    rect.setAttribute("shape-rendering","crispEdges");
-    overlay.appendChild(rect);
-  }
-
-  function drawArrow(from,to,c){
-    const a=squareCenter(from), b=squareCenter(to);
-    const dx=b.x-a.x, dy=b.y-a.y;
-    const len=Math.hypot(dx,dy) || 1;
-    const ux=dx/len, uy=dy/len;
-    const shrink=4.6;
-
-    const line=document.createElementNS("http://www.w3.org/2000/svg","line");
-    line.setAttribute("x1", a.x);
-    line.setAttribute("y1", a.y);
-    line.setAttribute("x2", b.x-ux*shrink);
-    line.setAttribute("y2", b.y-uy*shrink);
-    line.setAttribute("stroke", cssColor(c));
-    line.setAttribute("stroke-width", "0.34");
-    line.setAttribute("stroke-linecap", "round");
-    line.setAttribute("opacity", "0.92");
-    line.setAttribute("marker-end", "url(#arrowHead_"+c+")");
-    overlay.appendChild(line);
-  }
-
-  function redrawOverlay(){
-    clearOverlay();
-    ensureDefs();
-
-    // marks for current ply
-    const m = curMarks();
-
-    // squares first, then arrows
-    for(const [sq,c] of m.sqMarks.entries()) drawSquareMark(sq,c);
-    for(const ar of m.arrows) drawArrow(ar.from, ar.to, ar.color);
-
-    // live preview arrow
-    if(S.mode==="arrows" && S.arrowDrag?.fromSq && S.arrowDrag?.toSq && S.arrowDrag.fromSq!==S.arrowDrag.toSq){
-      drawArrow(S.arrowDrag.fromSq, S.arrowDrag.toSq, S.pig);
-    }
-  }
-
-  /* =========================
-     Board sizing & mapping
-  ========================== */
-  function resizeBoard(){
-    const r = boardArea.getBoundingClientRect();
-    const cs = getComputedStyle(boardArea);
-    const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
-    const padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
-    const w = Math.max(0, r.width - padX);
-    const h = Math.max(0, r.height - padY);
-    const s = Math.floor(Math.min(w,h));
-    boardEl.style.width = s+"px";
-    boardEl.style.height = s+"px";
-    redrawOverlay();
-  }
-
-  function eventToSquare(ev){
-    const br=boardEl.getBoundingClientRect();
-    const x=ev.clientX - br.left;
-    const y=ev.clientY - br.top;
-    const s=br.width/8;
-    let f=Math.max(0, Math.min(7, Math.floor(x/s)));
-    let r=Math.max(0, Math.min(7, 7-Math.floor(y/s)));
-    if(S.flipped){ f=7-f; r=7-r; }
-    return String.fromCharCode(97+f) + (r+1);
-  }
-
-  /* =========================
-     Minimal legality engine
-  ========================== */
-  function kingIndex(color){
-    const K = (color==="w") ? "K" : "k";
-    return S.board.findIndex(x=>x===K);
-  }
-
-  function attacked(squareIndex, byColor){
-    const [sf,sr]=FR(squareIndex);
-
-    // pawns
-    if(byColor==="w"){
-      for(const df of [-1,1]){
-        const f=sf+df, r=sr-1;
-        if(inB(f,r) && S.board[idx(f,r)]==="P") return true;
-      }
-    }else{
-      for(const df of [-1,1]){
-        const f=sf+df, r=sr+1;
-        if(inB(f,r) && S.board[idx(f,r)]==="p") return true;
+        sq.addEventListener("pointerdown", (e)=>this._onSquarePointerDown(e, sq), {passive:false});
+        this.grid.appendChild(sq);
       }
     }
 
-    // knights
-    const knightD=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
-    const nChar = byColor==="w" ? "N" : "n";
-    for(const [df,dr] of knightD){
-      const f=sf+df, r=sr+dr;
-      if(inB(f,r) && S.board[idx(f,r)]===nChar) return true;
+    _squareFromEvent(ev){
+      const br=this.el.getBoundingClientRect();
+      const s=Math.min(br.width, br.height)/8;
+      // center the 8x8 square grid inside the element
+      const offX = (br.width  - s*8)/2;
+      const offY = (br.height - s*8)/2;
+      const x = ev.clientX - br.left - offX;
+      const y = ev.clientY - br.top  - offY;
+      let f=Math.max(0, Math.min(7, Math.floor(x/s)));
+      let r=Math.max(0, Math.min(7, 7-Math.floor(y/s)));
+      if(this.game.ui.flipped){ f=7-f; r=7-r; }
+      return String.fromCharCode(97+f) + (r+1);
     }
 
-    // kings
-    const kChar = byColor==="w" ? "K" : "k";
-    for(let df=-1;df<=1;df++){
-      for(let dr=-1;dr<=1;dr++){
-        if(!df && !dr) continue;
-        const f=sf+df, r=sr+dr;
-        if(inB(f,r) && S.board[idx(f,r)]===kChar) return true;
-      }
-    }
-
-    // sliders
-    const rookLike = new Set([byColor==="w"?"R":"r", byColor==="w"?"Q":"q"]);
-    const bishopLike = new Set([byColor==="w"?"B":"b", byColor==="w"?"Q":"q"]);
-
-    const ortho=[[1,0],[-1,0],[0,1],[0,-1]];
-    for(const [df,dr] of ortho){
-      let f=sf+df, r=sr+dr;
-      while(inB(f,r)){
-        const p=S.board[idx(f,r)];
-        if(p){ if(rookLike.has(p)) return true; break; }
-        f+=df; r+=dr;
-      }
-    }
-
-    const diag=[[1,1],[1,-1],[-1,1],[-1,-1]];
-    for(const [df,dr] of diag){
-      let f=sf+df, r=sr+dr;
-      while(inB(f,r)){
-        const p=S.board[idx(f,r)];
-        if(p){ if(bishopLike.has(p)) return true; break; }
-        f+=df; r+=dr;
-      }
-    }
-
-    return false;
-  }
-
-  function genPseudo(fromIdx, forAttack=false){
-    const p=S.board[fromIdx];
-    if(!p) return [];
-    const t=pt(p);
-    const color=isW(p)?"w":"b";
-    const [f,r]=FR(fromIdx);
-    const out=[];
-    const dir = (color==="w") ? 1 : -1;
-
-    const push=(nf,nr)=>{
-      if(!inB(nf,nr)) return;
-      const to=idx(nf,nr);
-      const occ=S.board[to];
-      if(!occ || isW(occ)!==isW(p)) out.push(to);
-    };
-
-    if(t==="p"){
-      if(forAttack){
-        for(const df of [-1,1]){
-          const nf=f+df, nr=r+dir;
-          if(inB(nf,nr)) out.push(idx(nf,nr));
-        }
-        return out;
-      }
-
-      // forward
-      const r1=r+dir;
-      if(inB(f,r1)){
-        const to1=idx(f,r1);
-        if(!S.board[to1]){
-          out.push(to1);
-          // double from start
-          const startRank=(color==="w")?1:6;
-          if(r===startRank){
-            const r2=r+2*dir;
-            const to2=idx(f,r2);
-            if(inB(f,r2) && !S.board[to2]) out.push(to2);
-          }
-        }
-      }
-
-      // captures and ep
-      for(const df of [-1,1]){
-        const nf=f+df, nr=r+dir;
-        if(!inB(nf,nr)) continue;
-        const to=idx(nf,nr);
-        const occ=S.board[to];
-        if(occ && (isW(occ)!==isW(p))) out.push(to);
-        else if(S.ep!=null && to===S.ep) out.push(to);
-      }
-      return out;
-    }
-
-    if(t==="n"){
-      const D=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
-      for(const [df,dr] of D) push(f+df,r+dr);
-      return out;
-    }
-
-    if(t==="k"){
-      for(let df=-1;df<=1;df++){
-        for(let dr=-1;dr<=1;dr++){
-          if(!df && !dr) continue;
-          push(f+df,r+dr);
-        }
-      }
-      if(!forAttack){
-        const homeRank = (color==="w") ? 0 : 7;
-        const kingHome = idx(4,homeRank);
-        if(fromIdx===kingHome && !attacked(kingHome, other(color))){
-          // king-side
-          if((color==="w")?S.castling.K:S.castling.k){
-            const f1=idx(5,homeRank), g1=idx(6,homeRank);
-            if(!S.board[f1] && !S.board[g1] && !attacked(f1, other(color)) && !attacked(g1, other(color))) out.push(g1);
-          }
-          // queen-side
-          if((color==="w")?S.castling.Q:S.castling.q){
-            const d1=idx(3,homeRank), c1=idx(2,homeRank), b1=idx(1,homeRank);
-            if(!S.board[d1] && !S.board[c1] && !S.board[b1] && !attacked(d1, other(color)) && !attacked(c1, other(color))) out.push(c1);
-          }
-        }
-      }
-      return out;
-    }
-
-    const sliders = {
-      b:[[1,1],[1,-1],[-1,1],[-1,-1]],
-      r:[[1,0],[-1,0],[0,1],[0,-1]],
-      q:[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]],
-    }[t];
-
-    for(const [df,dr] of sliders){
-      let nf=f+df, nr=r+dr;
-      while(inB(nf,nr)){
-        const to=idx(nf,nr);
-        const occ=S.board[to];
-        if(occ){ if(isW(occ)!==isW(p)) out.push(to); break; }
-        out.push(to);
-        nf+=df; nr+=dr;
-      }
-    }
-    return out;
-  }
-
-  function snapshot(){
-    return {
-      board:S.board.slice(),
-      side:S.side,
-      castling:{...S.castling},
-      ep:S.ep,
-      halfmove:S.halfmove,
-      fullmove:S.fullmove
-    };
-  }
-  function restore(snap){
-    S.board = snap.board.slice();
-    S.side = snap.side;
-    S.castling = {...snap.castling};
-    S.ep = snap.ep;
-    S.halfmove = snap.halfmove;
-    S.fullmove = snap.fullmove;
-  }
-
-  function applyMoveRaw(fromIdx,toIdx,promoLetter /* "Q" etc or null */){
-    const p=S.board[fromIdx];
-    const t=pt(p);
-    const color=isW(p)?"w":"b";
-    const their=other(color);
-
-    let capturedPiece = S.board[toIdx];
-    let epCapture=false;
-    let castle=false;
-    let rookMove=null;
-
-    // en passant capture
-    if(t==="p" && S.ep!=null && toIdx===S.ep && !S.board[toIdx]){
-      const [tf,tr]=FR(toIdx);
-      const capSq = idx(tf, tr + (color==="w" ? -1 : 1));
-      capturedPiece = S.board[capSq];
-      S.board[capSq]=null;
-      epCapture=true;
-    }
-
-    // castling rook move
-    if(t==="k"){
-      const [ff,fr]=FR(fromIdx);
-      const [tf,tr]=FR(toIdx);
-      if(fr===tr && Math.abs(tf-ff)===2){
-        castle=true;
-        if(tf===6){
-          const rookFrom=idx(7,fr), rookTo=idx(5,fr);
-          S.board[rookTo]=S.board[rookFrom];
-          S.board[rookFrom]=null;
-          rookMove={from:rookFrom,to:rookTo};
-        }else if(tf===2){
-          const rookFrom=idx(0,fr), rookTo=idx(3,fr);
-          S.board[rookTo]=S.board[rookFrom];
-          S.board[rookFrom]=null;
-          rookMove={from:rookFrom,to:rookTo};
-        }
-      }
-    }
-
-    // move piece
-    S.board[toIdx]=S.board[fromIdx];
-    S.board[fromIdx]=null;
-
-    // promotion
-    let promoApplied=null;
-    if(t==="p"){
-      const [,tr]=FR(toIdx);
-      const last=(color==="w")?7:0;
-      if(tr===last){
-        const want = promoLetter || "Q";
-        promoApplied=want;
-        S.board[toIdx] = (color==="w") ? want : want.toLowerCase();
-      }
-    }
-
-    // update castling rights
-    if(p==="K"){ S.castling.K=false; S.castling.Q=false; }
-    if(p==="k"){ S.castling.k=false; S.castling.q=false; }
-    if(p==="R"){
-      if(fromIdx===idx(0,0)) S.castling.Q=false;
-      if(fromIdx===idx(7,0)) S.castling.K=false;
-    }
-    if(p==="r"){
-      if(fromIdx===idx(0,7)) S.castling.q=false;
-      if(fromIdx===idx(7,7)) S.castling.k=false;
-    }
-    if(capturedPiece){
-      if(toIdx===idx(0,0)) S.castling.Q=false;
-      if(toIdx===idx(7,0)) S.castling.K=false;
-      if(toIdx===idx(0,7)) S.castling.q=false;
-      if(toIdx===idx(7,7)) S.castling.k=false;
-    }
-
-    // en passant target
-    let newEp=null;
-    if(t==="p"){
-      const [ff,fr]=FR(fromIdx);
-      const [tf,tr]=FR(toIdx);
-      if(ff===tf && Math.abs(tr-fr)===2) newEp = idx(tf, (fr+tr)/2);
-    }
-    S.ep=newEp;
-
-    // clocks
-    S.halfmove = (t==="p" || capturedPiece) ? 0 : (S.halfmove+1);
-    S.side=their;
-    if(S.side==="w") S.fullmove++;
-
-    return {piece:p, captured:capturedPiece, promo:promoApplied, epCapture, castle, rookMove};
-  }
-
-  function legalMovesFrom(fromIdx){
-    const p=S.board[fromIdx];
-    if(!p) return [];
-    const color=isW(p)?"w":"b";
-    if(color!==S.side) return [];
-    const pseudo=genPseudo(fromIdx,false);
-    const res=[];
-    for(const toIdx of pseudo){
-      const snap=snapshot();
-      applyMoveRaw(fromIdx,toIdx,null);
-      const k=kingIndex(color);
-      const ok=(k>=0)&&!attacked(k, other(color));
-      restore(snap);
-      if(ok) res.push(toIdx);
-    }
-    return res;
-  }
-
-  function allLegalMoves(color){
-    const out=[];
-    for(let i=0;i<64;i++){
-      const p=S.board[i];
-      if(!p) continue;
-      if((isW(p)?"w":"b")!==color) continue;
-      const tos=legalMovesFrom(i);
-      for(const to of tos) out.push({from:i,to});
-    }
-    return out;
-  }
-
-  function isInCheck(color){
-    const k=kingIndex(color);
-    if(k<0) return false;
-    return attacked(k, other(color));
-  }
-
-  function gameStatus(){
-    const color=S.side;
-    const moves=allLegalMoves(color);
-    const inCheck=isInCheck(color);
-    if(moves.length===0){
-      if(inCheck) return {type:"mate", text:(color==="w"?"White":"Black")+" is checkmated"};
-      return {type:"stalemate", text:"Stalemate"};
-    }
-    if(S.halfmove>=100) return {type:"50move", text:"50-move rule claimable"};
-    if(inCheck) return {type:"check", text:(color==="w"?"White":"Black")+" is in check"};
-    return {type:"ok", text:""};
-  }
-
-  /* =========================
-     SAN generation (minimal)
-  ========================== */
-  function pieceLetter(p){ // returns SAN piece letter or ""
-    const t=pt(p);
-    if(t==="p") return "";
-    return t.toUpperCase();
-  }
-
-  function disambiguation(fromIdx,toIdx,p){
-    const t=pt(p);
-    if(t==="p" || t==="k") return "";
-
-    const color=isW(p)?"w":"b";
-    // find other same-type pieces that can also go to toIdx
-    const others=[];
-    for(let i=0;i<64;i++){
-      if(i===fromIdx) continue;
-      const q=S.board[i];
-      if(!q) continue;
-      if(q!==p) continue; // same exact letter (so same color/type)
-      const tos=legalMovesFrom(i);
-      if(tos.includes(toIdx)) others.push(i);
-    }
-    if(others.length===0) return "";
-
-    const [ff,fr]=FR(fromIdx);
-    let needFile=false, needRank=false;
-
-    // if any other shares same file, file alone not enough
-    // if any other shares same rank, rank alone not enough
-    const shareFile = others.some(i=>FR(i)[0]===ff);
-    const shareRank = others.some(i=>FR(i)[1]===fr);
-
-    if(!shareFile) needFile=true;
-    else if(!shareRank) needRank=true;
-    else { needFile=true; needRank=true; }
-
-    let s="";
-    if(needFile) s+=files[ff];
-    if(needRank) s+=(fr+1);
-    return s;
-  }
-
-  function moveToSAN(fromIdx,toIdx, moveInfoBeforeFinalize){
-    // moveInfoBeforeFinalize: {piece,captured,epCapture,castle,promo} from applyMoveRaw result
-    const p = moveInfoBeforeFinalize.piece;
-    const t = pt(p);
-    const color=isW(p)?"w":"b";
-
-    // Castling
-    if(moveInfoBeforeFinalize.castle){
-      const [ff,]=FR(fromIdx); const [tf,]=FR(toIdx);
-      return (tf>ff) ? "O-O" : "O-O-O";
-    }
-
-    const cap = !!moveInfoBeforeFinalize.captured || moveInfoBeforeFinalize.epCapture;
-    let san="";
-
-    if(t==="p"){
-      if(cap){
-        const [ff,]=FR(fromIdx);
-        san += files[ff] + "x" + sqName(toIdx);
+    _squareCenter(sq){
+      let f = sq.charCodeAt(0)-97;
+      let r = (+sq[1])-1;
+      if(!this.game.ui.flipped){
+        return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
       }else{
-        san += sqName(toIdx);
+        return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
       }
-      if(moveInfoBeforeFinalize.promo){
-        san += "=" + moveInfoBeforeFinalize.promo.toUpperCase();
+    }
+
+    _ensureDefs(){
+      let defs = this.overlay.querySelector("defs");
+      if(!defs){
+        defs=document.createElementNS("http://www.w3.org/2000/svg","defs");
+        this.overlay.appendChild(defs);
       }
-    }else{
-      san += pieceLetter(p);
-      san += disambiguation(fromIdx,toIdx,p);
-      if(cap) san += "x";
-      san += sqName(toIdx);
+      for(const c of ["R","B","Y","G"]){
+        if(defs.querySelector("#arrowHead_"+c)) continue;
+        const marker=document.createElementNS("http://www.w3.org/2000/svg","marker");
+        marker.setAttribute("id","arrowHead_"+c);
+        marker.setAttribute("markerWidth","5");
+        marker.setAttribute("markerHeight","5");
+        marker.setAttribute("refX","4.6");
+        marker.setAttribute("refY","2.5");
+        marker.setAttribute("orient","auto");
+        marker.setAttribute("markerUnits","userSpaceOnUse");
+
+        const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+        path.setAttribute("d","M0,0 L5,2.5 L0,5 L1.2,2.5 Z");
+        path.setAttribute("fill", cssColor(c));
+        marker.appendChild(path);
+        defs.appendChild(marker);
+      }
     }
 
-    // check / mate suffix requires position after move (already applied)
-    const their=other(color);
-    const inCheck=isInCheck(their);
-    if(inCheck){
-      const theirMoves=allLegalMoves(their);
-      san += (theirMoves.length===0) ? "#" : "+";
-    }
-    return san;
-  }
-
-  /* =========================
-     Promotion modal
-  ========================== */
-  function showPromotion(color, cb){
-    promoRow.innerHTML="";
-    const letters=["Q","R","B","N"];
-    for(const L of letters){
-      const btn=document.createElement("button");
-      btn.className="promoBtn";
-      btn.textContent = (color==="w") ? L : L.toLowerCase();
-      btn.onclick=()=>{
-        promoModal.style.display="none";
-        cb(L);
-      };
-      promoRow.appendChild(btn);
-    }
-    promoModal.style.display="flex";
-  }
-
-  /* =========================
-     Applying a legal move (UI)
-  ========================== */
-  function doMove(fromSq,toSq){
-    const fromIdx=parseSq(fromSq);
-    const toIdx=parseSq(toSq);
-    const p=S.board[fromIdx];
-    if(!p) return;
-
-    // must be legal
-    const legal=legalMovesFrom(fromIdx);
-    if(!legal.includes(toIdx)) return;
-
-    const color=isW(p)?"w":"b";
-    const snapBefore = snapshot();
-    const fenBefore = exportFEN();
-
-    // promotion check pre-move (need rank)
-    const t=pt(p);
-    let needsPromo=false;
-    if(t==="p"){
-      const [,tr]=FR(toIdx);
-      needsPromo = (color==="w") ? (tr===7) : (tr===0);
+    _drawSquareMark(sq,c){
+      const {x,y}=this._squareCenter(sq);
+      const size=12.5;
+      const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
+      rect.setAttribute("x", x-size/2);
+      rect.setAttribute("y", y-size/2);
+      rect.setAttribute("width", size);
+      rect.setAttribute("height", size);
+      rect.setAttribute("fill", cssColor(c));
+      rect.setAttribute("opacity", (c==="Y")?"0.45":"0.55");
+      rect.setAttribute("shape-rendering","crispEdges");
+      this.overlay.appendChild(rect);
     }
 
-    const finalize = (promoLetterOrNull)=>{
-      // restore to ensure we apply once cleanly
-      restore(snapBefore);
+    _drawArrow(from,to,c){
+      const a=this._squareCenter(from), b=this._squareCenter(to);
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const len=Math.hypot(dx,dy) || 1;
+      const ux=dx/len, uy=dy/len;
+      const shrink=4.6;
 
-      const moveInfo = applyMoveRaw(fromIdx,toIdx,promoLetterOrNull);
+      const line=document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1", a.x);
+      line.setAttribute("y1", a.y);
+      line.setAttribute("x2", b.x-ux*shrink);
+      line.setAttribute("y2", b.y-uy*shrink);
+      line.setAttribute("stroke", cssColor(c));
+      line.setAttribute("stroke-width", "0.34");
+      line.setAttribute("stroke-linecap", "round");
+      line.setAttribute("opacity", "0.92");
+      line.setAttribute("marker-end", "url(#arrowHead_"+c+")");
+      this.overlay.appendChild(line);
+    }
 
-      // SAN needs post-move position, so now compute san
-      const san = moveToSAN(fromIdx,toIdx,moveInfo);
+    _redrawOverlay(){
+      this.overlay.innerHTML="";
+      this._ensureDefs();
 
-      // trim history if we were midline and made a new move
-      if(S.ply < S.history.length){
-        S.history = S.history.slice(0, S.ply);
-        // also clear marks beyond
-        for(const k of [...S.marksByPly.keys()]){
-          if(k > S.ply) S.marksByPly.delete(k);
+      const m = this.game.curNode.marks;
+      for(const [sq,c] of m.sqMarks.entries()) this._drawSquareMark(sq,c);
+      for(const ar of m.arrows) this._drawArrow(ar.from, ar.to, ar.color);
+
+      if(this.game.ui.mode==="arrows" && this.arrowDrag?.fromSq && this.arrowDrag?.toSq && this.arrowDrag.fromSq!==this.arrowDrag.toSq){
+        this._drawArrow(this.arrowDrag.fromSq, this.arrowDrag.toSq, this.game.ui.pig);
+      }
+    }
+
+    _xyForSquare(sq){
+      const f = sq.charCodeAt(0)-97;
+      const r = (+sq[1])-1;
+      // percentages: x = file*12.5, y = (7-rank)*12.5 (unflipped)
+      if(!this.game.ui.flipped){
+        return {x: f*12.5, y: (7-r)*12.5};
+      }else{
+        return {x: (7-f)*12.5, y: r*12.5};
+      }
+    }
+
+    _getOrCreatePieceEl(piece){
+      let el=this.pieceEls.get(piece.id);
+      if(el) return el;
+
+      el=document.createElement("div");
+      el.className="piece";
+      el.dataset.pid = piece.id;
+      el.style.transition = "left 140ms ease, top 140ms ease";
+      const img=document.createElement("img");
+      img.alt = pieceCode(piece);
+      img.src = pieceSrc(pieceCode(piece));
+      el.appendChild(img);
+
+      // piece pointerdown for dragging
+      el.addEventListener("pointerdown", (e)=>this._onPiecePointerDown(e, piece.id), {passive:false});
+
+      this.piecesLayer.appendChild(el);
+      this.pieceEls.set(piece.id, el);
+      return el;
+    }
+
+    _removePieceEl(id){
+      const el=this.pieceEls.get(id);
+      if(el){
+        el.remove();
+        this.pieceEls.delete(id);
+      }
+    }
+
+    _setPieceElPos(el, sq, animate=true){
+      const {x,y}=this._xyForSquare(sq);
+      if(!animate) el.style.transition = "none";
+      else el.style.transition = "left 140ms ease, top 140ms ease";
+      el.style.left = `${x}%`;
+      el.style.top  = `${y}%`;
+      if(!animate){
+        // force reflow, then re-enable transitions
+        void el.offsetHeight;
+        el.style.transition = "left 140ms ease, top 140ms ease";
+      }
+    }
+
+    render(){
+      // miniboard
+      this.el.classList.toggle("mini", !!this.game.ui.mini);
+
+      // squares mapping + labels + color
+      const flipped=this.game.ui.flipped;
+      const selFrom=this.game.sel.fromSq;
+      const legalToSet=new Set(this.game.sel.legalTo || []);
+      for(let ui=0; ui<64; ui++){
+        const bi = flipped ? (63-ui) : ui;
+        const sqStr = sqName(bi);
+        const sqEl = this.grid.children[ui];
+        sqEl.dataset.sq = sqStr;
+
+        // light/dark based on board index (not UI index)
+        const isDark = ((bi + Math.floor(bi/8))%2)===1;
+        sqEl.classList.toggle("dark", isDark);
+
+        // label: coordinate (also satisfies "number the squares")
+        const label = sqEl.firstChild;
+        label.textContent = sqStr;
+        label.classList.toggle("flip", flipped);
+
+        // clear ring/dot
+        sqEl.querySelectorAll(".selRing,.dot").forEach(n=>n.remove());
+        if(selFrom===sqStr){
+          const ring=document.createElement("div");
+          ring.className="selRing";
+          sqEl.appendChild(ring);
+        }
+        if(legalToSet.has(sqStr)){
+          const dot=document.createElement("div");
+          dot.className="dot";
+          sqEl.appendChild(dot);
         }
       }
 
-      // move made: increment ply and store
-      // marks are associated with ply AFTER the move; keep current marks at ply as-is (for commentary at that ply).
-      S.history.push({
-        fenBefore,
-        snapBefore,
-        from:fromSq, to:toSq,
-        moveInfo,
-        san,
-      });
-      S.ply = S.history.length;
-
-      // after move, clear selection
-      S.tapSelected=null; S.legalTo=[];
-      redrawAll();
-    };
-
-    if(needsPromo){
-      showPromotion(color, (L)=>finalize(L));
-    }else{
-      finalize(null);
-    }
-  }
-
-  function undo(){
-    if(S.history.length===0) return;
-    const last = S.history.pop();
-    restore(last.snapBefore);
-    S.ply = S.history.length;
-    S.tapSelected=null; S.legalTo=[];
-    redrawAll();
-  }
-
-  function gotoPly(ply){
-    ply=Math.max(0, Math.min(ply, S.history.length));
-    // restore initial from first history's snapBefore chain:
-    // easiest: reload from earliest snapBefore + reapply moves up to ply.
-    // But we stored snapBefore for each move; to go to ply N, restore snapBefore of move N (or initial if 0) then apply N moves? expensive.
-    // We'll rebuild from the starting position of ply0: use snapBefore of first move if exists, else current.
-    // So we store initial snapshot separately at load/reset.
-    const base = S.initialSnap;
-    restore(base);
-
-    for(let i=0;i<ply;i++){
-      const h=S.history[i];
-      // apply raw from squares at that time; we can replay using SAN is hard,
-      // but we have from/to in history.
-      const fromIdx=parseSq(h.from), toIdx=parseSq(h.to);
-      applyMoveRaw(fromIdx,toIdx, h.moveInfo?.promo ? h.moveInfo.promo.toUpperCase() : null);
-    }
-    S.ply = ply;
-    S.tapSelected=null; S.legalTo=[];
-    redrawAll();
-  }
-
-  /* =========================
-     PGN export/import
-  ========================== */
-  function buildMarksComment(ply){
-    const m = marksForPly(ply);
-    const csl=[];
-    for(const [sq,c] of m.sqMarks.entries()){
-      csl.push(c + sq);
-    }
-    const cal=[];
-    for(const a of m.arrows){
-      cal.push(a.color + a.from + a.to);
-    }
-    let out=[];
-    if(csl.length) out.push(`[%csl ${csl.join(",")}]`);
-    if(cal.length) out.push(`[%cal ${cal.join(",")}]`);
-    if(!out.length) return "";
-    return "{ " + out.join(" ") + " }";
-  }
-
-  function exportPGN(){
-    const tags = [
-      ["Event", tagEvent.value || ""],
-      ["Site",  tagSite.value  || ""],
-      ["Date",  tagDate.value  || ""],
-      ["Round", "1"],
-      ["White", tagWhite.value || ""],
-      ["Black", tagBlack.value || ""],
-      ["Result", tagResult.value || "*"],
-    ];
-
-    let pgn = tags.map(([k,v])=>`[${k} "${v.replaceAll('"','\\"')}"]`).join("\n") + "\n\n";
-
-    // moves with optional marks comments at each ply (including ply0 pre-move)
-    // Convention: put ply0 marks right after tags before movetext.
-    const pre = buildMarksComment(0);
-    if(pre) pgn += pre + "\n";
-
-    let moveNum=1;
-    for(let i=0;i<S.history.length;i++){
-      if(i%2===0) pgn += moveNum++ + ". ";
-      pgn += S.history[i].san + " ";
-      const cm = buildMarksComment(i+1);
-      if(cm) pgn += cm + " ";
-    }
-
-    pgn += (tagResult.value || "*");
-    return pgn.trim();
-  }
-
-  function parsePGNMainline(pgnText){
-    // Extremely pragmatic:
-    // - parse tag pairs
-    // - strip comments except keep [%csl]/[%cal]
-    // - strip variations ( ... ) entirely
-    // - tokenize SAN moves
-    const text = pgnText.replace(/\r/g,"");
-
-    // tags
-    const tagRe=/^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
-    const tags={};
-    let m;
-    while((m=tagRe.exec(text))!==null){
-      tags[m[1]]=m[2];
-    }
-    if(tags.Event!=null) tagEvent.value=tags.Event;
-    if(tags.Site!=null) tagSite.value=tags.Site;
-    if(tags.Date!=null) tagDate.value=tags.Date;
-    if(tags.White!=null) tagWhite.value=tags.White;
-    if(tags.Black!=null) tagBlack.value=tags.Black;
-    if(tags.Result!=null) tagResult.value=tags.Result;
-
-    // remove variations
-    let t = text;
-    // crude but effective nested removal
-    while(/\([^()]*\)/.test(t)) t = t.replace(/\([^()]*\)/g, " ");
-
-    // extract and preserve csl/cal comments by converting to markers in stream
-    // We'll turn "{ [%csl ...] [%cal ...] }" into tokens like "__CMT__[%csl ...]|[%cal ...]"
-    const comments=[];
-    t = t.replace(/\{([^}]*)\}/g, (_,inner)=>{
-      const keep = [];
-      const csl = inner.match(/\[%csl\s+([^\]]+)\]/);
-      const cal = inner.match(/\[%cal\s+([^\]]+)\]/);
-      if(csl) keep.push("%csl "+csl[1].trim());
-      if(cal) keep.push("%cal "+cal[1].trim());
-      if(!keep.length) return " ";
-      comments.push(keep.join(" | "));
-      return ` __CMT_${comments.length-1}__ `;
-    });
-
-    // remove NAGs
-    t = t.replace(/\$\d+/g," ");
-
-    // keep movetext after tags
-    t = t.replace(/^\s*\[[^\]]*\]\s*$/gm," ");
-    // remove move numbers like "12." or "12..."
-    t = t.replace(/\b\d+\.(\.\.)?/g," ");
-    // normalize
-    t = t.replace(/\s+/g," ").trim();
-
-    const tokens = t.length ? t.split(" ") : [];
-
-    return {tokens, comments};
-  }
-
-  function sanToMove(san){
-    // Returns {fromIdx,toIdx,promoLetterOrNull} by searching legal moves that match SAN.
-    // Handles: O-O, O-O-O, captures, checks, mates, promotions, disambiguation.
-    const clean = san.replace(/[+#]$/g,"").trim();
-    if(clean === "O-O" || clean === "0-0"){
-      const homeRank = (S.side==="w")?0:7;
-      return {from:idx(4,homeRank), to:idx(6,homeRank), promo:null};
-    }
-    if(clean === "O-O-O" || clean === "0-0-0"){
-      const homeRank = (S.side==="w")?0:7;
-      return {from:idx(4,homeRank), to:idx(2,homeRank), promo:null};
-    }
-
-    // promotion
-    let promo=null;
-    const promoM = clean.match(/=([QRBN])/);
-    if(promoM) promo=promoM[1];
-    const core = clean.replace(/=([QRBN])/,"");
-
-    // Determine piece type
-    let pieceType="p";
-    let rest=core;
-    const first=core[0];
-    if("KQRBN".includes(first)){
-      pieceType=first.toLowerCase();
-      rest=core.slice(1);
-    }
-
-    // capture?
-    const isCap = rest.includes("x");
-    rest = rest.replace("x","");
-
-    // destination square is last 2 chars
-    const dest = rest.slice(-2);
-    if(!/^[a-h][1-8]$/.test(dest)) return null;
-    const toIdx = parseSq(dest);
-
-    // disambiguation (may be file, rank, or both) is whatever remains before dest
-    const dis = rest.slice(0, -2);
-
-    let disFile=null, disRank=null;
-    if(dis.length===1){
-      if(/[a-h]/.test(dis)) disFile = dis;
-      else if(/[1-8]/.test(dis)) disRank = +dis;
-    }else if(dis.length===2){
-      if(/[a-h]/.test(dis[0]) && /[1-8]/.test(dis[1])){
-        disFile=dis[0]; disRank=+dis[1];
+      // pieces: place existing, create missing, remove captured
+      const liveIds=new Set();
+      for(let i=0;i<64;i++){
+        const p=this.game.state.board[i];
+        if(!p) continue;
+        liveIds.add(p.id);
+        const el=this._getOrCreatePieceEl(p);
+        // if currently dragging this piece, don't snap it (ghost handles)
+        if(this.drag && this.drag.pieceId===p.id) continue;
+        this._setPieceElPos(el, sqName(i), true);
+        el.style.display="block";
       }
-    }else if(dis.length>0){
-      // pawn capture SAN like "exd5": for pawn, dis is file of from
-      if(pieceType==="p" && /^[a-h]$/.test(dis)) disFile=dis;
-    }
-
-    // find matching legal moves
-    const color=S.side;
-    const wantPieces = [];
-    for(let i=0;i<64;i++){
-      const p=S.board[i];
-      if(!p) continue;
-      if((isW(p)?"w":"b")!==color) continue;
-      if(pt(p)!==pieceType) continue;
-
-      if(disFile!=null){
-        const [f,]=FR(i);
-        if(files[f]!==disFile) continue;
-      }
-      if(disRank!=null){
-        const [,r]=FR(i);
-        if((r+1)!==disRank) continue;
+      for(const [id, el] of this.pieceEls.entries()){
+        if(!liveIds.has(id)){
+          this._removePieceEl(id);
+        }
       }
 
-      const tos=legalMovesFrom(i);
-      if(tos.includes(toIdx)) wantPieces.push(i);
+      // promotion pending: show modal via event (UI code handles)
+      this._redrawOverlay();
     }
 
-    if(wantPieces.length!==1) return null;
-    return {from:wantPieces[0], to:toIdx, promo};
-  }
+    _onPiecePointerDown(e, pieceId){
+      e.preventDefault(); e.stopPropagation();
+      if(this.game.ui.mode!=="moves") return;
 
-  function applyPGN(pgnText){
-    const parsed = parsePGNMainline(pgnText);
-    const {tokens, comments} = parsed;
+      const S=this.game.state;
+      const fromSq = this._squareFromEvent(e);
+      const fromIdx=parseSq(fromSq);
+      const p=S.board[fromIdx];
+      if(!p || p.id!==pieceId) return;
 
-    // start from current position (usually initial); reset history and marks.
-    const baseFen = exportFEN(); // keep current as base unless PGN provides FEN tag (we'll support it)
-    const {tokens:tok2, comments:com2} = parsed;
+      if(!this.game.ui.setup){
+        // only move side-to-move
+        if(p.color!==S.side) return;
 
-    // handle FEN tag if present
-    // (common: [FEN "..."] [SetUp "1"])
-    const fenTagMatch = pgnText.match(/^\s*\[FEN\s+"([^"]+)"\]\s*$/m);
-    if(fenTagMatch){
-      loadFEN(fenTagMatch[1]);
-    }else{
-      // reset to initial
-      loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        // compute legal dots
+        this.game.sel.fromSq = fromSq;
+        this.game.sel.legalTo = this.game._legalMovesFrom(fromIdx).map(i=>sqName(i));
+        this.game._emit();
+      }
+
+      this.drag = {pieceId, fromSq, pointerId:e.pointerId};
+
+      // ghost
+      this.ghost.innerHTML = "";
+      const img=document.createElement("img");
+      img.src = pieceSrc(pieceCode(p));
+      img.alt = pieceCode(p);
+      this.ghost.appendChild(img);
+      this.ghost.style.left = e.clientX+"px";
+      this.ghost.style.top  = e.clientY+"px";
+      this.ghost.style.display="block";
+
+      // hide the actual piece while dragging
+      const el=this.pieceEls.get(pieceId);
+      if(el) el.style.display="none";
+
+      window.addEventListener("pointermove", this._onPointerMove, {passive:false});
+      window.addEventListener("pointerup", this._onPointerUp, {passive:false});
+      window.addEventListener("pointercancel", this._onPointerCancel, {passive:false});
+      this.el.setPointerCapture(e.pointerId);
     }
 
-    // Now parse and play tokens
-    // Comments tokens for marks apply at current ply at the moment encountered.
-    for(const tok of tok2){
-      if(/^(__CMT_\d+__)$/i.test(tok)){
-        const id = +tok.match(/__CMT_(\d+)__/i)[1];
-        const payload = com2[id] || "";
-        // payload like "%csl Re4,Gd5 | %cal Re2e4,Gg1f3"
-        const parts = payload.split("|").map(s=>s.trim());
-        const m = curMarks();
-        for(const part of parts){
-          if(part.startsWith("%csl ")){
-            const list = part.slice(5).split(",").map(s=>s.trim()).filter(Boolean);
-            for(const it of list){
-              const c = it[0];
-              const sq = it.slice(1);
-              if(/^[RBYG]$/.test(c) && /^[a-h][1-8]$/.test(sq)){
-                m.sqMarks.set(sq,c);
-              }
-            }
-          }else if(part.startsWith("%cal ")){
-            const list = part.slice(5).split(",").map(s=>s.trim()).filter(Boolean);
-            for(const it of list){
-              const c = it[0];
-              const from = it.slice(1,3);
-              const to   = it.slice(3,5);
-              if(/^[RBYG]$/.test(c) && /^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)){
-                const key = `${c}:${from}-${to}`;
-                const j = m.arrows.findIndex(a=>`${a.color}:${a.from}-${a.to}`===key);
-                if(j<0) m.arrows.push({from,to,color:c});
-              }
-            }
+    _onSquarePointerDown(ev, sqEl){
+      ev.preventDefault(); ev.stopPropagation();
+      const sq = sqEl.dataset.sq;
+
+      // Setup placement by tapping square
+      if(this.game.ui.setup && this.game.ui.mode==="moves"){
+        // place selected setup piece
+        const chosen = window._setupSelected || "wP"; // code or "EMPTY"
+        const i=parseSq(sq);
+        if(chosen==="EMPTY"){
+          this.game.state.board[i]=null;
+        }else{
+          const color = chosen[0]==="w" ? "w":"b";
+          const map = {P:"p",N:"n",B:"b",R:"r",Q:"q",K:"k"};
+          const type = map[chosen[1]];
+          this.game.state.board[i] = { id:String(_pieceIdSeq++), color, type };
+        }
+        this.game._emit();
+        return;
+      }
+
+      if(this.game.ui.mode==="squares"){
+        const m=this.game.curNode.marks;
+        const cur=m.sqMarks.get(sq);
+        if(cur===this.game.ui.pig) m.sqMarks.delete(sq);
+        else m.sqMarks.set(sq, this.game.ui.pig);
+        this.game._emit();
+        return;
+      }
+
+      if(this.game.ui.mode==="arrows"){
+        this.arrowDrag = {fromSq:sq, toSq:sq, pointerId:ev.pointerId};
+        window.addEventListener("pointermove", this._onArrowMove, {passive:false});
+        window.addEventListener("pointerup", this._onArrowUp, {passive:false});
+        window.addEventListener("pointercancel", this._onArrowCancel, {passive:false});
+        this.el.setPointerCapture(ev.pointerId);
+        this._redrawOverlay();
+        return;
+      }
+
+      // MOVES tap-to-move (no drag)
+      if(this.game.ui.mode==="moves" && !this.game.ui.setup && !this.drag){
+        const p=this.game.state.board[parseSq(sq)];
+        if(this.game.sel.fromSq){
+          const from=this.game.sel.fromSq;
+          if(from===sq){
+            this.game.sel.fromSq=null; this.game.sel.legalTo=[];
+            this.game._emit();
+            return;
+          }
+          const uci = from + sq;
+          const ok=this.game.makeMoveUCI(uci);
+          if(ok==="PROMO"){
+            // view will prompt
+          }
+          this.game.sel.fromSq=null; this.game.sel.legalTo=[];
+          this.game._emit();
+          return;
+        }else{
+          if(p && p.color===this.game.state.side){
+            this.game.sel.fromSq=sq;
+            this.game.sel.legalTo=this.game._legalMovesFrom(parseSq(sq)).map(i=>sqName(i));
+            this.game._emit();
           }
         }
-        continue;
       }
-
-      if(tok==="1-0"||tok==="0-1"||tok==="1/2-1/2"||tok==="*"){
-        tagResult.value=tok;
-        continue;
-      }
-
-      const mv = sanToMove(tok);
-      if(!mv){
-        // stop on first unparseable token
-        break;
-      }
-
-      // apply move (including promo)
-      const fromIdx=mv.from, toIdx=mv.to;
-      const fromSq=sqName(fromIdx), toSq=sqName(toIdx);
-      const p=S.board[fromIdx];
-      const t=pt(p);
-      const color=isW(p)?"w":"b";
-
-      const snapBefore=snapshot();
-      const fenBefore=exportFEN();
-
-      // apply raw with promo if any
-      const moveInfo = applyMoveRaw(fromIdx,toIdx,mv.promo);
-
-      // compute san from our engine’s view (might differ slightly in notation, acceptable)
-      const san = moveToSAN(fromIdx,toIdx,moveInfo);
-
-      S.history.push({fenBefore,snapBefore,from:fromSq,to:toSq,moveInfo,san});
-      S.ply = S.history.length;
     }
 
-    // store initial snapshot for navigation
-    S.initialSnap = snapshot();
-    S.tapSelected=null; S.legalTo=[];
-    redrawAll();
+    _wirePointer(){
+      this._onPointerMove = (e)=>{
+        if(!this.drag) return;
+        if(e.pointerId!==this.drag.pointerId) return;
+        e.preventDefault();
+        this.ghost.style.left = e.clientX+"px";
+        this.ghost.style.top  = e.clientY+"px";
+      };
+
+      this._onPointerUp = (e)=>{
+        if(!this.drag) return;
+        if(e.pointerId!==this.drag.pointerId) return;
+        e.preventDefault();
+
+        const br=this.el.getBoundingClientRect();
+        const inside = e.clientX>=br.left && e.clientX<=br.right && e.clientY>=br.top && e.clientY<=br.bottom;
+        const dropSq = inside ? this._squareFromEvent(e) : null;
+
+        const fromSq=this.drag.fromSq;
+        const pid=this.drag.pieceId;
+
+        // show actual piece again
+        const pel=this.pieceEls.get(pid);
+        if(pel) pel.style.display="block";
+        this.ghost.style.display="none";
+        this.drag=null;
+
+        if(!dropSq){ this.game._emit(); return; }
+
+        if(this.game.ui.setup){
+          // free move in setup
+          const fromIdx=parseSq(fromSq), toIdx=parseSq(dropSq);
+          this.game.state.board[toIdx]=this.game.state.board[fromIdx];
+          this.game.state.board[fromIdx]=null;
+          this.game._emit();
+          return;
+        }
+
+        const ok=this.game.makeMoveUCI(fromSq + dropSq);
+        if(ok==="PROMO"){
+          // view will prompt
+        }
+        this.game._emit();
+      };
+
+      this._onPointerCancel = (e)=>{
+        if(!this.drag) return;
+        if(e.pointerId!==this.drag.pointerId) return;
+        e.preventDefault();
+        const pid=this.drag.pieceId;
+        const pel=this.pieceEls.get(pid);
+        if(pel) pel.style.display="block";
+        this.ghost.style.display="none";
+        this.drag=null;
+        this.game._emit();
+      };
+
+      this._onArrowMove = (e)=>{
+        if(!this.arrowDrag) return;
+        if(e.pointerId!==this.arrowDrag.pointerId) return;
+        e.preventDefault();
+        this.arrowDrag.toSq = this._squareFromEvent(e);
+        this._redrawOverlay();
+      };
+
+      this._onArrowUp = (e)=>{
+        if(!this.arrowDrag) return;
+        if(e.pointerId!==this.arrowDrag.pointerId) return;
+        e.preventDefault();
+        const from=this.arrowDrag.fromSq;
+        const to=this.arrowDrag.toSq;
+        if(from && to && from!==to){
+          const m=this.game.curNode.marks;
+          const key=`${this.game.ui.pig}:${from}-${to}`;
+          const j=m.arrows.findIndex(a=>`${a.color}:${a.from}-${a.to}`===key);
+          if(j>=0) m.arrows.splice(j,1);
+          else m.arrows.push({from,to,color:this.game.ui.pig});
+        }
+        this.arrowDrag=null;
+        this.game._emit();
+        window.removeEventListener("pointermove", this._onArrowMove);
+        window.removeEventListener("pointerup", this._onArrowUp);
+        window.removeEventListener("pointercancel", this._onArrowCancel);
+      };
+
+      this._onArrowCancel = (e)=>{
+        if(!this.arrowDrag) return;
+        if(e.pointerId!==this.arrowDrag.pointerId) return;
+        e.preventDefault();
+        this.arrowDrag=null;
+        this.game._emit();
+        window.removeEventListener("pointermove", this._onArrowMove);
+        window.removeEventListener("pointerup", this._onArrowUp);
+        window.removeEventListener("pointercancel", this._onArrowCancel);
+      };
+    }
   }
 
-  /* =========================
-     UI: setup + palette
-  ========================== */
+  function attachBoardView(boardEl, game, opts){ return new BoardView(boardEl, game, opts); }
+
+  /* ============================================================
+     UI wiring (buttons/inputs exercise the API)
+  ============================================================ */
+  const boardShell = document.getElementById("boardShell");
+  // --- Keep board as the LARGEST POSSIBLE SQUARE inside its enclosing div ---
+  const boardAreaEl = document.getElementById("boardArea");
+  function fitBoardToContainer(){
+    if(game.ui.mini){
+      boardShell.style.width = "115px";
+      boardShell.style.height = "115px";
+      return;
+    }
+    // available size = smallest of enclosing box (minus padding already applied outside)
+    const r = boardAreaEl.getBoundingClientRect();
+    const size = Math.max(115, Math.floor(Math.min(r.width, r.height)));
+    boardShell.style.width = size + "px";
+    boardShell.style.height = size + "px";
+  }
+  const ro = new ResizeObserver(()=>{ fitBoardToContainer(); });
+  ro.observe(boardAreaEl);
+  window.addEventListener("orientationchange", ()=>setTimeout(fitBoardToContainer, 50));
+
+  const overlayEl  = document.getElementById("overlay");
+  const gridEl     = document.getElementById("boardGrid");
+  const piecesLayerEl = document.getElementById("piecesLayer");
+
+  const fenBox  = document.getElementById("fenBox");
+  const pgnBox  = document.getElementById("pgnBox");
+  const dumpBox = document.getElementById("dumpBox");
+
+  const turnPill  = document.getElementById("turnPill");
+  const statusLine= document.getElementById("statusLine");
+  const movesLine = document.getElementById("movesLine");
+
+  const setupCard = document.getElementById("setupCard");
+  const paletteEl = document.getElementById("palette");
+  const selPieceLabel = document.getElementById("selPieceLabel");
+
+  const promoModal = document.getElementById("promoModal");
+  const promoRow   = document.getElementById("promoRow");
+
+  const ctxMenu = document.getElementById("ctxMenu");
+  const ctxPromote = document.getElementById("ctxPromote");
+  const ctxDelete = document.getElementById("ctxDelete");
+  const ctxCancel = document.getElementById("ctxCancel");
+  let ctxTargetNode = null;
+
+  const tagEvent = document.getElementById("tagEvent");
+  const tagSite  = document.getElementById("tagSite");
+  const tagDate  = document.getElementById("tagDate");
+  const tagWhite = document.getElementById("tagWhite");
+  const tagBlack = document.getElementById("tagBlack");
+  const tagResult= document.getElementById("tagResult");
+
+  const game = createGame();
+  const view = attachBoardView(boardShell, game, {overlayEl, gridEl, piecesLayerEl});
+
+  // Expose public surface
+  window.ChessAPI = { Game, createGame, attachBoardView, game };
+
+  function closeCtx(){ ctxMenu.style.display="none"; ctxTargetNode=null; }
+
+  function showCtx(x,y,node){
+    ctxTargetNode=node;
+    ctxMenu.style.left = x+"px";
+    ctxMenu.style.top  = y+"px";
+    ctxMenu.style.display="block";
+  }
+
   function buildPalette(){
     paletteEl.innerHTML="";
-    const pieces=["K","Q","R","B","N","P","k","q","r","b","n","p","·"];
-    for(const p of pieces){
+    const pieces=["wK","wQ","wR","wB","wN","wP","bK","bQ","bR","bB","bN","bP","EMPTY"];
+    for(const code of pieces){
       const b=document.createElement("button");
-      b.className="palBtn"+(p===S.setupPiece?" active":"");
-      b.textContent=p;
+      b.className="palBtn"+(code===window._setupSelected?" active":"")+(code==="EMPTY"?" empty":"");
+      b.title = code;
+      if(code==="EMPTY"){
+        b.textContent="·";
+      }else{
+        const img=document.createElement("img");
+        img.src=pieceSrc(code);
+        img.alt=code;
+        b.appendChild(img);
+      }
       b.onclick=()=>{
-        S.setupPiece=p;
-        selPieceLabel.textContent=p;
+        window._setupSelected=code;
+        selPieceLabel.textContent=code;
         buildPalette();
       };
       paletteEl.appendChild(b);
     }
   }
+  window._setupSelected="wP";
 
-  function toggleSetup(){
-    S.setup=!S.setup;
-    document.getElementById("btnSetup").textContent = "Setup: " + (S.setup ? "ON" : "OFF");
-    setupCard.style.display = S.setup ? "block" : "none";
-    if(S.setup) buildPalette();
-    // clear selection/drag
-    S.tapSelected=null; S.legalTo=[];
-    S.drag=null; ghost.style.display="none";
-    redrawAll();
-  }
+  function refreshUI(){
+    fitBoardToContainer();
+    // turn + status
+    turnPill.textContent = (game.state.side==="w" ? "White to move" : "Black to move");
+    const st=game.getStatus();
+    statusLine.textContent = st.text || "";
 
-  /* =========================
-     Rendering board
-  ========================== */
-  function getPieceAt(sq){ return S.board[parseSq(sq)]; }
-  function setPieceAt(sq,p){ S.board[parseSq(sq)] = p; }
+    // setup and mini
+    document.getElementById("btnSetup").textContent = "Setup: " + (game.ui.setup ? "ON":"OFF");
+    setupCard.style.display = game.ui.setup ? "block":"none";
+    if(game.ui.setup) buildPalette();
 
-  function beginDragPiece(fromSq, piece, pointerId, x, y){
-    S.drag = {fromSq, piece, pointerId};
-    ghost.textContent = piece;
-    ghost.style.left = x+"px";
-    ghost.style.top  = y+"px";
-    ghost.style.display="block";
-  }
-  function updateGhost(x,y){
-    ghost.style.left=x+"px"; ghost.style.top=y+"px";
-  }
-  function endDragPiece(dropSq){
-    if(!S.drag) return;
-    const {fromSq} = S.drag;
+    document.getElementById("btnMini").textContent = "Miniboard: " + (game.ui.mini ? "ON":"OFF");
 
-    // if dropped off-board: cancel
-    if(!dropSq){
-      S.drag=null; ghost.style.display="none";
-      redrawAll();
-      return;
-    }
+    // mode buttons
+    document.getElementById("mMoves").classList.toggle("active", game.ui.mode==="moves");
+    document.getElementById("mArrows").classList.toggle("active", game.ui.mode==="arrows");
+    document.getElementById("mSquares").classList.toggle("active", game.ui.mode==="squares");
 
-    // in setup, drag acts like place piece (free move)
-    if(S.setup){
-      setPieceAt(dropSq, S.drag.piece);
-      setPieceAt(fromSq, null);
-      S.drag=null; ghost.style.display="none";
-      redrawAll();
-      return;
-    }
-
-    // normal play: must be legal if moving side piece
-    doMove(fromSq, dropSq);
-    S.drag=null; ghost.style.display="none";
-    redrawAll();
-  }
-
-  function render(){
-    // keep overlay node
-    const keep = overlay;
-    boardEl.innerHTML="";
-    boardEl.appendChild(keep);
-
-    for(let ui=0; ui<64; ui++){
-      const bi = S.flipped ? (63-ui) : ui;
-      const sqStr = sqName(bi);
-      const sq=document.createElement("div");
-      sq.className="sq " + (((bi + Math.floor(bi/8))%2) ? "dark" : "light");
-      sq.dataset.sq=sqStr;
-
-      // selection ring + legal dots
-      if(S.tapSelected === sqStr){
-        const ring=document.createElement("div");
-        ring.className="selRing";
-        sq.appendChild(ring);
-      }
-      if(S.legalTo.includes(sqStr)){
-        const dot=document.createElement("div");
-        dot.className="dot";
-        sq.appendChild(dot);
-      }
-
-      const piece=getPieceAt(sqStr);
-      if(piece){
-        const el=document.createElement("div");
-        el.className="piece";
-        el.textContent=piece;
-
-        el.addEventListener("pointerdown", (e)=>{
-          e.preventDefault(); e.stopPropagation();
-
-          if(S.mode!=="moves") return;
-
-          // setup: drag freely
-          if(S.setup){
-            beginDragPiece(sqStr, piece, e.pointerId, e.clientX, e.clientY);
-            boardEl.setPointerCapture(e.pointerId);
-            return;
-          }
-
-          // normal: only side-to-move can be moved
-          if((isW(piece)?"w":"b") !== S.side) return;
-
-          // tap selection updates legal dots
-          S.tapSelected = sqStr;
-          S.legalTo = legalMovesFrom(parseSq(sqStr)).map(i=>sqName(i));
-
-          beginDragPiece(sqStr, piece, e.pointerId, e.clientX, e.clientY);
-          boardEl.setPointerCapture(e.pointerId);
-          redrawAll();
-        }, {passive:false});
-
-        sq.appendChild(el);
-      }
-
-      // square interactions
-      sq.addEventListener("pointerdown", (e)=>{
-        e.preventDefault(); e.stopPropagation();
-        const sqS=sq.dataset.sq;
-
-        // Setup placement by tapping square
-        if(S.setup && S.mode==="moves"){
-          const p = S.setupPiece;
-          setPieceAt(sqS, (p==="·")?null:p);
-          redrawAll();
-          return;
-        }
-
-        if(S.mode==="squares"){
-          const m=curMarks();
-          const cur=m.sqMarks.get(sqS);
-          if(cur===S.pig) m.sqMarks.delete(sqS);
-          else m.sqMarks.set(sqS, S.pig);
-          redrawAll();
-          return;
-        }
-
-        if(S.mode==="arrows"){
-          S.arrowDrag = {fromSq:sqS, toSq:sqS, pointerId:e.pointerId};
-          boardEl.setPointerCapture(e.pointerId);
-          redrawAll();
-          return;
-        }
-
-        // MOVES tap-to-move if not dragging
-        if(S.mode==="moves" && !S.drag && !S.setup){
-          const p=getPieceAt(sqS);
-
-          if(S.tapSelected){
-            const from=S.tapSelected;
-            if(from===sqS){
-              S.tapSelected=null; S.legalTo=[];
-              redrawAll();
-              return;
-            }
-            // try move
-            doMove(from, sqS);
-            S.tapSelected=null; S.legalTo=[];
-            redrawAll();
-            return;
-          }else{
-            if(p && (isW(p)?"w":"b")===S.side){
-              S.tapSelected=sqS;
-              S.legalTo = legalMovesFrom(parseSq(sqS)).map(i=>sqName(i));
-              redrawAll();
-            }
-          }
-        }
-      }, {passive:false});
-
-      boardEl.appendChild(sq);
-    }
-
-    redrawOverlay();
-  }
-
-  /* =========================
-     Global pointer handlers
-  ========================== */
-  function onPointerMove(e){
-    if(S.drag && e.pointerId===S.drag.pointerId){
-      e.preventDefault();
-      updateGhost(e.clientX,e.clientY);
-      return;
-    }
-    if(S.arrowDrag && e.pointerId===S.arrowDrag.pointerId){
-      e.preventDefault();
-      const toSq=eventToSquare(e);
-      S.arrowDrag.toSq=toSq;
-      redrawOverlay();
-    }
-  }
-
-  function onPointerUp(e){
-    if(S.drag && e.pointerId===S.drag.pointerId){
-      e.preventDefault();
-      const br=boardEl.getBoundingClientRect();
-      const inside = e.clientX>=br.left && e.clientX<=br.right && e.clientY>=br.top && e.clientY<=br.bottom;
-      const dropSq = inside ? eventToSquare(e) : null;
-      endDragPiece(dropSq);
-      return;
-    }
-    if(S.arrowDrag && e.pointerId===S.arrowDrag.pointerId){
-      e.preventDefault();
-      const from=S.arrowDrag.fromSq;
-      const to=S.arrowDrag.toSq;
-      if(from && to && from!==to){
-        const m=curMarks();
-        const key=`${S.pig}:${from}-${to}`;
-        const j=m.arrows.findIndex(a=>`${a.color}:${a.from}-${a.to}`===key);
-        if(j>=0) m.arrows.splice(j,1);
-        else m.arrows.push({from,to,color:S.pig});
-      }
-      S.arrowDrag=null;
-      redrawAll();
-    }
-  }
-
-  function onPointerCancel(e){
-    if(S.drag && e.pointerId===S.drag.pointerId){
-      S.drag=null; ghost.style.display="none";
-      redrawAll();
-    }
-    if(S.arrowDrag && e.pointerId===S.arrowDrag.pointerId){
-      S.arrowDrag=null;
-      redrawAll();
-    }
-  }
-
-  /* =========================
-     UI helpers
-  ========================== */
-  function setMode(m){
-    S.mode=m;
-    document.getElementById("mMoves").classList.toggle("active", m==="moves");
-    document.getElementById("mArrows").classList.toggle("active", m==="arrows");
-    document.getElementById("mSquares").classList.toggle("active", m==="squares");
-    S.arrowDrag=null;
-    redrawAll();
-  }
-
-  function setPig(p){
-    S.pig=p;
+    // pigments
     for(const k of ["R","B","Y","G"]){
-      document.getElementById("p"+k).classList.toggle("active", k===p);
+      document.getElementById("p"+k).classList.toggle("active", game.ui.pig===k);
     }
-    redrawAll();
-  }
 
-  function updateTurnUI(){
-    turnPill.textContent = (S.side==="w" ? "White to move" : "Black to move");
-    const st=gameStatus();
-    statusLine.textContent = st.text ? st.text : "";
-  }
+    // tags -> model
+    game.tags.Event = tagEvent.value || "";
+    game.tags.Site  = tagSite.value || "";
+    game.tags.Date  = tagDate.value || "";
+    game.tags.White = tagWhite.value || "";
+    game.tags.Black = tagBlack.value || "";
+    game.tags.Result= tagResult.value || "*";
 
-  function redrawAll(){
-    updateTurnUI();
-    fenBox.value = exportFEN();
-    // keep pgn box “live” but don’t clobber if user is editing a long PGN:
-    // only refresh if it exactly equals last export or empty.
+    // fen box
+    fenBox.value = game.exportFEN();
+
+    // PGN box: live update if not actively editing divergent text
+    const expPGN = game.exportPGN();
     const cur = pgnBox.value.trim();
-    if(cur==="" || cur === (S._lastExportPGN||"")){
-      const exp = exportPGN();
-      S._lastExportPGN = exp;
-      pgnBox.value = exp;
+    if(cur==="" || cur === (game._lastExportPGN||"")){
+      game._lastExportPGN = expPGN;
+      pgnBox.value = expPGN;
     }
-    render();
-    redrawOverlay();
+
+    // move tokens (mainline for now, clickable)
+    movesLine.innerHTML="";
+    // build path to current, and mainline tokens
+    const pathSet = new Set(game.getPathToCurrent().map(n=>n));
+    // walk mainline
+    let node=game.root;
+    let ply=0;
+    let moveNum=1;
+    let side="w";
+    while(node.children.length){
+      const main=node.children[node.mainChildIndex] || node.children[0];
+      // move number
+      if(side==="w"){
+        const num=document.createElement("span");
+        num.textContent=moveNum+".";
+        num.style.color="rgba(255,255,255,.55)";
+        num.style.marginRight="4px";
+        movesLine.appendChild(num);
+      }
+      const tok=document.createElement("span");
+      tok.className="mvTok" + ((main===game.curNode) ? " current":"");
+      tok.textContent=main.san;
+      tok.onpointerdown=(e)=>{
+        // left click: jump to this token by rewinding then replaying mainline to it
+        e.preventDefault();
+        // rewind to root
+        while(game.curNode!==game.root) game.prevMove();
+        // replay to this node
+        let cur=game.root;
+        while(cur.children.length){
+          const child=cur.children[cur.mainChildIndex] || cur.children[0];
+          game.nextMove();
+          if(child===main) break;
+          cur=child;
+        }
+      };
+
+      // right click / long press context menu
+      let pressTimer=null;
+      const open=(x,y)=>showCtx(x,y,main);
+      tok.addEventListener("contextmenu",(e)=>{ e.preventDefault(); open(e.clientX,e.clientY); }, {passive:false});
+      tok.addEventListener("pointerdown",(e)=>{
+        if(e.button===2) return;
+        pressTimer=setTimeout(()=>open(e.clientX,e.clientY), 520);
+      }, {passive:true});
+      tok.addEventListener("pointerup",()=>{ if(pressTimer) clearTimeout(pressTimer); pressTimer=null; });
+      tok.addEventListener("pointercancel",()=>{ if(pressTimer) clearTimeout(pressTimer); pressTimer=null; });
+
+      movesLine.appendChild(tok);
+      movesLine.appendChild(document.createTextNode(" "));
+
+      ply++;
+      side = other(side);
+      if(side==="w") moveNum++;
+      node=main;
+    }
+
+    // promotion modal
+    if(game._pendingPromotion){
+      promoRow.innerHTML="";
+      const color = game.state.board[game._pendingPromotion.fromIdx]?.color || "w";
+      const letters=["Q","R","B","N"];
+      for(const L of letters){
+        const btn=document.createElement("button");
+        btn.className="promoBtn";
+        const code = (color==="w" ? "w" : "b") + L;
+        const img=document.createElement("img");
+        img.src=pieceSrc(code);
+        img.alt=code;
+        btn.appendChild(img);
+        btn.onclick=()=>{
+          promoModal.style.display="none";
+          game.resolvePendingPromotion(L);
+        };
+        promoRow.appendChild(btn);
+      }
+      promoModal.style.display="flex";
+    }else{
+      promoModal.style.display="none";
+    }
   }
 
-  /* =========================
-     Dump
-  ========================== */
-  function dump(){
-    const m=curMarks();
+  // initial tags
+  tagEvent.value = game.tags.Event;
+  tagSite.value  = game.tags.Site;
+  tagDate.value  = game.tags.Date;
+  tagWhite.value = game.tags.White;
+  tagBlack.value = game.tags.Black;
+  tagResult.value= game.tags.Result;
+
+  game.onChange(refreshUI);
+  refreshUI();
+
+  // Buttons exercise API
+  document.getElementById("mMoves").onclick=()=>game.setMode("moves");
+  document.getElementById("mArrows").onclick=()=>game.setMode("arrows");
+  document.getElementById("mSquares").onclick=()=>game.setMode("squares");
+
+  document.getElementById("pR").onclick=()=>game.setPigment("R");
+  document.getElementById("pB").onclick=()=>game.setPigment("B");
+  document.getElementById("pY").onclick=()=>game.setPigment("Y");
+  document.getElementById("pG").onclick=()=>game.setPigment("G");
+
+  document.getElementById("btnSetup").onclick=()=>game.toggleSetup();
+  document.getElementById("btnFlip").onclick=()=>game.toggleFlip();
+  document.getElementById("btnMini").onclick=()=>game.toggleMini();
+
+  document.getElementById("btnClearMarks").onclick=()=>game.clearMarks();
+  document.getElementById("btnReset").onclick=()=>game.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+  document.getElementById("btnExportFEN").onclick=()=>{ fenBox.value=game.exportFEN(); };
+  document.getElementById("btnLoadFEN").onclick=()=>{ game.loadFEN(fenBox.value); };
+
+  document.getElementById("btnExportPGN").onclick=()=>{
+    const exp=game.exportPGN();
+    game._lastExportPGN = exp;
+    pgnBox.value=exp;
+  };
+  document.getElementById("btnLoadPGN").onclick=()=>{
+    game.loadPGN(pgnBox.value);
+    const exp=game.exportPGN();
+    game._lastExportPGN = exp;
+    pgnBox.value=exp;
+  };
+
+  document.getElementById("btnPrev").onclick=()=>game.prevMove();
+  document.getElementById("btnNext").onclick=()=>game.nextMove();
+  document.getElementById("btnUndo").onclick=()=>game.undoMove();
+
+  document.getElementById("btnDump").onclick=()=>{
+    const m=game.curNode.marks;
     const sqs=[...m.sqMarks.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
     const ars=m.arrows.slice().sort((a,b)=>(a.from+a.to+a.color).localeCompare(b.from+b.to+b.color));
-    let out=`Ply: ${S.ply}/${S.history.length}\nSide: ${S.side}\n\nSquares:\n`;
+    let out=`Node ply: ${game.curNode.ply}\nSide: ${game.state.side}\nFEN: ${game.exportFEN()}\n\nSquares:\n`;
     for(const [sq,c] of sqs) out+=`  ${sq} ${c}\n`;
     out+="\nArrows:\n";
     for(const a of ars) out+=`  ${a.from}${a.to} ${a.color}\n`;
     dumpBox.value=out.trim();
-  }
-
-  /* =========================
-     Wire buttons
-  ========================== */
-  document.getElementById("mMoves").onclick=()=>setMode("moves");
-  document.getElementById("mArrows").onclick=()=>setMode("arrows");
-  document.getElementById("mSquares").onclick=()=>setMode("squares");
-
-  document.getElementById("pR").onclick=()=>setPig("R");
-  document.getElementById("pB").onclick=()=>setPig("B");
-  document.getElementById("pY").onclick=()=>setPig("Y");
-  document.getElementById("pG").onclick=()=>setPig("G");
-
-  document.getElementById("btnSetup").onclick=toggleSetup;
-  document.getElementById("btnFlip").onclick=()=>{ S.flipped=!S.flipped; redrawAll(); };
-  document.getElementById("btnClearMarks").onclick=()=>{
-    const m=curMarks();
-    m.sqMarks.clear();
-    m.arrows.length=0;
-    S.arrowDrag=null;
-    redrawAll();
-  };
-  document.getElementById("btnReset").onclick=()=>{
-    loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
   };
 
-  document.getElementById("btnExportFEN").onclick=()=>{ fenBox.value=exportFEN(); };
-  document.getElementById("btnLoadFEN").onclick=()=>{
-    loadFEN(fenBox.value);
-  };
-
-  document.getElementById("btnExportPGN").onclick=()=>{
-    const exp=exportPGN();
-    S._lastExportPGN = exp;
-    pgnBox.value=exp;
-  };
-  document.getElementById("btnLoadPGN").onclick=()=>{
-    applyPGN(pgnBox.value);
-    // update export snapshot
-    const exp=exportPGN();
-    S._lastExportPGN = exp;
-    pgnBox.value=exp;
-  };
-
-  document.getElementById("btnDump").onclick=dump;
-
-  document.getElementById("btnUndo").onclick=undo;
-  document.getElementById("btnPrev").onclick=()=>gotoPly(S.ply-1);
-  document.getElementById("btnNext").onclick=()=>gotoPly(S.ply+1);
-
-  // prevent context menu
-  document.addEventListener("contextmenu", e=>e.preventDefault(), {passive:false});
-
-  // global pointer
-  window.addEventListener("pointermove", onPointerMove, {passive:false});
-  window.addEventListener("pointerup", onPointerUp, {passive:false});
-  window.addEventListener("pointercancel", onPointerCancel, {passive:false});
-
-  // resize
-  const onResize=()=>resizeBoard();
-  window.addEventListener("resize", onResize);
-  if(window.visualViewport){
-    window.visualViewport.addEventListener("resize", onResize);
-    window.visualViewport.addEventListener("scroll", onResize);
-  }
-
-  // capture tag edits into PGN refresh
+  // tag edits update pgn live
   for(const el of [tagEvent,tagSite,tagDate,tagWhite,tagBlack,tagResult]){
-    el.addEventListener("input", ()=>{ S._lastExportPGN = exportPGN(); pgnBox.value=S._lastExportPGN; });
-    el.addEventListener("change", ()=>{ S._lastExportPGN = exportPGN(); pgnBox.value=S._lastExportPGN; });
+    el.addEventListener("input", ()=>game._emit());
+    el.addEventListener("change", ()=>game._emit());
   }
 
-  /* =========================
-     Boot
-  ========================== */
-  function init(){
-    // initial snap for navigation
-    loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    S.initialSnap = snapshot();
-    setMode("moves");
-    setPig("R");
-    resizeBoard();
-    redrawAll();
-    requestAnimationFrame(resizeBoard);
-  }
-  init();
+  // context menu actions
+  ctxPromote.onclick=()=>{
+    closeCtx();
+    if(!ctxTargetNode) return;
+    // jump to that node first (rewind + replay mainline to it)
+    while(game.curNode!==game.root) game.prevMove();
+    let cur=game.root;
+    while(cur.children.length){
+      const child=cur.children[cur.mainChildIndex] || cur.children[0];
+      game.nextMove();
+      if(child===ctxTargetNode) break;
+      cur=child;
+    }
+    game.promoteVariationFromHere();
+  };
+  ctxDelete.onclick=()=>{
+    closeCtx();
+    if(!ctxTargetNode) return;
+    // jump to that node then delete from here
+    while(game.curNode!==game.root) game.prevMove();
+    let cur=game.root;
+    while(cur.children.length){
+      const child=cur.children[cur.mainChildIndex] || cur.children[0];
+      game.nextMove();
+      if(child===ctxTargetNode) break;
+      cur=child;
+    }
+    game.deleteMoveFromHere();
+  };
+  ctxCancel.onclick=closeCtx;
+  window.addEventListener("pointerdown",(e)=>{
+    if(ctxMenu.style.display==="block"){
+      const r=ctxMenu.getBoundingClientRect();
+      const inside = e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom;
+      if(!inside) closeCtx();
+    }
+  });
+
+  // prevent default context menu globally (we use our own)
+  document.addEventListener("contextmenu", e=>e.preventDefault(), {passive:false});
 
 })();
 </script>
