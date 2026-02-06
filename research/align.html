@@ -68,7 +68,7 @@
   .boardArea{
     position:relative; flex:1 1 auto; min-height:0;
     width:100%; height:100%;
-    padding:10px; display:grid; place-items:center; overflow:hidden;
+    padding:16px; display:grid; place-items:center; overflow:hidden;
   }
 
   /* Board shell: always square, min 115px (also used by miniboard) */
@@ -102,16 +102,19 @@
     display:block;
   }
   .sq.dark{ background:var(--dark); }
-  .sqLabel{
-    position:absolute; left:4px; top:3px;
-    font-size:10px; color:rgba(0,0,0,.42);
+  .labRank,.labFile{
+    position:absolute;
+    font-size:10px;
+    color:rgba(0,0,0,.40);
     mix-blend-mode:multiply;
     pointer-events:none;
     z-index:1;
+    font-weight:600;
+    letter-spacing:.2px;
   }
-  .sqLabel.flip{
-    left:auto; right:4px;
-  }
+  .labRank{ left:4px; top:3px; }
+  .labFile{ right:4px; bottom:3px; }
+  .isDark .labRank,.isDark .labFile{ color:rgba(0,0,0,.36); }
 
   /* legal dot layer per-square (still under pieces) */
   .dot{
@@ -275,7 +278,8 @@
         <button id="btnSetup">Setup: OFF</button>
         <button id="btnFlip">Flip</button>
         <button id="btnClearMarks">Clear Marks</button>
-        <button id="btnReset">Reset</button>
+        <button id="btnInit">Initial</button>
+        <button id="btnClear">Clear</button>
       </div>
     </div>
 
@@ -631,7 +635,69 @@
       return `${out} ${S.side} ${cs} ${ep} ${S.halfmove} ${S.fullmove}`;
     }
 
+    // --- Board state helpers (API) ---
+    clearBoard(){
+      // Blank board, neutral counters, no castling, white to move.
+      this.state.board = Array(64).fill(null);
+      this.state.side = "w";
+      this.state.castling = {K:false,Q:false,k:false,q:false};
+      this.state.ep = null;
+      this.state.halfmove = 0;
+      this.state.fullmove = 1;
+
+      // reset tree + marks
+      this.root = makeNode(null);
+      this.root.ply = 0;
+      this.root.marks = { sqMarks:new Map(), arrows:[] };
+      this.curNode = this.root;
+
+      this.initialSnap = snapshotFrom(this.state);
+      this.sel.fromSq=null; this.sel.legalTo=[];
+      this._pendingPromotion = null;
+      this._emit();
+    }
+
+    initializePosition(){
+      this.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    }
+
+    gotoNode(target){
+      // Jump to any existing node (including variations) without modifying the tree.
+      if(!target) return false;
+      // build path from root -> target
+      const path=[];
+      let n=target;
+      while(n && n!==this.root){
+        path.push(n);
+        n=n.parent;
+      }
+      if(n!==this.root) return false;
+      path.reverse();
+
+      // restore to initial root snapshot
+      restoreInto(this.state, this.initialSnap);
+      this.curNode = this.root;
+
+      // replay along path
+      for(const node of path){
+        restoreInto(this.state, node.snapBefore);
+        const fromIdx=parseSq(node.uci.slice(0,2));
+        const toIdx=parseSq(node.uci.slice(2,4));
+        const promo = node.uci.length>=5 ? node.uci[4].toUpperCase() : null;
+        this._applyMoveRaw(fromIdx,toIdx,promo||null);
+        this.curNode = node;
+      }
+
+      this.sel.fromSq=null; this.sel.legalTo=[];
+      this._pendingPromotion = null;
+      this._emit();
+      return true;
+    }
+
     /* -------------------------
+       Marks (on current node)
+    -------------------------- */
+/* -------------------------
        Marks (on current node)
     -------------------------- */
     _curMarks(){ return this.curNode.marks; }
@@ -1548,9 +1614,12 @@
         sq.className="sq";
         sq.dataset.ui = String(ui);
         sq.dataset.sq = ""; // set in render via flip mapping
-        const label=document.createElement("span");
-        label.className="sqLabel";
-        sq.appendChild(label);
+        const labRank=document.createElement("span");
+        labRank.className="labRank";
+        const labFile=document.createElement("span");
+        labFile.className="labFile";
+        sq.appendChild(labRank);
+        sq.appendChild(labFile);
 
         sq.addEventListener("pointerdown", (e)=>this._onSquarePointerDown(e, sq), {passive:false});
         this.grid.appendChild(sq);
@@ -1724,10 +1793,21 @@
         const isDark = ((bi + Math.floor(bi/8))%2)===1;
         sqEl.classList.toggle("dark", isDark);
 
-        // label: coordinate (also satisfies "number the squares")
-        const label = sqEl.firstChild;
-        label.textContent = sqStr;
-        label.classList.toggle("flip", flipped);
+        // labels (Priyome-style): rank numbers on a-file, file letters on 1st rank.
+        const labRank = sqEl.querySelector('.labRank');
+        const labFile = sqEl.querySelector('.labFile');
+        // mark dark for label tone
+        sqEl.classList.toggle('isDark', isDark);
+        if(this.game.ui.mini){
+          labRank.textContent = "";
+          labFile.textContent = "";
+        }else{
+          const file = sqStr[0];
+          const rank = sqStr[1];
+          // When flipped, the 'left edge' is h-file visually; still show chess coordinates, just mirrored.
+          labRank.textContent = (file === (flipped ? 'h' : 'a')) ? rank : "";
+          labFile.textContent = (rank === (flipped ? '8' : '1')) ? file : "";
+        }
 
         // clear ring/dot
         sqEl.querySelectorAll(".selRing,.dot").forEach(n=>n.remove());
@@ -1753,6 +1833,8 @@
         // if currently dragging this piece, don't snap it (ghost handles)
         if(this.drag && this.drag.pieceId===p.id) continue;
         this._setPieceElPos(el, sqName(i), true);
+        // In ARROWS/SQUARES mode, let clicks reach the underlying squares even if a piece is on top.
+        el.style.pointerEvents = (this.game.ui.mode==="moves") ? "auto" : "none";
         el.style.display="block";
       }
       for(const [id, el] of this.pieceEls.entries()){
@@ -2112,46 +2194,23 @@
       pgnBox.value = expPGN;
     }
 
-    // move tokens (mainline for now, clickable)
+    // move tokens (with variations). Click token to jump; right-click/long-press for actions.
     movesLine.innerHTML="";
-    // build path to current, and mainline tokens
-    const pathSet = new Set(game.getPathToCurrent().map(n=>n));
-    // walk mainline
-    let node=game.root;
-    let ply=0;
-    let moveNum=1;
-    let side="w";
-    while(node.children.length){
-      const main=node.children[node.mainChildIndex] || node.children[0];
-      // move number
-      if(side==="w"){
-        const num=document.createElement("span");
-        num.textContent=moveNum+".";
-        num.style.color="rgba(255,255,255,.55)";
-        num.style.marginRight="4px";
-        movesLine.appendChild(num);
-      }
+
+    const makeTok = (node, text)=>{
       const tok=document.createElement("span");
-      tok.className="mvTok" + ((main===game.curNode) ? " current":"");
-      tok.textContent=main.san;
+      tok.className="mvTok" + ((node===game.curNode) ? " current":"");
+      tok.textContent=text;
       tok.onpointerdown=(e)=>{
-        // left click: jump to this token by rewinding then replaying mainline to it
+        // left click/tap: jump to that node
+        if(e.button===2) return;
         e.preventDefault();
-        // rewind to root
-        while(game.curNode!==game.root) game.prevMove();
-        // replay to this node
-        let cur=game.root;
-        while(cur.children.length){
-          const child=cur.children[cur.mainChildIndex] || cur.children[0];
-          game.nextMove();
-          if(child===main) break;
-          cur=child;
-        }
+        game.gotoNode(node);
       };
 
-      // right click / long press context menu
+      // context menu
       let pressTimer=null;
-      const open=(x,y)=>showCtx(x,y,main);
+      const open=(x,y)=>showCtx(x,y,node);
       tok.addEventListener("contextmenu",(e)=>{ e.preventDefault(); open(e.clientX,e.clientY); }, {passive:false});
       tok.addEventListener("pointerdown",(e)=>{
         if(e.button===2) return;
@@ -2159,15 +2218,54 @@
       }, {passive:true});
       tok.addEventListener("pointerup",()=>{ if(pressTimer) clearTimeout(pressTimer); pressTimer=null; });
       tok.addEventListener("pointercancel",()=>{ if(pressTimer) clearTimeout(pressTimer); pressTimer=null; });
+      return tok;
+    };
 
-      movesLine.appendChild(tok);
+    const renderFrom = (posNode, moveNum, side)=>{
+      // posNode is a position; its children are moves.
+      if(!posNode.children.length) return;
+      const main = posNode.children[posNode.mainChildIndex] || posNode.children[0];
+
+      // move number prefix
+      if(side==="w"){
+        const num=document.createElement("span");
+        num.textContent = moveNum + ".";
+        num.style.color="rgba(255,255,255,.55)";
+        num.style.marginRight="4px";
+        movesLine.appendChild(num);
+      }else if(side==="b" && posNode===game.root){
+        const num=document.createElement("span");
+        num.textContent = moveNum + "...";
+        num.style.color="rgba(255,255,255,.55)";
+        num.style.marginRight="4px";
+        movesLine.appendChild(num);
+      }
+
+      movesLine.appendChild(makeTok(main, main.san));
       movesLine.appendChild(document.createTextNode(" "));
 
-      ply++;
-      side = other(side);
-      if(side==="w") moveNum++;
-      node=main;
-    }
+      // variations
+      for(const ch of posNode.children){
+        if(ch===main) continue;
+        movesLine.appendChild(document.createTextNode("("));
+        // variation move number prefix
+        const num=document.createElement("span");
+        num.textContent = (side==="w") ? (moveNum+".") : (moveNum+"...");
+        num.style.color="rgba(255,255,255,.55)";
+        num.style.margin="0 4px";
+        movesLine.appendChild(num);
+        movesLine.appendChild(makeTok(ch, ch.san));
+        movesLine.appendChild(document.createTextNode(" "));
+        renderFrom(ch, side==="w" ? moveNum : (moveNum+1), side==="w" ? "b" : "w");
+        movesLine.appendChild(document.createTextNode(") "));
+      }
+
+      // continue mainline
+      renderFrom(main, side==="w" ? moveNum : (moveNum+1), side==="w" ? "b" : "w");
+    };
+
+    renderFrom(game.root, 1, "w");
+    
 
     // promotion modal
     if(game._pendingPromotion){
@@ -2220,7 +2318,8 @@
   document.getElementById("btnMini").onclick=()=>game.toggleMini();
 
   document.getElementById("btnClearMarks").onclick=()=>game.clearMarks();
-  document.getElementById("btnReset").onclick=()=>game.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  document.getElementById("btnInit").onclick=()=>game.initializePosition();
+  document.getElementById("btnClear").onclick=()=>game.clearBoard();
 
   document.getElementById("btnExportFEN").onclick=()=>{ fenBox.value=game.exportFEN(); };
   document.getElementById("btnLoadFEN").onclick=()=>{ game.loadFEN(fenBox.value); };
@@ -2262,29 +2361,17 @@
   ctxPromote.onclick=()=>{
     closeCtx();
     if(!ctxTargetNode) return;
-    // jump to that node first (rewind + replay mainline to it)
-    while(game.curNode!==game.root) game.prevMove();
-    let cur=game.root;
-    while(cur.children.length){
-      const child=cur.children[cur.mainChildIndex] || cur.children[0];
-      game.nextMove();
-      if(child===ctxTargetNode) break;
-      cur=child;
-    }
+    closeCtx();
+    if(!ctxTargetNode) return;
+    game.gotoNode(ctxTargetNode);
     game.promoteVariationFromHere();
   };
   ctxDelete.onclick=()=>{
     closeCtx();
     if(!ctxTargetNode) return;
-    // jump to that node then delete from here
-    while(game.curNode!==game.root) game.prevMove();
-    let cur=game.root;
-    while(cur.children.length){
-      const child=cur.children[cur.mainChildIndex] || cur.children[0];
-      game.nextMove();
-      if(child===ctxTargetNode) break;
-      cur=child;
-    }
+    closeCtx();
+    if(!ctxTargetNode) return;
+    game.gotoNode(ctxTargetNode);
     game.deleteMoveFromHere();
   };
   ctxCancel.onclick=closeCtx;
