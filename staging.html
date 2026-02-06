@@ -1206,7 +1206,8 @@ async function bootLoadDefaultStudies() {
     constructor(){
       this.activePly = 0;
       this.startFen = 'start';
-      this.setupMode = false;          // IMPORTANT: persists per-game
+      this.setupMode = false;
+    this.setupFen = null; // persist setup position per-game          // IMPORTANT: persists per-game
       this.setupImported = { cqlref:null, pgnTitle:null, miniSquares:null, miniArrows:null };
     }
     static create(){ return new GameState(); }
@@ -1600,6 +1601,7 @@ ${comment ? (comment + " ") : ""}*`;
   function updateSetupPreview(){
     if (!isSetupMode() || !board) return null;
     const fen = boardObjToFen(board.position());
+  gs().setupFen = fen; // persist setup position
     const pgn = buildSetupPgn(fen, `Setup ${todayYMD()}`);
 
     // Live preview in the bottom card (FEN + PGN) during setup mode
@@ -2346,7 +2348,7 @@ function renderGameList(){
     // apply per-game setup mode (persists with the game)
     currentGame = g;
     // configure the board for this game's setupMode without mutating it
-    setQuerySetupMode(gs().setupMode, { persist:false });
+    applySetupModeToBoard();
     ensureStores(g.id);
     gamePill.innerHTML = '';
           const tspan = document.createElement('span');
@@ -3555,7 +3557,7 @@ async function runCqlEvalFromManifest(ref){
         draggable: true,
         dropOffBoard: 'trash',
         sparePieces: true,
-        position: '8/8/8/8/8/8/8/8',
+        position: gs().setupFen || '8/8/8/8/8/8/8/8',
         pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
         onDragStart, onDrop, onSnapEnd
       });
@@ -3594,7 +3596,7 @@ async function runCqlEvalFromManifest(ref){
     setupImportedMiniArrows  = null;
 
     setupHint.innerHTML = 'Drag pieces to set a position. This immediately creates a new game in the current study. Click <b>Play from here</b> when ready.';
-    setQuerySetupMode(true, { persist:false });
+    setQuerySetupMode(true);
 
     // Create the draft game AND its linked Priyome entry immediately so:
     // - drawings have a stable bucket
@@ -3608,9 +3610,7 @@ async function runCqlEvalFromManifest(ref){
         const g = GAMES.find(x => x.id === id);
         if (g){
           currentGame = g;
-          
-          gs().setupMode = true; // persist edit/setup mode on THIS priyome game
-ensureStores(g.id);
+          ensureStores(g.id);
           // Ensure we have a Priyome entry linked immediately (no separate Add step)
           if (!g.priyomeId){
             const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -3758,3 +3758,30 @@ ensureStores(g.id);
 </script>
 </body>
 </html>
+
+
+function applySetupModeToBoard(){
+  if (!currentGame) return;
+  setupRow.classList.toggle('open', !!gs().setupMode);
+  if (gs().setupMode){
+    board.destroy();
+    board = Chessboard('board', {
+      draggable: true,
+      dropOffBoard: 'trash',
+      sparePieces: true,
+      position: gs().setupFen || '8/8/8/8/8/8/8/8',
+      onDrop,
+      onSnapEnd
+    });
+  } else {
+    board.destroy();
+    board = Chessboard('board', {
+      draggable: true,
+      position: game.fen(),
+      onDrop,
+      onSnapEnd
+    });
+  }
+  sizeBoardSquare();
+  redrawDrawings();
+}
