@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ScratchChess Library Showcase</title>
+  <style>
+    :root{
+      --bg:#0b0d12;
+      --panel:#121622;
+      --panel2:#0f1320;
+      --text:#e9eef8;
+      --muted:#9fb0d0;
+      --border:rgba(255,255,255,.12);
+      --btn:#1a2236;
+      --btn2:#202b46;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); }
+    .wrap{ max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:12px; }
+    .topbar{
+      display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:10px;
+    }
+    .group{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .sep{ width:1px; height:26px; background:var(--border); margin:0 6px; }
+    button{
+      background:var(--btn);
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:10px;
+      padding:8px 10px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    button:hover{ background:var(--btn2); }
+    button.active{ outline:2px solid rgba(125,211,252,.35); }
+    .grid{
+      display:grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap:12px;
+      align-items:start;
+    }
+    @media (max-width: 900px){
+      .grid{ grid-template-columns:1fr; }
+    }
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:12px;
+    }
+    .panel h3{
+      margin:0 0 8px 0; font-size:14px; letter-spacing:.2px; color:var(--muted);
+    }
+    .boardFrame{
+      background:var(--panel2);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:12px; /* give the board breathing room so it doesn't look clipped */
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    /* HTML controls board enclosure size; library ensures square inside */
+    #boardHost{
+      width:min(92vw, 560px);
+      height:min(92vw, 560px);
+      margin:0 auto;
+    }
+    .sparesRow{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .sparesLabel{
+      font-weight:800;
+      color:var(--muted);
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.6px;
+    }
+    #sparesHost{
+      /* library styles internals; we just give space */
+      flex:1;
+      min-height:46px;
+    }
+    textarea{
+      width:100%;
+      background:#0c0f18;
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px;
+      font-family:var(--mono);
+      font-size:12px;
+      line-height:1.35;
+      box-sizing:border-box;
+    }
+    .row{ display:flex; gap:8px; flex-wrap:wrap; }
+    .row button{ flex:0 0 auto; }
+    .hint{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
+    }
+    .status{
+      font-family:var(--mono);
+      font-size:12px;
+      color:rgba(233,238,248,.92);
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:#0c0f18;
+      white-space:pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="group">
+        <button id="btnG1" class="active">Game 1</button>
+        <button id="btnG2">Game 2</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <button id="btnMoves" class="active">Moves</button>
+        <button id="btnSquares">Squares</button>
+        <button id="btnArrows">Arrows</button>
+        <button id="btnSetup">Setup</button>
+        <button id="btnFlip">Flip</button>
+        <button id="btnMini">Mini</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <button id="btnR">R</button>
+        <button id="btnB">B</button>
+        <button id="btnY">Y</button>
+        <button id="btnG">G</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <button id="btnPrev">Prev</button>
+        <button id="btnNext">Next</button>
+        <button id="btnPromote">Promote</button>
+        <button id="btnDelete">Delete</button>
+      </div>
+      <div class="sep"></div>
+      <div class="group">
+        <button id="btnInit">Initial</button>
+        <button id="btnClear">Clear</button>
+        <button id="btnClearMarks">Clear Marks</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h3>Board</h3>
+        <div class="boardFrame">
+          <div id="boardHost"></div>
+
+          <div class="sparesRow">
+            <div class="sparesLabel">Spare pieces (setup mode)</div>
+            <div id="sparesHost" hidden></div>
+          </div>
+
+          <div class="hint">
+            In <b>Moves</b> mode: click/drag to move pieces. In <b>Squares</b> mode: click squares to toggle highlights (even if a piece is on them).
+            In <b>Arrows</b> mode: drag from one square to another to toggle an arrow.
+            In <b>Setup</b> mode: drag pieces to reposition, or click a spare piece then click a square to place it.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>FEN</h3>
+        <textarea id="fenBox" rows="4"></textarea>
+        <div class="row" style="margin-top:8px;">
+          <button id="btnLoadFEN">Load FEN</button>
+          <button id="btnExportFEN">Export FEN</button>
+        </div>
+
+        <h3 style="margin-top:14px;">PGN</h3>
+        <textarea id="pgnBox" rows="10"></textarea>
+        <div class="row" style="margin-top:8px;">
+          <button id="btnLoadPGN">Load PGN</button>
+          <button id="btnExportPGN">Export PGN</button>
+        </div>
+
+        <h3 style="margin-top:14px;">Status</h3>
+        <div id="status" class="status"></div>
+
+        <div class="hint" style="margin-top:10px;">
+          This HTML is meant to be a <b>showcase</b> for the library: it owns layout/panels/buttons/textareas,
+          and calls into the library's exported methods. The library owns the <b>board rendering + styling</b>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createGame, BoardView } from "./scratchchess_lib.js";
+
+    // Two independent games to demonstrate state persistence
+    const game1 = createGame({ Event: "Showcase Game 1", White: "Demo", Black: "Opponent" });
+    const game2 = createGame({ Event: "Showcase Game 2", White: "Alt", Black: "Opponent" });
+    game2.loadFEN("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1");
+
+    const board = new BoardView(document.getElementById("boardHost"), game1, {
+      spareDiv: document.getElementById("sparesHost"),
+      minSizePx: 115,
+    });
+
+    let current = game1;
+
+    const $ = (id) => document.getElementById(id);
+    const fenBox = $("fenBox");
+    const pgnBox = $("pgnBox");
+    const status = $("status");
+
+    function setActive(btnId, isOn) {
+      const el = $(btnId);
+      if (!el) return;
+      el.classList.toggle("active", !!isOn);
+    }
+
+    function syncText() {
+      fenBox.value = current.exportFEN();
+      pgnBox.value = current.exportPGN();
+
+      const st = (() => {
+        // minimal status
+        const side = current.state.side === "w" ? "White" : "Black";
+        return `Side to move: ${side}\nMode: ${current.ui.mode}\nSetup: ${current.ui.setup}\nMini: ${current.ui.mini}`;
+      })();
+      status.textContent = st;
+
+      setActive("btnG1", current === game1);
+      setActive("btnG2", current === game2);
+
+      setActive("btnMoves", current.ui.mode === "moves");
+      setActive("btnSquares", current.ui.mode === "squares");
+      setActive("btnArrows", current.ui.mode === "arrows");
+      setActive("btnSetup", current.ui.setup);
+      setActive("btnMini", current.ui.mini);
+
+      // pigment buttons
+      setActive("btnR", current.ui.pig === "R");
+      setActive("btnB", current.ui.pig === "B");
+      setActive("btnY", current.ui.pig === "Y");
+      setActive("btnG", current.ui.pig === "G");
+    }
+
+    game1.onChange(() => { if (current === game1) syncText(); });
+    game2.onChange(() => { if (current === game2) syncText(); });
+
+    function switchGame(g) {
+      current = g;
+      board.setGame(g);
+      syncText();
+    }
+
+    $("btnG1").onclick = () => switchGame(game1);
+    $("btnG2").onclick = () => switchGame(game2);
+
+    $("btnMoves").onclick = () => current.setMode("moves");
+    $("btnSquares").onclick = () => current.setMode("squares");
+    $("btnArrows").onclick = () => current.setMode("arrows");
+
+    $("btnSetup").onclick = () => current.toggleSetup();
+    $("btnFlip").onclick = () => current.toggleFlip();
+    $("btnMini").onclick = () => current.toggleMini();
+
+    $("btnR").onclick = () => current.setPigment("R");
+    $("btnB").onclick = () => current.setPigment("B");
+    $("btnY").onclick = () => current.setPigment("Y");
+    $("btnG").onclick = () => current.setPigment("G");
+
+    $("btnPrev").onclick = () => current.prevMove();
+    $("btnNext").onclick = () => current.nextMove();
+    $("btnPromote").onclick = () => current.promoteVariationFromHere();
+    $("btnDelete").onclick = () => current.deleteMoveFromHere();
+
+    $("btnInit").onclick = () => current.initializePosition();
+    $("btnClear").onclick = () => current.clearBoard();
+    $("btnClearMarks").onclick = () => current.clearMarks();
+
+    $("btnLoadFEN").onclick = () => current.loadFEN(fenBox.value);
+    $("btnExportFEN").onclick = () => fenBox.value = current.exportFEN();
+
+    $("btnLoadPGN").onclick = () => current.loadPGN(pgnBox.value);
+    $("btnExportPGN").onclick = () => pgnBox.value = current.exportPGN();
+
+    // initial sync
+    syncText();
+  </script>
+</body>
+</html>
