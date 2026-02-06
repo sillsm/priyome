@@ -631,7 +631,6 @@
         <!-- MOVED: Prev/Next removed from hamburger per request -->
         <button id="btnFlip">Flip</button>
         <button id="btnReset">Reset</button>
-        <button id="btnResetInitial" style="display:none">Reset initial position</button>
 
         <button id="btnSquares">Squares</button>
         <button id="btnArrows">Arrows</button>
@@ -678,13 +677,12 @@
         <!-- shown only during query-setup mode -->
         <div class="setupRow" id="setupRow">
           <span class="kbd">Query setup mode</span>
-          <button class="smallBtn" id="btnAddPriyome" type="button" style="display:none" aria-hidden="true">Add</button>
+          <button class="smallBtn" id="btnAddPriyome" type="button">Add</button>
           <button class="smallBtn" id="btnCancelPriyome" type="button">Cancel</button>
-          <button class="smallBtn" id="btnResetInitialSetup" type="button" style="display:none">Reset initial position</button>
           <button class="smallBtn" id="btnPlayFromHere" type="button">Play from here</button>
           <button class="smallBtn" id="btnSetupImportPgn" type="button">Import from PGN</button>
           <input id="setupPgnFile" type="file" accept=".pgn" hidden />
-          <span class="hint" id="setupHint">Drag pieces to set a position. This creates a Priyome immediately.</span>
+          <span class="hint" id="setupHint">Drag pieces to set a position. Click <b>Add</b> to save it to Priyomes.</span>
         </div>
 
       </div>
@@ -712,7 +710,7 @@
       <!-- Priyomes tab -->
       <div class="pane" id="panePriyomes">
         <div class="hint">
-          Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board and creates a Priyome immediately. Click <b>Play from here</b> to exit setup mode.
+          Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board; click <b>Add</b> under the board to save.
         </div>
 
         <div class="priyomesGrid">
@@ -1192,15 +1190,52 @@ async function bootLoadDefaultStudies() {
   const btnSetupImportPgn = document.getElementById('btnSetupImportPgn');
   const setupPgnFile = document.getElementById('setupPgnFile');
 
-  // ---------- state ----------
+  // ---------- state model (no scattered globals) ----------
+  class BoardState {
+    constructor(){
+      this.orientation = 'white';
+      this.tool = 'none';       // 'none' | 'squares' | 'arrows'
+      this.toolColor = 'G';     // G/R/B/Y
+      this.tapFrom = null;
+      this.isDraggingPiece = false;
+    }
+    static create(){ return new BoardState(); }
+  }
+
+  class GameState {
+    constructor(){
+      this.gs().activePly = 0;
+      this.startFen = 'start';
+      this.setupMode = false;          // IMPORTANT: persists per-game
+      this.setupImported = { cqlref:null, pgnTitle:null, miniSquares:null, miniArrows:null };
+    }
+    static create(){ return new GameState(); }
+  }
+
+  function createStateFactories(){
+    const board = BoardState.create();
+    const games = Object.create(null); // gameId -> GameState
+    function getGame(gameId){
+      const id = String(gameId || '__none__');
+      if (!games[id]) games[id] = GameState.create();
+      return games[id];
+    }
+    return { board, getGame };
+  }
+
+  const STATE = createStateFactories();
+  function gs(){ return currentGame ? STATE.getGame(currentGame.id) : STATE.getGame('__none__'); }
+  function isSetupMode(){ return !!(currentGame && gs().setupMode); }
+
+// ---------- state ----------
   let board = null;
-  let orientation = 'white';
+  let orientation = STATE.board.orientation; // legacy alias (kept in sync with STATE.board.orientation)
   let currentGame = null;
 
   let game = null;
   let verboseHistory = [];
-  let activePly = 0;
-  let currentStartFen = 'start'; // per-game ply 0 start position (from PGN [FEN "..."] if present)
+  // moved: gs().gs().activePly
+  // moved: gs().startFen
 
   function setBoardFen(reason, fen, animate=false){
     if (!board) return;
@@ -1213,7 +1248,7 @@ async function bootLoadDefaultStudies() {
 
   
   function resetGameToStartFen(){
-    const f = (currentStartFen && String(currentStartFen).trim()) ? String(currentStartFen).trim() : 'start';
+    const f = (gs().startFen && String(gs().startFen).trim()) ? String(gs().startFen).trim() : 'start';
     if (f === 'start'){
       game.reset();
       return { ok:true, used:'start' };
@@ -1265,7 +1300,7 @@ async function bootLoadDefaultStudies() {
       if (!ok){
         logLine('WARN', `Failed to load start FEN from headers; falling back to standard start. FEN="${f}"`);
         try { game.reset(); } catch(_e) {}
-        currentStartFen = 'start';
+        gs().startFen = 'start';
         used = 'start';
         return { ok:false, used };
       }
@@ -1385,7 +1420,6 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
 
 
   const _cqlCache = new Map(); // name -> text
-  const _textCache = new Map(); // url -> text (for PGN text, priyomes, etc.)
   const _pgnCache = new Map(); // db -> Uint8Array
 
   async function fetchTextCached(url, cache){
@@ -1409,7 +1443,7 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
   }
 
   async function loadPriyomesFromPgn(url){
-  const text = await fetchTextCached(url, _textCache);
+  const text = await fetchTextCached(url, _pgnCache);
   const games = splitMultiPgn(text);
 
   const priyomes = [];
@@ -1450,18 +1484,13 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
   }
 
   (async () => {
-  try{
-    const url = PRIYOME_PGN_MANIFEST.default;
-    const loaded = await loadPriyomesFromPgn(url);
+  const url = PRIYOME_PGN_MANIFEST.default;
+  const loaded = await loadPriyomesFromPgn(url);
 
-    PRIYOMES.length = 0;
-    PRIYOMES.push(...loaded);
+  PRIYOMES.length = 0;
+  PRIYOMES.push(...loaded);
 
-    renderPriyomes();
-    logLine('OK', `Loaded ${loaded.length} priyomes from ${url}.`);
-  }catch(e){
-    logStack('ERR', 'Priyomes load failed: ', e);
-  }
+  renderPriyomes();
 })();
 
   async function getPgnBytesForDb(dbKey){
@@ -1493,12 +1522,12 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
 
   function currentDraw(){
     // In setup mode, drawings apply to the setup position (ply 0).
-    if (isQuerySetupMode){
+    if (isSetupMode()){
       const gid = (currentGame && currentGame.id) ? currentGame.id : (setupDraftId || setupDraftDrawId);
       return ensureDrawAt(gid, 0);
     }
     if (!currentGame) return { squares:Object.create(null), arrows:[] };
-    return ensureDrawAt(currentGame.id, activePly);
+    return ensureDrawAt(currentGame.id, gs().activePly);
   }
 
   const Tool = { NONE:'none', SQUARES:'squares', ARROWS:'arrows' };
@@ -1525,50 +1554,11 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
   let isDraggingPiece = false;
 
   // Query setup mode (free placement / trash / spare pieces)
-  let isQuerySetupMode = false;
+  // moved: gs().setupMode (per-game)
 
   // Setup-draft game (for query setup mode)
   let setupDraftId = null;                 // game id once created
-  let setupDraftInitialFen = null;       // latest setup-mode FEN (even before game exists)
-  let setupDraftForceSetup = false;      // stays true until 'Play from here'
-  const setupDraftDrawId = '__setup__';
-  // Priyome: per-game setup persistence + initial position reset (no control-flow short-circuits)
-  function isUserPriyomeGame(g){
-    return !!(g && g.isPriyome && g.user === true);
-  }
-
-  function priyomeInitialFenFor(g){
-    if (!g) return null;
-    return g.priyomeInitialFen || null;
-  }
-
-  function updatePriyomeResetUi(){
-    const show = isUserPriyomeGame(currentGame);
-    const b1 = document.getElementById('btnResetInitial');
-    const b2 = document.getElementById('btnResetInitialSetup');
-    if (b1) b1.style.display = show ? '' : 'none';
-    if (b2) b2.style.display = (show && isQuerySetupMode) ? '' : 'none';
-  }
-
-function resetPriyomeInitialPosition(){
-    if (!currentGame || !game) return;
-    if (!isUserPriyomeGame(currentGame)) return;
-    const fen = priyomeInitialFenFor(currentGame);
-    if (!fen) return;
-
-    // Treat this as the "start" for this game session, then jump to ply 0.
-    currentStartFen = fen;
-    try { resetGameToStartFen(); } catch(_e){}
-    try { setBoardFen('priyome initial reset', game.fen(), true); } catch(_e){}
-    try { verboseHistory = game.history({ verbose:true }); } catch(_e){ verboseHistory = []; }
-    activePly = 0;
-    renderMoves();
-    updatePriyomeResetUi();
-    redrawDrawings();
-    updatePriyomeResetUi();
-    logLine('OK', 'Reset to Priyome initial position.');
-  }
-    // temp drawings bucket before game exists
+  const setupDraftDrawId = '__setup__';    // temp drawings bucket before game exists
 
   function boardObjToFen(posObj){
     const files = 'abcdefgh';
@@ -1608,24 +1598,8 @@ ${comment ? (comment + " ") : ""}*`;
   }
 
   function updateSetupPreview(){
-    if (!isQuerySetupMode || !board) return null;
+    if (!isSetupMode() || !board) return null;
     const fen = boardObjToFen(board.position());
-
-    // Setup mode always tracks a would-be "initial" position for the (soon-to-be) Priyome game.
-    setupDraftInitialFen = fen;
-    setupDraftForceSetup = true;
-
-    // If the draft game already exists, keep its persisted fields in sync (no globals/redeclares).
-    if (setupDraftId){
-      const gg = GAMES.find(x => x && x.id === setupDraftId);
-      if (gg){
-        gg.priyomeInitialFen = fen;
-        gg.forceSetup = true;
-        gg.user = true;
-        gg.isPriyome = true;
-      }
-    }
-
     const pgn = buildSetupPgn(fen, `Setup ${todayYMD()}`);
 
     // Live preview in the bottom card (FEN + PGN) during setup mode
@@ -1641,43 +1615,12 @@ ${comment ? (comment + " ") : ""}*`;
     if (!prev) return null;
     if (setupDraftId) return setupDraftId;
 
-    const nUser = GAMES.filter(g => g && g.isPriyome && g.user === true).length;
-    const title = `Priyome ${nUser + 1}`;
+    const title = `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
     const tags0 = drawTagsCommentFor(setupDraftDrawId, 0);
     const pgn = buildSetupPgn(prev.fen, title, tags0);
     const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
-    const newGame = {
-      id:newId,
-      title,
-      opening:'Priyome',
-      result:'*',
-      pgn,
-      isPriyome:true,
-      user:true,
-      forceSetup:true,
-      priyomeInitialFen: prev.fen
-    };
-    GAMES.unshift(newGame);
-
-    // Create a matching Priyome entry immediately (no "Add" step).
-    // Store linkage on the game object so we don't duplicate.
-    try{
-      const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      newGame.priyomeId = pid;
-      if (typeof addPriyome === 'function'){
-        addPriyome({
-          id: pid,
-          user: true,
-          title,
-          subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
-          fen: prev.fen,
-          gameId: newId,
-          study: currentStudyName,
-          cqlref: setupImportedCqlRef || null
-        });
-      }
-    }catch(_e){}
+    GAMES.unshift({ id:newId, title, opening:'Priyome', result:'*', pgn, isPriyome:true });
 
     // carry drawings made in setup mode, if any
     if (drawings[setupDraftDrawId]){
@@ -1688,7 +1631,6 @@ ${comment ? (comment + " ") : ""}*`;
     setCurrentStudy(currentStudyName);
 
     setupDraftId = newId;
-    updatePriyomeResetUi();
     return newId;
   }
 
@@ -1721,7 +1663,7 @@ function sizeBoardSquare(){
   const availW = Math.max(0, areaRect.width  - padX);
   const availH = Math.max(0, areaRect.height - padY);
 
-  const inPiecesMode = !!isQuerySetupMode;
+  const inPiecesMode = !!isSetupMode();
   const maxSide = inPiecesMode ? 600 : 800;
 
   let side;
@@ -1991,11 +1933,10 @@ function sizeBoardSquare(){
   function syncDrawingsToPgn(){
     updateBottomCard();
     renderMoves();
-    updatePriyomeResetUi();
   }
 
   function toggleSquare(gameId, sq){
-    const ply = isQuerySetupMode ? 0 : activePly;
+    const ply = isSetupMode() ? 0 : gs().activePly;
     const d = ensureDrawAt(gameId, ply);
     const cur = d.squares[sq];
     if (cur === toolColor){
@@ -2011,7 +1952,7 @@ function sizeBoardSquare(){
 
   function toggleArrow(gameId, from, to){
     if (from === to) return;
-    const ply = isQuerySetupMode ? 0 : activePly;
+    const ply = isSetupMode() ? 0 : gs().activePly;
     const d = ensureDrawAt(gameId, ply);
     const key = (from < to) ? `${from}-${to}` : `${to}-${from}`;
     const arr = d.arrows;
@@ -2027,7 +1968,7 @@ function sizeBoardSquare(){
         logLine('OK', `Arrow ${from}->${to} removed @ ply ${ply}`);
       } else {
         arr[idx] = { from, to, color: toolColor };
-        logLine('OK', `Arrow ${from}->${to} recolored to ${toolColor} @ ply ${activePly}`);
+        logLine('OK', `Arrow ${from}->${to} recolored to ${toolColor} @ ply ${gs().activePly}`);
       }
     } else {
       arr.push({ from, to, color: toolColor });
@@ -2039,10 +1980,10 @@ function sizeBoardSquare(){
   }
 
   function clearAll(gameId){
-    const d = ensureDrawAt(gameId, activePly);
+    const d = ensureDrawAt(gameId, gs().activePly);
     d.squares = Object.create(null);
     d.arrows = [];
-    logLine('OK', `Cleared drawings @ ply ${activePly}.`);
+    logLine('OK', `Cleared drawings @ ply ${gs().activePly}.`);
     redrawDrawings();
     syncDrawingsToPgn();
   }
@@ -2121,9 +2062,9 @@ function renderMoves(){
     const mv = verboseHistory[idx];
     if (!mv) return null;
 
-    const ply = idx + 1; // activePly counts half-moves applied
+    const ply = idx + 1; // gs().activePly counts half-moves applied
     const b = document.createElement('button');
-    b.className = 'plyBtn' + (activePly === ply ? ' active' : '');
+    b.className = 'plyBtn' + (gs().activePly === ply ? ' active' : '');
     b.textContent = mv.san || '?';
     b.onclick = () => gotoPly(ply); // gotoPly should alias to jumpTo
     return b;
@@ -2180,8 +2121,8 @@ function renderMoves(){
 
   function updateAnnoUI(){
     ensureStores(currentGame.id);
-    annoTitleEl.textContent = `Annotation (ply ${activePly}${activePly===0?' / start':''})`;
-    annoTextEl.value = annotations[currentGame.id][activePly] || '';
+    annoTitleEl.textContent = `Annotation (ply ${gs().activePly}${gs().activePly===0?' / start':''})`;
+    annoTextEl.value = annotations[currentGame.id][gs().activePly] || '';
   }
 
   function updateBottomCard(){
@@ -2212,12 +2153,12 @@ function renderMoves(){
 
 
   function jumpTo(ply){
-    activePly = Math.max(0, Math.min(ply, verboseHistory.length));
-    rebuildToPly(activePly);
-    setBoardFen(`jumpTo ply ${activePly}`, game.fen(), false);
+    gs().activePly = Math.max(0, Math.min(ply, verboseHistory.length));
+    rebuildToPly(gs().activePly);
+    setBoardFen(`jumpTo ply ${gs().activePly}`, game.fen(), false);
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
     updateBottomCard();
-    logLine('OK', `Jump to ply ${activePly}`);
+    logLine('OK', `Jump to ply ${gs().activePly}`);
   }
 
 // compatibility: older/newer UI code calls gotoPly()
@@ -2229,14 +2170,14 @@ function gotoPly(ply){
   // ---------- board callbacks ----------
   function onDragStart(source, piece){
     // In setup mode, allow dragging any piece freely
-    if (isQuerySetupMode) {
+    if (isSetupMode()) {
       isDraggingPiece = true;
       return true;
     }
 
     if (tool !== Tool.NONE) return false;
     if (game.isGameOver()) return false;
-    if (activePly !== verboseHistory.length) return false;
+    if (gs().activePly !== verboseHistory.length) return false;
     if (game.turn()==='w' && piece.startsWith('b')) return false;
     if (game.turn()==='b' && piece.startsWith('w')) return false;
 
@@ -2246,7 +2187,7 @@ function gotoPly(ply){
 
   function onDrop(source,target){
     // Setup mode: just accept the drop; keep board state (no chess.js validation)
-    if (isQuerySetupMode){
+    if (isSetupMode()){
       isDraggingPiece = false;
       // Allow trashing pieces
       return;
@@ -2262,7 +2203,7 @@ function gotoPly(ply){
     isDraggingPiece = false;
     if (!mv) return 'snapback';
     verboseHistory = game.history({verbose:true});
-    activePly = verboseHistory.length;
+    gs().activePly = verboseHistory.length;
     setStatus(); setFen(); renderMoves(); updateAnnoUI();
     updateBottomCard();
     syncPriyomeTerminal();
@@ -2271,10 +2212,10 @@ function gotoPly(ply){
 
   function onSnapEnd(){
     isDraggingPiece = false;
-    if (!isQuerySetupMode){
+    if (!isSetupMode()){
       setBoardFen('onSnapEnd', game.fen(), false);
     }
-    if (isQuerySetupMode) updateSetupPreview();
+    if (isSetupMode()) updateSetupPreview();
     positionMainOverlayToGrid();
     redrawDrawings();
   }
@@ -2296,7 +2237,7 @@ function gotoPly(ply){
   document.getElementById('boardArea').addEventListener('click', (e) => {
     if (!currentGame) return;
     // In setup mode, allow squares/arrows too (but don't interfere with dragging)
-    if (isQuerySetupMode && isDraggingPiece) return;
+    if (isSetupMode() && isDraggingPiece) return;
     if (tool === Tool.NONE) return;
 
     const sq = squareFromTarget(e.target);
@@ -2388,29 +2329,7 @@ function renderGameList(){
     });
     if (typeof board.resize === 'function') board.resize();
     logLine('OK', 'Chessboard initialized.');
-
-    // Mobile UX: prevent long-press context menu + page scroll while actively dragging a piece.
-    // (No control-flow changes; we only gate on isDraggingPiece.)
-    try{
-      const el = boardArea || document.getElementById('boardArea');
-      if (el && !el._priyomeNoCtx){
-        el._priyomeNoCtx = true;
-
-        el.addEventListener('contextmenu', (e) => { e.preventDefault(); }, { passive:false });
-
-        el.addEventListener('wheel', (e) => {
-          if (isDraggingPiece) e.preventDefault();
-        }, { passive:false });
-
-        el.addEventListener('touchmove', (e) => {
-          if (isDraggingPiece) e.preventDefault();
-        }, { passive:false });
-
-        el.addEventListener('touchstart', (e) => {
-          if (isDraggingPiece) e.preventDefault();
-        }, { passive:false });
-      }
-    }catch(_e){}
+  
 
     ensureBoardRO();
     sizeBoardSquare();
@@ -2424,13 +2343,11 @@ function renderGameList(){
     const g = GAMES.find(x => x.id===gameId);
     if (!g) return;
 
-    // leaving setup mode when loading games (but user Priyomes can force setup until Play-from-here)
-    const _shouldForceSetup = !!(g && g.isPriyome && g.forceSetup && isUserPriyomeGame(g));
-    if (!_shouldForceSetup && isQuerySetupMode) setQuerySetupMode(false);
-
+    // apply per-game setup mode (persists with the game)
     currentGame = g;
+    // configure the board for this game's setupMode without mutating it
+    setQuerySetupMode(gs().setupMode, { persist:false });
     ensureStores(g.id);
-    if (_shouldForceSetup && !isQuerySetupMode) setQuerySetupMode(true);
     gamePill.innerHTML = '';
           const tspan = document.createElement('span');
           tspan.textContent = g.title;
@@ -2468,16 +2385,16 @@ function renderGameList(){
     try {
       const h = (typeof game.header === 'function') ? game.header() : null;
       const fenTag = h && (h.FEN || h.Fen || h.fen);
-      currentStartFen = (fenTag && String(fenTag).trim()) ? String(fenTag).trim() : 'start';
-      logLine('OK', `PGN start FEN for "${g.title}": ${currentStartFen}`);
+      gs().startFen = (fenTag && String(fenTag).trim()) ? String(fenTag).trim() : 'start';
+      logLine('OK', `PGN start FEN for "${g.title}": ${gs().startFen}`);
     } catch (e) {
-      currentStartFen = 'start';
+      gs().startFen = 'start';
       logStack('WARN', 'Failed to read PGN headers for start FEN; using standard start.', e);
     }
 
 
     verboseHistory = game.history({verbose:true});
-    activePly = verboseHistory.length;
+    gs().activePly = verboseHistory.length;
 
     sizeBoardSquare();
     ensureMainBoard();
@@ -2577,13 +2494,14 @@ function renderGameList(){
   };
 
   // ---------- buttons ----------
-  document.getElementById('btnPrev').onclick = () => { if (game && !isQuerySetupMode) jumpTo(activePly - 1); };
-  document.getElementById('btnNext').onclick = () => { if (game && !isQuerySetupMode) jumpTo(activePly + 1); };
+  document.getElementById('btnPrev').onclick = () => { if (game && !isSetupMode()) jumpTo(gs().activePly - 1); };
+  document.getElementById('btnNext').onclick = () => { if (game && !isSetupMode()) jumpTo(gs().activePly + 1); };
 
   document.getElementById('btnFlip').onclick = () => {
     if (!board) return;
     board.flip();
     orientation = (orientation==='white') ? 'black' : 'white';
+    STATE.board.orientation = orientation;
     redrawDrawings();
     logLine('OK', `Flip => ${orientation}`);
   };
@@ -2591,7 +2509,7 @@ function renderGameList(){
   document.getElementById('btnReset').onclick = () => {
     if (!board || !game) return;
 
-    if (isQuerySetupMode){
+    if (isSetupMode()){
       // reset to empty in setup mode
       setBoardFen('setup mode: clear board', '8/8/8/8/8/8/8/8', false);
       logLine('OK', 'Setup mode: cleared board.');
@@ -2600,19 +2518,13 @@ function renderGameList(){
 
     game.reset();
     verboseHistory = [];
-    activePly = 0;
+    gs().activePly = 0;
     board.start(false);
     if (typeof board.resize === 'function') board.resize();
     setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
     updateBottomCard();
     logLine('OK', 'Reset line to start position.');
   };
-  // Priyome: reset to initial position (user-created)
-  const _bResetInit = document.getElementById('btnResetInitial');
-  if (_bResetInit) _bResetInit.onclick = resetPriyomeInitialPosition;
-  const _bResetInitSetup = document.getElementById('btnResetInitialSetup');
-  if (_bResetInitSetup) _bResetInitSetup.onclick = resetPriyomeInitialPosition;
-
 
   document.getElementById('btnSquares').onclick = () => {
     setTool(tool===Tool.SQUARES ? Tool.NONE : Tool.SQUARES);
@@ -2624,13 +2536,12 @@ function renderGameList(){
 
   annoTextEl.addEventListener('input', () => {
     if (!currentGame) return;
-    if (isQuerySetupMode) return;
+    if (isSetupMode()) return;
     ensureStores(currentGame.id);
-    annotations[currentGame.id][activePly] = annoTextEl.value;
+    annotations[currentGame.id][gs().activePly] = annoTextEl.value;
     updateBottomCard();
     renderMoves();
-    updatePriyomeResetUi();
-    logLine('OK', `Annotation saved for ply ${activePly} (${annoTextEl.value.length} chars)`);
+    logLine('OK', `Annotation saved for ply ${gs().activePly} (${annoTextEl.value.length} chars)`);
   });
 
   window.addEventListener('resize', () => {
@@ -2732,13 +2643,13 @@ function renderGameList(){
 
   // ---------- Setup-mode: Import from PGN  ----------
   btnSetupImportPgn.addEventListener('click', () => {
-    if (!isQuerySetupMode) return;
+    if (!isSetupMode()) return;
     setupPgnFile.value = '';
     setupPgnFile.click();
   });
 
   setupPgnFile.addEventListener('change', async () => {
-    if (!isQuerySetupMode) return;
+    if (!isSetupMode()) return;
     const f = setupPgnFile.files?.[0];
     if (!f) return;
     try{
@@ -3356,8 +3267,6 @@ async function runCqlEvalFromManifest(ref){
         }
       }
 
-      if (g) g.forceSetup = false;
-
       setQuerySetupMode(false);
       loadGame(id);
       jumpTo(0);
@@ -3618,18 +3527,21 @@ async function runCqlEvalFromManifest(ref){
     updateQueryUi();
   });
 
-  function setQuerySetupMode(on){
-    isQuerySetupMode = !!on;
+  function setQuerySetupMode(on, opts={}){
+    const mode = !!on;
+    const persist = (opts && Object.prototype.hasOwnProperty.call(opts,'persist')) ? !!opts.persist : true;
+    if (persist && currentGame) gs().setupMode = mode;
+    
 
     // keep drawing tools available in setup mode
 
-    setupRow.classList.toggle('open', isQuerySetupMode);
+    setupRow.classList.toggle('open', mode);
 
     if (!board){
       ensureMainBoard();
     }
 
-    if (isQuerySetupMode){
+    if (mode){
       // allow free placement:
       // - chessboard.js supports dropOffBoard:'trash'
       // - sparePieces:true lets users add pieces
@@ -3670,8 +3582,6 @@ async function runCqlEvalFromManifest(ref){
       logLine('OK', 'Exited query setup mode.');
     }
 
-    updatePriyomeResetUi();
-
     // keep sizing stable
     sizeBoardSquare();
     setTimeout(() => { if (board && typeof board.resize === 'function') board.resize(); }, 0);
@@ -3703,17 +3613,12 @@ async function runCqlEvalFromManifest(ref){
           if (!g.priyomeId){
             const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
             const fen = boardObjToFen(board.position());
-            // Persist initial position + force setup until 'Play from here'
-            g.priyomeInitialFen = fen;
-            g.forceSetup = true;
-
             addPriyome({
               id: pid,
               user: true,
               title: g.title,
               subtitle: 'User-created',
               fen,
-              initialFen: fen,
               gameId: g.id,
               study: currentStudyName,
               cqlref: null,
@@ -3759,40 +3664,35 @@ async function runCqlEvalFromManifest(ref){
   btnCancelPriyome.addEventListener('click', () => {
     setQuerySetupMode(false);
   });
-  if (btnAddPriyome) btnAddPriyome.addEventListener('click', () => {
-    // "Add" is deprecated (Priyomes are created immediately). Keep this handler harmless.
-    if (!isQuerySetupMode) return;
+
+  btnAddPriyome.addEventListener('click', () => {
+    if (!isSetupMode() || !board) return;
+
+    // Ensure we have a real game inside the current study (no naming prompt).
     const gid = ensureSetupDraftGame();
     if (!gid) return;
-    const gg = GAMES.find(x => x && x.id === gid);
-    if (gg && gg.priyomeId){
-      logLine('OK', 'Priyome already created for this setup.');
-      return;
-    }
-    // If somehow missing linkage, create it now (same as ensureSetupDraftGame path).
-    if (gg){
-      try{
-        const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        gg.priyomeId = pid;
-        gg.user = true;
-        gg.isPriyome = true;
-        gg.forceSetup = true;
-        gg.priyomeInitialFen = gg.priyomeInitialFen || setupDraftInitialFen || (game ? game.fen() : null);
-        if (typeof addPriyome === 'function'){
-          addPriyome({
-            id: pid,
-            user: true,
-            title: gg.title || 'Priyome',
-            subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
-            fen: gg.priyomeInitialFen || (game ? game.fen() : '8/8/8/8/8/8/8/8'),
-            gameId: gid,
-            study: currentStudyName,
-            cqlref: setupImportedCqlRef || null
-          });
-        }
-      }catch(_e){}
-    }
-  });
+
+    const g = GAMES.find(x => x.id === gid);
+    if (!g) return;
+
+    // Tie this game to a Priyome entry
+    const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const title = g.title || `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
+
+    const fen = (typeof board.fen === 'function' ? board.fen() : (game ? game.fen() : '8/8/8/8/8/8/8/8'));
+
+    addPriyome({
+      id: pid,
+      user: true,
+      title,
+      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
+      fen,
+      gameId: gid,
+      study: currentStudyName,
+      cqlref: setupImportedCqlRef || null,
+      miniSquares: setupImportedMiniSquares || {},
+      miniArrows:  setupImportedMiniArrows  || [],
+    });
 
     g.isPriyome = true;
     g.priyomeId = pid;
@@ -3800,7 +3700,6 @@ async function runCqlEvalFromManifest(ref){
     selectedPriyomeId = pid;
     currentGame = g;
     ensureStores(g.id);
-    if (_shouldForceSetup && !isQuerySetupMode) setQuerySetupMode(true);
 
     // Stay in setup/edit mode, but switch to Priyomes tab and show the editor immediately.
     setTab('priyomes');
