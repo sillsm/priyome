@@ -2339,7 +2339,33 @@ function renderGameList(){
     redrawDrawings();
 }
 
-  function loadGame(gameId, opts={}){
+  function applySetupModeToBoard(){
+  if (!currentGame) return;
+  setupRow.classList.toggle('open', !!gs().setupMode);
+  if (gs().setupMode){
+    board.destroy();
+    board = Chessboard('board', {
+      draggable: true,
+      dropOffBoard: 'trash',
+      sparePieces: true,
+      position: gs().setupFen || '8/8/8/8/8/8/8/8',
+      onDrop,
+      onSnapEnd
+    });
+  } else {
+    board.destroy();
+    board = Chessboard('board', {
+      draggable: true,
+      position: game.fen(),
+      onDrop,
+      onSnapEnd
+    });
+  }
+  sizeBoardSquare();
+  redrawDrawings();
+}
+
+function loadGame(gameId, opts={}){
     const startAtFirst = !!opts.startAtFirst;
 
     const g = GAMES.find(x => x.id===gameId);
@@ -3760,28 +3786,4 @@ async function runCqlEvalFromManifest(ref){
 </html>
 
 
-function applySetupModeToBoard(){
-  if (!currentGame) return;
-  setupRow.classList.toggle('open', !!gs().setupMode);
-  if (gs().setupMode){
-    board.destroy();
-    board = Chessboard('board', {
-      draggable: true,
-      dropOffBoard: 'trash',
-      sparePieces: true,
-      position: gs().setupFen || '8/8/8/8/8/8/8/8',
-      onDrop,
-      onSnapEnd
-    });
-  } else {
-    board.destroy();
-    board = Chessboard('board', {
-      draggable: true,
-      position: game.fen(),
-      onDrop,
-      onSnapEnd
-    });
-  }
-  sizeBoardSquare();
-  redrawDrawings();
-}
+
