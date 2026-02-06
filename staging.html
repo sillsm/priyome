@@ -2324,6 +2324,7 @@ function renderGameList(){
 
     logLine('OK', 'Initializing Chessboard...');
     board = Chessboard('board', {
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
       draggable:true,
       position: game.fen(),
       pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
@@ -2345,6 +2346,7 @@ function renderGameList(){
   if (gs().setupMode){
     board.destroy();
     board = Chessboard('board', {
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
       draggable: true,
       dropOffBoard: 'trash',
       sparePieces: true,
@@ -2355,6 +2357,7 @@ function renderGameList(){
   } else {
     board.destroy();
     board = Chessboard('board', {
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
       draggable: true,
       position: game.fen(),
       onDrop,
@@ -3555,7 +3558,13 @@ async function runCqlEvalFromManifest(ref){
     updateQueryUi();
   });
 
-  function setQuerySetupMode(on, opts={}){
+  function setQuerySetupMode(on, opts = {}){
+  const persist = opts.persist !== false;
+  // Guard: if already in desired mode and this call would persist, do nothing (prevents flicker)
+  if (persist && typeof gs === 'function' && currentGame && gs().setupMode === !!on) {
+    return;
+  }
+
     const mode = !!on;
     const persist = (opts && Object.prototype.hasOwnProperty.call(opts,'persist')) ? !!opts.persist : true;
     if (persist && currentGame) gs().setupMode = mode;
@@ -3580,6 +3589,7 @@ async function runCqlEvalFromManifest(ref){
       } catch {}
 
       board = Chessboard('board', {
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
         draggable: true,
         dropOffBoard: 'trash',
         sparePieces: true,
@@ -3598,6 +3608,7 @@ async function runCqlEvalFromManifest(ref){
       } catch {}
 
       board = Chessboard('board', {
+      pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
         draggable:true,
         position: game ? game.fen() : 'start',
         pieceTheme: 'https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/{piece}.png',
