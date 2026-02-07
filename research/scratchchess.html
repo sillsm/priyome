@@ -194,7 +194,17 @@
         </div>
 
         <h3 style="margin-top:14px;">Status</h3>
-        <div id="status" class="status"></div>
+        
+<div id="status" class="status"></div>
+
+        <h3 style="margin-top:14px;">Tests</h3>
+        <div class="row" style="margin:8px 0 8px 0;">
+          <button id="btnRunTests">Run Tests</button>
+          <button id="btnAutoTests">Auto: On</button>
+        </div>
+        <div id="testSummary" class="status" style="margin-bottom:10px;"></div>
+        <div id="testList" class="status" style="max-height:260px; overflow:auto;"></div>
+
 
         <div class="hint" style="margin-top:10px;">
           This HTML is meant to be a <b>showcase</b> for the library: it owns layout/panels/buttons/textareas,
@@ -206,6 +216,7 @@
 
   <script type="module">
     import { createGame, BoardView } from "./scratchchess.js";
+    import { parseTableText, runTable } from "./tabletest.js";
 
     // Two independent games to demonstrate state persistence
     const game1 = createGame({ Event: "Showcase Game 1", White: "Demo", Black: "Opponent" });
@@ -296,6 +307,107 @@
 
     $("btnLoadPGN").onclick = () => current.loadPGN(pgnBox.value);
     $("btnExportPGN").onclick = () => pgnBox.value = current.exportPGN();
+
+
+
+    // -----------------------------
+    // Table-driven tests (tabletest.js)
+    // -----------------------------
+    const testSummary = $("testSummary");
+    const testList = $("testList");
+    const btnRunTests = $("btnRunTests");
+    const btnAutoTests = $("btnAutoTests");
+    let autoTests = true;
+
+    function renderTestResults(results) {
+      const pass = results.filter(r => r.ok).length;
+      const fail = results.length - pass;
+      testSummary.textContent = `Total: ${results.length}  Pass: ${pass}  Fail: ${fail}`;
+
+      const lines = [];
+      results.forEach((r, i) => {
+        const icon = r.ok ? "✅" : "❌";
+        lines.push(`${icon} ${i+1}. ${r.name} (${r.ms}ms)`);
+        if (!r.ok) {
+          if (r.error) lines.push("   " + r.error.split("\n")[0]);
+          (r.asserts || []).forEach(a => { if (!a.ok) lines.push("   ASSERT " + a.getter + ": " + a.msg); });
+        }
+      });
+      testList.textContent = lines.join("\n");
+    }
+
+    async function runScratchTests() {
+      testSummary.textContent = "Loading scratchtest.txt…";
+      testList.textContent = "";
+      let text = "";
+      try {
+        const resp = await fetch("./scratchtest.txt", { cache: "no-store" });
+        text = await resp.text();
+      } catch (e) {
+        testSummary.textContent = "Failed to load scratchtest.txt (serve over http; file:// blocks fetch).";
+        testList.textContent = String(e);
+        return;
+      }
+
+      const pairs = parseTableText(text);
+
+      const makeContext = async () => {
+        const g = createGame({ Event: "TableTest", White: "T", Black: "T", Date: "2026.02.06" });
+        return { g };
+      };
+
+      const invoke = async (ctx, fnName, args) => {
+        if (fnName === "__setPath") {
+          const [path, key, value] = args || [];
+          if (path === "curNode.marks.sqMarks") {
+            ctx.g.curNode.marks.sqMarks.set(String(key), String(value));
+            ctx.g._emit?.();
+            return true;
+          }
+          throw new Error("Unsupported __setPath: " + path);
+        }
+        if (fnName === "__pushArrow") {
+          const [from, to, color] = args || [];
+          ctx.g.curNode.marks.arrows.push({ from:String(from), to:String(to), color:String(color) });
+          ctx.g._emit?.();
+          return true;
+        }
+        const fn = ctx.g[fnName];
+        if (typeof fn !== "function") throw new Error("Missing method: " + fnName);
+        return await fn.apply(ctx.g, args || []);
+      };
+
+      const get = async (ctx, spec) => {
+        if (spec.path) {
+          const parts = String(spec.path).split(".");
+          let cur = ctx.g;
+          for (const p of parts) cur = cur?.[p];
+          return cur;
+        }
+        const fn = ctx.g[spec.fn];
+        if (typeof fn !== "function") throw new Error("Missing getter: " + spec.fn);
+        return await fn.apply(ctx.g, spec.args || []);
+      };
+
+      testSummary.textContent = `Running ${pairs.length} tests…`;
+      const results = await runTable({
+        pairs,
+        makeContext,
+        invoke,
+        get,
+        normalize: (x) => (typeof x === "string" ? x.replace(/\r/g,"").replace(/[ \t]+/g," ").trim() : x),
+      });
+
+      renderTestResults(results);
+    }
+
+    btnRunTests.onclick = () => runScratchTests();
+    btnAutoTests.onclick = () => {
+      autoTests = !autoTests;
+      btnAutoTests.textContent = autoTests ? "Auto: On" : "Auto: Off";
+    };
+    setTimeout(() => { if (autoTests) runScratchTests(); }, 250);
+
 
     // initial sync
     syncText();
