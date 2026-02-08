@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Priyomes (ScratchChess)</title>
+  <title>ScratchChess + Priyomes</title>
   <style>
     :root{
       --bg:#0b0d12;
@@ -14,16 +14,32 @@
       --border:rgba(255,255,255,.12);
       --btn:#1a2236;
       --btn2:#202b46;
-      --ok:#16a34a;
-      --warn:#d97706;
-      --bad:#ef4444;
+      --good:#4ade80;
+      --warn:#fbbf24;
+      --bad:#fb7185;
       --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      --radius:14px;
+      --r:14px;
     }
-    *{ box-sizing:border-box; }
-    html,body{ height:100%; }
+    *{box-sizing:border-box}
     body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); }
+    a{ color:#93c5fd; text-decoration:none; }
+    .wrap{ max-width:1220px; margin:0 auto; padding:14px; display:grid; gap:12px; }
+    .topbar{
+      display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:var(--r);
+      padding:10px;
+      position:sticky; top:0; z-index:5;
+      backdrop-filter: blur(6px);
+    }
+    .brand{ font-weight:900; letter-spacing:.3px; margin-right:8px; }
+    .group{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .sep{ width:1px; height:26px; background:var(--border); margin:0 6px; }
+    button, select, input{
+      font-family:inherit;
+    }
     button{
       background:var(--btn);
       color:var(--text);
@@ -34,1441 +50,1083 @@
       cursor:pointer;
     }
     button:hover{ background:var(--btn2); }
-    button:disabled{ opacity:.55; cursor:not-allowed; }
+    button.active{ outline:2px solid rgba(125,211,252,.35); }
+    button.good{ border-color: rgba(74,222,128,.35); }
+    button.bad{ border-color: rgba(251,113,133,.45); }
     .pill{
       font-family:var(--mono);
-      font-size:11px;
+      font-size:12px;
+      padding:6px 8px;
       border:1px solid var(--border);
-      background:rgba(255,255,255,.04);
-      padding:3px 8px;
       border-radius:999px;
-      color:rgba(233,238,248,.86);
+      background:rgba(255,255,255,.04);
+      color:var(--muted);
+      max-width:55vw;
+      overflow:hidden;
+      text-overflow:ellipsis;
       white-space:nowrap;
     }
-
-    .wrap{ max-width:1240px; margin:0 auto; padding:14px; display:grid; gap:12px; }
-    .topbar{
-      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:10px;
-    }
-    .sep{ width:1px; height:26px; background:var(--border); margin:0 6px; }
-    .layout{
+    .grid{
       display:grid;
-      grid-template-columns: 1.3fr 0.7fr;
+      grid-template-columns: 1.1fr .9fr;
       gap:12px;
-      align-items:stretch;
+      align-items:start;
     }
     @media (max-width: 980px){
-      .layout{ grid-template-columns:1fr; }
+      .grid{ grid-template-columns:1fr; }
     }
-    .card{
+    .panel{
       background:var(--panel);
       border:1px solid var(--border);
-      border-radius:var(--radius);
-      overflow:hidden;
-      min-height:0;
+      border-radius:var(--r);
+      padding:12px;
     }
-    .head{
-      padding:10px 12px;
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      border-bottom:1px solid var(--border);
-      background: rgba(255,255,255,.02);
+    .panel h3{
+      margin:0 0 10px 0; font-size:13px; letter-spacing:.2px; color:var(--muted);
     }
-    .status{ color:var(--muted); font-size:12px; }
-    .boardCard{ display:flex; flex-direction:column; min-height:0; }
-    .boardArea{
+    .boardFrame{
+      background:var(--panel2);
+      border:1px solid var(--border);
+      border-radius:16px;
       padding:12px;
       display:flex;
-      align-items:center;
-      justify-content:center;
-      min-height:0;
-      flex:1 1 auto;
-      background:var(--panel2);
+      flex-direction:column;
+      gap:10px;
     }
     #boardHost{
-      width:min(92vw, 700px);
-      height:min(92vw, 700px);
+      width:min(92vw, 560px);
+      height:min(92vw, 560px);
+      margin:0 auto;
     }
-    .below{
-      padding:10px 12px 12px;
-      border-top:1px solid var(--border);
-      background: rgba(255,255,255,.02);
-      display:grid; gap:8px;
-    }
-    .navRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .setupRow{
-      display:none;
-      gap:8px; align-items:center; flex-wrap:wrap;
-    }
-    .setupRow.open{ display:flex; }
-    #sparesHost{ min-height:44px; }
-    .hint{ color:var(--muted); font-size:12px; line-height:1.35; }
-
-    /* Right card tabs */
-    .rightCard{ display:flex; flex-direction:column; min-height:0; }
-    .tabs{
-      display:flex; gap:8px; flex-wrap:wrap;
-      padding:10px;
-      border-bottom:1px solid var(--border);
-      background: rgba(255,255,255,.02);
-    }
-    .tab{
-      padding:8px 10px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.02);
-      color:var(--muted);
-      font-weight:900; font-size:12px;
-      cursor:pointer; user-select:none;
-    }
-    .tab.active{
-      color:var(--text);
-      border-color: rgba(125,211,252,.35);
-      box-shadow:0 0 0 1px rgba(125,211,252,.18) inset;
-      background: rgba(125,211,252,.06);
-    }
-    .pane{
-      display:none;
-      padding:12px;
+    .sparesRow{
+      display:flex;
+      align-items:center;
       gap:10px;
-      flex:1;
-      min-height:0;
-      overflow:auto;
-      -webkit-overflow-scrolling: touch;
+      flex-wrap:wrap;
     }
-    .pane.active{ display:flex; flex-direction:column; }
-
-    textarea, input[type="text"]{
+    .sparesLabel{
+      font-weight:800;
+      color:var(--muted);
+    }
+    #sparesHost{
+      flex:1;
+      min-width:260px;
+      height:84px;
+      border:1px dashed var(--border);
+      border-radius:12px;
+      padding:6px;
+    }
+    textarea{
       width:100%;
-      background:#0c0f18;
-      color:var(--text);
+      background:rgba(0,0,0,.15);
       border:1px solid var(--border);
+      color:var(--text);
       border-radius:12px;
       padding:10px;
       font-family:var(--mono);
       font-size:12px;
       line-height:1.35;
-      box-sizing:border-box;
-      outline:none;
+      resize:vertical;
     }
-    textarea:focus, input[type="text"]:focus{
-      border-color: rgba(125,211,252,.35);
-      box-shadow:0 0 0 3px rgba(125,211,252,.10);
-    }
-
     .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    .row label{ min-width:110px; font-size:12px; color:var(--muted); font-weight:900; }
-
-    .moves{ overflow:auto; min-height:120px; flex:1; display:flex; flex-direction:column; gap:2px; }
-    .moveRow{
-      display:grid;
-      grid-template-columns: 42px 1fr 1fr;
-      gap:8px;
-      padding:4px 2px;
-      align-items:start;
-      border-radius:10px;
-    }
-    .moveRow:hover{ background: rgba(255,255,255,.02); }
-    .mn{
-      color:var(--muted);
-      text-align:right;
-      padding:6px 8px;
-      border-radius:10px;
-      background: rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.05);
-      white-space:nowrap;
-      font-family:var(--mono);
-      font-size:11px;
-    }
-    .plyBtn{
-      width:100%;
-      text-align:left;
-      padding:6px 10px;
-      border-radius:10px;
-      background:transparent;
-      border:1px solid transparent;
-      font-weight:800;
-      color:var(--text);
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      font-family:var(--mono);
-      font-size:12px;
-    }
-    .plyBtn:hover{ border-color:var(--border); background:rgba(255,255,255,.02); }
-    .plyBtn.active{ border-color:rgba(34,197,94,.40); box-shadow:0 0 0 1px rgba(34,197,94,.12) inset; }
-    .cmt{
-      grid-column: 2 / 4;
-      display:block;
-      padding:4px 8px;
-      border-radius:10px;
-      border:1px solid rgba(255,255,255,.08);
-      background: rgba(255,255,255,.03);
-      color: rgba(233,238,248,.80);
-      font-size:12px;
-      line-height:1.25;
-      white-space:normal;
-    }
-
-    .gameList{ overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1; }
-    .gameCard{
+    .row > *{ flex:0 0 auto; }
+    .row label{ color:var(--muted); font-weight:800; font-size:12px; }
+    .smallSelect{
+      background:rgba(0,0,0,.15);
       border:1px solid var(--border);
-      background: rgba(255,255,255,.02);
-      border-radius:14px;
+      color:var(--text);
+      border-radius:10px;
+      padding:8px 10px;
+      font-weight:800;
+      min-width:180px;
+    }
+    .hint{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
       padding:10px;
+      border:1px dashed var(--border);
+      border-radius:12px;
+      background:rgba(255,255,255,.03);
+      margin-bottom:10px;
+    }
+    .tabs{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-bottom:10px;
+    }
+    .pane{ display:none; }
+    .pane.active{ display:block; }
+    .gameList{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      max-height:56vh;
+      overflow:auto;
+      padding-right:6px;
+    }
+    .card{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px;
+      background:rgba(255,255,255,.03);
       cursor:pointer;
     }
-    .gameCard:hover{ filter:brightness(1.03); }
-    .gameCard.active{ border-color: rgba(125,211,252,.35); box-shadow:0 0 0 1px rgba(125,211,252,.12) inset; }
-    .gameTitle{ font-weight:900; font-size:13px; margin-bottom:4px; }
-    .meta{ font-size:12px; color:var(--muted); display:flex; gap:10px; flex-wrap:wrap; }
-    .kbd{
-      font-family:var(--mono);
-      font-size:11px;
-      padding:2px 6px;
-      border-radius:8px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.03);
-      color: rgba(233,238,248,.80);
-    }
-
-    /* Priyomes */
-    .priyomesGrid{
+    .card:hover{ background:rgba(255,255,255,.05); }
+    .cardTitle{ font-weight:900; margin:0 0 4px 0; }
+    .cardSub{ color:var(--muted); font-size:12px; margin:0; }
+    .miniGrid{
       display:grid;
-      grid-template-columns: 3fr 1fr;
-      gap:12px;
-      min-height:0;
-      flex:1;
-    }
-    @media (max-width:980px){ .priyomesGrid{ grid-template-columns:1fr; } }
-    .prLeftCard, .prRightCard{
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.02);
-      border-radius:14px;
-      padding:10px;
-      min-height:0;
-      display:flex;
-      flex-direction:column;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap:10px;
     }
-    .prList{
-      flex:1;
-      min-height:0;
-      overflow:auto;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      padding-right:4px;
+    @media (max-width: 620px){
+      .miniGrid{ grid-template-columns:1fr; }
     }
-    .prItem{
+    .miniCard{
       border:1px solid var(--border);
-      background: rgba(12,15,24,.65);
-      border-radius:14px;
+      border-radius:12px;
       padding:10px;
+      background:rgba(255,255,255,.03);
+      cursor:pointer;
       display:grid;
-      grid-template-columns: auto 1fr;
+      grid-template-columns: 120px 1fr;
       gap:10px;
-      align-items:start;
+      align-items:center;
     }
-    .prItem.active{
-      border-color: rgba(125,211,252,.35);
-      box-shadow:0 0 0 1px rgba(125,211,252,.12) inset;
-    }
-    .small-board{
+    .miniHost{
       width:120px; height:120px;
-      border-radius:12px;
+      border-radius:10px;
       overflow:hidden;
-      border:1px solid rgba(255,255,255,.10);
-      background:#0c0f18;
-      flex:0 0 auto;
-      pointer-events:none;
-    }
-    @media (max-width:520px){ .small-board{ width:96px; height:96px; } }
-    .prTitle{ font-weight:900; font-size:13px; margin-bottom:4px; }
-    .prSub{ font-size:12px; color:var(--muted); line-height:1.35; }
-    select{
+      background:rgba(0,0,0,.2);
       border:1px solid var(--border);
-      border-radius:12px;
-      padding:9px 10px;
-      background:#0c0f18;
-      color:var(--text);
-      font-size:12px;
-      font-weight:800;
     }
-
-    /* Errors tab */
-    .errorTools{ display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
-    .errorBody{
-      padding:10px 12px 12px;
-      border:1px solid rgba(239,68,68,.28);
-      background: rgba(239,68,68,.06);
-      border-radius: 12px;
-      font-family: var(--mono);
+    .mono{ font-family:var(--mono); }
+    .status{
+      font-family:var(--mono);
       font-size:12px;
       white-space:pre-wrap;
-      color:#fecaca;
-      overflow:auto;
-      min-height:160px;
-      flex:1;
-    }
-    .okLine{ color:#86efac; }
-    .warnLine{ color:#fdba74; }
-
-    /* Modal */
-    .modalBackdrop{
-      position:fixed; inset:0;
-      background: rgba(0,0,0,.55);
-      backdrop-filter: blur(6px);
-      display:none;
-      z-index:999;
-      padding:14px;
-    }
-    .modalBackdrop.open{ display:grid; place-items:center; }
-    .modal{
-      width:min(980px, 100%);
-      height:min(84vh, 860px);
-      background: var(--panel);
       border:1px solid var(--border);
-      border-radius: 18px;
-      overflow:hidden;
-      display:flex;
-      flex-direction:column;
-      min-height:0;
+      border-radius:12px;
+      padding:10px;
+      background:rgba(0,0,0,.15);
+      max-height:42vh;
+      overflow:auto;
     }
-    .modalHead{
-      padding:12px 14px;
-      border-bottom:1px solid var(--border);
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      background: rgba(255,255,255,.02);
+    .badgeOK{ color:var(--good); font-weight:900; }
+    .badgeWARN{ color:var(--warn); font-weight:900; }
+    .badgeERR{ color:var(--bad); font-weight:900; }
+    .movesBox{
+      font-family:var(--mono);
+      font-size:12px;
+      line-height:1.45;
+      padding:10px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:rgba(0,0,0,.15);
+      max-height:22vh;
+      overflow:auto;
+      white-space:pre-wrap;
     }
-    .modalBody{
-      padding:12px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      flex:1;
-      min-height:0;
-    }
-    #importPgnText{ flex:1; min-height:0; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="topbar">
-      <span class="pill" id="studyPill">Study • 0 games</span>
-      <span class="pill" id="gamePill">—</span>
-      <span class="sep"></span>
+      <div class="brand">ScratchChess</div>
 
-      <button id="btnFlip" type="button">Flip</button>
-      <button id="btnReset" type="button">Reset</button>
+      <div class="group">
+        <button id="btnMovesMode" class="active">Moves</button>
+        <button id="btnSquaresMode">Squares</button>
+        <button id="btnArrowsMode">Arrows</button>
+        <button id="btnSetupMode">Setup</button>
+        <button id="btnFlip">Flip</button>
+        <button id="btnMiniMain">Mini</button>
+      </div>
 
-      <button id="btnSquares" type="button">Squares</button>
-      <button id="btnArrows" type="button">Arrows</button>
-      <button id="btnClearMarks" type="button">Clear</button>
+      <div class="sep"></div>
 
-      <span class="sep"></span>
+      <div class="group">
+        <button id="btnPrev">Prev</button>
+        <button id="btnNext">Next</button>
+        <button id="btnPromote">Promote</button>
+        <button id="btnDelete">Delete</button>
+      </div>
 
-      <button id="btnImportPgn" type="button">Import PGN</button>
-      <button id="btnExportGame" type="button">Export Game PGN</button>
-      <button id="btnExportStudy" type="button">Export Study PGN</button>
+      <div class="sep"></div>
 
-      <span class="sep"></span>
+      <div class="group">
+        <button id="btnInit">Initial</button>
+        <button id="btnClear">Clear</button>
+        <button id="btnClearMarks">Clear Marks</button>
+      </div>
 
-      <span class="status" id="topStatus">—</span>
+      <div class="sep"></div>
+
+      <div class="group">
+        <span class="pill" id="studyPill">Study • —</span>
+        <span class="pill" id="gamePill">Game • —</span>
+        <span class="pill" id="modePill">Mode • —</span>
+      </div>
     </div>
 
-    <div class="layout">
-      <div class="card boardCard" id="boardCard">
-        <div class="head">
-          <div class="status" id="status">—</div>
-          <div class="status">
-            Tool: <span id="toolStatus">moves</span>
-            <span id="toolDots" hidden>
-              <button class="dotBtn" data-color="G" title="Green" aria-label="Green"><span class="dot dotG"></span></button>
-              <button class="dotBtn" data-color="R" title="Red" aria-label="Red"><span class="dot dotR"></span></button>
-              <button class="dotBtn" data-color="B" title="Blue" aria-label="Blue"><span class="dot dotB"></span></button>
-              <button class="dotBtn" data-color="Y" title="Yellow" aria-label="Yellow"><span class="dot dotY"></span></button>
-            </span>
-          </div>
-        </div>
-
-        <div class="boardArea">
+    <div class="grid">
+      <div class="panel">
+        <h3>Board</h3>
+        <div class="boardFrame">
           <div id="boardHost"></div>
-        </div>
 
-        <div class="below">
-          <div class="navRow">
-            <button id="btnPrev" type="button">◀︎</button>
-            <button id="btnNext" type="button">▶︎</button>
-            <span class="pill" id="navMeta">ply ?</span>
+          <div class="sparesRow">
+            <div class="sparesLabel">Spare pieces (setup mode)</div>
+            <div id="sparesHost" hidden></div>
           </div>
 
-          <div class="setupRow" id="setupRow">
-            <span class="kbd">Query setup mode</span>
-            <button id="btnAddPriyome" type="button">Add</button>
-            <button id="btnCancelPriyome" type="button">Cancel</button>
-            <button id="btnPlayFromHere" type="button">Play from here</button>
-            <button id="btnInit" type="button">Initial position</button>
-            <button id="btnClearBoard" type="button">Clear board</button>
-            <div class="hint">Drag pieces or use spares to build a position. Click <b>Add</b> to save it to Priyomes.</div>
-          </div>
-
-          <div id="sparesHost" hidden></div>
+          <div class="movesBox" id="movesPane">(moves will appear here)</div>
         </div>
       </div>
 
-      <div class="card rightCard">
+      <div class="panel">
         <div class="tabs">
-          <div class="tab active" data-tab="moves">Moves</div>
-          <div class="tab" data-tab="priyomes">Priyomes</div>
-          <div class="tab" data-tab="games">Games</div>
-          <div class="tab" data-tab="query">Query</div>
-          <div class="tab" data-tab="evals">Evals</div>
-          <div class="tab" data-tab="errors">Errors</div>
+          <button id="tabPriyomes" class="active">Priyomes</button>
+          <button id="tabGames">Games</button>
+          <button id="tabQuery">Query</button>
+          <button id="tabEvals">Evals</button>
+          <button id="tabErrors">Errors</button>
         </div>
 
-        <div class="pane active" id="paneMoves">
-          <div class="moves" id="moves"></div>
-          <div>
-            <div class="hint" id="annoTitle">Annotation</div>
-            <textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
-          </div>
-        </div>
-
-        <div class="pane" id="panePriyomes">
+        <!-- Priyomes -->
+        <div class="pane active" id="panePriyomes">
           <div class="hint">
-            Select a pattern on the left. Choose a database on the right. <b>New Query</b> enables setup mode on the main board; click <b>Add</b> under the board to save.
+            Mini boards are rendered by loading each Priyome PGN into a ScratchChess game and toggling <span class="mono">mini</span>.
+            Click a Priyome to load it into the main board. User-created Priyomes are stored in localStorage.
           </div>
-          <div class="priyomesGrid">
-            <div class="prLeftCard">
-              <div class="row" style="justify-content:space-between;">
-                <div class="status"><b>Patterns</b></div>
-                <div class="hint" id="prSelHint">Tap a card to select.</div>
-              </div>
-              <div class="prList" id="prList"></div>
-            </div>
-            <div class="prRightCard">
-              <div class="status"><b>Database</b></div>
-              <select id="dbSelect" aria-label="Database select">
-                <option value="all">all</option>
-              </select>
-              <div class="row">
-                <button id="btnPriyomesSearch" type="button">Search</button>
-                <button id="btnPriyomesNew" type="button">New Query</button>
-              </div>
-              <div class="hint" id="prRightHint">
-                Search runs CQL (if available in this repo). New Query turns the main board into a setup tool.
-              </div>
-            </div>
+          <div class="row" style="margin-bottom:10px;">
+            <button id="btnNewPriyome" class="good">New Query</button>
+            <button id="btnSavePriyome" class="good">Save as Priyome</button>
+            <button id="btnResetPriyome" class="bad">Reset to empty</button>
+            <span class="pill" id="pryCount">—</span>
           </div>
+          <div class="miniGrid" id="pryGrid"></div>
         </div>
 
+        <!-- Games -->
         <div class="pane" id="paneGames">
-          <div class="hint">Studies list. Click a game to load.</div>
-          <div class="row" style="gap:8px; align-items:center; margin: 8px 0 10px;">
-            <label class="kbd" for="studySelect">Study</label>
-            <select id="studySelect" style="flex:1; min-width:0;"></select>
-            <button id="btnNewStudy" type="button">New Study</button>
+          <div class="hint">
+            Studies are loaded from <span class="mono">STUDY_MANIFEST</span> (same as reference.html). The default study should include the Fischer games if <span class="mono">./pgn/Study.pgn</span> exists.
+          </div>
+          <div class="row" style="margin-bottom:10px;">
+            <label for="studySelect">Study</label>
+            <select id="studySelect" class="smallSelect"></select>
+            <button id="btnNewStudy">New Study</button>
+            <button id="btnReloadStudies">Reload Defaults</button>
           </div>
           <div class="gameList" id="gameList"></div>
         </div>
 
+        <!-- Query -->
         <div class="pane" id="paneQuery">
           <div class="hint">
-            Load <span class="kbd">.cql</span> and <span class="kbd">.pgn</span>. CQL becomes editable.
-            Run executes <span class="kbd">./wasm/cql_runner.js</span> (if present).
-            Output PGN games are added to <b>Studies</b>.
+            Loads a <span class="mono">.cql</span> and a <span class="mono">.pgn</span>, then runs the wasm runner (imported from <span class="mono">./wasm/cql_runner.js</span>).
+            Discovered games are appended to the current Study.
           </div>
 
           <div class="row">
             <label for="qCqlFile">CQL file</label>
             <input id="qCqlFile" type="file" accept=".cql"/>
-            <span class="kbd" id="qCqlName">—</span>
+            <span class="pill" id="qCqlName">—</span>
           </div>
 
-          <div class="row">
+          <div class="row" style="margin-top:8px;">
             <label for="qPgnFile">PGN file</label>
             <input id="qPgnFile" type="file" accept=".pgn"/>
-            <span class="kbd" id="qPgnName">—</span>
+            <span class="pill" id="qPgnName">—</span>
           </div>
 
-          <div class="row">
+          <div class="row" style="margin-top:8px;">
             <label for="qArgv">Argv</label>
-            <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql"/>
+            <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql"
+                   style="flex:1; min-width:0; padding:8px 10px; border-radius:12px; border:1px solid var(--border); background:rgba(0,0,0,.15); color:var(--text); font-family:var(--mono);"/>
           </div>
 
-          <div class="row">
-            <label>CQL (editable)</label>
-            <span class="kbd">in-memory</span>
+          <div class="row" style="margin-top:10px;">
+            <button id="qRun" class="good">Run Query</button>
+            <button id="qUseCurrent" class="good">Use current game</button>
+            <span class="pill" id="qStatus">idle</span>
           </div>
-          <textarea id="qCqlText" placeholder="CQL will load here; you can edit before running…"></textarea>
 
-          <div class="row">
-            <button id="qRun" disabled>Run Query</button>
-            <button id="qRunOnCurrent" type="button">Use current game as PGN</button>
-            <span class="hint" id="qStatus">Choose files to enable.</span>
+          <div class="row" style="margin-top:10px;">
+            <label for="qCqlText">CQL text</label>
           </div>
+          <textarea id="qCqlText" rows="12" spellcheck="false"></textarea>
         </div>
 
+        <!-- Evals -->
         <div class="pane" id="paneEvals">
           <div class="hint">
-            Evals are loaded from <span class="kbd">./evals.js</span>. Click <b>Run</b> to evaluate the <b>current game</b>.
-            Output is added as a new game.
+            CQL-based evals are loaded from <span class="mono">CQL_EVAL_MANIFEST</span>. Clicking an eval loads its CQL and runs it against the current game via the Query runner.
           </div>
-          <div class="row">
-            <button id="btnReloadEvals" type="button">Reload evals.js</button>
-            <span class="kbd" id="evalsStatus">—</span>
-          </div>
-          <div id="evalList"></div>
+          <div id="evalList" class="gameList"></div>
         </div>
 
+        <!-- Errors -->
         <div class="pane" id="paneErrors">
-          <div class="errorTools">
-            <div class="hint">All logs and errors show here.</div>
-            <div class="row" style="margin-left:auto;">
-              <span class="kbd">Lines</span>
-              <span class="kbd" id="errCount">0</span>
-              <button id="btnClearErrors" type="button">Clear</button>
-            </div>
+          <div class="hint">
+            Runtime logs (including query output). If something fails, copy the stack trace from here.
           </div>
-          <div class="errorBody" id="errorLog"></div>
+          <div class="row" style="margin-bottom:10px;">
+            <button id="btnClearErrors">Clear</button>
+          </div>
+          <div id="errLog" class="status"></div>
         </div>
-      </div>
-    </div>
 
-    <div class="card" id="bottomCard">
-      <div class="head">
-        <div class="status">Position FEN & Game PGN</div>
-        <div class="status" id="bottomMeta">—</div>
-      </div>
-      <div style="padding:12px; display:flex; flex-direction:column; gap:10px;">
-        <div class="row" style="gap:10px;">
-          <span class="status" style="font-weight:900;">FEN</span>
-          <div class="pill" id="fenBottom" style="flex:1; overflow:auto;"></div>
-          <button id="btnCopyFen" type="button">Copy</button>
+        <h3 style="margin-top:14px;">FEN</h3>
+        <textarea id="fenBox" rows="3"></textarea>
+        <div class="row" style="margin-top:8px;">
+          <button id="btnLoadFEN">Load FEN</button>
+          <button id="btnExportFEN">Export FEN</button>
         </div>
-        <div class="hint">PGN includes inline <span class="kbd">{ comments }</span> and draw tags like <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span> at the ply they belong to.</div>
-        <textarea id="pgnBottom" readonly></textarea>
-      </div>
-    </div>
-  </div>
 
-  <!-- Import PGN modal -->
-  <div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-label="Import PGN">
-      <div class="modalHead">
-        <div class="status"><b>Import PGN</b> <span class="pill">paste one or more games</span></div>
-        <div class="row">
-          <button id="btnImportCancel" type="button">Cancel</button>
-          <button id="btnImportAdd" type="button">Add to Games</button>
+        <h3 style="margin-top:14px;">PGN</h3>
+        <textarea id="pgnBox" rows="7"></textarea>
+        <div class="row" style="margin-top:8px;">
+          <button id="btnLoadPGN">Load PGN</button>
+          <button id="btnExportPGN">Export PGN</button>
         </div>
-      </div>
-      <div class="modalBody">
-        <div class="hint">
-          Paste PGN here. Multiple games are supported if each game starts with <span class="kbd">[Event "…"]</span>.
+
+        <h3 style="margin-top:14px;">CQL (export from current marks)</h3>
+        <textarea id="cqlBox" rows="7" readonly></textarea>
+        <div class="row" style="margin-top:8px;">
+          <button id="btnExportCQL">Export CQL</button>
+          <button id="btnClearCQL">Clear</button>
         </div>
-        <textarea id="importPgnText" placeholder='[Event "Example"]&#10;...'></textarea>
+        <div id="cqlErr" class="status" style="margin-top:10px;"></div>
+
       </div>
     </div>
   </div>
 
 <script type="module">
-  import { createGame, BoardView } from "./scratchchess.js";
+import { createGame, BoardView } from "./scratchchess.js";
 
-  // ---------------- Error logger ----------------
-  const errorLog = document.getElementById('errorLog');
-  const errCount = document.getElementById('errCount');
-  let errorLines = [];
-
-  function logLine(kind, msg){
-    const ts = new Date().toISOString().slice(11,19);
-    const line = `[${ts}] ${kind}: ${msg}`;
-    errorLines.push(line);
-    errCount.textContent = String(errorLines.length);
-
-    const el = document.createElement('div');
-    el.textContent = line;
-    if (kind === 'OK') el.className = 'okLine';
-    if (kind === 'WARN') el.className = 'warnLine';
-    errorLog.appendChild(el);
-    errorLog.scrollTop = errorLog.scrollHeight;
-  }
-  function logStack(kind, prefix, e){
-    const msg = e && e.stack ? e.stack : String(e);
-    logLine(kind, `${prefix}${msg}`);
-  }
-  window.addEventListener('error', (e) => {
-    const where = e.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
-    const detail = (e.error && e.error.stack) ? `\\n${e.error.stack}` : '';
-    logLine('ERR', `${e.message || 'Error'}${where}${detail}`);
-  });
-  window.addEventListener('unhandledrejection', (e) => {
-    logLine('ERR', `Unhandled promise rejection: ${String(e.reason && e.reason.stack ? e.reason.stack : e.reason)}`);
-  });
-  document.getElementById('btnClearErrors').addEventListener('click', () => {
-    errorLines = [];
-    errCount.textContent = '0';
-    errorLog.innerHTML = '';
-    logLine('OK', 'Cleared error log.');
-  });
-
-  // ---------------- Small helpers ----------------
+(() => {
   const $ = (id) => document.getElementById(id);
-  const statusEl = $('status');
-  const topStatusEl = $('topStatus');
-  const navMetaEl = $('navMeta');
-  const toolStatusEl = $('toolStatus');
 
-  const fenBottom = $('fenBottom');
-  const pgnBottom = $('pgnBottom');
-  const bottomMeta = $('bottomMeta');
+  // -----------------------------
+  // Manifests (copied from reference.html)
+  // -----------------------------
+  const PRIYOME_PGN_MANIFEST = { default: "./priyomes/priyomes.pgn" };
 
-  const movesEl = $('moves');
-  const annoTitleEl = $('annoTitle');
-  const annoTextEl = $('annoText');
+  const STUDY_MANIFEST = {
+    default:"./pgn/Study.pgn",
+    fen_test: "./pgn/default games.pgn",
+    alignment_examples: "./pgn/alignment_examples.pgn"
+  };
 
-  const setupRow = $('setupRow');
-  const sparesHost = $('sparesHost');
+  const CQL_EVAL_MANIFEST = {
+    naivealignments: { url: "./cql/naivealignments.cql", description: "Naive alignments." },
+    humanlignments: { url: "./cql/human_alignments.cql", description: "Human alignments." }
+  };
 
-  function safeCall(obj, fn, ...args){
-    try{
-      if (obj && typeof obj[fn] === 'function') return obj[fn](...args);
-    }catch(e){
-      logStack('WARN', `Call failed: ${fn}(): `, e);
-    }
-    return undefined;
+  // -----------------------------
+  // Logging (Errors tab)
+  // -----------------------------
+  const errLog = $("errLog");
+  function logLine(level, msg){
+    const tag = level === "OK" ? "badgeOK" : (level === "WARN" ? "badgeWARN" : "badgeERR");
+    const line = `[${level}] ${msg}`;
+    const span = document.createElement("div");
+    span.innerHTML = `<span class="${tag}">${level}</span> ${escapeHtml(msg)}`;
+    errLog.appendChild(span);
+    errLog.scrollTop = errLog.scrollHeight;
+    // also mirror to console
+    if (level === "ERR") console.error(line);
+    else if (level === "WARN") console.warn(line);
+    else console.log(line);
+  }
+  function logStack(level, prefix, e){
+    const s = (e && e.stack) ? e.stack : String(e);
+    logLine(level, prefix + s);
+  }
+  $("btnClearErrors").onclick = () => { errLog.textContent=""; };
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
-  function getPlyIndex(g){
-    // Best-effort: scratchchess versions may expose ply in different places.
-    const candidates = [
-      g?.state?.ply, g?.state?.plyIndex, g?.state?.plyNum, g?.ply,
-      g?.ui?.ply, g?.ui?.plyIndex, g?.curPly, g?.cursorPly
-    ];
-    for (const v of candidates){
-      if (typeof v === 'number' && isFinite(v)) return v;
+  // -----------------------------
+  // Helpers (PGN parsing like reference)
+  // -----------------------------
+  function parseHeaders(pgn){
+    const headers = {};
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+\"([^\"]*)\"\]\s*$/gm;
+    let m;
+    while ((m = headerRe.exec(pgn)) !== null){
+      headers[m[1]] = m[2];
     }
-    // fall back to 0
-    return 0;
+    return headers;
   }
 
   function splitMultiPgn(text){
-    const s = String(text || '').replace(/\r/g,'').trim();
-    if (!s) return [];
-    // naive split: each game should start with [Event
-    const parts = s.split(/\n(?=\[Event\s+")/g);
-    return parts.map(x => x.trim()).filter(Boolean);
+    const t = (text || "").trim();
+    if (!t) return [];
+    const parts = t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
+    return parts.length ? parts : [t];
   }
 
-  function parseHeaders(pgn){
-    const out = {};
-    const re = /^\[([^\s]+)\s+"([^"]*)"\]\s*$/gm;
-    let m;
-    while ((m = re.exec(pgn))){
-      out[m[1]] = m[2];
-    }
-    return out;
+  function pgnTitleFromHeaders(h){
+    const w = h.White || "White";
+    const b = h.Black || "Black";
+    const ev = h.Event || "";
+    const site = h.Site || "";
+    const date = h.Date || "";
+    const base = `${w} vs ${b}`.trim();
+    const bits = [ev, site, date].filter(Boolean).join(" • ");
+    return bits ? `${base} — ${bits}` : base;
   }
 
-  async function copyToClipboard(text){
-    try{
-      await navigator.clipboard.writeText(String(text || ''));
-      logLine('OK', 'Copied to clipboard.');
-    }catch(e){
-      logLine('WARN', 'Clipboard copy failed (browser permissions).');
-    }
+  function stripHeadersFromPgn(pgn){
+    const body = String(pgn || "")
+      .replace(/\r/g,'')
+      .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
+      .trim();
+    return body;
   }
 
-  // ---------------- Studies/Games state ----------------
-  let GAMES = []; // {id,title,result,pgn,source?}
-  const STUDIES = Object.create(null); // name -> {name, gameIds:[]}
-  let currentStudyName = 'Default';
+  function extractMoveTextForPane(pgn){
+    // Avoid showing PGN tags in the move pane.
+    const body = stripHeadersFromPgn(pgn);
+    // Collapse multiple blank lines.
+    return body.replace(/\n{3,}/g, "\n\n").trim();
+  }
 
-  function uniqId(prefix='g'){
-    return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+  async function fetchText(url){
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`fetchText: ${res.status} ${res.statusText} for ${url}`);
+    return await res.text();
   }
-  function ensureStudy(name, gameIds=[]){
-    if (!STUDIES[name]) STUDIES[name] = { name, gameIds: [] };
-    const s = STUDIES[name];
-    for (const id of gameIds){
-      if (id && !s.gameIds.includes(id)) s.gameIds.push(id);
-    }
-    return s;
+
+  // -----------------------------
+  // Studies / games state
+  // -----------------------------
+  const STUDIES = Object.create(null); // name -> { gameIds: [] }
+  const GAMES = []; // { id, title, pgn, headers, study, user? }
+  let currentStudyName = "default";
+  let currentGameId = null;
+
+  function ensureStudy(name){
+    if (!STUDIES[name]) STUDIES[name] = { gameIds: [] };
+    return STUDIES[name];
   }
-  function currentStudy(){ return ensureStudy(currentStudyName, []); }
+  function currentStudy(){ return ensureStudy(currentStudyName); }
+  function getGame(id){ return GAMES.find(g => g.id === id) || null; }
+
+  function addGameToStudy(studyName, pgn, meta={}){
+    const blocks = splitMultiPgn(pgn);
+    if (!blocks.length) return null;
+    const first = blocks[0];
+    const h = parseHeaders(first);
+    const id = meta.id || `g_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const title = meta.title || pgnTitleFromHeaders(h);
+    const g = { id, title, pgn: first, headers:h, study:studyName, user:!!meta.user };
+    GAMES.push(g);
+    ensureStudy(studyName).gameIds.push(id);
+    return g;
+  }
 
   function renderStudySelect(){
-    const sel = $('studySelect');
+    const sel = $("studySelect");
     const names = Object.keys(STUDIES).sort((a,b)=>a.localeCompare(b));
-    sel.innerHTML = '';
+    sel.innerHTML = "";
     for (const n of names){
-      const opt = document.createElement('option');
+      const opt = document.createElement("option");
       opt.value = n;
       opt.textContent = n;
       if (n === currentStudyName) opt.selected = true;
       sel.appendChild(opt);
     }
-    $('studyPill').textContent = `Study • ${currentStudy().gameIds.length} games`;
+    $("studyPill").textContent = `Study • ${currentStudyName}`;
   }
+
   function setCurrentStudy(name){
     currentStudyName = name;
-    ensureStudy(name, []);
+    ensureStudy(name);
     renderStudySelect();
     renderGameList();
-  }
-  function getStudyGames(){
-    const ids = currentStudy().gameIds || [];
-    const map = new Map(GAMES.map(g => [g.id, g]));
-    return ids.map(id => map.get(id)).filter(Boolean);
+    $("studyPill").textContent = `Study • ${currentStudyName} • ${currentStudy().gameIds.length} games`;
   }
 
-  // ---------------- ScratchChess main game/board ----------------
-  const gameMain = createGame({ Event: "ScratchPriyomes", White: "White", Black: "Black" });
-  let currentGameObj = gameMain;
+  function renderGameList(){
+    const list = $("gameList");
+    list.innerHTML = "";
+    const ids = currentStudy().gameIds.slice();
+    for (const id of ids){
+      const g = getGame(id);
+      if (!g) continue;
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `<div class="cardTitle">${escapeHtml(g.title)}</div>
+                        <div class="cardSub">${escapeHtml((g.headers.Event||"") + (g.headers.Date ? (" • " + g.headers.Date) : ""))}</div>`;
+      card.onclick = () => loadGameIntoMain(g.id);
+      list.appendChild(card);
+    }
+    $("gamePill").textContent = currentGameId ? `Game • ${escapeHtml(getGame(currentGameId)?.title || "—")}` : "Game • —";
+  }
 
-  const board = new BoardView($('boardHost'), gameMain, {
-    spareDiv: sparesHost,
-    minSizePx: 115,
+  // -----------------------------
+  // ScratchChess main game + board view
+  // -----------------------------
+  let current = createGame({ Event:"ScratchChess", White:"White", Black:"Black", Date:"2026.02.08" });
+
+  const board = new BoardView({
+    el: $("boardHost"),
+    game: current,
+    spareEl: $("sparesHost"),
+    minSizePx: 320
   });
 
-  function setToolStatus(){
-    const mode = currentGameObj?.ui?.mode || 'moves';
-    const setup = !!currentGameObj?.ui?.setup;
-    toolStatusEl.textContent = setup ? `setup/${mode}` : mode;
-  }
+  current.onChange(() => syncText());
 
-  function updateBottom(){
+  function syncText(){
     try{
-      const fen = safeCall(currentGameObj, 'exportFEN') || '';
-      const pgn = safeCall(currentGameObj, 'exportPGN') || '';
-      fenBottom.textContent = fen;
-      pgnBottom.value = pgn;
-      bottomMeta.textContent = `PGN ${pgn.length} chars`;
-    }catch(e){
-      logStack('WARN', 'Bottom update failed: ', e);
-    }
-  }
-
-  function updateTopStatus(){
-    const side = currentGameObj?.state?.side === 'w' ? 'White' : 'Black';
-    const mode = currentGameObj?.ui?.mode || '?';
-    const setup = !!currentGameObj?.ui?.setup;
-    const mini = !!currentGameObj?.ui?.mini;
-    const ply = getPlyIndex(currentGameObj);
-    statusEl.textContent = `Side: ${side} • Mode: ${mode} • Setup: ${setup ? 'on' : 'off'} • Mini: ${mini ? 'on' : 'off'}`;
-    topStatusEl.textContent = `ply ${ply}`;
-    navMetaEl.textContent = `ply ${ply}`;
-    setToolStatus();
-  }
-
-  // Subscribe to library changes (showcase already uses onChange)
-  safeCall(gameMain, 'onChange', () => { updateUI(); });
-
-  // ---------------- Tabs ----------------
-  function setTab(name){
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-    const panes = {
-      moves: $('paneMoves'),
-      priyomes: $('panePriyomes'),
-      games: $('paneGames'),
-      query: $('paneQuery'),
-      evals: $('paneEvals'),
-      errors: $('paneErrors'),
-    };
-    Object.entries(panes).forEach(([k, el]) => el.classList.toggle('active', k === name));
-  }
-  document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => setTab(t.dataset.tab));
-  });
-
-  // ---------------- Moves rendering (best-effort) ----------------
-  // We prefer library getters if present; otherwise we parse mainline from exportPGN().
-  function parseMainlineSansFromPgn(pgn){
-    // VERY lightweight PGN mainline extraction:
-    // - strip headers
-    // - strip comments {...}
-    // - strip NAGs $n
-    // - strip tags like [%csl ...] inside comments already removed
-    // - strip variations ( ... ) naively (not nested-safe but fine for showcase)
-    let s = String(pgn || '').replace(/\r/g,'');
-    s = s.replace(/^\\[[^\\]]+\\]\s*$/gm,'').trim();
-    s = s.replace(/\\{[^}]*\\}/g,' ');
-    s = s.replace(/\\$\\d+/g,' ');
-    // remove parentheses variations (best-effort; repeats)
-    for (let i=0;i<6;i++) s = s.replace(/\\([^()]*\\)/g,' ');
-    // normalize
-    s = s.replace(/\s+/g,' ').trim();
-    if (!s) return [];
-    // remove results tokens
-    s = s.replace(/\s(1-0|0-1|1\/2-1\/2|\*)\s*$/,'').trim();
-    // split by move numbers and take SAN tokens
-    // tokens like "1." "1..." may appear
-    const toks = s.split(' ');
-    const sans = [];
-    for (const tok of toks){
-      if (/^\\d+\\.(\\.\\.)?$/.test(tok)) continue;
-      if (tok === '1-0' || tok === '0-1' || tok === '1/2-1/2' || tok === '*') continue;
-      sans.push(tok);
-    }
-    return sans;
-  }
-
-  function gotoPly(target){
-    target = Math.max(0, target|0);
-    // Try direct methods first.
-    const direct = ['gotoPly','setPly','seek','jumpToPly'];
-    for (const fn of direct){
-      if (typeof currentGameObj?.[fn] === 'function'){
-        safeCall(currentGameObj, fn, target);
-        return;
-      }
-    }
-    // Otherwise step prev/next.
-    const cur = getPlyIndex(currentGameObj);
-    const delta = target - cur;
-    if (delta === 0) return;
-    const stepFn = delta > 0 ? 'nextMove' : 'prevMove';
-    for (let i=0; i<Math.abs(delta); i++){
-      safeCall(currentGameObj, stepFn);
-    }
-  }
-
-  function renderMoves(){
-    movesEl.innerHTML = '';
-    // Attempt library-provided verbose history
-    const vh = safeCall(currentGameObj, 'getVerboseHistory') || safeCall(currentGameObj, 'verboseHistory');
-    let sans = null;
-
-    if (Array.isArray(vh) && vh.length){
-      // expect items like {san, ply, ...}
-      sans = vh.map(x => x && (x.san || x.move || x.notation)).filter(Boolean);
-    }
-    if (!sans){
-      sans = parseMainlineSansFromPgn(safeCall(currentGameObj,'exportPGN') || '');
-    }
-
-    const curPly = getPlyIndex(currentGameObj);
-
-    for (let i=0; i<Math.ceil(sans.length/2); i++){
-      const w = sans[2*i] || '';
-      const b = sans[2*i+1] || '';
-      const row = document.createElement('div');
-      row.className = 'moveRow';
-
-      const mn = document.createElement('div');
-      mn.className = 'mn';
-      mn.textContent = String(i+1);
-
-      const btnW = document.createElement('button');
-      btnW.className = 'plyBtn' + ((curPly === 2*i+1) ? ' active' : '');
-      btnW.textContent = w || '…';
-      btnW.disabled = !w;
-      btnW.addEventListener('click', () => gotoPly(2*i+1));
-
-      const btnB = document.createElement('button');
-      btnB.className = 'plyBtn' + ((curPly === 2*i+2) ? ' active' : '');
-      btnB.textContent = b || '…';
-      btnB.disabled = !b;
-      btnB.addEventListener('click', () => gotoPly(2*i+2));
-
-      row.appendChild(mn);
-      row.appendChild(btnW);
-      row.appendChild(btnB);
-
-      movesEl.appendChild(row);
-    }
-
-    annoTitleEl.textContent = `Annotation (ply ${curPly})`;
-    // Try to read current comment from library if available.
-    const cmt = safeCall(currentGameObj, 'getComment') || safeCall(currentGameObj, 'getCommentForCurrent') || '';
-    if (typeof cmt === 'string' && cmt !== annoTextEl.dataset.lastLoaded){
-      annoTextEl.value = cmt;
-      annoTextEl.dataset.lastLoaded = cmt;
-    }
-  }
-
-  let _annoDebounce = null;
-  annoTextEl.addEventListener('input', () => {
-    clearTimeout(_annoDebounce);
-    _annoDebounce = setTimeout(() => {
-      const t = annoTextEl.value || '';
-      annoTextEl.dataset.lastLoaded = t;
-      // Prefer library comment setters if available; otherwise no-op (still ok; exports may ignore).
-      const setters = ['setComment','setCommentForCurrent','setAnnotation','setPlyComment'];
-      let did = false;
-      for (const fn of setters){
-        if (typeof currentGameObj?.[fn] === 'function'){
-          safeCall(currentGameObj, fn, t);
-          did = true;
-          break;
-        }
-      }
-      if (!did){
-        // no setter available: keep it local (user-visible), but warn once.
-        if (!annoTextEl.dataset.warned){
-          annoTextEl.dataset.warned = '1';
-          logLine('WARN', 'This scratchchess.js build does not expose a comment setter; annotation will not export into PGN.');
-        }
-      }
-      updateBottom();
-    }, 200);
-  });
-
-  // ---------------- Priyomes ----------------
-  const PRIYOMES = []; // {id,title,fen,pgn,createdAt,miniGame,miniBoard}
-  let selectedPriyomeId = null;
-
-  function ensureDbOptions(){
-    const sel = $('dbSelect');
-    const existing = new Set([...sel.options].map(o => o.value));
-    for (const k of Object.keys(PGN_MANIFEST)){
-      if (existing.has(k)) continue;
-      const opt = document.createElement('option');
-      opt.value = k;
-      opt.textContent = k;
-      sel.appendChild(opt);
-    }
-  }
-
-  function makeMiniBoard(container, pgnOrFen){
-    // Mini boards: separate game + BoardView, forced mini.
-    const g = createGame({ Event: "Mini", White: "", Black: "" });
-    try{
-      if (typeof pgnOrFen === 'string' && pgnOrFen.includes('[Event')){
-        safeCall(g,'loadPGN', pgnOrFen);
-      } else if (typeof pgnOrFen === 'string' && pgnOrFen.trim()){
-        safeCall(g,'loadFEN', pgnOrFen);
-      }
-      safeCall(g,'toggleMini'); // assumes starts false; if already true, harmless to ignore.
-      safeCall(g,'setMode','moves');
+      $("fenBox").value = current.exportFEN();
     }catch(e){}
-    const bv = new BoardView(container, g, { minSizePx: 64 });
-    // Hard disable interaction
-    container.style.pointerEvents = 'none';
-    return { g, bv };
+    try{
+      $("pgnBox").value = current.exportPGN();
+    }catch(e){}
+    try{
+      $("movesPane").textContent = extractMoveTextForPane(current.exportPGN());
+    }catch(e){
+      $("movesPane").textContent = "(moves unavailable)";
+    }
+    $("modePill").textContent = `Mode • ${current.ui?.mode || "?"}${current.ui?.setup ? " • setup" : ""}${current.ui?.mini ? " • mini" : ""}`;
+    // spares visibility is controlled by library; we also mirror:
+    $("sparesHost").hidden = !(current.ui && current.ui.setup);
+    setActive("btnMovesMode", current.ui?.mode === "moves");
+    setActive("btnSquaresMode", current.ui?.mode === "squares");
+    setActive("btnArrowsMode", current.ui?.mode === "arrows");
+    setActive("btnSetupMode", !!current.ui?.setup);
+    setActive("btnMiniMain", !!current.ui?.mini);
+  }
+
+  function setActive(id, on){
+    const b = $(id);
+    if (!b) return;
+    b.classList.toggle("active", !!on);
+  }
+
+  function loadGameIntoMain(gameId){
+    const g = getGame(gameId);
+    if (!g) return;
+    try{
+      current.loadPGN(g.pgn);
+      currentGameId = g.id;
+      $("gamePill").textContent = `Game • ${g.title}`;
+      $("pgnBox").value = g.pgn;
+      syncText();
+      logLine("OK", `Loaded game: ${g.title}`);
+    }catch(e){
+      logStack("ERR", "Failed to load PGN: ", e);
+      setTab("Errors");
+    }
+  }
+
+  // -----------------------------
+  // Modes / controls wiring (using ScratchChess API)
+  // -----------------------------
+  $("btnMovesMode").onclick = () => current.setMode("moves");
+  $("btnSquaresMode").onclick = () => current.setMode("squares");
+  $("btnArrowsMode").onclick = () => current.setMode("arrows");
+  $("btnSetupMode").onclick = () => current.toggleSetup();
+  $("btnFlip").onclick = () => current.toggleFlip();
+  $("btnMiniMain").onclick = () => current.toggleMini();
+
+  $("btnPrev").onclick = () => current.prevMove();
+  $("btnNext").onclick = () => current.nextMove();
+  $("btnPromote").onclick = () => current.promoteVariationFromHere();
+  $("btnDelete").onclick = () => current.deleteMoveFromHere();
+
+  $("btnInit").onclick = () => current.initializePosition();
+  $("btnClear").onclick = () => current.clearBoard();
+  $("btnClearMarks").onclick = () => current.clearMarks();
+
+  $("btnLoadFEN").onclick = () => current.loadFEN($("fenBox").value);
+  $("btnExportFEN").onclick = () => $("fenBox").value = current.exportFEN();
+
+  $("btnLoadPGN").onclick = () => current.loadPGN($("pgnBox").value);
+  $("btnExportPGN").onclick = () => $("pgnBox").value = current.exportPGN();
+
+  $("btnExportCQL").onclick = () => {
+    try{
+      $("cqlBox").value = current.exportCQL();
+      $("cqlErr").textContent = "";
+    }catch(e){
+      $("cqlBox").value = "";
+      $("cqlErr").textContent = (e && e.stack) ? e.stack : String(e);
+    }
+  };
+  $("btnClearCQL").onclick = () => { $("cqlBox").value = ""; $("cqlErr").textContent = ""; };
+
+  // -----------------------------
+  // Tabs
+  // -----------------------------
+  const TAB_IDS = ["Priyomes","Games","Query","Evals","Errors"];
+  function setTab(name){
+    for (const t of TAB_IDS){
+      $("tab"+t).classList.toggle("active", t===name);
+      $("pane"+t).classList.toggle("active", t===name);
+    }
+  }
+  $("tabPriyomes").onclick = () => setTab("Priyomes");
+  $("tabGames").onclick = () => setTab("Games");
+  $("tabQuery").onclick = () => setTab("Query");
+  $("tabEvals").onclick = () => setTab("Evals");
+  $("tabErrors").onclick = () => setTab("Errors");
+
+  // -----------------------------
+  // Priyomes: load + mini render using scratchchess toggleMini()
+  // -----------------------------
+  const pryGrid = $("pryGrid");
+  const PRY_LS_KEY = "scratchchess_user_priyomes_v1";
+  let PRIYOMES = []; // {id,title,subtitle,pgn,user}
+
+  function loadUserPriyomes(){
+    try{
+      const raw = localStorage.getItem(PRY_LS_KEY);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(x => x && typeof x.pgn === "string").slice(0,200);
+    }catch{ return []; }
+  }
+  function saveUserPriyomes(list){
+    try{
+      localStorage.setItem(PRY_LS_KEY, JSON.stringify(list));
+    }catch(e){
+      logLine("WARN","Failed to persist priyomes to localStorage (quota?)");
+    }
+  }
+
+  async function loadDefaultPriyomes(){
+    try{
+      const url = PRIYOME_PGN_MANIFEST.default;
+      const txt = await fetchText(url);
+      const blocks = splitMultiPgn(txt);
+      const list = blocks.map((pgn, i) => {
+        const h = parseHeaders(pgn);
+        const title = h.Event || h.Site || `Priyome ${i+1}`;
+        const subtitle = [h.White,h.Black,h.Date].filter(Boolean).join(" • ");
+        return { id:`pry_default_${i}`, title, subtitle, pgn, user:false };
+      });
+      return list;
+    }catch(e){
+      logLine("WARN", `Could not load default Priyomes: ${e.message || e}`);
+      return [];
+    }
+  }
+
+  const miniViews = new Map(); // priyome id -> { game, view }
+  function clearMiniViews(){
+    for (const v of miniViews.values()){
+      try{ v.view?.destroy?.(); }catch{}
+    }
+    miniViews.clear();
   }
 
   function renderPriyomes(){
-    const list = $('prList');
-    list.innerHTML = '';
-    if (!PRIYOMES.length){
-      const empty = document.createElement('div');
-      empty.className = 'hint';
-      empty.textContent = 'No Priyomes yet. Click “New Query”, set up a position, then “Add”.';
-      list.appendChild(empty);
-      return;
-    }
+    pryGrid.innerHTML = "";
+    clearMiniViews();
+    $("pryCount").textContent = `${PRIYOMES.length} priyomes`;
     for (const pr of PRIYOMES){
-      const item = document.createElement('div');
-      item.className = 'prItem' + (pr.id === selectedPriyomeId ? ' active' : '');
-
-      const mini = document.createElement('div');
-      mini.className = 'small-board';
-
-      const right = document.createElement('div');
-      const t = document.createElement('div');
-      t.className = 'prTitle';
-      t.textContent = pr.title || 'Untitled';
-
-      const sub = document.createElement('div');
-      sub.className = 'prSub';
-      sub.textContent = pr.fen ? pr.fen : '(position)';
-
-      right.appendChild(t);
-      right.appendChild(sub);
-
-      item.appendChild(mini);
-      item.appendChild(right);
-
-      item.addEventListener('click', () => {
-        selectedPriyomeId = pr.id;
-        // Load priyome into main board.
+      const card = document.createElement("div");
+      card.className = "miniCard";
+      const hostId = `mini_${pr.id}`;
+      card.innerHTML = `
+        <div class="miniHost" id="${hostId}"></div>
+        <div>
+          <div class="cardTitle">${escapeHtml(pr.title || "Priyome")}</div>
+          <div class="cardSub">${escapeHtml(pr.subtitle || (pr.user ? "User-created" : ""))}</div>
+          <div class="row" style="margin-top:8px;">
+            <button class="good" data-act="load">Load</button>
+            ${pr.user ? `<button class="bad" data-act="delete">Delete</button>` : ``}
+          </div>
+        </div>
+      `;
+      card.querySelector('[data-act="load"]').onclick = (e) => {
+        e.stopPropagation();
         try{
-          safeCall(currentGameObj,'toggleSetup'); // if in setup, turn off first to avoid sticky.
-        }catch(_e){}
-        if (pr.pgn) safeCall(currentGameObj,'loadPGN', pr.pgn);
-        else if (pr.fen) safeCall(currentGameObj,'loadFEN', pr.fen);
-        safeCall(currentGameObj,'setMode','moves');
-        renderPriyomes();
-        setTab('moves');
-      });
+          current.loadPGN(pr.pgn);
+          $("pgnBox").value = pr.pgn;
+          current.setMode("moves");
+          syncText();
+          logLine("OK", `Loaded Priyome: ${pr.title}`);
+        }catch(err){
+          logStack("ERR", "Failed to load Priyome PGN: ", err);
+          setTab("Errors");
+        }
+      };
+      const del = card.querySelector('[data-act="delete"]');
+      if (del){
+        del.onclick = (e) => {
+          e.stopPropagation();
+          PRIYOMES = PRIYOMES.filter(x => x.id !== pr.id);
+          saveUserPriyomes(PRIYOMES.filter(x => x.user));
+          renderPriyomes();
+        };
+      }
+      card.onclick = () => card.querySelector('[data-act="load"]').click();
+      pryGrid.appendChild(card);
 
-      list.appendChild(item);
-
-      // Create mini board once
-      if (!pr._miniBuilt){
-        pr._miniBuilt = true;
-        try{
-          makeMiniBoard(mini, pr.pgn || pr.fen || '');
-        }catch(e){}
+      // Create mini view
+      try{
+        const g = createGame({ Event: pr.title || "Priyome", White:"", Black:"", Date:"" });
+        g.loadPGN(pr.pgn);
+        if (!g.ui?.mini) g.toggleMini();
+        g.setMode("moves");
+        const view = new BoardView({ el: $(hostId), game: g, minSizePx: 110 });
+        miniViews.set(pr.id, { game:g, view });
+      }catch(e){
+        logLine("WARN", `Mini render failed for "${pr.title}": ${e.message || e}`);
       }
     }
   }
 
-  function enterSetupMode(){
-    // New Query: Setup + spares visible + clear marks
-    if (!currentGameObj?.ui?.setup) safeCall(currentGameObj,'toggleSetup');
-    setupRow.classList.add('open');
-    sparesHost.hidden = false;
-    safeCall(currentGameObj,'setMode','moves');
-    safeCall(currentGameObj,'clearMarks');
-    updateUI();
-  }
-  function exitSetupMode(){
-    if (currentGameObj?.ui?.setup) safeCall(currentGameObj,'toggleSetup');
-    setupRow.classList.remove('open');
-    sparesHost.hidden = true;
-    updateUI();
-  }
-
-  $('btnPriyomesNew').addEventListener('click', () => {
-    enterSetupMode();
-  });
-
-  $('btnAddPriyome').addEventListener('click', () => {
+  $("btnNewPriyome").onclick = () => {
     try{
-      const fen = safeCall(currentGameObj,'exportFEN') || '';
-      const pgn = safeCall(currentGameObj,'exportPGN') || '';
-      const id = uniqId('pr');
-      const title = `Priyome ${PRIYOMES.length + 1}`;
-      PRIYOMES.unshift({ id, title, fen, pgn, createdAt: Date.now() });
-      selectedPriyomeId = id;
-      logLine('OK', `Added priyome: ${title}`);
-      renderPriyomes();
-      exitSetupMode();
+      current.clearBoard();
+      if (!current.ui?.setup) current.toggleSetup();
+      current.clearMarks();
+      current.setMode("moves");
+      syncText();
+      logLine("OK","New Query: cleared board and entered setup mode.");
     }catch(e){
-      logStack('ERR','Add Priyome failed: ', e);
-      setTab('errors');
+      logStack("ERR","New Query failed: ", e);
     }
-  });
-  $('btnCancelPriyome').addEventListener('click', () => exitSetupMode());
-  $('btnPlayFromHere').addEventListener('click', () => exitSetupMode());
-  $('btnInit').addEventListener('click', () => safeCall(currentGameObj,'initializePosition'));
-  $('btnClearBoard').addEventListener('click', () => safeCall(currentGameObj,'clearBoard'));
+  };
 
-  // ---------------- Games tab ----------------
-  function renderGameList(){
-    const list = $('gameList');
-    list.innerHTML = '';
-    const games = getStudyGames();
-    $('gamePill').textContent = `Game • ${currentGameObj?._title || currentGameObj?.headers?.Event || '—'}`;
-    if (!games.length){
-      const empty = document.createElement('div');
-      empty.className = 'hint';
-      empty.textContent = 'No games in this study yet. Import PGN or run a query/eval.';
-      list.appendChild(empty);
-      $('studyPill').textContent = `Study • 0 games`;
-      return;
+  $("btnResetPriyome").onclick = () => {
+    try{
+      current.clearBoard();
+      current.clearMarks();
+      syncText();
+      logLine("OK","Cleared board and marks.");
+    }catch(e){
+      logStack("ERR","Reset failed: ", e);
     }
-    $('studyPill').textContent = `Study • ${games.length} games`;
+  };
 
-    for (const g of games){
-      const card = document.createElement('div');
-      card.className = 'gameCard' + (g.id === currentGameId ? ' active' : '');
-      const title = document.createElement('div');
-      title.className = 'gameTitle';
-      title.textContent = g.title || '(untitled)';
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.innerHTML = `<span class="kbd">${g.result || '*'}</span><span class="kbd">${g.source || 'local'}</span>`;
-      card.appendChild(title);
-      card.appendChild(meta);
-      card.addEventListener('click', () => loadGameById(g.id));
-      list.appendChild(card);
-    }
-  }
-
-  function addGamesFromMultiPgnText(pgnText, source='import'){
-    const parts = splitMultiPgn(pgnText);
-    if (!parts.length) return 0;
-    const ids = [];
-    for (let i=0;i<parts.length;i++){
-      const pgn = parts[i];
+  $("btnSavePriyome").onclick = () => {
+    try{
+      const pgn = current.exportPGN();
       const h = parseHeaders(pgn);
-      const title = h.Event || `${source} • Game ${i+1}`;
-      const result = h.Result || '*';
-      const id = uniqId('game');
-      GAMES.unshift({ id, title, result, pgn, source });
-      ids.push(id);
+      const title = (h.Event && h.Event !== "ScratchChess") ? h.Event : `User Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
+      const pr = { id:`pry_user_${Date.now()}_${Math.random().toString(16).slice(2)}`, title, subtitle:"User-created", pgn, user:true };
+      PRIYOMES.push(pr);
+      saveUserPriyomes(PRIYOMES.filter(x => x.user));
+      renderPriyomes();
+      logLine("OK", `Saved Priyome: ${title}`);
+    }catch(e){
+      logStack("ERR","Save Priyome failed: ", e);
+      setTab("Errors");
     }
-    ensureStudy(currentStudyName, ids);
-    renderStudySelect();
-    renderGameList();
-    return ids.length;
+  };
+
+  // -----------------------------
+  // Query runner (copied structure from reference.html)
+  // -----------------------------
+  let _runnerModPromise = null;
+  function getRunnerMod(){
+    if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
+    return _runnerModPromise;
   }
 
-  let currentGameId = null;
-  function loadGameById(id){
-    const g = GAMES.find(x => x.id === id);
-    if (!g) return;
-    currentGameId = id;
-    safeCall(currentGameObj,'loadPGN', g.pgn);
-    exitSetupMode();
-    setTab('moves');
-    updateUI();
-    renderGameList();
-    logLine('OK', `Loaded game: ${g.title}`);
+  function textToUtf8Bytes(s){
+    return new TextEncoder().encode(String(s||""));
   }
-
-  $('studySelect').addEventListener('change', (e) => setCurrentStudy(e.target.value));
-  $('btnNewStudy').addEventListener('click', () => {
-    const base = `Study ${Object.keys(STUDIES).length + 1}`;
-    let name = base;
-    let n = 2;
-    while (STUDIES[name]) name = `${base} (${n++})`;
-    ensureStudy(name, []);
-    setCurrentStudy(name);
-    logLine('OK', `Created study: ${name}`);
-  });
-
-  // ---------------- Import modal ----------------
-  const importBackdrop = $('importModalBackdrop');
-  const importPgnText = $('importPgnText');
-  $('btnImportPgn').addEventListener('click', () => { importBackdrop.classList.add('open'); });
-  $('btnImportCancel').addEventListener('click', () => { importBackdrop.classList.remove('open'); });
-  $('btnImportAdd').addEventListener('click', () => {
-    const t = importPgnText.value || '';
-    const added = addGamesFromMultiPgnText(t, 'import');
-    if (added > 0){
-      importBackdrop.classList.remove('open');
-      importPgnText.value = '';
-      setTab('games');
-      logLine('OK', `Imported ${added} game(s).`);
-    } else {
-      logLine('WARN', 'No games detected in pasted PGN.');
-    }
-  });
-
-  // ---------------- Query tab (ported, best-effort) ----------------
-  const qCqlFile = $('qCqlFile');
-  const qPgnFile = $('qPgnFile');
-  const qCqlName = $('qCqlName');
-  const qPgnName = $('qPgnName');
-  const qCqlText = $('qCqlText');
-  const qArgv = $('qArgv');
-  const qRun = $('qRun');
-  const qStatus = $('qStatus');
-  let qPgnBytesOverride = null;
-
-  function textToUtf8Bytes(s){ return new TextEncoder().encode(String(s||'')); }
   async function fileToUint8(file){
     const buf = await file.arrayBuffer();
     return new Uint8Array(buf);
   }
 
-  function updateQueryUi(){
-    const hasCql = !!(qCqlText.value || '').trim();
-    const hasPgn = !!qPgnBytesOverride || (qPgnFile.files && qPgnFile.files.length);
-    qRun.disabled = !(hasCql && (hasPgn || Object.keys(PGN_MANIFEST).length));
-    qStatus.textContent = qRun.disabled ? 'Choose files (or click “Use current game as PGN”).' : 'Ready.';
+  // Dummy-game workaround from reference.html (simplified)
+  const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
+  const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
+  const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+  function buildDummyGamePgn(){
+    const headers = [
+      `[Event "${DUMMY_CQL_EVENT}"]`,
+      `[Site "Local"]`,
+      `[Date "2026.01.01"]`,
+      `[Round "1"]`,
+      `[White "${DUMMY_CQL_WHITE}"]`,
+      `[Black "${DUMMY_CQL_BLACK}"]`,
+      `[Result "0-1"]`,
+    ].join("\n");
+    const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
+    return `${headers}\n\n${moves}\n`;
+  }
+  function isDummyGamePgn(pgn){
+    const h = parseHeaders(String(pgn||""));
+    return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
+  }
+  function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
+    const bytes = (pgnBytes instanceof Uint8Array) ? pgnBytes : new Uint8Array(pgnBytes||[]);
+    const text = new TextDecoder().decode(bytes);
+    const games = splitMultiPgn(text);
+    if (games.length !== 1) return { bytes, injected:false, originalGameCount: games.length };
+    const dummy = buildDummyGamePgn();
+    const outText = (text.trim() ? (text.trim() + "\n\n" + dummy) : dummy) + "\n";
+    return { bytes: textToUtf8Bytes(outText), injected:true, originalGameCount:1 };
+  }
+  function stripDummyFromMultiPgnText(multiPgnText){
+    const games = splitMultiPgn(String(multiPgnText||""));
+    const kept = games.filter(g => !isDummyGamePgn(g));
+    return kept.join("\n\n").trim();
   }
 
-  qCqlFile.addEventListener('change', async () => {
-    const f = qCqlFile.files?.[0];
-    qCqlName.textContent = f ? f.name : '—';
+  let qPgnBytesOverride = null;
+
+  const qCqlFile = $("qCqlFile");
+  const qPgnFile = $("qPgnFile");
+  const qCqlName = $("qCqlName");
+  const qPgnName = $("qPgnName");
+  const qCqlText = $("qCqlText");
+  const qArgv = $("qArgv");
+  const qStatus = $("qStatus");
+  const qRun = $("qRun");
+
+  qCqlFile.addEventListener("change", async () => {
     try{
-      if (f){
-        qCqlText.value = await f.text();
-        logLine('OK', `Loaded CQL: ${f.name} (${qCqlText.value.length} chars)`);
-      }
-    }catch(e){ logStack('ERR','CQL load failed: ', e); }
-    updateQueryUi();
+      const f = qCqlFile.files?.[0];
+      if (!f) return;
+      qCqlName.textContent = f.name;
+      qCqlText.value = await f.text();
+      logLine("OK", `Loaded CQL file: ${f.name}`);
+    }catch(e){
+      logStack("ERR","Failed to read CQL file: ", e);
+      setTab("Errors");
+    }
   });
-  qPgnFile.addEventListener('change', () => {
-    const f = qPgnFile.files?.[0];
-    qPgnName.textContent = f ? f.name : '—';
-    qPgnBytesOverride = null;
-    updateQueryUi();
-  });
-  $('qRunOnCurrent').addEventListener('click', () => {
+
+  qPgnFile.addEventListener("change", async () => {
     try{
-      const pgn = safeCall(currentGameObj,'exportPGN') || '';
+      const f = qPgnFile.files?.[0];
+      if (!f) return;
+      qPgnName.textContent = f.name;
+      qPgnBytesOverride = null;
+      logLine("OK", `Selected PGN file: ${f.name}`);
+    }catch(e){
+      logStack("ERR","Failed to set PGN file: ", e);
+    }
+  });
+
+  $("qUseCurrent").onclick = () => {
+    try{
+      const pgn = current.exportPGN() + "\n";
       qPgnBytesOverride = textToUtf8Bytes(pgn);
-      qPgnName.textContent = '(current game)';
-      logLine('OK', `Query input set to current game PGN (${pgn.length} chars).`);
-      updateQueryUi();
-    }catch(e){ logStack('ERR','Failed to use current game PGN: ', e); }
-  });
+      qPgnFile.value = "";
+      qPgnName.textContent = "(current game)";
+      logLine("OK","Query input set to current game.");
+    }catch(e){
+      logStack("ERR","Failed to use current game PGN: ", e);
+    }
+  };
 
-  let _runnerModPromise = null;
-  async function getRunnerMod(){
-    if (!_runnerModPromise) _runnerModPromise = import('./wasm/cql_runner.js');
-    return _runnerModPromise;
-  }
-
-  function stripDummyFromMultiPgnText(text){
-    // In this scratch integration we don't inject dummies by default; keep as passthrough.
-    return String(text||'').trim();
-  }
-
-  function addDiscoveredGamesFromPgn(outPgnText, sourceKey){
-    const added = addGamesFromMultiPgnText(outPgnText, `cql:${sourceKey}`);
-    return added;
-  }
-
-  qRun.addEventListener('click', async () => {
+  qRun.addEventListener("click", async () => {
     try{
-      const cqlText = qCqlText.value || '';
-      if (!cqlText.trim()) throw new Error('CQL is empty.');
+      const cqlText = qCqlText.value || "";
+      if (!cqlText.trim()) throw new Error("CQL is empty.");
 
       let pgnBytes = null;
       if (qPgnBytesOverride){
         pgnBytes = qPgnBytesOverride;
       } else {
-        const pgnFile = qPgnFile.files?.[0] || null;
-        if (pgnFile){
-          pgnBytes = await fileToUint8(pgnFile);
-        } else {
-          // manifest fallback: use selected db
-          const db = $('dbSelect').value;
-          const url = PGN_MANIFEST[db];
-          if (!url) throw new Error(`No uploaded PGN and no PGN_MANIFEST for db="${db}"`);
-          const res = await fetch(url, { cache:'no-store' });
-          if (!res.ok) throw new Error(`${res.status} ${res.statusText} fetching ${url}`);
-          const txt = await res.text();
-          pgnBytes = textToUtf8Bytes(txt);
-          qPgnName.textContent = `(manifest) ${db}`;
-        }
+        const f = qPgnFile.files?.[0];
+        if (!f) throw new Error("PGN input missing (choose a .pgn or click 'Use current game').");
+        pgnBytes = await fileToUint8(f);
       }
 
-      qRun.disabled = true;
-      qStatus.textContent = 'Running…';
-      logLine('OK', `Running query with argv: ${qArgv.value}`);
+      // Ensure >=2 games workaround
+      const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+      pgnBytes = ensured.bytes;
+
+      qStatus.textContent = "loading runner…";
+      logLine("OK", `Running query with argv: ${qArgv.value}`);
 
       const mod = await getRunnerMod();
       const runCqlWasm = mod.runCqlWasm;
-      if (typeof runCqlWasm !== 'function') throw new Error('runCqlWasm export not found in ./wasm/cql_runner.js');
+      if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found in ./wasm/cql_runner.js");
 
       const cqlBytes = textToUtf8Bytes(cqlText);
       const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
         onLog: (line) => {
           const s = String(line);
-          if (s.startsWith('[stderr]')) logLine('WARN', s);
-          else logLine('OK', s);
+          if (s.startsWith("[stderr]")) logLine("WARN", s);
+          else logLine("OK", s);
         }
       });
 
       const unsub = job.subscribe((j) => {
         const st = j.status ? j.status() : {busy:0,total:1};
-        qStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : '');
-        if (j.state === 'done' || j.state === 'error'){
+        qStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "");
+        if (j.state === "done" || j.state === "error"){
           unsub();
-          if (j.state === 'error'){
-            logLine('ERR', `Query failed: ${j.error || 'unknown error'}`);
-            setTab('errors');
-          } else {
-            let outPgnText = j.outputPgn || '';
-            outPgnText = stripDummyFromMultiPgnText(outPgnText);
-            if (outPgnText.trim()){
-              const added = addDiscoveredGamesFromPgn(outPgnText, qPgnName.textContent || 'input');
-              if (added > 0){
-                setTab('games');
-                logLine('OK', `Added ${added} discovered game(s) to current study.`);
-              } else {
-                logLine('WARN', 'Query produced output, but no games were detected.');
-              }
-            } else {
-              logLine('WARN', 'Query produced empty output.pgn.');
+          if (j.state === "error"){
+            logLine("ERR", `Query failed: ${j.error || "unknown error"}`);
+            setTab("Errors");
+            return;
+          }
+          try{
+            const out = j.result ? j.result() : null;
+            const outText = out ? new TextDecoder().decode(out) : "";
+            const cleaned = ensured.injected ? stripDummyFromMultiPgnText(outText) : outText;
+            if (!cleaned.trim()){
+              logLine("WARN","Query completed but produced empty PGN.");
+              return;
             }
+            // Add discovered games to current study
+            const blocks = splitMultiPgn(cleaned);
+            let n=0;
+            for (const b of blocks){
+              const g = addGameToStudy(currentStudyName, b, { user:true });
+              if (g) n++;
+            }
+            renderGameList();
+            logLine("OK", `Query done. Added ${n} discovered game(s) to study "${currentStudyName}".`);
+            setTab("Games");
+          }catch(e){
+            logStack("ERR","Failed to import query output: ", e);
+            setTab("Errors");
           }
-          qRun.disabled = false;
-          updateQueryUi();
         }
       });
 
     }catch(e){
-      logStack('ERR','Run exception: ', e);
-      qRun.disabled = false;
-      updateQueryUi();
-      setTab('errors');
+      logStack("ERR","Run Query failed: ", e);
+      setTab("Errors");
+      qStatus.textContent = "error";
     }
   });
 
-  // ---------------- Evals tab (ported) ----------------
-  let EVALS_REGISTRY = [];
-  const evalListEl = $('evalList');
-  const evalsStatusEl = $('evalsStatus');
-
+  // -----------------------------
+  // Evals tab (CQL evals => load CQL and click Run)
+  // -----------------------------
   function renderEvals(){
-    evalListEl.innerHTML = '';
-    if (!EVALS_REGISTRY.length){
-      evalListEl.innerHTML = '<div class="hint">No evals loaded. Ensure ./evals.js exports EVALS (array of {id, name, desc, run}).</div>';
-      return;
-    }
-    for (const ev of EVALS_REGISTRY){
-      const card = document.createElement('div');
-      card.className = 'gameCard';
-      const title = document.createElement('div');
-      title.className = 'gameTitle';
-      title.textContent = ev.name || ev.id;
-      const desc = document.createElement('div');
-      desc.className = 'hint';
-      desc.textContent = ev.desc || '';
-      const row = document.createElement('div');
-      row.className = 'row';
-      const btn = document.createElement('button');
-      btn.textContent = 'Run';
-      btn.addEventListener('click', async () => {
+    const list = $("evalList");
+    list.innerHTML = "";
+    const keys = Object.keys(CQL_EVAL_MANIFEST || {});
+    for (const k of keys){
+      const meta = CQL_EVAL_MANIFEST[k];
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `<div class="cardTitle">${escapeHtml(k)}</div>
+                        <div class="cardSub">${escapeHtml(meta?.description || "")}</div>
+                        <div class="row" style="margin-top:8px;">
+                          <button class="good">Run on current game</button>
+                        </div>`;
+      card.querySelector("button").onclick = async (e) => {
+        e.stopPropagation();
         try{
-          const inputPgn = safeCall(currentGameObj,'exportPGN') || '';
-          logLine('OK', `Eval "${ev.id}" inputPGN=${inputPgn.length} chars`);
-          const out = await ev.run({ pgn: inputPgn, game: currentGameObj });
-          const outPgn = (typeof out === 'string') ? out : (out && out.pgn) ? out.pgn : '';
-          if (!outPgn.trim()) throw new Error('Eval produced empty output.');
-          const added = addGamesFromMultiPgnText(outPgn, `eval:${ev.id}`);
-          if (added > 0){
-            setTab('games');
-            logLine('OK', `Eval "${ev.id}" added ${added} game(s).`);
-          } else {
-            logLine('WARN', `Eval "${ev.id}" produced PGN but no games were detected.`);
-          }
-        }catch(e){
-          logStack('ERR', `Eval "${ev.id}" failed: `, e);
-          setTab('errors');
+          if (!current) throw new Error("No current game.");
+          const cql = await fetchText(meta.url);
+          qCqlText.value = cql;
+          qCqlName.textContent = `(eval) ${k}`;
+          $("qUseCurrent").click();
+          setTab("Query");
+          qRun.click();
+        }catch(err){
+          logStack("ERR", `Eval "${k}" failed: `, err);
+          setTab("Errors");
         }
-      });
-      row.appendChild(btn);
-      card.appendChild(title);
-      card.appendChild(desc);
-      card.appendChild(row);
-      evalListEl.appendChild(card);
+      };
+      list.appendChild(card);
     }
   }
 
-  async function loadEvals(){
-    evalsStatusEl.textContent = 'loading…';
-    try{
-      const mod = await import(`./evals.js?ts=${Date.now()}`);
-      const list = Array.isArray(mod.EVALS) ? mod.EVALS : (Array.isArray(mod.default) ? mod.default : []);
-      EVALS_REGISTRY = list.filter(e => e && typeof e.id === 'string' && typeof e.run === 'function');
-      evalsStatusEl.textContent = `${EVALS_REGISTRY.length} eval(s)`;
-      logLine('OK', `Loaded evals: ${EVALS_REGISTRY.map(e=>e.id).join(', ') || '(none)'}`);
-      renderEvals();
-    }catch(e){
-      evalsStatusEl.textContent = 'failed';
-      logStack('WARN','Failed to load ./evals.js: ', e);
-      renderEvals();
-    }
-  }
-  $('btnReloadEvals').addEventListener('click', () => loadEvals());
-
-  // ---------------- Topbar & board controls wired to scratchchess.js ----------------
-  $('btnPrev').addEventListener('click', () => safeCall(currentGameObj,'prevMove'));
-  $('btnNext').addEventListener('click', () => safeCall(currentGameObj,'nextMove'));
-
-  $('btnFlip').addEventListener('click', () => safeCall(currentGameObj,'toggleFlip'));
-  $('btnReset').addEventListener('click', () => {
-    safeCall(currentGameObj,'initializePosition');
-    safeCall(currentGameObj,'clearMarks');
-  });
-
-  $('btnSquares').addEventListener('click', () => safeCall(currentGameObj,'setMode','squares'));
-  $('btnArrows').addEventListener('click', () => safeCall(currentGameObj,'setMode','arrows'));
-  $('btnClearMarks').addEventListener('click', () => safeCall(currentGameObj,'clearMarks'));
-
-  $('btnExportGame').addEventListener('click', () => {
-    const pgn = safeCall(currentGameObj,'exportPGN') || '';
-    copyToClipboard(pgn);
-  });
-  $('btnExportStudy').addEventListener('click', () => {
-    const games = getStudyGames();
-    const txt = games.map(g => g.pgn || '').filter(Boolean).join('\\n\\n');
-    copyToClipboard(txt);
-  });
-
-  $('btnCopyFen').addEventListener('click', () => copyToClipboard(fenBottom.textContent || ''));
-
-  // ---------------- Manifests (edit as needed) ----------------
-  // Optional: used by Games boot + Query tab default DB fallback.
-  const STUDY_MANIFEST = {
-    // "Default": "./pgn/Study.pgn"
-  };
-  const PGN_MANIFEST = {
-    // "all": "./pgn/all.pgn"
-  };
-
-  // ---------------- Boot: try loading default studies (if manifest provided) ----------------
+  // -----------------------------
+  // Boot: load studies + priyomes
+  // -----------------------------
   async function bootLoadDefaultStudies(){
     try{
       const entries = Object.entries(STUDY_MANIFEST || {});
       if (!entries.length){
-        ensureStudy('Default', []);
-        setCurrentStudy('Default');
-        // seed with a single empty game so UI isn't blank
-        const seedId = uniqId('seed');
-        const seedPgn = safeCall(currentGameObj,'exportPGN') || '';
-        GAMES.unshift({ id: seedId, title: 'ScratchPriyomes • Seed', result:'*', pgn: seedPgn, source:'seed' });
-        ensureStudy('Default', [seedId]);
-        currentGameId = seedId;
-        renderStudySelect();
-        renderGameList();
+        logLine("WARN","STUDY_MANIFEST empty; nothing to load.");
         return;
       }
+      // Clear existing default studies/games
+      for (const k of Object.keys(STUDIES)) delete STUDIES[k];
+      GAMES.length = 0;
 
-      const loaded = [];
-      for (const [studyNameRaw, urlRaw] of entries){
-        const studyName = String(studyNameRaw || '').trim() || 'Default';
-        const url = String(urlRaw || '').trim();
-        if (!url) continue;
-
-        const res = await fetch(url, { cache:'no-store' });
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText} fetching ${url}`);
-        const txt = await res.text();
-        const parts = splitMultiPgn(txt);
-
-        const ids = [];
-        for (let i=0;i<parts.length;i++){
-          const pgn = parts[i];
-          const h = parseHeaders(pgn);
-          const title = h.Event || `${studyName} • Game ${i+1}`;
-          const result = h.Result || '*';
-          const id = uniqId('boot');
-          GAMES.unshift({ id, title, result, pgn, source:`boot:${studyName}` });
-          ids.push(id);
+      const loadedStudyNames = [];
+      for (const [studyName, url] of entries){
+        try{
+          const pgnText = await fetchText(url);
+          const blocks = splitMultiPgn(pgnText);
+          ensureStudy(studyName);
+          let i=0;
+          for (const b of blocks){
+            const g = addGameToStudy(studyName, b, { id: `${studyName}_${i}` });
+            if (g) i++;
+          }
+          loadedStudyNames.push(studyName);
+          logLine("OK", `Loaded study "${studyName}" from ${url} (${blocks.length} games)`);
+        }catch(e){
+          logLine("WARN", `Failed to load study "${studyName}" from ${url}: ${e.message || e}`);
         }
-        ensureStudy(studyName, ids);
-        loaded.push(studyName);
       }
+      if (!loadedStudyNames.includes(currentStudyName)){
+        currentStudyName = loadedStudyNames[0] || "default";
+      }
+      renderStudySelect();
+      renderGameList();
 
-      const preferred = loaded.includes('Default') ? 'Default' : (loaded[0] || 'Default');
-      setCurrentStudy(preferred);
-
-      const firstId = currentStudy().gameIds?.[0] || null;
-      if (firstId) loadGameById(firstId);
-
+      // auto-load first game in current study
+      const firstId = currentStudy().gameIds[0] || null;
+      if (firstId){
+        loadGameIntoMain(firstId);
+      } else {
+        $("gamePill").textContent = "Game • —";
+      }
+      $("studyPill").textContent = `Study • ${currentStudyName} • ${currentStudy().gameIds.length} games`;
     }catch(e){
-      logStack('WARN','Boot studies failed: ', e);
-      ensureStudy('Default', []);
-      setCurrentStudy('Default');
+      logStack("ERR","bootLoadDefaultStudies failed: ", e);
+      setTab("Errors");
     }
   }
 
-  // ---------------- Unified UI update ----------------
-  function updateUI(){
-    updateTopStatus();
-    updateBottom();
-    renderMoves();
-    renderPriyomes();
-    ensureDbOptions();
-    updateQueryUi();
+  $("studySelect").onchange = (e) => setCurrentStudy(e.target.value);
+  $("btnNewStudy").onclick = () => {
+    const name = prompt("Study name?");
+    if (!name) return;
+    ensureStudy(name);
+    setCurrentStudy(name);
+    logLine("OK", `Created study "${name}"`);
+  };
+  $("btnReloadStudies").onclick = () => bootLoadDefaultStudies();
 
-    // setup row state
-    const isSetup = !!currentGameObj?.ui?.setup;
-    setupRow.classList.toggle('open', isSetup);
-    sparesHost.hidden = !isSetup;
-  }
+  // Initial boot
+  (async () => {
+    try{
+      logLine("OK","Booting…");
+      await bootLoadDefaultStudies();
 
-  // Initial setup
-  ensureStudy('Default', []);
-  setCurrentStudy('Default');
-  ensureDbOptions();
-  bootLoadDefaultStudies();
-  loadEvals();
-  updateUI();
-  setTab('moves');
+      // Load priyomes (default + user)
+      const defaults = await loadDefaultPriyomes();
+      const user = loadUserPriyomes();
+      PRIYOMES = defaults.concat(user);
+      renderPriyomes();
+
+      renderEvals();
+      syncText();
+
+      logLine("OK","Boot complete.");
+    }catch(e){
+      logStack("ERR","Boot exception: ", e);
+      setTab("Errors");
+    }
+  })();
+
+})();
 </script>
 </body>
 </html>
