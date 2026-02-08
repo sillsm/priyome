@@ -6,8 +6,6 @@
   <title>Priyome</title>
   <link href="./favicon.svg" rel="icon">
 
-  <!-- chessboard.js (requires jQuery) -->
-<!-- chess.js UMD (global Chess) -->
   <!-- imported below as a module in main script. Pinned to version 1.4.0 -->
 
   <style>
@@ -919,10 +917,6 @@
   // ---------- dependency diagnostics ----------
   function diag(){
     logLine('OK', `User-Agent: ${navigator.userAgent}`);
-    
-    const haveChess = (typeof new Chess() !== 'undefined');
-    logLine(haveChess ? 'OK' : 'ERR', `Chess (chess.js) loaded: ${haveChess}`);
-
     const testImg = new Image();
     testImg.onload = () => logLine('OK', 'Piece sprite reachable (wikipedia set).');
     testImg.onerror = () => logLine('ERR', 'Piece sprite failed to load (CDN blocked?).');
@@ -1192,11 +1186,11 @@ async function bootLoadDefaultStudies() {
   let activePly = 0;
   let currentStartFen = 'start'; // per-game ply 0 start position (from PGN [FEN "..."] if present)
 
-  function _rebuildVerboseHistoryFromScratch(){
+  function _rebuildVerboseHistoryFromScratch(g = scGame){
     // Build mainline half-move list from scratchchess tree
     const out = [];
-    if (!scGame) return out;
-    let node = scGame.root;
+    if (!g) return out;
+    let node = g.root;
     while (node && node.children && node.children.length){
       const nxt = node.children[node.mainChildIndex || 0];
       if (!nxt) break;
@@ -1299,65 +1293,24 @@ async function bootLoadDefaultStudies() {
   
   function resetGameToStartFen(){
     const f = (currentStartFen && String(currentStartFen).trim()) ? String(currentStartFen).trim() : 'start';
-    if (f === 'start'){
-      game.reset();
-      return { ok:true, used:'start' };
-    }
-
-    // chess.js versions differ: some support load(fen, {skipValidation:true})
-    // We try strict first, then skipValidation, and log detailed validation errors when possible.
-    let ok = false;
     let used = f;
-    try {
-      ok = !!game.load(f);
-    } catch (e) {
-      ok = false;
-    }
-    if (!ok){
-      try {
-        ok = !!game.load(f, { skipValidation: true });
-      } catch (_e) {
-        ok = false;
+
+    try{
+      if (f === 'start') {
+        scGame.initializePosition();
+      } else {
+        scGame.loadFEN(f);
       }
+      return { ok:true, used };
+    } catch (e){
+      logLine('WARN', `Failed to load start FEN; falling back to standard start. FEN="${f}"`);
+      try { scGame.initializePosition(); } catch(_e) {}
+      currentStartFen = 'start';
+      used = 'start';
+      return { ok:false, used };
     }
-
-    if (!ok){
-      // Some chess.js builds are strict or have different FEN loading paths.
-      // 1) Surface validation diagnostics if available
-      try {
-        if (typeof game.validate_fen === 'function'){
-          const v = game.validate_fen(f);
-          logLine('WARN', `Start FEN validate_fen: valid=${v.valid} err=${v.error_number} ${v.error || ''}`);
-        } else if (typeof game.validateFen === 'function'){
-          const v = game.validateFen(f);
-          logLine('WARN', `Start FEN validateFen: valid=${v.valid} err=${v.error_number} ${v.error || ''}`);
-        }
-      } catch(_e){}
-
-      // 2) Fallback: re-instantiate the Chess() object with the FEN (supported by many versions)
-      // This avoids relying on .load(...) semantics, while still letting us replay SAN on top.
-      try {
-        if (typeof Chess === 'function'){
-          const g2 = new Chess(f);
-          // If constructor succeeded, swap it in.
-          if (g2 && typeof g2.fen === 'function'){
-            game = g2;
-            ok = true;
-          }
-        }
-      } catch(_e){ ok = false; }
-
-      if (!ok){
-        logLine('WARN', `Failed to load start FEN from headers; falling back to standard start. FEN="${f}"`);
-        try { game.reset(); } catch(_e) {}
-        currentStartFen = 'start';
-        used = 'start';
-        return { ok:false, used };
-      }
-    }
-
-    return { ok:true, used };
   }
+
 
 
   // user annotations per ply
@@ -1382,13 +1335,21 @@ async function bootLoadDefaultStudies() {
   
   function fenAtEndFromPgn(pgnText){
     try{
-      const ch = new Chess();
-      ch.load_pgn(String(pgnText||''), { sloppy:true });
-      return ch.fen();
+      const tmp = createGame();
+      tmp.loadPGN(String(pgnText||''));
+      return tmp.exportFEN();
     }catch(e){
       return null;
     }
   }
+  function parsePgnToScratch(pgnText){
+    const tmp = createGame();
+    tmp.loadPGN(String(pgnText||''));
+    return tmp;
+  }
+
+
+
 const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
   let setupImportedMiniSquares = null;
   let setupImportedMiniArrows  = null;
@@ -1436,37 +1397,8 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
 
   // All PGN should be loaded through this function
   // to manage edge cases in chess.js 1.4.0
-  function SanitizedLoadPgn(pgnText) {
-  const raw = String(pgnText || "").replace(/\r/g, "");
+  
 
-  // Merge adjacent brace-comments: "{a} {b}" -> "{a\n\nb}" (repeat until stable).
-  // This preserves the intent of "engine comment" + "human comment" as paragraphs.
-  function mergeAdjacentBraceComments(s) {
-    let out = s;
-    for (let i = 0; i < 200; i++) {
-      const next = out.replace(
-        /\{\s*([\s\S]*?)\s*\}\s*\{\s*([\s\S]*?)\s*\}/g,
-        "{ $1\n\n$2 }"
-      );
-      if (next === out) break;
-      out = next;
-    }
-    return out;
-  }
-
-  const sanitized = mergeAdjacentBraceComments(raw);
-
-  let game = new Chess();
-  let ok = true;
-
-  try {
-    game.loadPgn(sanitized);
-  } catch (e) {
-    ok = false;
-    return {ok, game};
-  }
-    return  {ok, game};
-}
 
 
   const _cqlCache = new Map(); // name -> text
@@ -1509,9 +1441,7 @@ const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
     if (headers.SetUp === "1" && headers.FEN){
       fen = headers.FEN;
     } else {
-      const { ok, g } = SanitizedLoadPgn(pgn);
-      if (!ok) throw new Error('SanitizedLoadPgn err in loadpr');
-      fen = g.fen();
+      fen = fenAtEndFromPgn(pgn) || 'start';
     }
 
     // Optional overlays
@@ -2428,12 +2358,8 @@ function renderGameList(){
       }
       annotations[g.id] = existing;
     }
-
-    game.reset();
-
-    const { ok, game : gg } = SanitizedLoadPgn(g.pgn);
-    if (!ok) throw new Error('SanitizedLoadPgn err in loadgame');
-    game = gg;
+    // Load PGN into scratchchess (single source of truth)
+    scGame.loadPGN(g.pgn);
     // Determine ply-0 start position from PGN headers (FEN/SetUp).
     try {
       const h = (typeof game.header === 'function') ? game.header() : null;
@@ -2493,10 +2419,8 @@ function renderGameList(){
 
   // 3) Parse moves ONCE via chess.js to get a reliable mainline history.
   // We use chess.js only for move parsing/history, not for PGN/header output.
-  const {ok, game : tmp } = SanitizedLoadPgn(raw);
-  if (!ok) throw new Error('SanitizedLoadPgn err in pgnwithcomments');
-
-  const hist = tmp.history({ verbose: true });
+  const tmp = parsePgnToScratch(raw);
+  const hist = _rebuildVerboseHistoryFromScratch(tmp);
 
   // 4) Rebuild movetext while injecting:
   //    - draw tags: drawTagsCommentFor(gameId, ply)  (already wrapped like "{ [%csl ...] [%cal ...] }")
@@ -2729,8 +2653,7 @@ function renderGameList(){
       if ((h.SetUp === '1' || h.SetUp === 'true') && h.FEN){
         fen = h.FEN;
       } else {
-         const { ok, game : tmp } = SanitizedLoadPgn(pgn);
-         if (!ok) throw new Error('SanitizedLoadPgn err in SetupPgnFile');
+         const tmp = parsePgnToScratch(pgn);
         fen = tmp.fen();
       }
 
@@ -2756,8 +2679,7 @@ function renderGameList(){
       const pgn = blocks[i].trim();
       if (!pgn) continue;
 
-      const { ok, game: tmp } = SanitizedLoadPgn(pgn);
-      if (!ok) throw new Error('SanitizedLoadPgn err in addGamesFromText');
+      const tmp = parsePgnToScratch(pgn);
 
       const h = parseHeaders(pgn);
       const title = h.Event ? h.Event : `Imported Game ${i+1}`;
@@ -3186,8 +3108,7 @@ async function runCqlEvalFromManifest(ref){
   async function runEval(entry){
     try{
       if (!currentGame) throw new Error('No current game selected.');
-      if (typeof Chess === 'undefined') throw new Error('Chess is undefined (chess.js missing).');
-
+      _ensureScratch();
       const evalId = entry.id;
       logLine('OK', `Running eval "${evalId}" on: ${currentGame.title}`);
 
@@ -3222,8 +3143,7 @@ async function runCqlEvalFromManifest(ref){
 
       if (!outPgn.trim()) throw new Error(`Eval "${evalId}" returned empty output PGN.`);
 
-      const { ok, game: tmp } = SanitizedLoadPgn(outPgn);
-      if (!ok) throw new Error('SanitizedLoadPgn err in runeval');
+      const tmp = parsePgnToScratch(outPgn);
 
       const h = parseHeaders(outPgn);
       const titleBase = currentGame.title;
@@ -3734,19 +3654,9 @@ async function runCqlEvalFromManifest(ref){
   // ---------- boot ----------
   try {
     diag();
+    // scratchchess boot (no third-party deps)
+    _ensureScratch();
 
-    if (typeof Chess === 'undefined') {
-      logLine('ERR', 'Chess is undefined. chess.js did not load (CDN blocked?).');
-      setTab('errors');
-      return;
-    }
-    if (typeof Chessboard === 'undefined') {
-      logLine('ERR', 'Chessboard is undefined. chessboard.js did not load (CDN blocked?), or jQuery missing.');
-      setTab('errors');
-      return;
-    }
-
-    game = new Chess();
     setTool(Tool.NONE); try{ _ensureScratch(); scGame.setMode('moves'); }catch(_e){}
 
     // build Priyomes list
