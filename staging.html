@@ -313,11 +313,9 @@
     const g = currentGame?.game;
     if (!g) return;
 
-    // moves pane
     try{ movesBox.value = movetextOnly(g.exportPGN?.()||""); }catch{ movesBox.value=""; }
     try{ fenBox.value = g.exportFEN?.()||""; }catch{ fenBox.value=""; }
 
-    // per-game ui flags
     const ui = g.ui || {};
     setActive("mMoves", ui.mode==="moves");
     setActive("mSquares", ui.mode==="squares");
@@ -331,11 +329,10 @@
     setActive("pY", ui.pig==="Y");
     setActive("pG", ui.pig==="G");
 
-    // spares visibility
     sparesHost.hidden = !ui.setup;
   }
 
-  // ---------------- TOPBAR ACTIONS (DELEGATE TO SCRATCHCHESS) ----------------
+  // ---------------- TOPBAR ACTIONS ----------------
   function cg(){ return currentGame?.game || null; }
 
   document.getElementById("mMoves").onclick   = ()=>cg()?.setMode?.("moves");
@@ -355,7 +352,6 @@
   document.getElementById("navDelete").onclick  = ()=>cg()?.deleteMoveFromHere?.();
   document.getElementById("navClear").onclick   = ()=>cg()?.clearMarks?.();
 
-  // clipboard helpers
   document.getElementById("copyPgn").onclick = async ()=>{
     try{ await navigator.clipboard.writeText(cg()?.exportPGN?.()||""); pushLog("OK","Copied PGN."); }
     catch(e){ pushLog("ERR","Copy failed: "+e); }
@@ -442,7 +438,6 @@
 
   async function bootStudies(force=false){
     if (!force && Object.keys(STUDIES).length) return;
-    // reset
     for (const k of Object.keys(STUDIES)) delete STUDIES[k];
     ALL_GAMES.length=0;
 
@@ -461,7 +456,6 @@
       }
     }
 
-    // select first available
     const keys = Object.keys(STUDIES);
     currentStudy = keys.includes("default") ? "default" : (keys[0]||"default");
     renderStudySel();
@@ -475,15 +469,6 @@
   // ---------------- PRIYOMES ----------------
   const prDb = document.getElementById("prDb");
   const prGrid = document.getElementById("prGrid");
-
-  function fillSelect(sel, obj){
-    sel.innerHTML="";
-    for (const [k,v] of Object.entries(obj)){
-      const o=document.createElement("option");
-      o.value=v; o.textContent=k;
-      sel.appendChild(o);
-    }
-  }
 
   async function loadPriyomes(){
     prGrid.innerHTML="";
@@ -503,7 +488,6 @@
       PRIYOMES.push(rec);
     });
 
-    // render mini boards
     PRIYOMES.forEach(rec=>{
       const card=document.createElement("div");
       card.className="miniCard";
@@ -522,8 +506,9 @@
       mini.className="miniBoard";
       body.appendChild(mini);
 
-      // IMPORTANT: mini is a per-game property -> set on the priyome's game
-      rec.game.toggleMini?.(); // if already false; safe per your lib
+      // NOTE: mini is per-game. If your lib has a "setMini(true)" use it.
+      // This toggle is safe if the default is "mini off".
+      rec.game.toggleMini?.();
       new BoardView(mini, rec.game, { mini:true, minSizePx: 90 });
 
       card.append(head,body);
@@ -535,12 +520,10 @@
 
   document.getElementById("prReload").onclick = ()=>loadPriyomes().catch(e=>pushLog("ERR","Priyomes load failed: "+e));
 
-  // new priyome draft: blank board + setup on + spares visible
   document.getElementById("prNew").onclick = ()=>{
     const game = createGame({ Event:"(Draft Priyome)", White:"", Black:"" });
-    // Start blank and in setup mode (if your lib has a clear/reset helper use it; otherwise load empty FEN if supported)
     try{ game.loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1"); }catch{}
-    game.toggleSetup?.();  // setup on
+    game.toggleSetup?.();
     const rec = { id:`draft_${Date.now()}`, title:"(Draft Priyome)", pgn:"", game };
     hookGame(rec);
     setCurrent(rec);
@@ -549,14 +532,12 @@
   };
 
   document.getElementById("prPlay").onclick = ()=>{
-    // exit setup mode, keep the position
     const g=cg(); if(!g) return;
     try{ if (g.ui?.setup) g.toggleSetup?.(); }catch{}
     pushLog("OK","Play from here.");
   };
 
   document.getElementById("prReset").onclick = ()=>{
-    // reset initial position (standard chess) but keep setup if you want; here we keep current setup flag.
     const g=cg(); if(!g) return;
     const wasSetup = !!g.ui?.setup;
     try{ g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); }catch{}
@@ -605,16 +586,47 @@
     return enc.encode(txt);
   }
 
-  async function runCqlOnBytes(pgnBytes, cqlSource){
+  // ✅ FIX: call cql_runner.js using the correct runCqlWasm signature (cqlBytes, pgnBytes, argvString, {onLog})
+  // and wait for the subscribe-based job to reach "done".
+  async function runCqlOnBytes(pgnBytes, cqlSource, argvString=""){
     const mod = await runner();
-    // Support a few common export names, without guessing too much
-    const fn = mod.runCqlWasm || mod.runCql || mod.run || mod.default;
-    if (typeof fn !== "function") throw new Error("cql_runner.js does not export a runnable function (runCqlWasm/runCql/run/default).");
+    const runCqlWasm = mod.runCqlWasm;
+    if (typeof runCqlWasm !== "function") {
+      throw new Error("cql_runner.js missing runCqlWasm export");
+    }
 
     const patched = ensure2GamesBytes(pgnBytes);
-    const outTxt = await fn(patched.bytes, enc.encode(cqlSource));
-    const outStr = typeof outTxt === "string" ? outTxt : dec.decode(outTxt);
-    return patched.injected ? stripDummyFromText(outStr) : outStr.trim();
+    const cqlBytes = enc.encode(String(cqlSource || ""));
+
+    const job = runCqlWasm(
+      cqlBytes,
+      patched.bytes,
+      String(argvString || ""),
+      {
+        onLog: (line) => {
+          const s = String(line ?? "");
+          if (!s.trim()) return;
+          if (s.startsWith("[stderr]")) pushLog("OK", s); // keep runner chatter but don’t error
+          else pushLog("OK", s);
+        }
+      }
+    );
+
+    const outStr = await new Promise((resolve, reject) => {
+      const unsub = job.subscribe((j) => {
+        if (!j) return;
+        if (j.state === "done") {
+          try { (typeof unsub === "function") ? unsub() : unsub?.unsubscribe?.(); } catch {}
+          resolve(String(j.outputPgn || ""));
+        } else if (j.state === "error") {
+          try { (typeof unsub === "function") ? unsub() : unsub?.unsubscribe?.(); } catch {}
+          reject(new Error(j.error || "CQL runner error"));
+        }
+      });
+    });
+
+    const finalTxt = patched.injected ? stripDummyFromText(outStr) : outStr;
+    return finalTxt.trim();
   }
 
   document.getElementById("qRun").onclick = async ()=>{
@@ -629,7 +641,7 @@
       const label = qOverrideBytes ? qOverrideLabel : dbSel.value;
       pushLog("OK", `Running query on ${label}…`);
 
-      const out = await runCqlOnBytes(inputBytes, cql);
+      const out = await runCqlOnBytes(inputBytes, cql, "");
       qOut.value = out;
       setQStatus("done");
       pushLog("OK", "Query finished.");
@@ -667,7 +679,7 @@
     pushLog("OK", "Cleared query output.");
   };
 
-  // ---------------- EVALS (CQL scripts through same runner) ----------------
+  // ---------------- EVALS ----------------
   const evalSel = document.getElementById("evalSel");
   const evalOut = document.getElementById("evalOut");
 
@@ -690,7 +702,7 @@
       if (!inputBytes) throw new Error("No DB selected (and no override).");
 
       pushLog("OK", `Running eval "${key}"…`);
-      const out = await runCqlOnBytes(inputBytes, cql);
+      const out = await runCqlOnBytes(inputBytes, cql, "");
       evalOut.value = out;
       pushLog("OK", "Eval finished.");
     }catch(e){
@@ -701,38 +713,32 @@
 
   // ---------------- INIT SELECTS + BOOT ----------------
   function initSelects(){
-    // Priyomes DB
     prDb.innerHTML="";
     for (const [k,url] of Object.entries(PRIYOME_PGN_MANIFEST)){
       const o=document.createElement("option"); o.value=url; o.textContent=k; prDb.appendChild(o);
     }
 
-    // Query DB
     dbSel.innerHTML="";
     for (const k of Object.keys(PGN_MANIFEST)){
       const o=document.createElement("option"); o.value=k; o.textContent=k; dbSel.appendChild(o);
     }
 
-    // CQL dropdown (optional extras)
     cqlSel.innerHTML="";
     const o0=document.createElement("option"); o0.value=""; o0.textContent="(select)"; cqlSel.appendChild(o0);
     for (const [k,url] of Object.entries(CQL_MANIFEST)){
       const o=document.createElement("option"); o.value=url; o.textContent=k; cqlSel.appendChild(o);
     }
 
-    // Evals
     evalSel.innerHTML="";
     for (const [k,v] of Object.entries(CQL_EVAL_MANIFEST)){
       const o=document.createElement("option"); o.value=k; o.textContent=k; evalSel.appendChild(o);
     }
   }
 
-  // boot
   pushLog("OK","Booting…");
   initSelects();
   await bootStudies(false);
   await loadPriyomes().catch(e=>pushLog("ERR","Priyomes boot-load failed: "+e));
-  // If we have a current game, sync UI
   if (currentGame) syncUi();
   pushLog("OK","Ready.");
 </script>
