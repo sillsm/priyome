@@ -413,10 +413,9 @@
   </div>
 
 <script type="module">
-  import { Chess } from "./third_party/chess.js";
   import { createGame, BoardView } from "./scratchchess.js";
 
-  // ---------------- MANIFESTS (copy/paste from staging; keep paths consistent) ----------------
+  // ---------------- MANIFESTS ----------------
   const STUDY_MANIFEST = {
     default: "./pgn/Study.pgn",
     fen_test: "./pgn/default games.pgn",
@@ -446,7 +445,7 @@
     el.addEventListener("click", () => setTab(el.dataset.tab));
   }
 
-  // ---------------- error logger (matches reference harness behavior) ----------------
+  // ---------------- error logger ----------------
   const errorLogEl = $("errorLog");
   const errCountEl = $("errCount");
   let _errCount = 0;
@@ -468,7 +467,7 @@
     errCountEl.textContent = "0";
   });
 
-  // ---------------- PGN helpers (from reference) ----------------
+  // ---------------- PGN helpers ----------------
   function parseHeaders(pgn){
     const headers = {};
     const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
@@ -540,19 +539,12 @@
     renderGameList();
   }
 
-  function SanitizedLoadPgn(pgn){
-    try{
-      // smoke-check with chess.js to catch grossly invalid PGN
-      const c = new Chess();
-      const ok = c.load_pgn(pgn, { sloppy:true });
-      if (!ok) return { ok:false, err:"chess.js rejected PGN" };
-      const h = parseHeaders(pgn);
-      const g = createGame(h);
-      g.loadPGN?.(pgn);
-      return { ok:true, game:g };
-    }catch(e){
-      return { ok:false, err:String(e) };
-    }
+  // ✅ No chess.js smoke-checks; load PGN directly into ScratchChess.
+  function loadPgnIntoScratchGame(pgn){
+    const h = parseHeaders(pgn);
+    const g = createGame(h);
+    g.loadPGN(pgn);
+    return g;
   }
 
   function addGameRecord(pgn, meta = {}){
@@ -561,11 +553,12 @@
     const id = meta.id || `g:${Date.now()}:${Math.random().toString(16).slice(2)}`;
     const res = h.Result || "*";
     const opening = meta.opening || "";
-    const loaded = SanitizedLoadPgn(pgn);
-    if (!loaded.ok) throw new Error(`SanitizedLoadPgn failed: ${loaded.err || "unknown"}`);
-    const rec = { id, title, opening, result: res, pgn, game: loaded.game };
-    // keep UI synced when moves happen
+
+    const game = loadPgnIntoScratchGame(pgn);
+
+    const rec = { id, title, opening, result: res, pgn, game };
     rec.game.onChange?.(() => { if (currentGame && currentGame.id === rec.id) syncUi(); });
+
     GAMES.unshift(rec);
     ensureStudy(currentStudyName, [id]);
     return rec;
@@ -615,9 +608,8 @@
     }
   }
 
-  // ---------------- Moves rendering (fixes “none of the moves show up”) ----------------
+  // ---------------- Moves rendering ----------------
   function pgnToMoveTokens(pgn){
-    // crude but robust-enough: strip headers, NAGs, results; keep SAN + comments in braces
     const body = (pgn || "")
       .replace(/\r/g,"")
       .split("\n")
@@ -626,7 +618,6 @@
       .trim();
 
     if (!body) return [];
-    // Keep brace comments as tokens
     const tokens = [];
     let i = 0;
     while (i < body.length){
@@ -636,7 +627,6 @@
         tokens.push(chunk.trim());
         i = (j >= 0 ? j+1 : body.length);
       } else {
-        // consume until space or brace
         let j = i;
         while (j < body.length && body[j] !== " " && body[j] !== "{") j++;
         const chunk = body.slice(i, j).trim();
@@ -646,7 +636,6 @@
       while (i < body.length && body[i] === " ") i++;
     }
 
-    // remove move numbers + results
     return tokens.filter(t => {
       if (!t) return false;
       if (/^\d+\.(\.\.)?$/.test(t)) return false;
@@ -663,7 +652,6 @@
     if (!g) return;
 
     const toks = pgnToMoveTokens(g.exportPGN?.() || "");
-    // Pair into rows
     let mn = 1;
     for (let i = 0; i < toks.length; i += 2){
       const w = toks[i] || "";
@@ -679,19 +667,12 @@
       const wBtn = document.createElement("button");
       wBtn.className = "plyBtn" + (activePlyIndex === i ? " active" : "");
       wBtn.textContent = w;
-      wBtn.addEventListener("click", () => {
-        // best-effort: step through using prev/next
-        activePlyIndex = i;
-        syncUi();
-      });
+      wBtn.addEventListener("click", () => { activePlyIndex = i; syncUi(); });
 
       const bBtn = document.createElement("button");
       bBtn.className = "plyBtn" + (activePlyIndex === i+1 ? " active" : "");
       bBtn.textContent = b;
-      bBtn.addEventListener("click", () => {
-        activePlyIndex = i+1;
-        syncUi();
-      });
+      bBtn.addEventListener("click", () => { activePlyIndex = i+1; syncUi(); });
 
       row.appendChild(mnEl);
       row.appendChild(wBtn);
@@ -708,7 +689,7 @@
     try{ $("pgnBottom").value = g.exportPGN?.() || ""; }catch{ $("pgnBottom").value = ""; }
 
     try{
-      const ply = (typeof g.getPly === "function") ? g.getPly() : (typeof g.ply === "number" ? g.ply : "—");
+      const ply = (typeof g.getPly === "function") ? g.getPly() : (g.curNode?.ply ?? "—");
       $("navMeta").textContent = `ply ${ply}`;
     }catch{
       $("navMeta").textContent = "ply —";
@@ -720,11 +701,12 @@
     renderMoves();
   }
 
-  // ---------------- Board controls (export/prev/next/setup) ----------------
+  // ---------------- Board controls (prev/next/setup/export) ----------------
   function cg(){ return currentGame?.game || null; }
 
-  $("btnPrev").addEventListener("click", () => { try{ cg()?.prev?.(); }catch(e){ logStack("ERR","Prev failed: ", e); } });
-  $("btnNext").addEventListener("click", () => { try{ cg()?.next?.(); }catch(e){ logStack("ERR","Next failed: ", e); } });
+  // ✅ ScratchChess uses prevMove/nextMove
+  $("btnPrev").addEventListener("click", () => { try{ cg()?.prevMove?.(); }catch(e){ logStack("ERR","Prev failed: ", e); } });
+  $("btnNext").addEventListener("click", () => { try{ cg()?.nextMove?.(); }catch(e){ logStack("ERR","Next failed: ", e); } });
 
   $("btnFlip").addEventListener("click", () => { try{ cg()?.toggleFlip?.(); syncUi(); }catch(e){ logStack("ERR","Flip failed: ", e); } });
   $("btnReset").addEventListener("click", () => {
@@ -732,7 +714,6 @@
       const g = cg(); if (!g) return;
       const wasSetup = !!g.ui?.setup;
       g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-      // keep setup flag stable
       if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
       logLine("OK","Reset to initial position.");
       syncUi();
@@ -751,7 +732,6 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 500);
   }
 
-  // FIX: export uses scratchchess exportPGN (this is what was broken in your report)
   $("btnExportGame").addEventListener("click", () => {
     try{
       const g = cg(); if (!g) throw new Error("No current game");
@@ -826,10 +806,8 @@
   }
   populateDbSelect();
 
-  // ---------------- CQL runner logic (COPIED from reference harness; only wired to this page’s elements) ----------------
+  // ---------------- CQL runner logic (copied from reference harness; wired here) ----------------
   let qPgnBytesOverride = null;
-  let setupImportedCqlRef = null;
-  let setupImportedPgnTitle = null;
 
   const qCqlFile = $("qCqlFile");
   const qPgnFile = $("qPgnFile");
@@ -858,7 +836,7 @@
     else qStatus.textContent = "Ready.";
   }
 
-  // --------- CQL dummy-game workaround (copied from reference) ----------
+  // --------- CQL dummy-game workaround ----------
   const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
   const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
   const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
@@ -873,7 +851,6 @@
       `[Black "${DUMMY_CQL_BLACK}"]`,
       `[Result "0-1"]`,
     ].join("\n");
-
     const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
     return `${headers}\n\n${moves}\n`;
   }
@@ -897,15 +874,7 @@
     return kept.join("\n\n").trim();
   }
 
-  function resetAfterCqlRunTransientState(){
-    // mimic reference: clear labels if necessary
-    qStatus.textContent = "Ready.";
-    // clear setup-import transient hints
-    setupImportedCqlRef = null;
-    setupImportedPgnTitle = null;
-  }
-
-  // --------- import discovered games (copied behavior from reference; adapted to ScratchChess storage) ----------
+  // --------- import discovered games ----------
   function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
     const games = splitMultiPgn(multiPgnText);
     if (!games.length){
@@ -919,11 +888,8 @@
       const h = parseHeaders(pgn);
       const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
       const date  = h.Date || todayYMD();
-      const res   = h.Result || "*";
       const newId = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
-
-      const rec = addGameRecord(pgn, { id:newId, title, opening: sourceKey ? `CQL: ${sourceKey}` : "CQL result" });
-      rec.result = res;
+      addGameRecord(pgn, { id:newId, title, opening: sourceKey ? `CQL: ${sourceKey}` : "CQL result" });
       newIds.push(newId);
     }
 
@@ -941,7 +907,7 @@
     return newIds.length;
   }
 
-  // --------- Runner warm-up (copied from reference) ----------
+  // --------- Runner warm-up ----------
   document.addEventListener("DOMContentLoaded", async () => {
     try {
       const mod = await import("./wasm/cql_runner.js");
@@ -999,7 +965,6 @@
 
   qCqlText.addEventListener("input", updateQueryUi);
 
-  // FIX: “use current game” uses scratchchess exportPGN, and sets override bytes like reference
   qUseCurrent.addEventListener("click", () => {
     try{
       const g = cg(); if (!g) throw new Error("No current game");
@@ -1015,7 +980,7 @@
   });
 
   qRun.addEventListener("click", async () => {
-    const pgnFile = qPgnFile.files?.[0] || null;
+    const pgnFile0 = qPgnFile.files?.[0] || null;
     try{
       const cqlText = qCqlText.value || "";
       if (!cqlText.trim()) throw new Error("CQL is empty.");
@@ -1038,7 +1003,7 @@
 
       const sourceKey =
         qPgnBytesOverride ? `game:${currentGame?.id || "unknown"}`
-        : (pgnFile ? `upload:${pgnFile.name}` : `db:${dbSelectEl.value}`);
+        : (pgnFile0 ? `upload:${pgnFile0.name}` : `db:${dbSelectEl.value}`);
 
       // Workaround: if PGN has only one game, append a dummy second game for CQL execution.
       let _dummyInjected = false;
@@ -1115,7 +1080,6 @@
             }
           }
 
-          resetAfterCqlRunTransientState();
           qRun.disabled = false;
           updateQueryUi();
         }
@@ -1123,7 +1087,6 @@
 
     }catch(e){
       logLine("ERR", `Run exception: ${e && e.stack ? e.stack : String(e)}`);
-      resetAfterCqlRunTransientState();
       qRun.disabled = false;
       updateQueryUi();
       setTab("errors");
@@ -1176,8 +1139,7 @@
           const pgnIn = g.exportPGN?.() || "";
           const outPgn = await entry.run({ pgn: pgnIn });
           if (!String(outPgn||"").trim()) throw new Error(`Eval "${entry.id}" returned empty output PGN.`);
-          // smoke-check & add as new game in current study
-          const h = parseHeaders(outPgn);
+
           const titleBase = currentGame?.title || "Game";
           const title = `Evaluated (${entry.id}) • ${titleBase}`;
           const newId = `eval:${entry.id}:${currentGame?.id || "unknown"}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -1220,7 +1182,6 @@
           const pgnBytes0 = textToUtf8Bytes(pgnIn);
           const cqlSrc = await (await fetch(entry.url, { cache:"no-store" })).text();
 
-          // dummy-game patch identical to query
           const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes0);
           let pgnBytes = ensured.bytes;
           const _dummyInjected = ensured.injected;
@@ -1249,10 +1210,8 @@
 
             let outPgnText = j.outputPgn || "";
             if (_dummyInjected) outPgnText = stripDummyFromMultiPgnText(outPgnText);
-
             if (!outPgnText.trim()) throw new Error(`CQL eval "${id}" returned empty output PGN.`);
 
-            const h = parseHeaders(outPgnText);
             const titleBase = currentGame?.title || "Game";
             const title = `Evaluated (${id}) • ${titleBase}`;
             const newId = `eval:${id}:${currentGame?.id || "unknown"}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -1278,7 +1237,6 @@
   // ---------------- Initial load: load default study PGN (manifest) ----------------
   async function boot(){
     try{
-      // seed studies
       ensureStudy("default", []);
       setCurrentStudy("default");
 
@@ -1304,16 +1262,12 @@
       if (STUDIES[currentStudyName]?.length){
         setCurrentGameById(STUDIES[currentStudyName][0]);
       } else {
-        // at least show boot game
         currentGame = { id:"", title:"", game: initboot, pgn:"" };
         board.setGame(initboot);
         syncUi();
       }
 
-      // load evals
       loadEvals();
-
-      // query UI
       updateQueryUi();
       logLine("OK","Boot complete.");
     }catch(e){
