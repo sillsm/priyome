@@ -68,6 +68,11 @@ function compare(actual, spec, normalize){
     const ok = String(a).includes(String(sub));
     return { ok, msg: `contains | expected_sub=${asString(sub)} | actual=${asString(a)}` };
   }
+  if ("notContains" in spec) {
+    const sub = norm(spec.notContains);
+    const ok = !String(a).includes(String(sub));
+    return { ok, msg: `notContains | expected_not_sub=${asString(sub)} | actual=${asString(a)}` };
+  }
   if ("regex" in spec) {
     const rx = safeRegex(spec.regex);
     if (!rx) return { ok:false, msg:`invalid regex: ${spec.regex}` };

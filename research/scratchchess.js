@@ -684,15 +684,12 @@ export class Game {
       const [, tr] = FR(toIdx);
       const last = p.color === "w" ? 7 : 0;
       if (tr === last) {
-        if (!promo) {
-          this._pendingPromotion = { fromIdx, toIdx };
-          this.state.pendingPromotion = { fromIdx, toIdx };
-          this._emit();
-          return "PROMO";
-        } else {
-          const map = { q:"Q", r:"R", b:"B", n:"N" };
-          promoLetter = map[promo] || "Q";
-        }
+        // Always pause on promotion so UI / caller can choose piece.
+        // (PGN import handles this by immediately calling resolvePendingPromotion.)
+        this._pendingPromotion = { fromIdx, toIdx };
+        this.state.pendingPromotion = { fromIdx, toIdx };
+        this._emit();
+        return "PROMO";
       }
     }
 
@@ -1211,10 +1208,38 @@ function ensureStyles() {
 #sc-ghost{
   position:fixed; z-index:99999; pointer-events:none;
   transform:translate(-50%,-50%);
-  width:48px; height:48px;
+  width:var(--sc-ghostSize,48px); height:var(--sc-ghostSize,48px);
   display:none;
 }
 #sc-ghost img{ width:100%; height:100%; display:block; }
+
+.sc-promoOverlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,.20);
+  z-index:50;
+}
+.sc-promoBox{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.92);
+  box-shadow:0 10px 30px rgba(0,0,0,.25);
+}
+.sc-promoBox button{
+  font:600 14px/1.1 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  padding:10px 14px;
+  border-radius:12px;
+  border:1px solid rgba(0,0,0,.18);
+  background:rgba(255,255,255,.95);
+  cursor:pointer;
+}
+.sc-promoBox button:active{ transform:translateY(1px); }
 `;
 
   const st = document.createElement("style");
@@ -1267,6 +1292,26 @@ export class BoardView {
     this.container.appendChild(this.shell);
 
     this.ghost = document.getElementById("sc-ghost");
+
+    // promotion chooser overlay (created once, shown when Game signals pendingPromotion)
+    this.promoOverlay = document.createElement("div");
+    this.promoOverlay.className = "sc-promoOverlay";
+    this.promoOverlay.innerHTML = `
+      <div class="sc-promoBox">
+        <button data-piece="Q" title="Queen">Queen</button>
+        <button data-piece="R" title="Rook">Rook</button>
+        <button data-piece="B" title="Bishop">Bishop</button>
+        <button data-piece="N" title="Knight">Knight</button>
+      </div>`;
+    this.promoOverlay.style.display = "none";
+    this.promoOverlay.addEventListener("click", (ev) => {
+      const btn = ev.target && ev.target.closest && ev.target.closest("button[data-piece]");
+      if (!btn) return;
+      const L = btn.getAttribute("data-piece");
+      try { this.game.resolvePendingPromotion(L); } catch {}
+      this._hidePromotionChooser();
+    });
+    this.container.appendChild(this.promoOverlay);
     this.pieceEls = new Map();
     this.drag = null;
     this.arrowDrag = null;
@@ -1284,6 +1329,17 @@ export class BoardView {
     // spare pieces support
     this._initSpares();
   }
+  _showPromotionChooser() {
+    // Only show if a promotion is actually pending.
+    if (!this.game?.state?.pendingPromotion) return;
+    this.promoOverlay.style.display = "flex";
+  }
+
+  _hidePromotionChooser() {
+    this.promoOverlay.style.display = "none";
+  }
+
+
 
   destroy() {
     this.unsub?.();
@@ -1519,6 +1575,9 @@ export class BoardView {
     }
     for (const [id] of this.pieceEls.entries()) if (!liveIds.has(id)) this._removePieceEl(id);
 
+    if (this.game.state.pendingPromotion) this._showPromotionChooser();
+    else this._hidePromotionChooser();
+
     this._redrawOverlay();
   }
 
@@ -1583,6 +1642,9 @@ export class BoardView {
     this.ghost.appendChild(img);
     this.ghost.style.left = e.clientX + "px";
     this.ghost.style.top = e.clientY + "px";
+    const br = this.shell.getBoundingClientRect();
+    const sqPx = Math.min(br.width, br.height) / 8;
+    this.ghost.style.setProperty("--sc-ghostSize", sqPx + "px");
     this.ghost.style.display = "block";
 
     const el = this.pieceEls.get(pieceId);
@@ -1637,7 +1699,8 @@ export class BoardView {
           this.game._emit();
           return;
         }
-        this.game.makeMoveUCI(from + sq);
+        const r = this.game.makeMoveUCI(from + sq);
+        if (r === "PROMO") this._showPromotionChooser();
         this.game.sel.fromSq = null;
         this.game.sel.legalTo = [];
         this.game._emit();
@@ -1689,7 +1752,8 @@ export class BoardView {
         return;
       }
 
-      this.game.makeMoveUCI(fromSq + dropSq);
+      const r = this.game.makeMoveUCI(fromSq + dropSq);
+      if (r === "PROMO") this._showPromotionChooser();
       this.game._emit();
     };
 
