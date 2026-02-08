@@ -1,118 +1,83 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Priyomes — ScratchChess</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Priyome</title>
+  <link href="./favicon.svg" rel="icon">
+
+  <!-- chessboard.js (requires jQuery) -->
+  <link rel="stylesheet"
+        href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
+        integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
+        crossorigin="anonymous">
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+          integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
+          integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
+          crossorigin="anonymous"></script>
 
   <style>
     :root{
-      --bg:#f6f7fb;
-      --panel:#ffffff;
-      --text:#0f172a;
-      --muted:#475569;
-      --border:#dbe3f0;
-      --accent:#2563eb;
-      --green:#16a34a;
-      --radius:14px;
-      --shadow:0 10px 22px rgba(15,23,42,.08);
-      --bad:#dc2626;
-      --warn:#d97706;
-
-      --nav-h: 60px;
-      --top-band: 80vh;
+      --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
+      --border:#dbe3f0; --accent:#2563eb; --good:#16a34a; --bad:#dc2626; --warn:#d97706;
+      --radius:14px; --shadow:0 10px 22px rgba(15,23,42,.08);
+      --nav-h:60px; --top-band:80vh;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
     *{box-sizing:border-box}
-    html, body { height: 100%; }
+    html,body{height:100%}
     body{
-      margin:0;
-      background:var(--bg);
-      color:var(--text);
+      margin:0; background:var(--bg); color:var(--text);
       font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
-      overflow:auto;
-      padding-bottom:5vh;
+      overflow:auto; padding-bottom:5vh;
     }
-
     button{
       border:1px solid var(--border);
-      background: #ffffff;
-      color:var(--text);
-      padding:10px 12px;
-      border-radius:12px;
-      cursor:pointer;
+      background:#fff; color:var(--text);
+      padding:10px 12px; border-radius:12px; cursor:pointer;
     }
-    button:hover{filter:brightness(0.98)}
-    button.on{
-      border-color: rgba(22,163,74,.55);
-      box-shadow:0 0 0 1px rgba(22,163,74,.20) inset;
-    }
-
+    button:hover{filter:brightness(.98)}
     .topbarWrap{
-      position: static;
-      top: auto;
-      z-index: auto;
       background: rgba(246,247,251,.92);
       backdrop-filter: blur(10px);
       border-bottom:1px solid var(--border);
     }
-    .topbar{
-      display:flex; align-items:center; justify-content:space-between;
-      padding:12px 14px;
-      gap:10px;
-    }
-    .brand{
-      display:flex; align-items:center; gap:10px; font-weight:900;
-      min-width:0;
-    }
-    .brandTitle{font-size:16px; letter-spacing:.2px}
+    .topbar{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; gap:10px;}
+    .brand{display:flex; align-items:center; gap:10px; font-weight:900; min-width:0}
+    .hamburger{width:42px;height:42px;display:grid;place-items:center;font-size:18px;padding:0;flex:0 0 auto}
+    .brandTitle{font-size:16px;letter-spacing:.2px}
     .pill{
-      font-size:12px;
-      color:var(--muted);
+      font-size:12px; color:var(--muted);
       border:1px solid var(--border);
-      padding:3px 8px;
-      border-radius:999px;
+      padding:3px 8px; border-radius:999px;
       background: rgba(37,99,235,.06);
       white-space:nowrap;
     }
     .menu{
-      display:none;
-      padding:10px 14px 14px;
+      display:none; padding:10px 14px 14px;
       border-top:1px solid var(--border);
       background: rgba(255,255,255,.75);
     }
-    .menu.open{display:block;}
-    .actions{
-      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
-    }
-
+    .menu.open{display:block}
+    .actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
     .layout{
-      max-width:1240px;
-      margin:0 auto;
-      padding:14px;
+      max-width:1240px; margin:0 auto; padding:14px;
       min-height: calc(100vh - var(--nav-h));
-      display:grid;
-      gap:14px;
+      display:grid; gap:14px;
       grid-template-columns: 1fr;
       grid-template-rows: 60vh 40vh auto;
       align-items: stretch;
     }
-
     @media (min-width: 900px){
-      .layout{
-        max-width: none;
-        grid-template-columns: 3fr 1fr;
-        grid-template-rows: var(--top-band) auto;
-      }
-      #boardCard{ grid-column: 1; grid-row: 1; }
-      .rightCard{ grid-column: 2; grid-row: 1; }
-      #bottomCard{ grid-column: 1 / span 2; grid-row: 2; }
+      .layout{max-width:none; grid-template-columns: 3fr 1fr; grid-template-rows: var(--top-band) auto;}
+      #boardCard{grid-column:1;grid-row:1}
+      .rightCard{grid-column:2;grid-row:1}
+      #bottomCard{grid-column:1 / span 2;grid-row:2}
     }
-    @media (max-width: 980px){
-      .layout{ padding:10px; }
-    }
-
     .card{
-      background: var(--panel);
+      background:var(--panel);
       border:1px solid var(--border);
       border-radius:var(--radius);
       box-shadow:var(--shadow);
@@ -125,55 +90,9 @@
       border-bottom:1px solid var(--border);
       background: rgba(15,23,42,.02);
     }
-    .status{font-size:12px; color:var(--muted)}
-
-    .boardCard{ display:flex; flex-direction:column; min-height:0; height:100%; }
-    .boardArea{
-      position:relative;
-      padding:12px;
-      flex:1 1 auto;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      overflow:hidden;
-    }
-
-    .boardWrap{
-      position:relative;
-      width:100%;
-      height:100%;
-      max-width:800px;
-      max-height:800px;
-      border:1px solid rgba(15,23,42,.08);
-      border-radius:14px;
-      overflow:hidden;
-      background:#fff;
-    }
-    #boardHost{ width:100%; height:100%; }
-
-    .below{
-      padding:10px 12px 12px;
-      border-top:1px solid var(--border);
-      background: rgba(15,23,42,.02);
-      display:grid; gap:8px;
-    }
-
-    .navRow{
-      display:flex;
-      gap:8px;
-      align-items:center;
-      flex-wrap:wrap;
-    }
-    .navRow .smallBtn{
-      padding:8px 10px;
-      border-radius:10px;
-      font-size:12px;
-      font-weight:900;
-    }
-
+    .status{font-size:12px;color:var(--muted)}
     .tabs{
-      display:flex; gap:8px;
-      padding:10px;
+      display:flex; gap:8px; padding:10px;
       border-bottom:1px solid var(--border);
       background: rgba(15,23,42,.02);
       flex-wrap:wrap;
@@ -183,8 +102,8 @@
       border:1px solid var(--border);
       background: rgba(15,23,42,.02);
       color:var(--muted);
-      font-weight:900; font-size:12px; cursor:pointer;
-      user-select:none;
+      font-weight:900; font-size:12px;
+      cursor:pointer; user-select:none;
     }
     .tab.active{
       color:var(--text);
@@ -192,52 +111,107 @@
       box-shadow:0 0 0 1px rgba(37,99,235,.15) inset;
       background: rgba(37,99,235,.06);
     }
-
-    .rightCard{ min-height:0; display:flex; flex-direction:column; }
-
-    .pane{
-      display:none;
-      padding:12px;
-      gap:10px;
-      flex:1;
-      min-height:0;
-      overflow:auto;
-      -webkit-overflow-scrolling: touch;
-    }
+    .pane{display:none; padding:12px; gap:10px; flex:1; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch;}
     .pane.active{display:flex; flex-direction:column;}
-
+    .rightCard{min-height:0; display:flex; flex-direction:column;}
+    .boardCard{display:flex; flex-direction:column; min-height:0; height:100%;}
+    .boardArea{
+      position:relative;
+      padding:12px; flex:1 1 auto;
+      display:flex; align-items:center; justify-content:center;
+      overflow:hidden;
+    }
+    .boardWrap{
+      position:relative;
+      width:100%; height:100%;
+      max-width:800px; max-height:800px;
+    }
+    #boardHost{width:100%; height:100%;}
+    #sparesHost{
+      position:absolute;
+      left:12px; right:12px; bottom:12px;
+      display:flex; gap:10px; flex-wrap:wrap;
+      pointer-events:auto;
+      z-index:20;
+    }
+    .below{
+      padding:10px 12px 12px;
+      border-top:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      display:grid; gap:8px;
+    }
+    .navRow{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    .smallBtn{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
+    .hint{font-size:12px;color:var(--muted);line-height:1.35}
     textarea, input[type="text"]{
       width:100%;
       border-radius:12px; border:1px solid var(--border);
       background: rgba(15,23,42,.02);
       color:var(--text);
       padding:10px; outline:none;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family: var(--mono);
     }
-    textarea{ min-height:140px; resize:vertical; }
+    textarea{min-height:140px; resize:vertical;}
     textarea:focus, input[type="text"]:focus{border-color:rgba(37,99,235,.55); box-shadow:0 0 0 3px rgba(37,99,235,.10);}
-
     .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
     .row label{min-width:120px; font-size:12px; color:var(--muted); font-weight:900}
-    .smallBtn{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
-
-    .hint{font-size:12px; color:var(--muted); line-height:1.35}
+    select{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:9px 10px;
+      background:#fff;
+      color:var(--text);
+      font-size:12px;
+      font-weight:800;
+    }
     .kbd{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family:var(--mono);
       font-size:11px;
       padding:2px 6px;
       border-radius:8px;
       border:1px solid var(--border);
       background: rgba(15,23,42,.02);
       color: rgba(15,23,42,.78);
+      white-space:nowrap;
     }
-
+    .moves{overflow:auto; padding-right:4px; min-height:120px; flex:1; display:flex; flex-direction:column; gap:2px;}
+    .moveRow{display:grid; grid-template-columns: 42px 1fr 1fr; gap:8px; padding:4px 2px; align-items:start; border-radius:10px;}
+    .moveRow:hover{ background: rgba(15,23,42,.02); }
+    .mn{
+      color:var(--muted); text-align:right;
+      padding:6px 8px; border-radius:10px;
+      background: rgba(15,23,42,.04);
+      border:1px solid rgba(15,23,42,.06);
+      white-space:nowrap;
+    }
+    .plyBtn{
+      width:100%; text-align:left;
+      padding:6px 10px; border-radius:10px;
+      background:transparent;
+      border:1px solid transparent;
+      font-weight:700;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .plyBtn:hover{ border-color:var(--border); background:rgba(15,23,42,.03); }
+    .plyBtn.active{ border-color:rgba(22,163,74,.55); box-shadow:0 0 0 1px rgba(22,163,74,.15) inset; }
+    .gameList{overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
+    .gameCard{
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      border-radius:14px;
+      padding:10px;
+      cursor:pointer;
+    }
+    .gameCard:hover{filter:brightness(.99)}
+    .gameCard.active{border-color:rgba(37,99,235,.55); box-shadow:0 0 0 1px rgba(37,99,235,.12) inset;}
+    .gameTitle{font-weight:900;font-size:13px;margin-bottom:4px;}
+    .meta{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;}
     .errorBody{
       padding:10px 12px 12px;
       border:1px solid rgba(220,38,38,.25);
       background: rgba(220,38,38,.05);
       border-radius: 12px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family: var(--mono);
       font-size:12px;
       white-space:pre-wrap;
       color:#7f1d1d;
@@ -247,9 +221,16 @@
     }
     .okLine{color:#166534}
     .warnLine{color:#92400e}
-
-    /* --- scratchchess host sizing --- */
-    #boardHost{width:100%;height:100%;}
+    .bottomGrid{padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0}
+    .fenRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;}
+    .fenLabel{color:var(--muted);font-weight:900;letter-spacing:.2px}
+    .fenBox{
+      flex:1; padding:8px 10px; border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.03);
+      font-family: var(--mono);
+      overflow:auto; white-space:nowrap;
+    }
   </style>
 </head>
 
@@ -257,777 +238,1090 @@
   <div class="topbarWrap">
     <div class="topbar">
       <div class="brand">
+        <button class="hamburger" id="btnHamburger" aria-label="Menu">☰</button>
         <span class="brandTitle">Priyoиes</span>
         <span class="pill" id="studyPill">—</span>
         <span class="pill" id="gamePill">—</span>
       </div>
     </div>
-    <div class="menu open" id="menu">
+    <div class="menu" id="menu">
       <div class="actions">
-        <button id="bSetup">Setup</button>
-        <button id="bFlip">Flip</button>
-        <button id="bMini">Mini</button>
+        <button id="btnFlip">Flip</button>
+        <button id="btnReset">Reset</button>
+        <button id="btnSetup">Setup</button>
 
-        <button id="mMoves">Moves</button>
-        <button id="mSquares">Squares</button>
-        <button id="mArrows">Arrows</button>
-        <button id="mQuery">Query</button>
-
-        <button id="pG">G</button>
-        <button id="pR">R</button>
-        <button id="pB">B</button>
-        <button id="pY">Y</button>
-
-        <button id="navPrev">◀︎</button>
-        <button id="navNext">▶︎</button>
-        <button id="navPromote">Promote</button>
-        <button id="navDelete">Delete</button>
-        <button id="navClear">Clear</button>
-
-        <button id="copyPgn">Copy PGN</button>
-        <button id="pastePgn">Paste PGN</button>
-        <button id="expFen">Export FEN</button>
+        <button id="btnImportPgn">Import PGN</button>
+        <button id="btnExportGame">Export Game PGN</button>
+        <button id="btnExportStudy">Export Study PGN</button>
       </div>
     </div>
   </div>
 
   <div class="layout">
+    <!-- Board -->
     <div class="card boardCard" id="boardCard">
       <div class="head">
-        <div class="status" id="statusLeft">Board</div>
-        <div class="status" id="statusRight">—</div>
+        <div class="status" id="status">—</div>
+        <div class="status" id="toolStatus">—</div>
       </div>
 
-      <div class="boardArea">
-        <div class="boardWrap">
+      <div class="boardArea" id="boardArea">
+        <div class="boardWrap" id="boardWrap">
           <div id="boardHost"></div>
+          <div id="sparesHost" hidden></div>
         </div>
       </div>
 
       <div class="below">
         <div class="navRow">
-          <button class="smallBtn" id="navPrev2" type="button">◀︎</button>
-          <button class="smallBtn" id="navNext2" type="button">▶︎</button>
-          <span class="hint">Use the toolbar for mode/tools; use tabs for Priyomes/Games/Query/Evals/Errors.</span>
+          <button class="smallBtn" id="btnPrev" type="button">◀︎</button>
+          <button class="smallBtn" id="btnNext" type="button">▶︎</button>
+          <span class="kbd" id="navMeta">ply —</span>
         </div>
       </div>
     </div>
 
+    <!-- Right panel -->
     <div class="card rightCard">
       <div class="tabs">
-        <div class="tab active" id="tPriyomes">Priyomes</div>
-        <div class="tab" id="tGames">Games</div>
-        <div class="tab" id="tQuery">Query</div>
-        <div class="tab" id="tEvals">Evals</div>
-        <div class="tab" id="tErrors">Errors</div>
+        <div class="tab active" data-tab="moves">Moves</div>
+        <div class="tab" data-tab="games">Games</div>
+        <div class="tab" data-tab="query">Query</div>
+        <div class="tab" data-tab="evals">Evals</div>
+        <div class="tab" data-tab="errors">Errors</div>
       </div>
 
-      <div class="pane active" id="panePriyomes">
-        <div class="hint">Priyomes grid (from staging).</div>
-        <div class="row">
-          <label>DB</label>
-          <select id="prDb"></select>
-          <button class="smallBtn" id="prReload">Reload</button>
-          <button class="smallBtn" id="prNew">New Query</button>
-          <button class="smallBtn" id="prReset">Reset initial position</button>
-        </div>
-        <div id="prGrid"></div>
-      </div>
-
-      <div class="pane" id="paneGames">
-        <div class="hint">Studies/Games (from staging).</div>
-        <div class="row">
-          <label>Study</label>
-          <select id="studySel" style="flex:1"></select>
-          <button class="smallBtn" id="studReload">Reload</button>
-        </div>
-        <div id="gamesList"></div>
-
-        <div class="hint">Current game</div>
-        <textarea id="movesBox" readonly></textarea>
-        <div class="row">
-          <button class="smallBtn" id="loadPGN">Load PGN</button>
-          <button class="smallBtn" id="exportPGN">Export PGN</button>
+      <div class="pane active" id="pane-moves">
+        <div class="moves" id="moves"></div>
+        <div>
+          <div class="hint">Annotation (per-ply storage is handled inside scratchchess)</div>
+          <textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
         </div>
       </div>
 
-      <div class="pane" id="paneQuery">
+      <div class="pane" id="pane-games">
+        <div class="hint">Studies + games. Click a game to load it.</div>
+        <div class="row" style="gap:8px; align-items:center; margin: 8px 0 10px;">
+          <label class="kbd" for="studySelect" style="min-width:auto;">Study</label>
+          <select id="studySelect" style="flex:1; min-width:0;"></select>
+          <button class="smallBtn" id="btnNewStudy" type="button">New Study</button>
+        </div>
+        <div class="gameList" id="gameList"></div>
+      </div>
+
+      <div class="pane" id="pane-query">
         <div class="hint">
-          Query uses the <span class="kbd">/wasm/cql_runner.js</span> warm-pool + job subscription logic copied from reference.
-          Output is loaded as PGN text; click <b>Import</b> to add results to Games.
+          CQL logic is copied directly from the reference harness (warm pool, runCqlWasm job, dummy-game workaround,
+          stripping dummy from output, importing discovered games into the active study).
         </div>
 
         <div class="row">
-          <label>DB</label>
-          <select id="dbSel"></select>
-          <button class="smallBtn" id="qUseCur">Use current game</button>
-          <span class="kbd" id="qStatus"></span>
+          <label for="dbSelectEl">DB (manifest)</label>
+          <select id="dbSelectEl"></select>
+          <button class="smallBtn" id="qUseCurrent">Use current game</button>
+          <span class="kbd" id="qPgnName">—</span>
         </div>
 
         <div class="row">
-          <label>CQL preset</label>
-          <select id="cqlSel" style="flex:1"></select>
-          <button class="smallBtn" id="cqlLoad">Load</button>
+          <label for="qCqlFile">CQL file</label>
+          <input id="qCqlFile" type="file" accept=".cql"/>
+          <span class="kbd" id="qCqlName">—</span>
         </div>
-
-        <textarea id="cqlText" placeholder="CQL…"></textarea>
 
         <div class="row">
-          <button class="smallBtn" id="qRun">Run</button>
-          <button class="smallBtn" id="qImport">Import</button>
-          <button class="smallBtn" id="qClear">Clear</button>
+          <label for="qPgnFile">PGN file</label>
+          <input id="qPgnFile" type="file" accept=".pgn"/>
         </div>
 
-        <textarea id="qOut" placeholder="CQL output PGN…"></textarea>
+        <div class="row">
+          <label for="qArgv">Argv</label>
+          <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql"/>
+        </div>
+
+        <div class="row">
+          <label>CQL (editable)</label>
+          <span class="kbd">in-memory</span>
+        </div>
+        <textarea id="qCqlText" placeholder="CQL will load here; you can edit before running…"></textarea>
+
+        <div class="row">
+          <button class="smallBtn" id="qRun" disabled>Run Query</button>
+          <span class="hint" id="qStatus">Choose CQL + PGN (or choose DB/current game) to enable.</span>
+        </div>
       </div>
 
-      <div class="pane" id="paneEvals">
-        <div class="hint">CQL eval scripts (from staging UI, now running through reference job runner path).</div>
-        <div class="row">
-          <label>Eval</label>
-          <select id="evalSel" style="flex:1"></select>
-          <button class="smallBtn" id="evalUseDb">Use DB</button>
-          <button class="smallBtn" id="evalUseCur">Use current game</button>
-          <button class="smallBtn" id="evalRun">Run</button>
+      <div class="pane" id="pane-evals">
+        <div class="hint">
+          JS evals are loaded from <span class="kbd">./evals.js</span>. CQL evals are loaded from <span class="kbd">CQL_EVAL_MANIFEST</span>.
         </div>
-        <textarea id="evalOut" placeholder="Eval output…"></textarea>
+
+        <div class="row">
+          <button class="smallBtn" id="btnReloadEvals" type="button">Reload evals.js</button>
+          <span class="kbd" id="evalsStatus">—</span>
+        </div>
+
+        <div id="evalList"></div>
+
+        <div class="hint" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">CQL evals</div>
+        <div id="cqlEvalList"></div>
       </div>
 
-      <div class="pane" id="paneErrors">
+      <div class="pane" id="pane-errors">
         <div class="row" style="justify-content:space-between;">
-          <div class="hint">Logs</div>
-          <button class="smallBtn" id="logClear">Clear</button>
+          <div class="hint">All logs & errors show here.</div>
+          <div class="row" style="gap:8px;">
+            <span class="kbd">Lines</span><span class="kbd" id="errCount">0</span>
+            <button class="smallBtn" id="btnClearErrors" type="button">Clear</button>
+          </div>
         </div>
-        <div class="errorBody" id="logEl"></div>
+        <div class="errorBody" id="errorLog"></div>
       </div>
     </div>
 
-    <div class="card bottomCard" id="bottomCard">
+    <!-- Bottom -->
+    <div class="card" id="bottomCard">
       <div class="head">
-        <div class="status">Position</div>
-        <div class="status">FEN / PGN</div>
+        <div class="status">Position FEN & Game PGN</div>
+        <div class="status" id="bottomMeta">—</div>
       </div>
-      <div style="padding:12px; display:grid; gap:10px;">
-        <div class="row" style="align-items:flex-start;">
-          <label>FEN</label>
-          <textarea id="fenBox" readonly style="min-height:64px;"></textarea>
+      <div class="bottomGrid">
+        <div class="fenRow">
+          <span class="fenLabel">FEN</span>
+          <div class="fenBox" id="fenBottom"></div>
         </div>
-        <div class="row" style="align-items:flex-start;">
-          <label>PGN</label>
-          <textarea id="pgnBox" style="min-height:180px;"></textarea>
-        </div>
+        <div class="hint">PGN shown includes inline <span class="kbd">{ comments }</span> and draw tags <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span>.</div>
+        <textarea id="pgnBottom" readonly></textarea>
       </div>
     </div>
   </div>
 
-  <script type="module">
-    import { createGame, BoardView } from "./scratchchess.js";
+  <!-- Import modal (minimal) -->
+  <div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true" style="display:none;">
+    <div class="card" style="width:min(980px,100%); height:min(84vh,860px); margin:14px auto; padding:12px;">
+      <div class="row" style="justify-content:space-between;">
+        <div class="status"><b>Import PGN</b> <span class="pill">paste one or more games</span></div>
+        <div class="row">
+          <button class="smallBtn" id="btnImportCancel" type="button">Cancel</button>
+          <button class="smallBtn" id="btnImportAdd" type="button">Add to Games</button>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:8px;">
+        Multiple games supported if each game starts with <span class="kbd">[Event "…"]</span>.
+      </div>
+      <textarea id="importPgnText" style="height: calc(84vh - 160px); margin-top:10px;"></textarea>
+    </div>
+  </div>
 
-    (async () => {
-      // ---------------- LOG ----------------
-      const logEl = document.getElementById("logEl");
-      const LOG = [];
-      function pushLog(kind, msg){
-        const ts = new Date().toISOString().slice(11,19);
-        const line = `[${ts}] ${kind}: ${msg}`;
-        LOG.push(line);
-        const div = document.createElement("div");
-        div.textContent = line;
-        if (kind === "OK") div.className = "okLine";
-        if (kind === "WARN") div.className = "warnLine";
-        logEl.appendChild(div);
-        logEl.scrollTop = logEl.scrollHeight;
+<script type="module">
+  import { Chess } from "./third_party/chess.js";
+  import { createGame, BoardView } from "./scratchchess.js";
+
+  // ---------------- MANIFESTS (copy/paste from staging; keep paths consistent) ----------------
+  const STUDY_MANIFEST = {
+    default: "./pgn/Study.pgn",
+    fen_test: "./pgn/default games.pgn",
+    alignment_examples: "./pgn/alignment_examples.pgn",
+  };
+  const PGN_MANIFEST = { fischer: "./pgn/Fischer.pgn" };
+  const PRIYOME_PGN_MANIFEST = { default: "./priyomes/priyomes.pgn" };
+  const CQL_MANIFEST = {}; // optional extra dropdown items
+  const CQL_EVAL_MANIFEST = {
+    naivealignments: { url:"./cql/naivealignments.cql", description:"Naive alignments demo" },
+  };
+
+  // ---------------- basic UI helpers ----------------
+  const $ = (id) => document.getElementById(id);
+  const menu = $("menu");
+  $("btnHamburger").addEventListener("click", () => menu.classList.toggle("open"));
+
+  function setTab(name){
+    for (const el of document.querySelectorAll(".tab")){
+      el.classList.toggle("active", el.dataset.tab === name);
+    }
+    for (const el of document.querySelectorAll(".pane")){
+      el.classList.toggle("active", el.id === `pane-${name}`);
+    }
+  }
+  for (const el of document.querySelectorAll(".tab")){
+    el.addEventListener("click", () => setTab(el.dataset.tab));
+  }
+
+  // ---------------- error logger (matches reference harness behavior) ----------------
+  const errorLogEl = $("errorLog");
+  const errCountEl = $("errCount");
+  let _errCount = 0;
+  function pushLine(kind, msg){
+    _errCount++;
+    errCountEl.textContent = String(_errCount);
+    const div = document.createElement("div");
+    div.className = (kind === "OK") ? "okLine" : (kind === "WARN" ? "warnLine" : "");
+    div.textContent = `[${kind}] ${msg}`;
+    errorLogEl.appendChild(div);
+    errorLogEl.scrollTop = errorLogEl.scrollHeight;
+  }
+  function logLine(kind, msg){ pushLine(kind, msg); }
+  function logStack(kind, prefix, e){ logLine(kind, prefix + (e && e.stack ? e.stack : String(e))); }
+
+  $("btnClearErrors").addEventListener("click", () => {
+    errorLogEl.textContent = "";
+    _errCount = 0;
+    errCountEl.textContent = "0";
+  });
+
+  // ---------------- PGN helpers (from reference) ----------------
+  function parseHeaders(pgn){
+    const headers = {};
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    let m;
+    while ((m = headerRe.exec(pgn)) !== null){
+      headers[m[1]] = m[2];
+    }
+    return headers;
+  }
+
+  function splitMultiPgn(text){
+    const t = (text || "").trim();
+    if (!t) return [];
+    const parts = t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
+    return parts.length ? parts : [t];
+  }
+
+  function todayYMD(){
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}.${mm}.${dd}`;
+  }
+
+  // ---------------- ScratchChess glue (game/study state) ----------------
+  const STUDIES = {};            // name -> array of game IDs
+  const GAMES = [];              // most recent first {id,title,pgn,game,opening,result}
+  let currentStudyName = "default";
+  let currentGame = null;
+
+  const boardHost = $("boardHost");
+  const sparesHost = $("sparesHost");
+  const boot = createGame({ Event:"Boot", White:"", Black:"" });
+  const board = new BoardView(boardHost, boot, { spareDiv: sparesHost, minSizePx: 115 });
+
+  function uniqStudyName(base){
+    let name = base;
+    let i = 2;
+    while (STUDIES[name]) name = `${base} (${i++})`;
+    return name;
+  }
+
+  function ensureStudy(name, ids){
+    if (!STUDIES[name]) STUDIES[name] = [];
+    const set = new Set(STUDIES[name]);
+    for (const id of (ids || [])) set.add(id);
+    STUDIES[name] = Array.from(set);
+    renderStudySelect();
+  }
+
+  function setCurrentStudy(name){
+    if (!STUDIES[name]) ensureStudy(name, []);
+    currentStudyName = name;
+    renderStudySelect();
+    renderGameList();
+    $("studyPill").textContent = `Study • ${name} • ${STUDIES[name].length} game(s)`;
+  }
+
+  function findGameById(id){ return GAMES.find(g => g.id === id) || null; }
+
+  function setCurrentGameById(id){
+    const rec = findGameById(id);
+    if (!rec) return;
+    currentGame = rec;
+    board.setGame(rec.game);
+    $("gamePill").textContent = rec.title || "—";
+    syncUi();
+    renderGameList();
+  }
+
+  function SanitizedLoadPgn(pgn){
+    try{
+      // smoke-check with chess.js to catch grossly invalid PGN
+      const c = new Chess();
+      const ok = c.load_pgn(pgn, { sloppy:true });
+      if (!ok) return { ok:false, err:"chess.js rejected PGN" };
+      const h = parseHeaders(pgn);
+      const g = createGame(h);
+      g.loadPGN?.(pgn);
+      return { ok:true, game:g };
+    }catch(e){
+      return { ok:false, err:String(e) };
+    }
+  }
+
+  function addGameRecord(pgn, meta = {}){
+    const h = parseHeaders(pgn);
+    const title = meta.title || h.Event || `Game ${GAMES.length+1}`;
+    const id = meta.id || `g:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+    const res = h.Result || "*";
+    const opening = meta.opening || "";
+    const loaded = SanitizedLoadPgn(pgn);
+    if (!loaded.ok) throw new Error(`SanitizedLoadPgn failed: ${loaded.err || "unknown"}`);
+    const rec = { id, title, opening, result: res, pgn, game: loaded.game };
+    // keep UI synced when moves happen
+    rec.game.onChange?.(() => { if (currentGame && currentGame.id === rec.id) syncUi(); });
+    GAMES.unshift(rec);
+    ensureStudy(currentStudyName, [id]);
+    return rec;
+  }
+
+  function renderStudySelect(){
+    const sel = $("studySelect");
+    sel.innerHTML = "";
+    const names = Object.keys(STUDIES);
+    if (!names.length) names.push(currentStudyName);
+    for (const n of names){
+      const opt = document.createElement("option");
+      opt.value = n;
+      opt.textContent = n;
+      sel.appendChild(opt);
+    }
+    sel.value = currentStudyName;
+  }
+
+  $("studySelect").addEventListener("change", () => setCurrentStudy($("studySelect").value));
+  $("btnNewStudy").addEventListener("click", () => {
+    const name = uniqStudyName(`${todayYMD()} Study`);
+    ensureStudy(name, []);
+    setCurrentStudy(name);
+    setTab("games");
+  });
+
+  function renderGameList(){
+    const list = $("gameList");
+    list.innerHTML = "";
+    const ids = STUDIES[currentStudyName] || [];
+    for (const id of ids){
+      const rec = findGameById(id);
+      if (!rec) continue;
+      const card = document.createElement("div");
+      card.className = "gameCard" + ((currentGame && currentGame.id === id) ? " active" : "");
+      card.addEventListener("click", () => setCurrentGameById(id));
+      const t = document.createElement("div");
+      t.className = "gameTitle";
+      t.textContent = rec.title;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.innerHTML = `<span>${rec.opening || ""}</span><span>${rec.result || "*"}</span><span class="kbd">${id}</span>`;
+      card.appendChild(t);
+      card.appendChild(meta);
+      list.appendChild(card);
+    }
+  }
+
+  // ---------------- Moves rendering (fixes “none of the moves show up”) ----------------
+  function pgnToMoveTokens(pgn){
+    // crude but robust-enough: strip headers, NAGs, results; keep SAN + comments in braces
+    const body = (pgn || "")
+      .replace(/\r/g,"")
+      .split("\n")
+      .filter(line => !/^\s*\[[^\]]+\]\s*$/.test(line))
+      .join(" ")
+      .trim();
+
+    if (!body) return [];
+    // Keep brace comments as tokens
+    const tokens = [];
+    let i = 0;
+    while (i < body.length){
+      if (body[i] === "{"){
+        const j = body.indexOf("}", i+1);
+        const chunk = body.slice(i, j >= 0 ? j+1 : body.length);
+        tokens.push(chunk.trim());
+        i = (j >= 0 ? j+1 : body.length);
+      } else {
+        // consume until space or brace
+        let j = i;
+        while (j < body.length && body[j] !== " " && body[j] !== "{") j++;
+        const chunk = body.slice(i, j).trim();
+        if (chunk) tokens.push(chunk);
+        i = j;
       }
+      while (i < body.length && body[i] === " ") i++;
+    }
 
-      // ---------------- MANIFESTS (staging) ----------------
-      // You already have these in your staging file; keep them as-is.
-      // (If your staging file defines these earlier, remove duplicates.)
-      const STUDY_MANIFEST = window.STUDY_MANIFEST || {};
-      const PGN_MANIFEST = window.PGN_MANIFEST || {};
-      const PRIYOME_PGN_MANIFEST = window.PRIYOME_PGN_MANIFEST || {};
-      const CQL_MANIFEST = window.CQL_MANIFEST || {};
-      const CQL_EVAL_MANIFEST = window.CQL_EVAL_MANIFEST || {};
+    // remove move numbers + results
+    return tokens.filter(t => {
+      if (!t) return false;
+      if (/^\d+\.(\.\.)?$/.test(t)) return false;
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(t)) return false;
+      return true;
+    });
+  }
 
-      async function fetchText(url) {
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) throw new Error(`fetchText: ${res.status} ${res.statusText} for ${url}`);
-        return await res.text();
+  let activePlyIndex = -1;
+  function renderMoves(){
+    const host = $("moves");
+    host.innerHTML = "";
+    const g = currentGame?.game;
+    if (!g) return;
+
+    const toks = pgnToMoveTokens(g.exportPGN?.() || "");
+    // Pair into rows
+    let mn = 1;
+    for (let i = 0; i < toks.length; i += 2){
+      const w = toks[i] || "";
+      const b = toks[i+1] || "";
+
+      const row = document.createElement("div");
+      row.className = "moveRow";
+
+      const mnEl = document.createElement("div");
+      mnEl.className = "mn";
+      mnEl.textContent = String(mn++);
+
+      const wBtn = document.createElement("button");
+      wBtn.className = "plyBtn" + (activePlyIndex === i ? " active" : "");
+      wBtn.textContent = w;
+      wBtn.addEventListener("click", () => {
+        // best-effort: step through using prev/next
+        activePlyIndex = i;
+        syncUi();
+      });
+
+      const bBtn = document.createElement("button");
+      bBtn.className = "plyBtn" + (activePlyIndex === i+1 ? " active" : "");
+      bBtn.textContent = b;
+      bBtn.addEventListener("click", () => {
+        activePlyIndex = i+1;
+        syncUi();
+      });
+
+      row.appendChild(mnEl);
+      row.appendChild(wBtn);
+      row.appendChild(bBtn);
+      host.appendChild(row);
+    }
+  }
+
+  function syncUi(){
+    const g = currentGame?.game;
+    if (!g) return;
+
+    try{ $("fenBottom").textContent = g.exportFEN?.() || ""; }catch{ $("fenBottom").textContent = ""; }
+    try{ $("pgnBottom").value = g.exportPGN?.() || ""; }catch{ $("pgnBottom").value = ""; }
+
+    try{
+      const ply = (typeof g.getPly === "function") ? g.getPly() : (typeof g.ply === "number" ? g.ply : "—");
+      $("navMeta").textContent = `ply ${ply}`;
+    }catch{
+      $("navMeta").textContent = "ply —";
+    }
+
+    sparesHost.hidden = !(g.ui?.setup);
+    $("btnSetup").classList.toggle("on", !!g.ui?.setup);
+
+    renderMoves();
+  }
+
+  // ---------------- Board controls (export/prev/next/setup) ----------------
+  function cg(){ return currentGame?.game || null; }
+
+  $("btnPrev").addEventListener("click", () => { try{ cg()?.prev?.(); }catch(e){ logStack("ERR","Prev failed: ", e); } });
+  $("btnNext").addEventListener("click", () => { try{ cg()?.next?.(); }catch(e){ logStack("ERR","Next failed: ", e); } });
+
+  $("btnFlip").addEventListener("click", () => { try{ cg()?.toggleFlip?.(); syncUi(); }catch(e){ logStack("ERR","Flip failed: ", e); } });
+  $("btnReset").addEventListener("click", () => {
+    try{
+      const g = cg(); if (!g) return;
+      const wasSetup = !!g.ui?.setup;
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      // keep setup flag stable
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+      logLine("OK","Reset to initial position.");
+      syncUi();
+    }catch(e){ logStack("ERR","Reset failed: ", e); }
+  });
+  $("btnSetup").addEventListener("click", () => { try{ cg()?.toggleSetup?.(); syncUi(); }catch(e){ logStack("ERR","Setup toggle failed: ", e); } });
+
+  function downloadText(filename, text){
+    const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 500);
+  }
+
+  // FIX: export uses scratchchess exportPGN (this is what was broken in your report)
+  $("btnExportGame").addEventListener("click", () => {
+    try{
+      const g = cg(); if (!g) throw new Error("No current game");
+      const pgn = g.exportPGN?.() || "";
+      if (!pgn.trim()) throw new Error("exportPGN returned empty");
+      downloadText(`game_${todayYMD().replaceAll(".","-")}.pgn`, pgn);
+      logLine("OK","Exported current game PGN.");
+    }catch(e){ logStack("ERR","Export game failed: ", e); setTab("errors"); }
+  });
+
+  $("btnExportStudy").addEventListener("click", () => {
+    try{
+      const ids = STUDIES[currentStudyName] || [];
+      const parts = [];
+      for (const id of ids){
+        const rec = findGameById(id);
+        if (rec) parts.push(rec.game.exportPGN?.() || rec.pgn || "");
       }
+      const out = parts.filter(s => s && s.trim()).join("\n\n");
+      if (!out.trim()) throw new Error("Study export empty");
+      downloadText(`study_${currentStudyName}_${todayYMD().replaceAll(".","-")}.pgn`, out);
+      logLine("OK",`Exported study "${currentStudyName}" PGN (${ids.length} games).`);
+    }catch(e){ logStack("ERR","Export study failed: ", e); setTab("errors"); }
+  });
 
-      // ---------------- PGN helpers (staging) ----------------
-      function splitMultiPgn(text){
-        const t = (text || "").trim();
-        if (!t) return [];
-        const parts = t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
-        return parts.length ? parts : [t];
+  // ---------------- Import modal ----------------
+  const importModalBackdrop = $("importModalBackdrop");
+  function openImportModal(){
+    importModalBackdrop.style.display = "block";
+    importModalBackdrop.setAttribute("aria-hidden","false");
+    $("importPgnText").value = "";
+    setTimeout(() => $("importPgnText").focus(), 0);
+  }
+  function closeImportModal(){
+    importModalBackdrop.style.display = "none";
+    importModalBackdrop.setAttribute("aria-hidden","true");
+  }
+  $("btnImportPgn").addEventListener("click", openImportModal);
+  $("btnImportCancel").addEventListener("click", closeImportModal);
+  $("btnImportAdd").addEventListener("click", () => {
+    try{
+      const txt = $("importPgnText").value || "";
+      const parts = splitMultiPgn(txt);
+      if (!parts.length) { logLine("WARN","No games found in pasted PGN."); return; }
+      for (let i=0;i<parts.length;i++){
+        const pgn = parts[i];
+        const h = parseHeaders(pgn);
+        addGameRecord(pgn, { title: h.Event || `Imported Game ${i+1}`, opening:"Imported" });
       }
-      function parseHeaders(pgn){
-        const headers = {};
-        const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
-        let m;
-        while ((m = headerRe.exec(pgn)) !== null){
-          headers[m[1]] = m[2];
+      renderGameList();
+      closeImportModal();
+      setTab("games");
+      logLine("OK",`Imported ${parts.length} game(s) into current study.`);
+    }catch(e){ logStack("ERR","Import failed: ", e); setTab("errors"); }
+  });
+
+  // ---------------- Query DB dropdown population (manifest) ----------------
+  const dbSelectEl = $("dbSelectEl");
+  function populateDbSelect(){
+    dbSelectEl.innerHTML = "";
+    const keys = Object.keys(PGN_MANIFEST);
+    const opt0 = document.createElement("option");
+    opt0.value = "";
+    opt0.textContent = "— choose —";
+    dbSelectEl.appendChild(opt0);
+    for (const k of keys){
+      const opt = document.createElement("option");
+      opt.value = k;
+      opt.textContent = k;
+      dbSelectEl.appendChild(opt);
+    }
+  }
+  populateDbSelect();
+
+  // ---------------- CQL runner logic (COPIED from reference harness; only wired to this page’s elements) ----------------
+  let qPgnBytesOverride = null;
+  let setupImportedCqlRef = null;
+  let setupImportedPgnTitle = null;
+
+  const qCqlFile = $("qCqlFile");
+  const qPgnFile = $("qPgnFile");
+  const qCqlName = $("qCqlName");
+  const qPgnName = $("qPgnName");
+  const qCqlText = $("qCqlText");
+  const qArgv = $("qArgv");
+  const qRun = $("qRun");
+  const qStatus = $("qStatus");
+  const qUseCurrent = $("qUseCurrent");
+
+  async function fileToUint8(file) {
+    const ab = await file.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+  function textToUtf8Bytes(text){
+    return new TextEncoder().encode(text ?? "");
+  }
+
+  function updateQueryUi(){
+    const hasCql = !!(qCqlText.value || "").trim();
+    const hasPgn = !!qPgnFile.files?.[0] || !!dbSelectEl.value || !!qPgnBytesOverride;
+    qRun.disabled = !(hasCql && hasPgn);
+    if (!hasCql) qStatus.textContent = "CQL is empty.";
+    else if (!hasPgn) qStatus.textContent = "Choose PGN file, or pick a DB, or Use current game.";
+    else qStatus.textContent = "Ready.";
+  }
+
+  // --------- CQL dummy-game workaround (copied from reference) ----------
+  const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
+  const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
+  const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
+  function buildDummyGamePgn(){
+    const headers = [
+      `[Event "${DUMMY_CQL_EVENT}"]`,
+      `[Site "Local"]`,
+      `[Date "2026.01.01"]`,
+      `[Round "1"]`,
+      `[White "${DUMMY_CQL_WHITE}"]`,
+      `[Black "${DUMMY_CQL_BLACK}"]`,
+      `[Result "0-1"]`,
+    ].join("\n");
+
+    const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
+    return `${headers}\n\n${moves}\n`;
+  }
+
+  function isDummyGamePgn(pgn){
+    const h = parseHeaders(String(pgn || ""));
+    return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
+  }
+
+  function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
+    const txt = new TextDecoder("utf-8").decode(pgnBytes || new Uint8Array());
+    const games = splitMultiPgn(txt);
+    if (games.length >= 2) return { bytes: pgnBytes, injected: false };
+    const appended = (txt.trim() + "\n\n" + buildDummyGamePgn()).trim() + "\n";
+    return { bytes: new TextEncoder().encode(appended), injected: true };
+  }
+
+  function stripDummyFromMultiPgnText(multiPgnText){
+    const parts = splitMultiPgn(String(multiPgnText || ""));
+    const kept = parts.filter(p => !isDummyGamePgn(p));
+    return kept.join("\n\n").trim();
+  }
+
+  function resetAfterCqlRunTransientState(){
+    // mimic reference: clear labels if necessary
+    qStatus.textContent = "Ready.";
+    // clear setup-import transient hints
+    setupImportedCqlRef = null;
+    setupImportedPgnTitle = null;
+  }
+
+  // --------- import discovered games (copied behavior from reference; adapted to ScratchChess storage) ----------
+  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
+    const games = splitMultiPgn(multiPgnText);
+    if (!games.length){
+      logLine("WARN","No games found in output PGN.");
+      return 0;
+    }
+
+    const newIds = [];
+    for (let i=0;i<games.length;i++){
+      const pgn = games[i];
+      const h = parseHeaders(pgn);
+      const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
+      const date  = h.Date || todayYMD();
+      const res   = h.Result || "*";
+      const newId = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+      const rec = addGameRecord(pgn, { id:newId, title, opening: sourceKey ? `CQL: ${sourceKey}` : "CQL result" });
+      rec.result = res;
+      newIds.push(newId);
+    }
+
+    if (newIds.length > 1){
+      const name = uniqStudyName(`${todayYMD()} Position Query`);
+      ensureStudy(name, newIds);
+      setCurrentStudy(name);
+      logLine("OK", `Created new study "${name}" with ${newIds.length} games from query result.`);
+    } else if (newIds.length === 1){
+      ensureStudy(currentStudyName, [newIds[0]]);
+      setCurrentStudy(currentStudyName);
+    }
+
+    renderGameList();
+    return newIds.length;
+  }
+
+  // --------- Runner warm-up (copied from reference) ----------
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const mod = await import("./wasm/cql_runner.js");
+      if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
+      logLine("OK","Warming wasm pool (2 workers)…");
+      await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
+      logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
+    } catch (e) {
+      logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
+    }
+  });
+
+  let _runnerModPromise = null;
+  async function getRunnerMod(){
+    if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
+    return _runnerModPromise;
+  }
+
+  async function getPgnBytesForDb(dbKey){
+    const url = PGN_MANIFEST[dbKey];
+    if (!url) return null;
+    const r = await fetch(url, { cache:"no-store" });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+    const txt = await r.text();
+    return new TextEncoder().encode(txt);
+  }
+
+  qCqlFile.addEventListener("change", async () => {
+    const f = qCqlFile.files?.[0];
+    qCqlName.textContent = f ? f.name : "—";
+    if (!f){ updateQueryUi(); return; }
+    try{
+      const txt = await f.text();
+      qCqlText.value = txt;
+      logLine("OK", `Loaded CQL file (${txt.length} chars): ${f.name}`);
+    }catch(e){
+      logLine("ERR", `Failed reading CQL: ${String(e)}`);
+    }finally{
+      updateQueryUi();
+    }
+  });
+
+  qPgnFile.addEventListener("change", () => {
+    const f = qPgnFile.files?.[0];
+    if (f) qPgnBytesOverride = null;
+    qPgnName.textContent = f ? f.name : "—";
+    if (f) logLine("OK", `Selected PGN file: ${f.name}`);
+    updateQueryUi();
+  });
+
+  dbSelectEl.addEventListener("change", () => {
+    if (dbSelectEl.value) logLine("OK", `Selected DB (manifest): ${dbSelectEl.value}`);
+    updateQueryUi();
+  });
+
+  qCqlText.addEventListener("input", updateQueryUi);
+
+  // FIX: “use current game” uses scratchchess exportPGN, and sets override bytes like reference
+  qUseCurrent.addEventListener("click", () => {
+    try{
+      const g = cg(); if (!g) throw new Error("No current game");
+      const pgn = g.exportPGN?.() || "";
+      qPgnBytesOverride = textToUtf8Bytes(pgn);
+      qPgnName.textContent = `(current) ${currentGame?.title || "game"}`;
+      logLine("OK","Query input set to current game.");
+      updateQueryUi();
+    }catch(e){
+      logStack("ERR","Use current game failed: ", e);
+      setTab("errors");
+    }
+  });
+
+  qRun.addEventListener("click", async () => {
+    const pgnFile = qPgnFile.files?.[0] || null;
+    try{
+      const cqlText = qCqlText.value || "";
+      if (!cqlText.trim()) throw new Error("CQL is empty.");
+
+      let pgnBytes = null;
+
+      if (qPgnBytesOverride){
+        pgnBytes = qPgnBytesOverride;
+      } else {
+        const pgnFile = qPgnFile.files?.[0];
+        if (pgnFile){
+          pgnBytes = await fileToUint8(pgnFile);
+        } else {
+          const db = dbSelectEl.value;
+          pgnBytes = await getPgnBytesForDb(db);
+          if (!pgnBytes) throw new Error(`No uploaded PGN and no PGN manifest for db="${db}"`);
+          qPgnName.textContent = `(manifest) ${db}`;
         }
-        return headers;
-      }
-      function movetextOnly(pgn){
-        const parts = String(pgn||"").split(/\n\s*\n/);
-        return parts.length > 1 ? parts.slice(1).join("\n\n").trim() : (parts[0]||"").trim();
       }
 
-      // ---------------- CQL dummy workaround (staging, but compatible with reference flow) ----------------
-      const enc = new TextEncoder();
-      const dec = new TextDecoder("utf-8");
+      const sourceKey =
+        qPgnBytesOverride ? `game:${currentGame?.id || "unknown"}`
+        : (pgnFile ? `upload:${pgnFile.name}` : `db:${dbSelectEl.value}`);
 
-      const DUMMY_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
-      const DUMMY_W = "__PRY_DUMMY_WHITE__";
-      const DUMMY_B = "__PRY_DUMMY_BLACK__";
-
-      function dummyPgn(){
-        const headers = [
-          `[Event "${DUMMY_EVENT}"]`,
-          `[Site "Local"]`,
-          `[Date "2026.01.01"]`,
-          `[Round "1"]`,
-          `[White "${DUMMY_W}"]`,
-          `[Black "${DUMMY_B}"]`,
-          `[Result "0-1"]`,
-        ].join("\n");
-        const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
-        return `${headers}\n\n${moves}\n`;
-      }
-      function isDummy(pgn){
-        const h = parseHeaders(String(pgn||""));
-        return (h.Event === DUMMY_EVENT) || (h.White === DUMMY_W) || (h.Black === DUMMY_B);
-      }
-      function ensure2GamesBytes(bytes){
-        const txt = dec.decode(bytes);
-        const parts = splitMultiPgn(txt);
-        if (parts.length >= 2) return { bytes, injected:false };
-        const appended = (txt.trim() + "\n\n" + dummyPgn()).trim() + "\n";
-        return { bytes: enc.encode(appended), injected:true };
-      }
-      function stripDummyFromText(txt){
-        return splitMultiPgn(txt).filter(p=>!isDummy(p)).join("\n\n").trim();
-      }
-
-      // ---------------- APP STATE (staging) ----------------
-      const STUDIES = {};
-      const ALL_GAMES = [];
-      const PRIYOMES = [];
-      let currentGame = null;
-      let currentStudy = "default";
-
-      // Query input override
-      let qOverrideBytes = null;
-      let qOverrideLabel = "";
-
-      // ---------------- BOARD INIT (staging) ----------------
-      const boardHost = document.getElementById("boardHost");
-      const bootGame = createGame({ Event:"Boot", White:"", Black:"" });
-      const board = new BoardView(boardHost, bootGame, { minSizePx:115 });
-
-      function cg(){ return currentGame?.game || null; }
-
-      function setCurrent(rec){
-        currentGame = rec;
-        board.setGame(rec.game);
-        syncUi();
-        document.getElementById("gamePill").textContent = rec?.title || "—";
-      }
-      function hookGame(rec){
-        rec.game.onChange?.(()=>{ if (rec===currentGame) syncUi(); });
-      }
-
-      // ---------------- UI SYNC (staging) ----------------
-      const movesBox = document.getElementById("movesBox");
-      const fenBox = document.getElementById("fenBox");
-      const pgnBox = document.getElementById("pgnBox");
-
-      function syncUi(){
-        const g = currentGame?.game;
-        if (!g) return;
-        try{ movesBox.value = movetextOnly(g.exportPGN?.()||""); }catch{ movesBox.value=""; }
-        try{ fenBox.value = g.exportFEN?.()||""; }catch{ fenBox.value=""; }
-        try{ pgnBox.value = g.exportPGN?.()||""; }catch{ pgnBox.value=""; }
-        document.getElementById("studyPill").textContent = `Study • ${(STUDIES[currentStudy]||[]).length} games`;
-      }
-
-      // ---------------- TOPBAR ACTIONS (staging) ----------------
-      document.getElementById("mMoves").onclick   = ()=>cg()?.setMode?.("moves");
-      document.getElementById("mSquares").onclick = ()=>cg()?.setMode?.("squares");
-      document.getElementById("mArrows").onclick  = ()=>cg()?.setMode?.("arrows");
-      document.getElementById("mQuery").onclick   = ()=>cg()?.setMode?.("query");
-      document.getElementById("bSetup").onclick   = ()=>cg()?.toggleSetup?.();
-      document.getElementById("bFlip").onclick    = ()=>cg()?.toggleFlip?.();
-      document.getElementById("bMini").onclick    = ()=>cg()?.toggleMini?.();
-      document.getElementById("pR").onclick       = ()=>cg()?.setPigment?.("R");
-      document.getElementById("pB").onclick       = ()=>cg()?.setPigment?.("B");
-      document.getElementById("pY").onclick       = ()=>cg()?.setPigment?.("Y");
-      document.getElementById("pG").onclick       = ()=>cg()?.setPigment?.("G");
-
-      document.getElementById("navPrev").onclick  = ()=>cg()?.prevMove?.();
-      document.getElementById("navNext").onclick  = ()=>cg()?.nextMove?.();
-      document.getElementById("navPrev2").onclick = ()=>cg()?.prevMove?.();
-      document.getElementById("navNext2").onclick = ()=>cg()?.nextMove?.();
-
-      document.getElementById("navPromote").onclick = ()=>cg()?.promoteVariationFromHere?.();
-      document.getElementById("navDelete").onclick  = ()=>cg()?.deleteMoveFromHere?.();
-      document.getElementById("navClear").onclick   = ()=>cg()?.clearMarks?.();
-
-      document.getElementById("copyPgn").onclick = async ()=>{
-        try{ await navigator.clipboard.writeText(cg()?.exportPGN?.()||""); pushLog("OK","Copied PGN."); }
-        catch(e){ pushLog("ERR","Copy failed: "+e); }
-      };
-      document.getElementById("pastePgn").onclick = async ()=>{
-        try{ const t = await navigator.clipboard.readText(); if(!t.trim()) return; cg()?.loadPGN?.(t); pushLog("OK","Pasted PGN."); }
-        catch(e){ pushLog("ERR","Paste failed: "+e); }
-      };
-      document.getElementById("expFen").onclick = ()=>{
-        try{ fenBox.value = cg()?.exportFEN?.()||""; pushLog("OK","Exported FEN."); }
-        catch(e){ pushLog("ERR","Export FEN failed: "+e); }
-      };
-
-      // ---------------- TABS (staging) ----------------
-      const panes = {
-        Priyomes: document.getElementById("panePriyomes"),
-        Games: document.getElementById("paneGames"),
-        Query: document.getElementById("paneQuery"),
-        Evals: document.getElementById("paneEvals"),
-        Errors: document.getElementById("paneErrors"),
-      };
-      function show(name){
-        Object.values(panes).forEach(p=>p.classList.remove("active"));
-        panes[name].classList.add("active");
-        ["tPriyomes","tGames","tQuery","tEvals","tErrors"].forEach(id=>document.getElementById(id).classList.remove("active"));
-        document.getElementById("t"+name).classList.add("active");
-      }
-      document.getElementById("tPriyomes").onclick=()=>show("Priyomes");
-      document.getElementById("tGames").onclick=()=>show("Games");
-      document.getElementById("tQuery").onclick=()=>show("Query");
-      document.getElementById("tEvals").onclick=()=>show("Evals");
-      document.getElementById("tErrors").onclick=()=>show("Errors");
-      document.getElementById("logClear").onclick=()=>{ LOG.length=0; logEl.textContent=""; };
-
-      // ---------------- GAMES / STUDIES (staging) ----------------
-      function addGameToStudy(studyKey, title, pgn){
-        const id = `g_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const game = createGame({ Event:title||"Game", White:"", Black:"" });
-        game.loadPGN?.(pgn);
-        const rec = { id, title:title||"Game", study:studyKey, pgn, game };
-        hookGame(rec);
-
-        if (!STUDIES[studyKey]) STUDIES[studyKey]=[];
-        STUDIES[studyKey].unshift(rec);
-        ALL_GAMES.unshift(rec);
-        return rec;
-      }
-
-      const studySel = document.getElementById("studySel");
-      const gamesList = document.getElementById("gamesList");
-
-      function renderStudySel(){
-        studySel.innerHTML="";
-        Object.keys(STUDIES).forEach(k=>{
-          const o=document.createElement("option");
-          o.value=k; o.textContent=k;
-          if (k===currentStudy) o.selected=true;
-          studySel.appendChild(o);
-        });
-      }
-      function renderGamesList(){
-        gamesList.innerHTML="";
-        const list = STUDIES[currentStudy] || [];
-        list.forEach(rec=>{
-          const d=document.createElement("div");
-          d.className="item"+(rec===currentGame?" active":"");
-          d.textContent=rec.title;
-          d.onclick=()=>{ setCurrent(rec); renderGamesList(); };
-          gamesList.appendChild(d);
-        });
-        syncUi();
-      }
-      studySel.onchange=()=>{ currentStudy=studySel.value; renderGamesList(); };
-
-      document.getElementById("studReload").onclick = async ()=>{ await bootStudies(true); };
-
-      document.getElementById("loadPGN").onclick = ()=>{
-        try{ cg()?.loadPGN?.(pgnBox.value); pushLog("OK","Loaded PGN into current."); }
-        catch(e){ pushLog("ERR","Load PGN failed: "+e); }
-      };
-      document.getElementById("exportPGN").onclick = ()=>{
-        try{ pgnBox.value = cg()?.exportPGN?.()||""; pushLog("OK","Exported PGN from current."); }
-        catch(e){ pushLog("ERR","Export PGN failed: "+e); }
-      };
-
-      async function bootStudies(force=false){
-        if (!force && Object.keys(STUDIES).length) return;
-        for (const k of Object.keys(STUDIES)) delete STUDIES[k];
-        ALL_GAMES.length=0;
-
-        for (const [k,url] of Object.entries(STUDY_MANIFEST)){
+      // Workaround: if PGN has only one game, append a dummy second game for CQL execution.
+      let _dummyInjected = false;
+      try{
+        const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+        pgnBytes = ensured.bytes;
+        _dummyInjected = !!ensured.injected;
+        if (_dummyInjected){
+          logLine("WARN", `CQL workaround: input had 1 game; appended dummy game (${DUMMY_CQL_EVENT}).`);
           try{
-            const txt = await fetchText(url);
-            const parts = splitMultiPgn(txt);
-            parts.forEach((pgn,i)=>{
-              const h = parseHeaders(pgn);
-              const title = h.Event || `${k} #${i+1}`;
-              addGameToStudy(k, title, pgn);
-            });
-            pushLog("OK", `Loaded study "${k}" (${(STUDIES[k]||[]).length} games) from ${url}`);
+            const _pgnPassed = new TextDecoder("utf-8").decode(pgnBytes);
+            logLine("WARN","CQL workaround: BEGIN exact PGN passed to CQL parser (dummy appended)");
+            logLine("WARN", _pgnPassed);
+            logLine("WARN","CQL workaround: END exact PGN passed to CQL parser");
           }catch(e){
-            pushLog("ERR", `Study load failed (${k}): ${e}`);
+            logLine("WARN","CQL workaround: failed to log input PGN bytes: " + String(e));
           }
         }
-
-        const keys = Object.keys(STUDIES);
-        currentStudy = keys.includes("default") ? "default" : (keys[0]||"default");
-        renderStudySel();
-        renderGamesList();
-        if (!currentGame){
-          const first = (STUDIES[currentStudy]||[])[0];
-          if (first) setCurrent(first);
-        }
+      }catch(e){
+        logLine("WARN","CQL workaround failed (continuing without dummy): " + String(e));
       }
 
-      // ---------------- PRIYOMES (staging shell) ----------------
-      const prDb = document.getElementById("prDb");
-      const prGrid = document.getElementById("prGrid");
-      async function loadPriyomes(){
-        prGrid.innerHTML = "";
-        PRIYOMES.length = 0;
-        const url = prDb.value;
-        if (!url) return;
-        const txt = await fetchText(url);
-        const parts = splitMultiPgn(txt);
-        parts.forEach((pgn,i)=>{
-          const h = parseHeaders(pgn);
-          const title = h.Event || `Priyome #${i+1}`;
-          const d = document.createElement("div");
-          d.className="item";
-          d.textContent = title;
-          d.onclick = ()=>{
-            const g = cg(); if(!g) return;
-            g.loadPGN?.(pgn);
-            pushLog("OK", `Loaded Priyome: ${title}`);
-            show("Games");
-          };
-          prGrid.appendChild(d);
-        });
-      }
-      document.getElementById("prReload").onclick = ()=>loadPriyomes().catch(e=>pushLog("ERR","Priyomes reload failed: "+e));
-      document.getElementById("prNew").onclick = ()=>{ cg()?.toggleSetup?.(); pushLog("OK","Entered setup mode for new query."); };
-      document.getElementById("prReset").onclick = ()=>{
-        const g=cg(); if(!g) return;
-        try{ g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); }catch{}
-        pushLog("OK","Reset initial position.");
-      };
+      qRun.disabled = true;
+      qStatus.textContent = "Running…";
+      logLine("OK", `Running query with argv: ${qArgv.value}`);
 
-      // ---------------- QUERY ----------------
-      const dbSel = document.getElementById("dbSel");
-      const cqlSel = document.getElementById("cqlSel");
-      const cqlText = document.getElementById("cqlText");
-      const qOut = document.getElementById("qOut");
-      const qStatus = document.getElementById("qStatus");
+      const mod = await getRunnerMod();
+      const runCqlWasm = mod.runCqlWasm;
+      if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
 
-      function setQStatus(s){ qStatus.textContent = s ? `• ${s}` : ""; }
-
-      async function loadCqlFromUrl(url){
-        const txt = await fetchText(url);
-        cqlText.value = txt;
-        pushLog("OK", `Loaded CQL from ${url}`);
-      }
-
-      document.getElementById("cqlLoad").onclick = async ()=>{
-        const url = cqlSel.value;
-        if (!url) return;
-        try{ await loadCqlFromUrl(url); }
-        catch(e){ pushLog("ERR","Load CQL failed: "+e); }
-      };
-
-      document.getElementById("qUseCur").onclick = ()=>{
-        const g=cg(); if(!g) return;
-        qOverrideBytes = enc.encode(g.exportPGN?.()||"");
-        qOverrideLabel = "current game";
-        setQStatus("using current game");
-        pushLog("OK","Query input set to current game.");
-      };
-
-      async function bytesForSelectedDb(){
-        const key = dbSel.value;
-        const url = PGN_MANIFEST[key] || STUDY_MANIFEST[key] || null;
-        if (!url) return null;
-        return enc.encode(await fetchText(url));
-      }
-
-      // ---------- CQL runner warm-up + loader (copied from reference) ----------
-      document.addEventListener('DOMContentLoaded', async () => {
-        try {
-          const mod = await import('./wasm/cql_runner.js');
-          if (typeof mod.ensureWarmPool !== 'function') throw new Error('ensureWarmPool export not found');
-          pushLog("OK", 'Warming wasm pool (2 workers)…');
-          await mod.ensureWarmPool({
-            onLog: (line) => pushLog("OK", String(line)),
-          });
-          pushLog("OK", 'Wasm pool warm: primary+standby ready (2/2).');
-        } catch (e) {
-          pushLog("ERR", 'Warm-up failed; will warm on demand. ' + String(e && e.stack ? e.stack : e));
+      const cqlBytes = textToUtf8Bytes(cqlText);
+      const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
+        onLog: (line) => {
+          const s = String(line);
+          if (s.startsWith("[stderr]")) logLine("WARN", s);
+          else logLine("OK", s);
         }
       });
 
-      let _runnerModPromise = null;
-      async function getRunnerMod() {
-        if (!_runnerModPromise) _runnerModPromise = import('./wasm/cql_runner.js');
-        return _runnerModPromise;
-      }
-
-      function textToUtf8Bytes(s){ return enc.encode(String(s ?? "")); }
-
-      document.getElementById("qRun").onclick = async ()=>{
-        let unsub = null;
-        try{
-          const cqlSource = cqlText.value || "";
-          if (!cqlSource.trim()) throw new Error("No CQL provided.");
-
-          let pgnBytes = null;
-          if (qOverrideBytes){
-            pgnBytes = qOverrideBytes;
+      const unsub = job.subscribe((j) => {
+        const st = j.status ? j.status() : {busy:0,total:1};
+        qStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "");
+        if (j.state === "done" || j.state === "error"){
+          unsub();
+          if (j.state === "error"){
+            logLine("ERR", `Query failed: ${j.error || "unknown error"}`);
+            setTab("errors");
           } else {
-            pgnBytes = await bytesForSelectedDb();
-            if (!pgnBytes) throw new Error(`No DB selected (and no override).`);
-          }
+            logLine("OK", `Query done (rc=${String(j.rc)}). outputPgn=${j.outputPgn.length} chars`);
+            if (j.outputMissing) logLine("WARN", "output.pgn not found by runner (empty output).");
+            let outPgnText = j.outputPgn || "";
 
-          const label = qOverrideBytes ? (qOverrideLabel || "current game") : dbSel.value;
-          pushLog("OK", `Running query on ${label}…`);
-
-          // Workaround: ensure >= 2 games
-          let _dummyInjected = false;
-          try{
-            const ensured = ensure2GamesBytes(pgnBytes);
-            pgnBytes = ensured.bytes;
-            _dummyInjected = ensured.injected;
+            try{
+              logLine("WARN","CQL workaround: BEGIN exact raw CQL output (before dummy stripping)");
+              logLine("WARN", outPgnText || "");
+              logLine("WARN","CQL workaround: END exact raw CQL output");
+            }catch(e){
+              logLine("WARN","CQL workaround: failed to log raw output: " + String(e));
+            }
 
             if (_dummyInjected){
-              pushLog("ERR", `CQL workaround: injected dummy second game (${DUMMY_EVENT}).`);
-              try{
-                const _pgnPassed = dec.decode(pgnBytes);
-                pushLog("ERR", "CQL workaround: BEGIN exact PGN passed to CQL parser (dummy appended)");
-                pushLog("ERR", _pgnPassed);
-                pushLog("ERR", "CQL workaround: END exact PGN passed to CQL parser");
-              }catch(e){
-                pushLog("ERR", "CQL workaround: failed to log input PGN bytes: " + String(e));
+              const stripped = stripDummyFromMultiPgnText(outPgnText);
+              if (stripped !== outPgnText.trim()){
+                logLine("OK","CQL workaround: stripped dummy game from output.");
               }
+              outPgnText = stripped;
             }
-          }catch(e){
-            pushLog("ERR", "CQL workaround failed (continuing without dummy): " + String(e));
+
+            if (outPgnText && outPgnText.trim()){
+              const added = addDiscoveredGamesFromPgn(outPgnText, sourceKey);
+              if (added > 0) setTab("games");
+            } else if (_dummyInjected){
+              logLine("WARN","CQL workaround: output contained only dummy game (or nothing); ignoring.");
+            }
           }
 
-          setQStatus("running…");
-          const argv = "-i /work/game.pgn /work/query.cql";
+          resetAfterCqlRunTransientState();
+          qRun.disabled = false;
+          updateQueryUi();
+        }
+      });
+
+    }catch(e){
+      logLine("ERR", `Run exception: ${e && e.stack ? e.stack : String(e)}`);
+      resetAfterCqlRunTransientState();
+      qRun.disabled = false;
+      updateQueryUi();
+      setTab("errors");
+    }
+  });
+
+  // ---------------- Evals (minimal; JS evals + CQL eval manifest) ----------------
+  const evalsStatusEl = $("evalsStatus");
+  const evalListEl = $("evalList");
+  const cqlEvalListEl = $("cqlEvalList");
+  let EVALS_REGISTRY = [];
+
+  async function loadEvals(){
+    evalsStatusEl.textContent = "loading…";
+    try{
+      const mod = await import(`./evals.js?ts=${Date.now()}`);
+      const list = Array.isArray(mod.EVALS) ? mod.EVALS : (Array.isArray(mod.default) ? mod.default : []);
+      EVALS_REGISTRY = list.filter(e => e && typeof e.id === "string" && typeof e.run === "function");
+      evalsStatusEl.textContent = `${EVALS_REGISTRY.length} eval(s)`;
+      logLine("OK", `Loaded evals from ./evals.js: ${EVALS_REGISTRY.map(e=>e.id).join(", ") || "(none)"}`);
+      renderEvalList();
+      renderCqlEvalList();
+    }catch(e){
+      evalsStatusEl.textContent = "load failed";
+      logStack("ERR","Failed to load ./evals.js: ", e);
+      renderEvalList();
+      setTab("errors");
+    }
+  }
+
+  function renderEvalList(){
+    evalListEl.innerHTML = "";
+    if (!EVALS_REGISTRY.length){
+      evalListEl.innerHTML = `<div class="hint">No JS evals loaded.</div>`;
+      return;
+    }
+    for (const entry of EVALS_REGISTRY){
+      const wrap = document.createElement("div");
+      wrap.className = "gameCard";
+      wrap.innerHTML = `
+        <div class="gameTitle">${entry.name || entry.id}</div>
+        <div class="meta"><span>${entry.description || ""}</span><span class="kbd">${entry.id}</span></div>
+        <div class="row" style="margin-top:8px;">
+          <button class="smallBtn">Run</button>
+        </div>
+      `;
+      wrap.querySelector("button").addEventListener("click", async () => {
+        try{
+          const g = cg(); if (!g) throw new Error("No current game");
+          const pgnIn = g.exportPGN?.() || "";
+          const outPgn = await entry.run({ pgn: pgnIn });
+          if (!String(outPgn||"").trim()) throw new Error(`Eval "${entry.id}" returned empty output PGN.`);
+          // smoke-check & add as new game in current study
+          const h = parseHeaders(outPgn);
+          const titleBase = currentGame?.title || "Game";
+          const title = `Evaluated (${entry.id}) • ${titleBase}`;
+          const newId = `eval:${entry.id}:${currentGame?.id || "unknown"}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+          addGameRecord(outPgn, { id:newId, title, opening:`Eval: ${entry.name || entry.id}` });
+          ensureStudy(currentStudyName, [newId]);
+          renderGameList();
+          logLine("OK", `Eval added as new game: ${title}`);
+          setTab("games");
+        }catch(e){
+          logStack("ERR","Eval run failed: ", e);
+          setTab("errors");
+        }
+      });
+      evalListEl.appendChild(wrap);
+    }
+  }
+
+  function renderCqlEvalList(){
+    cqlEvalListEl.innerHTML = "";
+    const keys = Object.keys(CQL_EVAL_MANIFEST || {});
+    if (!keys.length){
+      cqlEvalListEl.innerHTML = `<div class="hint">No CQL evals in CQL_EVAL_MANIFEST.</div>`;
+      return;
+    }
+    for (const id of keys){
+      const entry = CQL_EVAL_MANIFEST[id];
+      const wrap = document.createElement("div");
+      wrap.className = "gameCard";
+      wrap.innerHTML = `
+        <div class="gameTitle">${id}</div>
+        <div class="meta"><span>${entry.description || ""}</span><span class="kbd">${entry.url || ""}</span></div>
+        <div class="row" style="margin-top:8px;">
+          <button class="smallBtn">Run (CQL)</button>
+        </div>
+      `;
+      wrap.querySelector("button").addEventListener("click", async () => {
+        try{
+          const g = cg(); if (!g) throw new Error("No current game");
+          const pgnIn = g.exportPGN?.() || "";
+          const pgnBytes0 = textToUtf8Bytes(pgnIn);
+          const cqlSrc = await (await fetch(entry.url, { cache:"no-store" })).text();
+
+          // dummy-game patch identical to query
+          const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes0);
+          let pgnBytes = ensured.bytes;
+          const _dummyInjected = ensured.injected;
 
           const mod = await getRunnerMod();
           const runCqlWasm = mod.runCqlWasm;
-          if (typeof runCqlWasm !== 'function') throw new Error("runCqlWasm export not found");
+          if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
 
-          const job = runCqlWasm(textToUtf8Bytes(cqlSource), pgnBytes, argv, {
+          logLine("OK", `Running CQL eval "${id}"…`);
+          const job = runCqlWasm(textToUtf8Bytes(cqlSrc), pgnBytes, qArgv.value, {
             onLog: (line) => {
               const s = String(line);
-              if (s.startsWith("[stderr]")) pushLog("ERR", s);
-              else pushLog("OK", s);
+              if (s.startsWith("[stderr]")) logLine("WARN", s);
+              else logLine("OK", s);
             }
           });
 
-          document.getElementById("qRun").disabled = true;
-
-          unsub = job.subscribe((j) => {
-            const st = j.status ? j.status() : {busy:0,total:1};
-            setQStatus(`${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : ""));
-
-            if (j.state === "done" || j.state === "error"){
-              try{ unsub && unsub(); }catch{}
-              document.getElementById("qRun").disabled = false;
-
-              if (j.state === "error"){
-                pushLog("ERR", `Query failed: ${j.error || "unknown error"}`);
-                show("Errors");
-                return;
-              }
-
-              pushLog("OK", `Query done (rc=${String(j.rc)}). outputPgn=${j.outputPgn.length} chars`);
-              if (j.outputMissing) pushLog("ERR", "output.pgn not found by runner (empty output).");
-
-              let outPgnText = j.outputPgn || "";
-
-              try{
-                pushLog("ERR", "CQL workaround: BEGIN exact raw CQL output (before dummy stripping)");
-                pushLog("ERR", outPgnText || "");
-                pushLog("ERR", "CQL workaround: END exact raw CQL output");
-              }catch(e){
-                pushLog("ERR", "CQL workaround: failed to log raw output: " + String(e));
-              }
-
-              if (_dummyInjected){
-                const stripped = stripDummyFromText(outPgnText);
-                if (stripped !== outPgnText.trim()){
-                  pushLog("OK", "CQL workaround: stripped dummy game from output.");
-                }
-                outPgnText = stripped;
-              }
-
-              qOut.value = (outPgnText || "").trim();
-              setQStatus("done");
-              pushLog("OK", "Query finished.");
+          const unsub = job.subscribe((j) => {
+            if (j.state !== "done" && j.state !== "error") return;
+            unsub();
+            if (j.state === "error") {
+              logLine("ERR", `CQL eval failed: ${j.error || "unknown error"}`);
+              setTab("errors");
+              return;
             }
+
+            let outPgnText = j.outputPgn || "";
+            if (_dummyInjected) outPgnText = stripDummyFromMultiPgnText(outPgnText);
+
+            if (!outPgnText.trim()) throw new Error(`CQL eval "${id}" returned empty output PGN.`);
+
+            const h = parseHeaders(outPgnText);
+            const titleBase = currentGame?.title || "Game";
+            const title = `Evaluated (${id}) • ${titleBase}`;
+            const newId = `eval:${id}:${currentGame?.id || "unknown"}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+
+            addGameRecord(outPgnText, { id:newId, title, opening:`Eval: ${id}` });
+            ensureStudy(currentStudyName, [newId]);
+            renderGameList();
+            logLine("OK", `CQL eval added as new game: ${title}`);
+            setTab("games");
           });
 
         }catch(e){
-          try{ unsub && unsub(); }catch{}
-          document.getElementById("qRun").disabled = false;
-          setQStatus("error");
-          pushLog("ERR", "Run exception: " + (e && e.stack ? e.stack : String(e)));
-          show("Errors");
+          logStack("ERR","CQL eval run failed: ", e);
+          setTab("errors");
         }
-      };
+      });
+      cqlEvalListEl.appendChild(wrap);
+    }
+  }
 
-      document.getElementById("qImport").onclick = ()=>{
-        try{
-          const out = qOut.value || "";
-          const parts = splitMultiPgn(out);
-          if (!parts.length) return;
-          const studyKey = "query_results";
-          parts.forEach((pgn,i)=>{
-            const h = parseHeaders(pgn);
-            addGameToStudy(studyKey, h.Event || `Query result #${i+1}`, pgn);
-          });
-          currentStudy = studyKey;
-          renderStudySel();
-          renderGamesList();
-          pushLog("OK", `Imported ${parts.length} results into Games (study "${studyKey}").`);
-          show("Games");
-        }catch(e){
-          pushLog("ERR", "Import failed: "+(e?.stack||e));
-          show("Errors");
+  $("btnReloadEvals").addEventListener("click", loadEvals);
+
+  // ---------------- Initial load: load default study PGN (manifest) ----------------
+  async function boot(){
+    try{
+      // seed studies
+      ensureStudy("default", []);
+      setCurrentStudy("default");
+
+      const url = STUDY_MANIFEST.default;
+      if (url){
+        const r = await fetch(url, { cache:"no-store" });
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+        const txt = await r.text();
+        const parts = splitMultiPgn(txt);
+        for (let i=0;i<parts.length;i++){
+          const pgn = parts[i];
+          const h = parseHeaders(pgn);
+          const title = h.Event || `Study Game ${i+1}`;
+          addGameRecord(pgn, { title, opening:"Study" });
         }
-      };
-
-      document.getElementById("qClear").onclick = ()=>{
-        qOut.value = "";
-        setQStatus("");
-        pushLog("OK", "Cleared query output.");
-      };
-
-      // ---------------- EVALS (CQL scripts through same runner) ----------------
-      const evalSel = document.getElementById("evalSel");
-      const evalOut = document.getElementById("evalOut");
-
-      document.getElementById("evalUseDb").onclick = ()=>{ qOverrideBytes=null; qOverrideLabel=""; setQStatus(""); pushLog("OK","Evals input set to DB."); };
-      document.getElementById("evalUseCur").onclick = ()=>{
-        const g=cg(); if(!g) return;
-        qOverrideBytes = enc.encode(g.exportPGN?.()||"");
-        qOverrideLabel = "current game";
-        pushLog("OK","Evals input set to current game.");
-      };
-
-      document.getElementById("evalRun").onclick = async ()=>{
-        let unsub = null;
-        try{
-          const key = evalSel.value;
-          const item = CQL_EVAL_MANIFEST[key];
-          if (!item?.url) throw new Error("No eval selected.");
-          const cqlSource = await fetchText(item.url);
-
-          let pgnBytes = qOverrideBytes || await bytesForSelectedDb();
-          if (!pgnBytes) throw new Error("No DB selected (and no override).");
-
-          pushLog("OK", `Running eval "${key}"…`);
-          evalOut.value = "";
-          setQStatus(`eval: ${key} running…`);
-
-          let _dummyInjected = false;
-          try{
-            const ensured = ensure2GamesBytes(pgnBytes);
-            pgnBytes = ensured.bytes;
-            _dummyInjected = ensured.injected;
-          }catch(e){
-            pushLog("ERR", "Eval dummy-workaround failed (continuing): " + String(e));
-          }
-
-          const mod = await getRunnerMod();
-          const runCqlWasm = mod.runCqlWasm;
-          if (typeof runCqlWasm !== 'function') throw new Error("runCqlWasm export not found");
-
-          const argv = "-i /work/game.pgn /work/query.cql";
-          const job = runCqlWasm(textToUtf8Bytes(cqlSource), pgnBytes, argv, {
-            onLog: (line) => {
-              const s = String(line);
-              if (s.startsWith("[stderr]")) pushLog("ERR", s);
-              else pushLog("OK", s);
-            }
-          });
-
-          unsub = job.subscribe((j) => {
-            const st = j.status ? j.status() : {busy:0,total:1};
-            setQStatus(`eval: ${key} ${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : ""));
-
-            if (j.state === "done" || j.state === "error"){
-              try{ unsub && unsub(); }catch{}
-              if (j.state === "error"){
-                pushLog("ERR", `Eval failed: ${j.error || "unknown error"}`);
-                show("Errors");
-                return;
-              }
-              let outPgnText = j.outputPgn || "";
-              if (_dummyInjected) outPgnText = stripDummyFromText(outPgnText);
-              evalOut.value = (outPgnText || "").trim();
-              setQStatus(`eval: ${key} done`);
-              pushLog("OK", "Eval finished.");
-            }
-          });
-
-        }catch(e){
-          try{ unsub && unsub(); }catch{}
-          setQStatus("eval error");
-          pushLog("ERR", "Eval exception: " + (e?.stack || e));
-          show("Errors");
-        }
-      };
-
-      // ---------------- INIT SELECTS + BOOT (staging) ----------------
-      function initSelects(){
-        // Priyomes DB
-        prDb.innerHTML="";
-        for (const [k,url] of Object.entries(PRIYOME_PGN_MANIFEST)){
-          const o=document.createElement("option"); o.value=url; o.textContent=k; prDb.appendChild(o);
-        }
-
-        // Query DB
-        dbSel.innerHTML="";
-        for (const k of Object.keys(PGN_MANIFEST)){
-          const o=document.createElement("option"); o.value=k; o.textContent=k; dbSel.appendChild(o);
-        }
-
-        // CQL dropdown
-        cqlSel.innerHTML="";
-        const o0=document.createElement("option"); o0.value=""; o0.textContent="(select)"; cqlSel.appendChild(o0);
-        for (const [k,url] of Object.entries(CQL_MANIFEST)){
-          const o=document.createElement("option"); o.value=url; o.textContent=k; cqlSel.appendChild(o);
-        }
-
-        // Evals
-        evalSel.innerHTML="";
-        for (const [k,v] of Object.entries(CQL_EVAL_MANIFEST)){
-          const o=document.createElement("option"); o.value=k; o.textContent=k; evalSel.appendChild(o);
-        }
+        logLine("OK", `Loaded study from manifest: ${url} (${parts.length} game(s))`);
+      } else {
+        logLine("WARN","No STUDY_MANIFEST.default set.");
       }
 
-      pushLog("OK","Booting…");
-      initSelects();
-      await bootStudies(false);
-      await loadPriyomes().catch(e=>pushLog("ERR","Priyomes boot-load failed: "+e));
-      if (currentGame) syncUi();
-      pushLog("OK","Ready.");
-      show("Priyomes");
-    })();
-  </script>
+      renderStudySelect();
+      renderGameList();
+      if (STUDIES[currentStudyName]?.length){
+        setCurrentGameById(STUDIES[currentStudyName][0]);
+      } else {
+        // at least show boot game
+        currentGame = { id:"boot", title:"Boot", game: boot, pgn:"" };
+        board.setGame(boot);
+        syncUi();
+      }
+
+      // load evals
+      loadEvals();
+
+      // query UI
+      updateQueryUi();
+      logLine("OK","Boot complete.");
+    }catch(e){
+      logStack("ERR","Boot failed: ", e);
+      setTab("errors");
+    }
+  }
+  boot();
+</script>
 </body>
 </html>
