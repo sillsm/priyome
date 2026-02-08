@@ -215,8 +215,29 @@
   function splitMultiPgn(text){
     const t = String(text||"").trim();
     if (!t) return [];
+    // original behavior (Event-based split)
     return t.split(/\n\s*\n(?=\[Event\s+)/g).map(s=>s.trim()).filter(Boolean);
   }
+  function splitMultiPgnRobust(text){
+    // IMPORTANT: CQL output sometimes does NOT include [Event ...] or uses non-standard header ordering.
+    // Reference harness just uses j.outputPgn; it does not assume Event exists.
+    const t = String(text||"").replace(/\r/g,"").trim();
+    if (!t) return [];
+
+    const hasAnyHeader = /^\s*\[[A-Za-z0-9_]+\s+"/m.test(t);
+    const hasEvent = /^\s*\[Event\s+"/m.test(t);
+
+    // If there are headers, split on blank line that precedes ANY header block, not just Event.
+    if (hasAnyHeader){
+      const parts = t.split(/\n\s*\n(?=\s*\[[A-Za-z0-9_]+\s+")/g).map(s=>s.trim()).filter(Boolean);
+      // If it looks like one big blob, keep it as one.
+      return parts.length ? parts : [t];
+    }
+
+    // If no headers at all, treat whole output as a single "game" PGN blob.
+    return [t];
+  }
+
   function movetextOnly(pgn){
     const s = String(pgn||"").replace(/\r/g,"");
     return s.split("\n").filter(line => !/^\s*\[[^\]]+\]\s*$/.test(line)).join("\n").trim();
@@ -258,16 +279,16 @@
   }
   function ensure2GamesBytes(bytes){
     const txt = dec.decode(bytes);
-    const parts = splitMultiPgn(txt);
+    const parts = splitMultiPgnRobust(txt);
     if (parts.length >= 2) return { bytes, injected:false };
     const appended = (txt.trim() + "\n\n" + dummyPgn()).trim() + "\n";
     return { bytes: enc.encode(appended), injected:true };
   }
   function stripDummyFromText(txt){
-    return splitMultiPgn(txt).filter(p=>!isDummy(p)).join("\n\n").trim();
+    return splitMultiPgnRobust(txt).filter(p=>!isDummy(p)).join("\n\n").trim();
   }
 
-  // ---------------- CQL RUNNER LOADER (MATCH reference.html behavior) ----------------
+  // ---------------- CQL RUNNER LOADER (COPY BEHAVIOR FROM YOUR WORKING HARNESS) ----------------
   let _runnerModPromise = null;
   async function getRunnerMod(){
     if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
@@ -276,16 +297,104 @@
 
   const DEFAULT_CQL_ARGV = "-i /work/game.pgn /work/query.cql";
 
-  function decodeJobOutput(j){
-    // Be liberal: handle a few likely field names.
-    const cand =
-      j?.outputPgn ??          // <-- reference uses j.outputPgn
-      j?.output ?? j?.out ?? j?.result ?? j?.bytes ?? j?.data ?? j?.value ?? null;
-    if (cand == null) return "";
-    if (typeof cand === "string") return cand;
-    if (cand instanceof Uint8Array) return dec.decode(cand);
-    if (cand?.buffer instanceof ArrayBuffer) return dec.decode(new Uint8Array(cand.buffer));
-    try{ return String(cand); }catch{ return ""; }
+  async function ensureWarmPoolHarnessStyle(){
+    const mod = await getRunnerMod();
+    if (typeof mod.ensureWarmPool !== "function") return;
+    // Harness calls: ensureWarmPool({ onLog })
+    try{
+      await mod.ensureWarmPool({ onLog: (line)=>pushLog("OK", String(line)) });
+      pushLog("OK", "CQL warm pool ok (object-style).");
+      return;
+    }catch(e){
+      pushLog("WARN", "CQL warm pool object-style failed, trying legacy form: " + String(e));
+    }
+    // Fallback for older signature (some of your pages used ensureWarmPool(2))
+    try{
+      await mod.ensureWarmPool(2);
+      pushLog("OK", "CQL warm pool ok (legacy-style).");
+    }catch(e){
+      pushLog("WARN", "CQL warm pool legacy-style failed: " + String(e));
+    }
+  }
+
+  async function runCqlHarnessStyle(pgnBytes, cqlSource, labelForLog, statusSink){
+    const cqlText = String(cqlSource || "");
+    if (!cqlText.trim()) throw new Error("No CQL provided.");
+
+    // Ensure >=2 games (dummy), identical to your approach but using robust splitter.
+    let dummyInjected = false;
+    try{
+      const ensured = ensure2GamesBytes(pgnBytes);
+      pgnBytes = ensured.bytes;
+      dummyInjected = !!ensured.injected;
+      if (dummyInjected){
+        pushLog("WARN", `CQL workaround: input had 1 game; appended dummy game (${DUMMY_EVENT}).`);
+        try{
+          const passed = dec.decode(pgnBytes);
+          pushLog("WARN", "CQL workaround: BEGIN exact PGN passed to CQL parser (dummy appended)");
+          pushLog("WARN", passed);
+          pushLog("WARN", "CQL workaround: END exact PGN passed to CQL parser");
+        }catch(e){
+          pushLog("WARN", "CQL workaround: failed to log input PGN bytes: " + String(e));
+        }
+      }
+    }catch(e){
+      pushLog("WARN", "CQL workaround failed (continuing without dummy): " + String(e));
+    }
+
+    const mod = await getRunnerMod();
+    const runCqlWasm = mod?.runCqlWasm;
+    if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
+
+    // Harness warms once; we ensure warm here too (safe).
+    await ensureWarmPoolHarnessStyle();
+
+    const cqlBytes = enc.encode(cqlText);
+    const argv = DEFAULT_CQL_ARGV;
+
+    pushLog("OK", `Running query (HARNESS STYLE) argv: ${argv} (${labelForLog})`);
+
+    // EXACTLY like harness: runCqlWasm(cqlBytes, pgnBytes, argvString, { onLog })
+    const job = runCqlWasm(cqlBytes, pgnBytes, argv, {
+      onLog: (line) => pushLog("OK", String(line))
+    });
+
+    return await new Promise((resolve, reject) => {
+      const unsub = job.subscribe((j) => {
+        const st = j.status ? j.status() : { busy:0, total:1 };
+        if (typeof statusSink === "function"){
+          statusSink(`${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${String(j.error)}` : ""));
+        }
+
+        if (j.state === "done" || j.state === "error"){
+          try{ unsub(); }catch{}
+
+          if (j.state === "error"){
+            reject(j.error || new Error("CQL job error"));
+            return;
+          }
+
+          // HARNESS RELIES ON j.outputPgn
+          let out = String(j.outputPgn || "");
+          if (j.outputMissing) pushLog("WARN", "CQL outputMissing=true (output.pgn not found).");
+
+          pushLog("OK", `CQL done rc=${String(j.rc)} outChars=${out.length}`);
+
+          if (dummyInjected){
+            try{
+              pushLog("WARN", "CQL workaround: BEGIN exact raw output from CQL parser (before dummy strip)");
+              pushLog("WARN", out);
+              pushLog("WARN", "CQL workaround: END exact raw output from CQL parser");
+            }catch(e){
+              pushLog("WARN", "CQL workaround: failed to log raw output: " + String(e));
+            }
+            out = stripDummyFromText(out);
+          }
+
+          resolve(String(out||"").trim());
+        }
+      });
+    });
   }
 
   // ---------------- APP STATE ----------------
@@ -327,11 +436,9 @@
     const g = currentGame?.game;
     if (!g) return;
 
-    // moves pane
     try{ movesBox.value = movetextOnly(g.exportPGN?.()||""); }catch{ movesBox.value=""; }
     try{ fenBox.value = g.exportFEN?.()||""; }catch{ fenBox.value=""; }
 
-    // per-game ui flags
     const ui = g.ui || {};
     setActive("mMoves", ui.mode==="moves");
     setActive("mSquares", ui.mode==="squares");
@@ -345,7 +452,6 @@
     setActive("pY", ui.pig==="Y");
     setActive("pG", ui.pig==="G");
 
-    // spares visibility
     sparesHost.hidden = !ui.setup;
   }
 
@@ -369,7 +475,6 @@
   document.getElementById("navDelete").onclick  = ()=>cg()?.deleteMoveFromHere?.();
   document.getElementById("navClear").onclick   = ()=>cg()?.clearMarks?.();
 
-  // clipboard helpers
   document.getElementById("copyPgn").onclick = async ()=>{
     try{ await navigator.clipboard.writeText(cg()?.exportPGN?.()||""); pushLog("OK","Copied PGN."); }
     catch(e){ pushLog("ERR","Copy failed: "+e); }
@@ -456,14 +561,13 @@
 
   async function bootStudies(force=false){
     if (!force && Object.keys(STUDIES).length) return;
-    // reset
     for (const k of Object.keys(STUDIES)) delete STUDIES[k];
     ALL_GAMES.length=0;
 
     for (const [k,url] of Object.entries(STUDY_MANIFEST)){
       try{
         const txt = await fetchText(url);
-        const parts = splitMultiPgn(txt);
+        const parts = splitMultiPgnRobust(txt);
         parts.forEach((pgn,i)=>{
           const h = parseHeaders(pgn);
           const title = h.Event || `${k} #${i+1}`;
@@ -475,7 +579,6 @@
       }
     }
 
-    // select first available
     const keys = Object.keys(STUDIES);
     currentStudy = keys.includes("default") ? "default" : (keys[0]||"default");
     renderStudySel();
@@ -486,98 +589,79 @@
     }
   }
 
-  // ---------------- ADDITIVE: reference-style discovered-games import ----------------
-  // This is the part you asked for: copy the reference behavior:
-  // - If output has >1 game, create a new study and switch to it.
-  // - If output has exactly 1 game, add it to the CURRENT study and stay on that study.
-  function todayYMD(){
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,"0");
-    const dd = String(d.getDate()).padStart(2,"0");
-    return `${y}.${m}.${dd}`;
+  // ---------------- ADDITIVE: IMPORT CQL OUTPUT INTO THE CURRENT STUDY (WITH HEAVY LOGGING) ----------------
+  const STUDY_CQL_DEDUPE = Object.create(null); // studyKey -> Set(sig)
+  function dedupeSetFor(studyKey){
+    const k = String(studyKey || "default");
+    if (!STUDY_CQL_DEDUPE[k]) STUDY_CQL_DEDUPE[k] = new Set();
+    return STUDY_CQL_DEDUPE[k];
   }
-  function uniqStudyName(base){
-    const b = String(base||"Study").trim() || "Study";
-    if (!STUDIES[b]) return b;
-    for (let i=2;i<9999;i++){
-      const n = `${b} (${i})`;
-      if (!STUDIES[n]) return n;
-    }
-    return `${b} (${Date.now()})`;
+  function sigOfPgn(pgn){
+    // stable-ish signature; enough to prevent double-adds on repeated clicks
+    return String(pgn||"").replace(/\r/g,"").trim().replace(/\s+/g," ").slice(0, 2400);
   }
-  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
-    // EXTRA LOGGING (you requested this):
-    pushLog("OK", `CQL import: BEGIN addDiscoveredGamesFromPgn(sourceKey="${sourceKey}")`);
-    pushLog("OK", `CQL import: currentStudy="${currentStudy}" studySel.value="${studySel.value}" studies=[${Object.keys(STUDIES).join(", ")}]`);
+  function selectedStudyKey(){
+    // IMPORTANT: do not trust currentStudy alone; log both and prefer the select’s live value if present.
+    const v = (studySel && studySel.value) ? studySel.value : "";
+    return (v || currentStudy || "default");
+  }
 
-    const raw = String(multiPgnText||"");
-    if (!raw.trim()){
-      pushLog("WARN", "CQL import: output text empty.");
-      pushLog("OK", "CQL import: END addDiscoveredGamesFromPgn (0)");
+  function importCqlOutputIntoCurrentStudy(outPgnText, label){
+    const studyKey = selectedStudyKey();
+
+    pushLog("OK", `CQL->Study import: BEGIN label="${label}"`);
+    pushLog("OK", `CQL->Study import: selectedStudyKey()="${studyKey}" currentStudy="${currentStudy}" studySel.value="${studySel?.value||""}"`);
+    pushLog("OK", `CQL->Study import: studies=[${Object.keys(STUDIES).join(", ")}]`);
+    pushLog("OK", `CQL->Study import: outChars=${String(outPgnText||"").length}`);
+
+    const head = String(outPgnText||"").slice(0, 240).replace(/\s+/g," ");
+    pushLog("OK", `CQL->Study import: outHead="${head}"`);
+    pushLog("OK", `CQL->Study import: containsEvent=${/\\[Event\\s+\"/m.test(outPgnText)} containsAnyHeader=${/^\\s*\\[[A-Za-z0-9_]+\\s+\"/m.test(outPgnText)}`);
+
+    const cleaned = stripDummyFromText(String(outPgnText||""));
+    if (cleaned.trim() !== String(outPgnText||"").trim()){
+      pushLog("OK", "CQL->Study import: dummy was removed from output.");
+    }
+
+    const parts = splitMultiPgnRobust(cleaned).filter(p=>String(p||"").trim()).filter(p=>!isDummy(p));
+    pushLog("OK", `CQL->Study import: splitMultiPgnRobust => ${parts.length} game chunk(s) after dummy filter`);
+
+    if (!parts.length){
+      pushLog("WARN", "CQL->Study import: 0 games to import. (Likely output contains no headers AND no blank separation, or outputMissing.)");
+      pushLog("OK", `CQL->Study import: END (added=0)`);
       return 0;
     }
 
-    // Even though runCqlLikeIndex15 strips dummy, be paranoid:
-    const stripped = stripDummyFromText(raw);
-    if (stripped.trim() !== raw.trim()){
-      pushLog("OK", "CQL import: stripDummyFromText changed output (dummy removed).");
-    }
+    if (!STUDIES[studyKey]) STUDIES[studyKey] = [];
 
-    const gamesAll = splitMultiPgn(stripped);
-    pushLog("OK", `CQL import: splitMultiPgn => ${gamesAll.length} PGN chunk(s).`);
+    const sigs = dedupeSetFor(studyKey);
+    let added = 0, skipped = 0;
 
-    const games = gamesAll.filter(p=>String(p||"").trim()).filter(p=>!isDummy(p));
-    pushLog("OK", `CQL import: after dummy filter => ${games.length} real game(s).`);
-
-    if (!games.length){
-      pushLog("WARN", "CQL import: no games found in output PGN (after dummy filter).");
-      pushLog("OK", "CQL import: END addDiscoveredGamesFromPgn (0)");
-      return 0;
-    }
-
-    // Log headers for debugging:
-    for (let i=0;i<games.length;i++){
-      try{
-        const h = parseHeaders(games[i]);
-        pushLog("OK", `CQL import: game[${i}] Event="${h.Event||""}" Date="${h.Date||""}" White="${h.White||""}" Black="${h.Black||""}" Result="${h.Result||""}"`);
-      }catch(e){
-        pushLog("WARN", `CQL import: game[${i}] header parse failed: ${String(e)}`);
+    for (let i=0;i<parts.length;i++){
+      const pgn = parts[i];
+      const sig = sigOfPgn(pgn);
+      if (sigs.has(sig)){
+        skipped++;
+        pushLog("WARN", `CQL->Study import: skip duplicate chunk[${i}]`);
+        continue;
       }
-    }
+      sigs.add(sig);
 
-    let targetStudy = currentStudy;
-
-    if (games.length > 1){
-      const name = uniqStudyName(`${todayYMD()} Position Query`);
-      if (!STUDIES[name]) STUDIES[name] = [];
-      targetStudy = name;
-      pushLog("OK", `CQL import: multiple games => creating/switching to new study "${name}".`);
-    } else if (games.length === 1){
-      // Ensure current study exists
-      if (!STUDIES[targetStudy]) STUDIES[targetStudy] = [];
-      pushLog("OK", `CQL import: single game => adding to current study "${targetStudy}".`);
-    }
-
-    // Add games
-    const addedRecs = [];
-    for (let i=0;i<games.length;i++){
-      const pgn = games[i];
       const h = parseHeaders(pgn);
-      const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
-      const rec = addGameToStudy(targetStudy, title, pgn);
-      addedRecs.push(rec);
-      pushLog("OK", `CQL import: added id="${rec.id}" title="${rec.title}" to study="${targetStudy}".`);
+      const title = (h.Event && String(h.Event).trim()) ? h.Event : `CQL Result ${i+1}`;
+      const rec = addGameToStudy(studyKey, title, pgn);
+
+      pushLog("OK", `CQL->Study import: added chunk[${i}] -> id="${rec.id}" title="${rec.title}" study="${studyKey}"`);
+      added++;
     }
 
-    // Switch study selection exactly like reference:
-    currentStudy = targetStudy;
+    // Keep selection coherent: set currentStudy to what we imported into, and refresh UI.
+    currentStudy = studyKey;
     renderStudySel();
     renderGamesList();
 
-    pushLog("OK", `CQL import: study "${targetStudy}" now has ${(STUDIES[targetStudy]||[]).length} game(s).`);
-    pushLog("OK", `CQL import: END addDiscoveredGamesFromPgn (added=${addedRecs.length})`);
-    return addedRecs.length;
+    pushLog("OK", `CQL->Study import: END added=${added} skipped=${skipped} nowStudyCount=${(STUDIES[studyKey]||[]).length} (study="${studyKey}")`);
+    return added;
   }
 
   // ---------------- PRIYOMES ----------------
@@ -591,7 +675,7 @@
     if (!url) return;
 
     const txt = await fetchText(url);
-    const parts = splitMultiPgn(txt);
+    const parts = splitMultiPgnRobust(txt);
     parts.forEach((pgn,i)=>{
       const h = parseHeaders(pgn);
       const title = h.Event || `Priyome #${i+1}`;
@@ -602,7 +686,6 @@
       PRIYOMES.push(rec);
     });
 
-    // render mini boards
     PRIYOMES.forEach(rec=>{
       const card=document.createElement("div");
       card.className="miniCard";
@@ -621,7 +704,6 @@
       mini.className="miniBoard";
       body.appendChild(mini);
 
-      // IMPORTANT: mini is a per-game property -> set on the priyome's game
       rec.game.toggleMini?.();
       new BoardView(mini, rec.game, { mini:true, minSizePx: 90 });
 
@@ -700,101 +782,6 @@
     return enc.encode(txt);
   }
 
-  // ---------------- REFERENCE-STYLE QUERY RUNNER (subscribe, j.outputPgn, addDiscoveredGamesFromPgn, setTab games) ----------------
-  async function runCqlReferenceStyle(pgnBytes, cqlSource, sourceKey){
-    const cql = String(cqlSource||"");
-    if (!cql.trim()) throw new Error("No CQL provided.");
-
-    // Ensure >=2 games (dummy) like reference, with logging
-    let dummyInjected = false;
-    try{
-      const ensured = ensure2GamesBytes(pgnBytes);
-      pgnBytes = ensured.bytes;
-      dummyInjected = !!ensured.injected;
-      if (dummyInjected){
-        pushLog("WARN", `CQL workaround: input had 1 game; appended dummy game (${DUMMY_EVENT}).`);
-        try{
-          const passed = dec.decode(pgnBytes);
-          pushLog("WARN", "CQL workaround: BEGIN exact PGN passed to CQL parser (dummy appended)");
-          pushLog("WARN", passed);
-          pushLog("WARN", "CQL workaround: END exact PGN passed to CQL parser");
-        }catch(e){
-          pushLog("WARN", "CQL workaround: failed to log input PGN bytes: " + String(e));
-        }
-      }
-    }catch(e){
-      pushLog("WARN", "CQL workaround failed (continuing without dummy): " + String(e));
-    }
-
-    const mod = await getRunnerMod();
-    const runCqlWasm = mod?.runCqlWasm;
-    if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
-
-    // warm pool like reference
-    try{ if (typeof mod.ensureWarmPool === "function") await mod.ensureWarmPool(2); }catch{}
-
-    const cqlBytes = enc.encode(cql);
-    const argv = DEFAULT_CQL_ARGV;
-
-    pushLog("OK", `Running query with argv: ${argv}`);
-
-    const job = runCqlWasm(cqlBytes, pgnBytes, argv, {
-      onLog: (line) => {
-        const s = String(line);
-        if (s.startsWith("[stderr]")) pushLog("WARN", s);
-        else pushLog("OK", s);
-      }
-    });
-
-    return await new Promise((resolve, reject) => {
-      let unsub = null;
-      unsub = job.subscribe((j) => {
-        const st = j.status ? j.status() : {busy:0,total:1};
-        setQStatus(`${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${String(j.error)}` : ""));
-
-        if (j.state === "done" || j.state === "error"){
-          try{ unsub && unsub(); }catch{}
-          unsub = null;
-
-          if (j.state === "error"){
-            reject(j.error || new Error("CQL job error"));
-            return;
-          }
-
-          // Reference uses j.outputPgn. We also decode other possibilities.
-          let outPgnText = "";
-          try{
-            outPgnText = (typeof j.outputPgn === "string") ? j.outputPgn : decodeJobOutput(j);
-          }catch(e){
-            outPgnText = "";
-            pushLog("WARN", "Could not decode CQL output: " + String(e));
-          }
-
-          pushLog("OK", `Query done (rc=${String(j.rc)}). output chars=${String(outPgnText||"").length}`);
-          if (dummyInjected){
-            try{
-              pushLog("WARN", "CQL workaround: BEGIN exact raw CQL output (before dummy stripping)");
-              pushLog("WARN", outPgnText || "");
-              pushLog("WARN", "CQL workaround: END exact raw CQL output");
-            }catch(e){
-              pushLog("WARN", "CQL workaround: failed to log raw output: " + String(e));
-            }
-          }
-
-          if (dummyInjected){
-            const stripped = stripDummyFromText(outPgnText);
-            if (stripped.trim() !== String(outPgnText||"").trim()){
-              pushLog("OK", "CQL workaround: stripped dummy game from output.");
-            }
-            outPgnText = stripped;
-          }
-
-          resolve(String(outPgnText||"").trim());
-        }
-      });
-    });
-  }
-
   document.getElementById("qRun").onclick = async ()=>{
     try{
       setQStatus("running…");
@@ -806,21 +793,19 @@
 
       const label = qOverrideBytes ? qOverrideLabel : dbSel.value;
       pushLog("OK", `Running query on ${label}…`);
-      pushLog("OK", `DEBUG pre-run: currentStudy="${currentStudy}" studySel.value="${studySel.value}" gamesInCurrent=${(STUDIES[currentStudy]||[]).length}`);
+      pushLog("OK", `DEBUG pre-run: selectedStudyKey="${selectedStudyKey()}" currentStudy="${currentStudy}" studySel.value="${studySel?.value||""}"`);
 
-      const out = await runCqlReferenceStyle(inputBytes, cql, label);
+      const out = await runCqlHarnessStyle(inputBytes, cql, label, (s)=>setQStatus(s));
       qOut.value = out;
       setQStatus("done");
       pushLog("OK", "Query finished.");
 
-      // *** THIS IS THE IMPORTANT PART: behave exactly like reference ***
-      // If there is output, parse it and add discovered games, then switch to Games tab.
-      if (out && out.trim()){
-        const added = addDiscoveredGamesFromPgn(out, label);
-        pushLog("OK", `CQL import summary: added=${added} (label="${label}") currentStudy="${currentStudy}"`);
-        if (added > 0) show("Games");
+      // IMPORTANT: always import into the CURRENT (selected) study, with heavy logging.
+      const added = importCqlOutputIntoCurrentStudy(out, label);
+      if (added > 0){
+        show("Games");
       } else {
-        pushLog("WARN", "Query produced empty output PGN.");
+        pushLog("WARN", "Query produced 0 importable games; see logs above for why.");
       }
 
     }catch(e){
@@ -833,9 +818,8 @@
   document.getElementById("qImport").onclick = ()=>{
     try{
       const out = qOut.value || "";
-      pushLog("OK", `Manual import clicked. currentStudy="${currentStudy}" studySel.value="${studySel.value}" outChars=${out.length}`);
-      const added = addDiscoveredGamesFromPgn(out, "manual");
-      pushLog("OK", `Manual import summary: added=${added} currentStudy="${currentStudy}"`);
+      pushLog("OK", `Manual import clicked. outChars=${out.length}`);
+      const added = importCqlOutputIntoCurrentStudy(out, "manual");
       if (added > 0) show("Games");
     }catch(e){
       pushLog("ERR", "Import failed: "+(e?.stack || e));
@@ -849,7 +833,7 @@
     pushLog("OK", "Cleared query output.");
   };
 
-  // ---------------- EVALS (unchanged) ----------------
+  // ---------------- EVALS (CQL scripts through same runner) ----------------
   const evalSel = document.getElementById("evalSel");
   const evalOut = document.getElementById("evalOut");
 
@@ -880,9 +864,7 @@
       const label = qOverrideBytes ? qOverrideLabel : dbSel.value;
 
       pushLog("OK", `Running eval "${key}"…`);
-      // keep your existing runner behavior for evals (same as before)
-      // (we reuse the reference-style runner for output correctness)
-      const out = await runCqlReferenceStyle(inputBytes, cql, `eval:${key} on ${label}`);
+      const out = await runCqlHarnessStyle(inputBytes, cql, `eval:${key} on ${label}`, null);
       evalOut.value = out;
 
       try{
@@ -900,29 +882,22 @@
 
   // ---------------- INIT SELECTS + BOOT ----------------
   function initSelects(){
-    // Priyomes DB
-    const prDb = document.getElementById("prDb");
     prDb.innerHTML="";
     for (const [k,url] of Object.entries(PRIYOME_PGN_MANIFEST)){
       const o=document.createElement("option"); o.value=url; o.textContent=k; prDb.appendChild(o);
     }
 
-    // Query DB
-    const dbSel = document.getElementById("dbSel");
     dbSel.innerHTML="";
     for (const k of Object.keys(PGN_MANIFEST)){
       const o=document.createElement("option"); o.value=k; o.textContent=k; dbSel.appendChild(o);
     }
 
-    // CQL dropdown (optional extras)
-    const cqlSel = document.getElementById("cqlSel");
     cqlSel.innerHTML="";
     const o0=document.createElement("option"); o0.value=""; o0.textContent="(select)"; cqlSel.appendChild(o0);
     for (const [k,url] of Object.entries(CQL_MANIFEST)){
       const o=document.createElement("option"); o.value=url; o.textContent=k; cqlSel.appendChild(o);
     }
 
-    // Evals
     evalSel.innerHTML="";
     for (const [k,v] of Object.entries(CQL_EVAL_MANIFEST)){
       const o=document.createElement("option"); o.value=k; o.textContent=k; evalSel.appendChild(o);
@@ -933,13 +908,8 @@
   pushLog("OK","Booting…");
   initSelects();
 
-  // Warm CQL worker pool early (match reference behavior)
-  try{
-    const mod = await getRunnerMod();
-    if (typeof mod.ensureWarmPool === "function") await mod.ensureWarmPool(2);
-  }catch(e){
-    pushLog("WARN", "CQL warm pool skipped: " + String(e));
-  }
+  // Warm exactly like your working harness (object-style)
+  await ensureWarmPoolHarnessStyle();
 
   await bootStudies(false);
   await loadPriyomes().catch(e=>pushLog("ERR","Priyomes boot-load failed: "+e));
