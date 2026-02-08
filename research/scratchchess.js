@@ -689,7 +689,7 @@ export class Game {
         this._pendingPromotion = { fromIdx, toIdx };
         this.state.pendingPromotion = { fromIdx, toIdx };
         this._emit();
-        return "PROMO";
+        return true;
       }
     }
 
@@ -1029,7 +1029,7 @@ exportCQL() {
       if (!mv) break;
       const uci = sqName(mv.from) + sqName(mv.to) + (mv.promo ? mv.promo.toLowerCase() : "");
       const ok = this.makeMoveUCI(uci);
-      if (ok === "PROMO") this.resolvePendingPromotion(mv.promo || "Q");
+      if (this.state.pendingPromotion) this.resolvePendingPromotion(mv.promo || "Q");
     }
 
     this._emit();
@@ -1298,21 +1298,28 @@ export class BoardView {
     this.promoOverlay.className = "sc-promoOverlay";
     this.promoOverlay.innerHTML = `
       <div class="sc-promoBox">
-        <button data-piece="Q" title="Queen">Queen</button>
-        <button data-piece="R" title="Rook">Rook</button>
-        <button data-piece="B" title="Bishop">Bishop</button>
-        <button data-piece="N" title="Knight">Knight</button>
+        <button data-piece="Q" title="Queen"><img alt="Q"></button>
+        <button data-piece="R" title="Rook"><img alt="R"></button>
+        <button data-piece="B" title="Bishop"><img alt="B"></button>
+        <button data-piece="N" title="Knight"><img alt="N"></button>
       </div>`;
     this.promoOverlay.style.display = "none";
     this.promoOverlay.addEventListener("click", (ev) => {
       const btn = ev.target && ev.target.closest && ev.target.closest("button[data-piece]");
       if (!btn) return;
       const L = btn.getAttribute("data-piece");
+      const pp = this.game.state.pendingPromotion;
+      const pid = pp ? (this.game.state.board[pp.fromIdx]?.id || this._promoVisual?.pieceId) : null;
       try { this.game.resolvePendingPromotion(L); } catch {}
+      // After resolving, keep it snapped (no slide) on the destination.
+      if (pid) this._suppressAnimPieceId = pid;
+      this._promoVisual = null;
       this._hidePromotionChooser();
     });
     this.container.appendChild(this.promoOverlay);
     this.pieceEls = new Map();
+    this._suppressAnimPieceId = null;
+    this._promoVisual = null;
     this.drag = null;
     this.arrowDrag = null;
 
@@ -1330,8 +1337,15 @@ export class BoardView {
     this._initSpares();
   }
   _showPromotionChooser() {
-    // Only show if a promotion is actually pending.
     if (!this.game?.state?.pendingPromotion) return;
+    // Update icons to match side-to-move (the promoting pawn's color).
+    const color = this.game.state.side === "w" ? "w" : "b";
+    const map = { Q: "Q", R: "R", B: "B", N: "N" };
+    for (const btn of this.promoOverlay.querySelectorAll('button[data-piece]')) {
+      const L = btn.getAttribute("data-piece");
+      const img = btn.querySelector("img");
+      if (img) img.src = pieceSrc(color + map[L]);
+    }
     this.promoOverlay.style.display = "flex";
   }
 
@@ -1568,7 +1582,11 @@ export class BoardView {
       liveIds.add(p.id);
       const el = this._getOrCreatePieceEl(p);
       if (this.drag && this.drag.pieceId === p.id) continue;
-      this._setPieceElPos(el, sqName(i), true);
+      {
+      const wantSq = (this._promoVisual && this._promoVisual.pieceId === p.id) ? this._promoVisual.toSq : sqName(i);
+      const animate = !(this._suppressAnimPieceId && this._suppressAnimPieceId === p.id);
+      this._setPieceElPos(el, wantSq, animate);
+    }
       // allow marking squares even under pieces in squares/arrows mode
       el.style.pointerEvents = this.game.ui.mode === "moves" ? "auto" : "none";
       el.style.display = "block";
@@ -1579,6 +1597,10 @@ export class BoardView {
     else this._hidePromotionChooser();
 
     this._redrawOverlay();
+
+    // one-shot animation suppression
+    this._suppressAnimPieceId = null;
+    if (!this.game.state.pendingPromotion) this._promoVisual = null;
   }
 
   _syncSparesVisibility() {
@@ -1699,8 +1721,14 @@ export class BoardView {
           this.game._emit();
           return;
         }
-        const r = this.game.makeMoveUCI(from + sq);
-        if (r === "PROMO") this._showPromotionChooser();
+        const fromIdx = parseSq(from);
+        const pid2 = this.game.state.board[fromIdx]?.id;
+        this.game.makeMoveUCI(from + sq);
+        if (this.game.state.pendingPromotion && pid2) {
+          this._promoVisual = { pieceId: pid2, toSq: sq };
+          this._showPromotionChooser();
+          this.game._emit();
+        }
         this.game.sel.fromSq = null;
         this.game.sel.legalTo = [];
         this.game._emit();
@@ -1752,9 +1780,18 @@ export class BoardView {
         return;
       }
 
-      const r = this.game.makeMoveUCI(fromSq + dropSq);
-      if (r === "PROMO") this._showPromotionChooser();
-      this.game._emit();
+      // Suppress origin->destination slide for manual drops: snap instantly.
+      this._suppressAnimPieceId = pid;
+
+      this.game.makeMoveUCI(fromSq + dropSq);
+
+      if (this.game.state.pendingPromotion) {
+        // Visually place the pawn on the promotion square while waiting for user choice.
+        this._promoVisual = { pieceId: pid, toSq: dropSq };
+        this._showPromotionChooser();
+        this.game._emit(); // re-render with promoVisual
+      }
+
     };
 
     this._onPointerCancel = (e) => {
