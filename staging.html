@@ -6,6 +6,18 @@
   <title>Priyome</title>
   <link href="./favicon.svg" rel="icon">
 
+  <!-- chessboard.js (requires jQuery) -->
+  <link rel="stylesheet"
+        href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
+        integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU"
+        crossorigin="anonymous">
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+          integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2"
+          crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
+          integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
+          crossorigin="anonymous"></script>
+
   <style>
     :root{
       --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
@@ -163,25 +175,6 @@
       white-space:nowrap;
     }
     .moves{overflow:auto; padding-right:4px; min-height:120px; flex:1; display:flex; flex-direction:column; gap:2px;}
-    .moveRow{display:grid; grid-template-columns: 42px 1fr 1fr; gap:8px; padding:4px 2px; align-items:start; border-radius:10px;}
-    .moveRow:hover{ background: rgba(15,23,42,.02); }
-    .mn{
-      color:var(--muted); text-align:right;
-      padding:6px 8px; border-radius:10px;
-      background: rgba(15,23,42,.04);
-      border:1px solid rgba(15,23,42,.06);
-      white-space:nowrap;
-    }
-    .plyBtn{
-      width:100%; text-align:left;
-      padding:6px 10px; border-radius:10px;
-      background:transparent;
-      border:1px solid transparent;
-      font-weight:700;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    }
-    .plyBtn:hover{ border-color:var(--border); background:rgba(15,23,42,.03); }
-    .plyBtn.active{ border-color:rgba(22,163,74,.55); box-shadow:0 0 0 1px rgba(22,163,74,.15) inset; }
     .gameList{overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
     .gameCard{
       border:1px solid var(--border);
@@ -219,6 +212,67 @@
       font-family: var(--mono);
       overflow:auto; white-space:nowrap;
     }
+
+    /* Priyomes pane */
+    .priyomeList{overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
+    .pryCard{
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      border-radius:14px;
+      padding:10px;
+      display:grid;
+      grid-template-columns: 160px 1fr;
+      gap:10px;
+      align-items:start;
+    }
+    @media (max-width: 520px){
+      .pryCard{ grid-template-columns: 1fr; }
+    }
+    .pryBoard{
+      width:160px; height:160px;
+      border-radius:12px;
+      overflow:hidden;
+    }
+    .pryMeta{display:flex; flex-direction:column; gap:6px; min-width:0}
+    .pryTitle{font-weight:900; font-size:13px; margin:0}
+    .pryCql{
+      font-family: var(--mono);
+      font-size:11px;
+      white-space:pre-wrap;
+      color: rgba(15,23,42,.78);
+      background: rgba(15,23,42,.02);
+      border: 1px solid rgba(15,23,42,.08);
+      border-radius:12px;
+      padding:8px;
+      max-height: 140px;
+      overflow:auto;
+    }
+    .pryActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+
+    /* Lichess-ish move tree */
+    .moveTree{line-height:1.7; font-size:13px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+    .mvNum{color:var(--muted); font-weight:900; margin-right:6px;}
+    .mvBtn{
+      padding:3px 7px;
+      border-radius:10px;
+      border:1px solid transparent;
+      background:transparent;
+      font-weight:700;
+      cursor:pointer;
+      margin-right:4px;
+      white-space:nowrap;
+    }
+    .mvBtn:hover{ border-color: var(--border); background: rgba(15,23,42,.03); }
+    .mvBtn.active{ border-color: rgba(22,163,74,.65); box-shadow: 0 0 0 1px rgba(22,163,74,.12) inset; }
+    .mvVar{
+      display:inline;
+      margin-left:6px;
+      padding-left:6px;
+      border-left:2px solid rgba(15,23,42,.06);
+      color: rgba(15,23,42,.72);
+      font-size:12px;
+    }
+    .mvPar{color:rgba(15,23,42,.55); font-weight:900; margin:0 4px;}
   </style>
 </head>
 
@@ -237,6 +291,15 @@
         <button id="btnFlip">Flip</button>
         <button id="btnReset">Reset</button>
         <button id="btnSetup">Setup</button>
+        <button id="btnModeMoves" class="smallBtn" type="button">Moves</button>
+        <button id="btnModeArrows" class="smallBtn" type="button">Arrows</button>
+        <button id="btnModeSquares" class="smallBtn" type="button">Squares</button>
+        <span class="kbd">Pigment</span>
+        <button id="btnPigR" class="smallBtn" type="button">R</button>
+        <button id="btnPigB" class="smallBtn" type="button">B</button>
+        <button id="btnPigY" class="smallBtn" type="button">Y</button>
+        <button id="btnPigG" class="smallBtn" type="button">G</button>
+        <button id="btnClearMarks" class="smallBtn" type="button">Clear Marks</button>
 
         <button id="btnImportPgn">Import PGN</button>
         <button id="btnExportGame">Export Game PGN</button>
@@ -274,6 +337,7 @@
       <div class="tabs">
         <div class="tab active" data-tab="moves">Moves</div>
         <div class="tab" data-tab="games">Games</div>
+        <div class="tab" data-tab="priyomes">Priyomes</div>
         <div class="tab" data-tab="query">Query</div>
         <div class="tab" data-tab="evals">Evals</div>
         <div class="tab" data-tab="errors">Errors</div>
@@ -295,6 +359,18 @@
           <button class="smallBtn" id="btnNewStudy" type="button">New Study</button>
         </div>
         <div class="gameList" id="gameList"></div>
+      </div>
+
+      <div class="pane" id="pane-priyomes">
+        <div class="hint">
+          Priyomes from <span class="kbd">PRIYOME_PGN_MANIFEST</span>. Each item renders a mini ScratchChess board (marks/arrows/squares
+          come from <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span> in the PGN).
+        </div>
+        <div class="row" style="gap:8px; align-items:center;">
+          <button class="smallBtn" id="btnReloadPriyomes" type="button">Reload Priyomes</button>
+          <span class="kbd" id="priyomesStatus">—</span>
+        </div>
+        <div class="priyomeList" id="priyomeList"></div>
       </div>
 
       <div class="pane" id="pane-query">
@@ -401,6 +477,7 @@
   </div>
 
 <script type="module">
+  import { Chess } from "./third_party/chess.js";
   import { createGame, BoardView } from "./scratchchess.js";
 
   // ---------------- MANIFESTS ----------------
@@ -410,11 +487,13 @@
     alignment_examples: "./pgn/alignment_examples.pgn",
   };
   const PGN_MANIFEST = { fischer: "./pgn/Fischer.pgn" };
-  const PRIYOME_PGN_MANIFEST = { default: "./priyomes/priyomes.pgn" };
+  // priyomes
+  const PRIYOME_PGN_MANIFEST = {
+    default: "./priyomes/priyomes.pgn"
+  };
   const CQL_MANIFEST = {}; // optional extra dropdown items
   const CQL_EVAL_MANIFEST = {
     naivealignments: { url:"./cql/naivealignments.cql", description:"Naive alignments demo" },
-    humanlignments:  { url: "./cql/human_alignments.cql",description: "Human alignments."},
   };
 
   // ---------------- basic UI helpers ----------------
@@ -528,11 +607,10 @@
     renderGameList();
   }
 
-  // ✅ No chess.js smoke-checks; load PGN directly into ScratchChess.
   function loadPgnIntoScratchGame(pgn){
     const h = parseHeaders(pgn);
     const g = createGame(h);
-    g.loadPGN(pgn);
+    g.loadPGN?.(pgn);
     return g;
   }
 
@@ -542,12 +620,10 @@
     const id = meta.id || `g:${Date.now()}:${Math.random().toString(16).slice(2)}`;
     const res = h.Result || "*";
     const opening = meta.opening || "";
-
     const game = loadPgnIntoScratchGame(pgn);
 
     const rec = { id, title, opening, result: res, pgn, game };
     rec.game.onChange?.(() => { if (currentGame && currentGame.id === rec.id) syncUi(); });
-
     GAMES.unshift(rec);
     ensureStudy(currentStudyName, [id]);
     return rec;
@@ -597,77 +673,148 @@
     }
   }
 
-  // ---------------- Moves rendering ----------------
-  function pgnToMoveTokens(pgn){
-    const body = (pgn || "")
-      .replace(/\r/g,"")
-      .split("\n")
-      .filter(line => !/^\s*\[[^\]]+\]\s*$/.test(line))
-      .join(" ")
-      .trim();
+  // ---------------- Moves rendering (tree + variations) ----------------
+  function jumpToNode(target){
+    const g = currentGame?.game;
+    if (!g || !target) return;
 
-    if (!body) return [];
-    const tokens = [];
-    let i = 0;
-    while (i < body.length){
-      if (body[i] === "{"){
-        const j = body.indexOf("}", i+1);
-        const chunk = body.slice(i, j >= 0 ? j+1 : body.length);
-        tokens.push(chunk.trim());
-        i = (j >= 0 ? j+1 : body.length);
-      } else {
-        let j = i;
-        while (j < body.length && body[j] !== " " && body[j] !== "{") j++;
-        const chunk = body.slice(i, j).trim();
-        if (chunk) tokens.push(chunk);
-        i = j;
-      }
-      while (i < body.length && body[i] === " ") i++;
+    // Build path root -> target
+    const path = [];
+    let n = target;
+    while (n && n.parent){
+      path.push(n);
+      n = n.parent;
+    }
+    path.reverse();
+
+    // Rewind to root
+    while (g.curNode && g.curNode.parent){
+      g.prevMove();
     }
 
-    return tokens.filter(t => {
-      if (!t) return false;
-      if (/^\d+\.(\.\.)?$/.test(t)) return false;
-      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(t)) return false;
-      return true;
-    });
+    // Walk down the path, selecting the right variation at each step
+    for (const step of path){
+      const parent = g.curNode;
+      const idx = parent.children.indexOf(step);
+      if (idx >= 0) parent.mainChildIndex = idx;
+      g.nextMove();
+    }
   }
 
-  let activePlyIndex = -1;
-  function renderMoves(){
+  function renderMoveTree(){
     const host = $("moves");
     host.innerHTML = "";
     const g = currentGame?.game;
     if (!g) return;
 
-    const toks = pgnToMoveTokens(g.exportPGN?.() || "");
-    let mn = 1;
-    for (let i = 0; i < toks.length; i += 2){
-      const w = toks[i] || "";
-      const b = toks[i+1] || "";
+    const root = g.root;
+    const wrap = document.createElement("div");
+    wrap.className = "moveTree";
 
-      const row = document.createElement("div");
-      row.className = "moveRow";
+    const renderLine = (startNode, prefixNeedsMoveNum = true) => {
+      let node = startNode;
+      while (node && node.children && node.children.length){
+        const child = node.children[node.mainChildIndex] || node.children[0];
+        const ply = child.ply || 0; // root=0, white1=1, black1=2...
+        const moveNo = Math.floor((ply + 1) / 2);
+        const isWhite = (ply % 2) === 1;
 
-      const mnEl = document.createElement("div");
-      mnEl.className = "mn";
-      mnEl.textContent = String(mn++);
+        // Move number label (lichess-like)
+        if (isWhite){
+          const mn = document.createElement("span");
+          mn.className = "mvNum";
+          mn.textContent = `${moveNo}.`;
+          wrap.appendChild(mn);
+        } else if (prefixNeedsMoveNum){
+          const mn = document.createElement("span");
+          mn.className = "mvNum";
+          mn.textContent = `${moveNo}...`;
+          wrap.appendChild(mn);
+        }
 
-      const wBtn = document.createElement("button");
-      wBtn.className = "plyBtn" + (activePlyIndex === i ? " active" : "");
-      wBtn.textContent = w;
-      wBtn.addEventListener("click", () => { activePlyIndex = i; syncUi(); });
+        const btn = document.createElement("button");
+        btn.className = "mvBtn" + (g.curNode === child ? " active" : "");
+        btn.textContent = child.san || child.uci || "?";
+        btn.addEventListener("click", () => {
+          jumpToNode(child);
+          syncUi();
+        });
+        wrap.appendChild(btn);
 
-      const bBtn = document.createElement("button");
-      bBtn.className = "plyBtn" + (activePlyIndex === i+1 ? " active" : "");
-      bBtn.textContent = b;
-      bBtn.addEventListener("click", () => { activePlyIndex = i+1; syncUi(); });
+        // Side variations (everything except main)
+        const vars = node.children.filter((c) => c !== child);
+        if (vars.length){
+          const varWrap = document.createElement("span");
+          varWrap.className = "mvVar";
+          for (let vi=0; vi<vars.length; vi++){
+            const v = vars[vi];
+            const open = document.createElement("span");
+            open.className = "mvPar";
+            open.textContent = "(";
+            varWrap.appendChild(open);
 
-      row.appendChild(mnEl);
-      row.appendChild(wBtn);
-      row.appendChild(bBtn);
-      host.appendChild(row);
-    }
+            const tmp = document.createElement("span");
+            const renderVar = (vnode) => {
+              let vn = vnode;
+              let needsNum = true;
+              while (vn && vn.children && vn.children.length){
+                const vchild = vn.children[vn.mainChildIndex] || vn.children[0];
+                const vply = vchild.ply || 0;
+                const vmoveNo = Math.floor((vply + 1) / 2);
+                const visWhite = (vply % 2) === 1;
+
+                if (visWhite){
+                  const mn = document.createElement("span");
+                  mn.className = "mvNum";
+                  mn.textContent = `${vmoveNo}.`;
+                  tmp.appendChild(mn);
+                  needsNum = false;
+                } else if (needsNum){
+                  const mn = document.createElement("span");
+                  mn.className = "mvNum";
+                  mn.textContent = `${vmoveNo}...`;
+                  tmp.appendChild(mn);
+                  needsNum = false;
+                }
+
+                const b = document.createElement("button");
+                b.className = "mvBtn" + (g.curNode === vchild ? " active" : "");
+                b.textContent = vchild.san || vchild.uci || "?";
+                b.addEventListener("click", () => {
+                  jumpToNode(vchild);
+                  syncUi();
+                });
+                tmp.appendChild(b);
+
+                vn = vchild;
+                needsNum = false;
+              }
+            };
+            renderVar(v);
+
+            varWrap.appendChild(tmp);
+
+            const close = document.createElement("span");
+            close.className = "mvPar";
+            close.textContent = ")";
+            varWrap.appendChild(close);
+
+            if (vi < vars.length-1){
+              const sep = document.createElement("span");
+              sep.textContent = " ";
+              varWrap.appendChild(sep);
+            }
+          }
+          wrap.appendChild(varWrap);
+        }
+
+        node = child;
+        prefixNeedsMoveNum = false;
+      }
+    };
+
+    renderLine(root, true);
+    host.appendChild(wrap);
   }
 
   function syncUi(){
@@ -678,7 +825,7 @@
     try{ $("pgnBottom").value = g.exportPGN?.() || ""; }catch{ $("pgnBottom").value = ""; }
 
     try{
-      const ply = (typeof g.getPly === "function") ? g.getPly() : (g.curNode?.ply ?? "—");
+      const ply = (g.curNode && typeof g.curNode.ply === "number") ? g.curNode.ply : 0;
       $("navMeta").textContent = `ply ${ply}`;
     }catch{
       $("navMeta").textContent = "ply —";
@@ -687,13 +834,12 @@
     sparesHost.hidden = !(g.ui?.setup);
     $("btnSetup").classList.toggle("on", !!g.ui?.setup);
 
-    renderMoves();
+    renderMoveTree();
   }
 
-  // ---------------- Board controls (prev/next/setup/export) ----------------
+  // ---------------- Board controls ----------------
   function cg(){ return currentGame?.game || null; }
 
-  // ✅ ScratchChess uses prevMove/nextMove
   $("btnPrev").addEventListener("click", () => { try{ cg()?.prevMove?.(); }catch(e){ logStack("ERR","Prev failed: ", e); } });
   $("btnNext").addEventListener("click", () => { try{ cg()?.nextMove?.(); }catch(e){ logStack("ERR","Next failed: ", e); } });
 
@@ -709,6 +855,18 @@
     }catch(e){ logStack("ERR","Reset failed: ", e); }
   });
   $("btnSetup").addEventListener("click", () => { try{ cg()?.toggleSetup?.(); syncUi(); }catch(e){ logStack("ERR","Setup toggle failed: ", e); } });
+
+  // Marks / drawing controls (ScratchChess owns the drawing; we just wire buttons)
+  $("btnModeMoves")?.addEventListener("click", () => { try{ cg()?.setMode?.("moves"); }catch(e){ logStack("ERR","Mode moves failed: ", e);} });
+  $("btnModeArrows")?.addEventListener("click", () => { try{ cg()?.setMode?.("arrows"); }catch(e){ logStack("ERR","Mode arrows failed: ", e);} });
+  $("btnModeSquares")?.addEventListener("click", () => { try{ cg()?.setMode?.("squares"); }catch(e){ logStack("ERR","Mode squares failed: ", e);} });
+
+  $("btnPigR")?.addEventListener("click", () => { try{ cg()?.setPigment?.("R"); }catch(e){ logStack("ERR","Pigment R failed: ", e);} });
+  $("btnPigB")?.addEventListener("click", () => { try{ cg()?.setPigment?.("B"); }catch(e){ logStack("ERR","Pigment B failed: ", e);} });
+  $("btnPigY")?.addEventListener("click", () => { try{ cg()?.setPigment?.("Y"); }catch(e){ logStack("ERR","Pigment Y failed: ", e);} });
+  $("btnPigG")?.addEventListener("click", () => { try{ cg()?.setPigment?.("G"); }catch(e){ logStack("ERR","Pigment G failed: ", e);} });
+
+  $("btnClearMarks")?.addEventListener("click", () => { try{ cg()?.clearMarks?.(); }catch(e){ logStack("ERR","Clear marks failed: ", e);} });
 
   function downloadText(filename, text){
     const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
@@ -779,6 +937,130 @@
 
   // ---------------- Query DB dropdown population (manifest) ----------------
   const dbSelectEl = $("dbSelectEl");
+
+  // ---------------- Priyomes pane (mini boards) ----------------
+  const priyomeListEl = $("priyomeList");
+  const priyomesStatusEl = $("priyomesStatus");
+  const btnReloadPriyomes = $("btnReloadPriyomes");
+  let PRIYOMES = []; // { title, pgnRaw, cql, game, view }
+
+  function extractCqlFromPgnRaw(pgn){
+    const s = String(pgn || "");
+    // 1) Header tag
+    const m1 = s.match(/^\[CQL\s+"([^"]*)"\]\s*$/mi);
+    if (m1) return m1[1].trim();
+    // 2) Curly comment containing "cql"
+    const m2 = s.match(/\{[^}]*cql[^}]*\}/i);
+    if (m2) return m2[0].replace(/^\{|\}$/g,"").trim();
+    // 3) %cql style comment
+    const m3 = s.match(/\[%cql\s+([^\]]+)\]/i);
+    if (m3) return ("%cql " + m3[1]).trim();
+    return "";
+  }
+
+  function destroyPriyomeViews(){
+    for (const p of PRIYOMES){
+      try{ p.view?.destroy?.(); }catch{}
+    }
+    PRIYOMES = [];
+    if (priyomeListEl) priyomeListEl.innerHTML = "";
+  }
+
+  async function loadPriyomes(){
+    destroyPriyomeViews();
+    priyomesStatusEl.textContent = "loading…";
+    try{
+      const url = PRIYOME_PGN_MANIFEST.default;
+      if (!url) throw new Error("PRIYOME_PGN_MANIFEST.default missing");
+      const r = await fetch(url, { cache:"no-store" });
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+      const txt = await r.text();
+      const parts = splitMultiPgn(txt);
+
+      for (let i=0;i<parts.length;i++){
+        const raw = parts[i];
+        const h = parseHeaders(raw);
+        const title = h.Event || `Priyome ${i+1}`;
+        const cql = extractCqlFromPgnRaw(raw);
+
+        const g = createGame(h);
+        g.toggleMini(true);
+        g.loadPGN?.(raw);
+        g.onChange?.(() => { /* no-op */ });
+
+        PRIYOMES.push({ title, pgnRaw: raw, cql, game: g, view: null });
+      }
+
+      renderPriyomes();
+      priyomesStatusEl.textContent = `${PRIYOMES.length} priyome(s)`;
+      logLine("OK", `Loaded priyomes from ${url} (${PRIYOMES.length}).`);
+    }catch(e){
+      priyomesStatusEl.textContent = "load failed";
+      logStack("ERR","Priyomes load failed: ", e);
+      setTab("errors");
+    }
+  }
+
+  function renderPriyomes(){
+    if (!priyomeListEl) return;
+    priyomeListEl.innerHTML = "";
+    for (const p of PRIYOMES){
+      const card = document.createElement("div");
+      card.className = "pryCard";
+
+      const b = document.createElement("div");
+      b.className = "pryBoard";
+
+      const meta = document.createElement("div");
+      meta.className = "pryMeta";
+
+      const title = document.createElement("div");
+      title.className = "pryTitle";
+      title.textContent = p.title;
+
+      const cql = document.createElement("div");
+      cql.className = "pryCql";
+      cql.textContent = p.cql || "(no CQL found in this PGN)";
+
+      const actions = document.createElement("div");
+      actions.className = "pryActions";
+      const btnLoad = document.createElement("button");
+      btnLoad.className = "smallBtn";
+      btnLoad.textContent = "Load to main board";
+      btnLoad.addEventListener("click", () => {
+        try{
+          const newId = `pry:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+          const rec = addGameRecord(p.pgnRaw, { id:newId, title: p.title, opening:"Priyome" });
+          ensureStudy(currentStudyName, [rec.id]);
+          setCurrentGameById(rec.id);
+          setTab("moves");
+          logLine("OK", `Loaded priyome into study: ${p.title}`);
+        }catch(e){
+          logStack("ERR","Load priyome failed: ", e);
+          setTab("errors");
+        }
+      });
+      actions.appendChild(btnLoad);
+
+      meta.appendChild(title);
+      meta.appendChild(actions);
+      meta.appendChild(cql);
+
+      card.appendChild(b);
+      card.appendChild(meta);
+      priyomeListEl.appendChild(card);
+
+      try{
+        const view = new BoardView(b, p.game, { minSizePx: 115 });
+        p.view = view;
+      }catch(e){
+        logLine("WARN", `Failed to render priyome board: ${p.title} — ${String(e)}`);
+      }
+    }
+  }
+
+  btnReloadPriyomes?.addEventListener("click", () => loadPriyomes());
+
   function populateDbSelect(){
     dbSelectEl.innerHTML = "";
     const keys = Object.keys(PGN_MANIFEST);
@@ -795,7 +1077,7 @@
   }
   populateDbSelect();
 
-  // ---------------- CQL runner logic (copied from reference harness; wired here) ----------------
+  // ---------------- CQL runner logic (copied from reference harness) ----------------
   let qPgnBytesOverride = null;
 
   const qCqlFile = $("qCqlFile");
@@ -840,6 +1122,7 @@
       `[Black "${DUMMY_CQL_BLACK}"]`,
       `[Result "0-1"]`,
     ].join("\n");
+
     const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
     return `${headers}\n\n${moves}\n`;
   }
@@ -863,7 +1146,6 @@
     return kept.join("\n\n").trim();
   }
 
-  // --------- import discovered games ----------
   function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
     const games = splitMultiPgn(multiPgnText);
     if (!games.length){
@@ -878,7 +1160,9 @@
       const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
       const date  = h.Date || todayYMD();
       const newId = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
-      addGameRecord(pgn, { id:newId, title, opening: sourceKey ? `CQL: ${sourceKey}` : "CQL result" });
+
+      const rec = addGameRecord(pgn, { id:newId, title, opening: sourceKey ? `CQL: ${sourceKey}` : "CQL result" });
+      rec.result = h.Result || "*";
       newIds.push(newId);
     }
 
@@ -969,7 +1253,7 @@
   });
 
   qRun.addEventListener("click", async () => {
-    const pgnFile0 = qPgnFile.files?.[0] || null;
+    const pgnFile = qPgnFile.files?.[0] || null;
     try{
       const cqlText = qCqlText.value || "";
       if (!cqlText.trim()) throw new Error("CQL is empty.");
@@ -979,9 +1263,9 @@
       if (qPgnBytesOverride){
         pgnBytes = qPgnBytesOverride;
       } else {
-        const pgnFile = qPgnFile.files?.[0];
-        if (pgnFile){
-          pgnBytes = await fileToUint8(pgnFile);
+        const pgnFile2 = qPgnFile.files?.[0];
+        if (pgnFile2){
+          pgnBytes = await fileToUint8(pgnFile2);
         } else {
           const db = dbSelectEl.value;
           pgnBytes = await getPgnBytesForDb(db);
@@ -992,9 +1276,8 @@
 
       const sourceKey =
         qPgnBytesOverride ? `game:${currentGame?.id || "unknown"}`
-        : (pgnFile0 ? `upload:${pgnFile0.name}` : `db:${dbSelectEl.value}`);
+        : (pgnFile ? `upload:${pgnFile.name}` : `db:${dbSelectEl.value}`);
 
-      // Workaround: if PGN has only one game, append a dummy second game for CQL execution.
       let _dummyInjected = false;
       try{
         const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
@@ -1128,7 +1411,6 @@
           const pgnIn = g.exportPGN?.() || "";
           const outPgn = await entry.run({ pgn: pgnIn });
           if (!String(outPgn||"").trim()) throw new Error(`Eval "${entry.id}" returned empty output PGN.`);
-
           const titleBase = currentGame?.title || "Game";
           const title = `Evaluated (${entry.id}) • ${titleBase}`;
           const newId = `eval:${entry.id}:${currentGame?.id || "unknown"}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -1199,6 +1481,7 @@
 
             let outPgnText = j.outputPgn || "";
             if (_dummyInjected) outPgnText = stripDummyFromMultiPgnText(outPgnText);
+
             if (!outPgnText.trim()) throw new Error(`CQL eval "${id}" returned empty output PGN.`);
 
             const titleBase = currentGame?.title || "Game";
@@ -1256,7 +1539,13 @@
         syncUi();
       }
 
+      // load evals
       loadEvals();
+
+      // load priyomes (mini boards)
+      loadPriyomes();
+
+      // query UI
       updateQueryUi();
       logLine("OK","Boot complete.");
     }catch(e){
