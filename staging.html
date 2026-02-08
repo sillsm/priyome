@@ -147,8 +147,6 @@
     <div class="row" style="margin-top:8px;">
       <button id="qRun">Run</button>
       <button id="qImport">Import results as games</button>
-      <!-- ADDED: import non-dummy PGNs from results into the CURRENT study in Games -->
-      <button id="qAddToCur">Add results to current study</button>
       <button id="qClear">Clear</button>
     </div>
     <textarea id="qOut" style="min-height:180px;margin-top:10px;" readonly placeholder="Result PGN will appear here…"></textarea>
@@ -388,8 +386,66 @@
   let qOverrideBytes = null;
   let qOverrideLabel = "";
 
-  // ADDED: cache the last query's *non-dummy* PGNs so we can add them to current Games on demand.
-  let LAST_QUERY_PGNS = [];  // array of individual PGN strings (already filtered)
+  // ---------------- ADDITIVE: CQL DISCOVERY IMPORT TRACKING ----------------
+  // We dedupe per-study so:
+  // - Run Query can auto-add discovered games to the *current* study
+  // - "Import results as games" can be clicked again without double-importing
+  const STUDY_DISCOVERY_SIGS = Object.create(null); // studyKey -> Set(sig)
+  function studySigSet(studyKey){
+    const k = String(studyKey || "default");
+    if (!STUDY_DISCOVERY_SIGS[k]) STUDY_DISCOVERY_SIGS[k] = new Set();
+    return STUDY_DISCOVERY_SIGS[k];
+  }
+  function normForSig(pgn){
+    // stable-ish dedupe key: strip trailing whitespace; collapse blank lines
+    const s = String(pgn||"").replace(/\r/g,"").trim();
+    return s.replace(/\n{3,}/g,"\n\n");
+  }
+  function importDiscoveredPgnsIntoStudy(studyKey, multiPgnText, opts={}){
+    const { reason="import", alsoSelectFirst=false } = opts || {};
+    const out = String(multiPgnText||"").trim();
+    const partsRaw = splitMultiPgn(out);
+    const parts = partsRaw.filter(p=>p && p.trim() && !isDummy(p)); // extra safety
+    if (!parts.length){
+      pushLog("WARN", `No non-dummy games found to ${reason}.`);
+      return { added:0, skipped:0, total:0 };
+    }
+
+    const sigs = studySigSet(studyKey);
+    let added = 0, skipped = 0;
+    const newRecs = [];
+
+    for (let i=0;i<parts.length;i++){
+      const pgn = parts[i];
+      const sig = normForSig(pgn);
+      if (sigs.has(sig)){
+        skipped++;
+        continue;
+      }
+      sigs.add(sig);
+
+      const h = parseHeaders(pgn);
+      const title = h.Event || `Discovered • ${reason} #${i+1}`;
+      const rec = addGameToStudy(studyKey, title, pgn);
+      newRecs.push(rec);
+      added++;
+    }
+
+    if (added){
+      // Keep currentStudy view consistent
+      renderStudySel();
+      renderGamesList();
+      pushLog("OK", `Discovered games: added ${added} to study "${studyKey}" (${skipped} skipped as duplicates).`);
+      if (alsoSelectFirst && newRecs[0]){
+        setCurrent(newRecs[0]);
+        renderGamesList();
+      }
+    } else {
+      pushLog("WARN", `Discovered games: 0 added (${skipped} duplicates) to study "${studyKey}".`);
+    }
+
+    return { added, skipped, total: parts.length };
+  }
 
   // ---------------- BOARD INIT ----------------
   const boardHost = document.getElementById("boardHost");
@@ -508,21 +564,6 @@
     STUDIES[studyKey].unshift(rec);
     ALL_GAMES.unshift(rec);
     return rec;
-  }
-
-  // ADDED: helper to import *only non-dummy* PGNs into a target study (this is the requested functionality).
-  function importNonDummyPgnTextIntoStudy(targetStudyKey, multiPgnText, titlePrefix){
-    const parts = splitMultiPgn(multiPgnText || "");
-    const real = parts.filter(p=>!isDummy(p));
-    if (!real.length) return 0;
-
-    const key = targetStudyKey || "default";
-    real.forEach((pgn,i)=>{
-      const h = parseHeaders(pgn);
-      const title = h.Event || `${titlePrefix || "CQL result"} #${i+1}`;
-      addGameToStudy(key, title, pgn);
-    });
-    return real.length;
   }
 
   const studySel = document.getElementById("studySel");
@@ -740,19 +781,21 @@
 
       const out = await runCqlLikeIndex15(inputBytes, cql, label, (s)=>setQStatus(s));
       qOut.value = out;
-
-      // ADDED: cache *all* non-dummy PGNs from the query output so they can be added to current Games.
-      try{
-        const parts = splitMultiPgn(out);
-        LAST_QUERY_PGNS = parts.filter(p=>!isDummy(p));
-        pushLog("OK", `Query produced ${parts.length} PGNs (${LAST_QUERY_PGNS.length} non-dummy).`);
-      }catch(e){
-        LAST_QUERY_PGNS = [];
-        pushLog("WARN", "Could not cache query PGNs: " + String(e));
-      }
-
       setQStatus("done");
       pushLog("OK", "Query finished.");
+
+      // ---------------- ADDITIVE: AUTO-IMPORT DISCOVERED GAMES INTO CURRENT STUDY ----------------
+      // This matches the intended behavior: discovered games land in the current active study.
+      try{
+        const res = importDiscoveredPgnsIntoStudy(currentStudy, out, { reason:`cql:${label}`, alsoSelectFirst:false });
+        if (res.added > 0){
+          // keep Games pane accurate if user flips there next
+          // (no tab switch here—just keep state coherent)
+        }
+      }catch(e){
+        pushLog("WARN", "Auto-import discovered games failed (query output still shown): " + (e?.stack || e));
+      }
+
     }catch(e){
       setQStatus("error");
       pushLog("ERR", "Query failed: " + (e?.stack || e));
@@ -763,56 +806,20 @@
   document.getElementById("qImport").onclick = ()=>{
     try{
       const out = qOut.value || "";
-      const parts = splitMultiPgn(out);
-      if (!parts.length) return;
-      const studyKey = "query_results";
-      parts.forEach((pgn,i)=>{
-        const h = parseHeaders(pgn);
-        addGameToStudy(studyKey, h.Event || `Query result #${i+1}`, pgn);
-      });
-      currentStudy = studyKey;
-      renderStudySel();
-      renderGamesList();
-      pushLog("OK", `Imported ${parts.length} results into Games (study "${studyKey}").`);
-      show("Games");
+      // ---------------- FIXED: IMPORT INTO CURRENT STUDY (NOT HARD-CODED) ----------------
+      const res = importDiscoveredPgnsIntoStudy(currentStudy, out, { reason:"manual-import", alsoSelectFirst:false });
+      if (res.added > 0){
+        // Stay consistent: if you are already in Games, refresh list; otherwise just log.
+        renderStudySel();
+        renderGamesList();
+        pushLog("OK", `Imported ${res.added} results into Games (current study "${currentStudy}").`);
+        show("Games");
+      } else {
+        // still hop to Games if you want to see nothing happened; but keep behavior minimal
+        pushLog("WARN", `No new games imported into "${currentStudy}" (likely duplicates or empty output).`);
+      }
     }catch(e){
       pushLog("ERR", "Import failed: "+e);
-      show("Errors");
-    }
-  };
-
-  // ADDED: "Add results to current study" — imports all non-dummy PGNs from the last CQL output
-  // into whatever study is currently selected in Games, without changing studies.
-  document.getElementById("qAddToCur").onclick = ()=>{
-    try{
-      const target = currentStudy || studySel.value || "default";
-
-      // Prefer the cached non-dummy list; fall back to parsing qOut if needed.
-      let sourceList = Array.isArray(LAST_QUERY_PGNS) ? LAST_QUERY_PGNS.slice() : [];
-      if (!sourceList.length){
-        const out = qOut.value || "";
-        sourceList = splitMultiPgn(out).filter(p=>!isDummy(p));
-      }
-
-      if (!sourceList.length){
-        pushLog("WARN", "No non-dummy query results to add.");
-        return;
-      }
-
-      sourceList.forEach((pgn,i)=>{
-        const h = parseHeaders(pgn);
-        const title = h.Event || `CQL result #${i+1}`;
-        addGameToStudy(target, title, pgn);
-      });
-
-      // Keep currentStudy the same (target), just refresh UI.
-      currentStudy = target;
-      renderStudySel();
-      renderGamesList();
-      pushLog("OK", `Added ${sourceList.length} non-dummy CQL result PGNs into current study "${target}".`);
-      show("Games");
-    }catch(e){
-      pushLog("ERR", "Add-to-current-study failed: " + (e?.stack || e));
       show("Errors");
     }
   };
@@ -820,7 +827,6 @@
   document.getElementById("qClear").onclick = ()=>{
     qOut.value = "";
     setQStatus("");
-    LAST_QUERY_PGNS = [];
     pushLog("OK", "Cleared query output.");
   };
 
