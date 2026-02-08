@@ -141,25 +141,50 @@ export async function runTable({ pairs, makeContext, invoke, get, normalize, onE
     try{
       const ctx = await makeContext(setup);
 
-      const calls = setup?.calls || [];
-      for (let j=0; j<calls.length; j++){
-        const c = calls[j];
-        if (!c?.fn) continue;
-        emit({ type:"call:start", test:i, call:j, fn:c.fn });
-        const ret = await invoke(ctx, c.fn, c.args || []);
-        r.steps.push({ fn:c.fn, ret });
-        emit({ type:"call:end", test:i, call:j, fn:c.fn, ret });
+      const expectError = expect && expect.error ? expect.error : null;
+      let caught = null;
+
+      try {
+        const calls = setup?.calls || [];
+        for (let j=0; j<calls.length; j++){
+          const c = calls[j];
+          if (!c?.fn) continue;
+          emit({ type:"call:start", test:i, call:j, fn:c.fn });
+          const ret = await invoke(ctx, c.fn, c.args || []);
+          r.steps.push({ fn:c.fn, ret });
+          emit({ type:"call:end", test:i, call:j, fn:c.fn, ret });
+        }
+
+        const gets = expect?.gets || [];
+        for (let k=0; k<gets.length; k++){
+          const g = gets[k];
+          emit({ type:"assert:start", test:i, assert:k, getter:g.fn||g.path });
+          const actual = await get(ctx, g);
+          const cmp = compare(actual, g, normalize);
+          r.asserts.push({ getter:g.fn||g.path, actual, ok:cmp.ok, msg:cmp.msg });
+          if (!cmp.ok) r.ok = false;
+          emit({ type:"assert:end", test:i, assert:k, ok:cmp.ok, msg:cmp.msg });
+        }
+      } catch (err){
+        caught = err;
       }
 
-      const gets = expect?.gets || [];
-      for (let k=0; k<gets.length; k++){
-        const g = gets[k];
-        emit({ type:"assert:start", test:i, assert:k, getter:g.fn||g.path });
-        const actual = await get(ctx, g);
-        const cmp = compare(actual, g, normalize);
-        r.asserts.push({ getter:g.fn||g.path, actual, ok:cmp.ok, msg:cmp.msg });
-        if (!cmp.ok) r.ok = false;
-        emit({ type:"assert:end", test:i, assert:k, ok:cmp.ok, msg:cmp.msg });
+      if (expectError) {
+        const msg = (caught && (caught.stack || caught.message)) ? (caught.stack || caught.message) : (caught ? String(caught) : "");
+        if (!caught) {
+          r.ok = false;
+          r.error = `Expected error but none thrown`;
+        } else {
+          const cmp = compare(msg, expectError, normalize);
+          r.asserts.push({ getter:"<error>", actual:msg, ok:cmp.ok, msg:cmp.msg });
+          if (!cmp.ok) {
+            r.ok = false;
+            r.error = `Error did not match expectation: ${cmp.msg}\nActual error:\n${msg}`;
+          }
+        }
+      } else if (caught) {
+        r.ok = false;
+        r.error = (caught && caught.stack) ? caught.stack : String(caught);
       }
     } catch (err){
       r.ok = false;
