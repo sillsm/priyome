@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Priyome</title>
   <link href="./favicon.svg" rel="icon">
+
+  <!-- chessboard.js (requires jQuery) -->
 <!-- chess.js UMD (global Chess) -->
   <!-- imported below as a module in main script. Pinned to version 1.4.0 -->
 
@@ -601,18 +603,6 @@
   
     .miniX{ margin-left:8px; background: rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.55); color:#dc2626; border-radius:10px; padding:0 6px; line-height:18px; font-size:12px; cursor:pointer; font-weight:900; }
     .miniX:hover{ border-color: rgba(255,255,255,.35); }
-
-    .spareMount{ margin-top:8px; }
-
-
-/* --- ScratchChess mounting sizing fixes --- */
-#boardWrap{ display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; }
-#boardMount{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-#boardMount > .sc-shell{ margin:auto; } /* keep square centered */
-.spareMount{ width:100%; }
-.leftCard{ display:flex; flex-direction:column; min-height:0; }
-.boardCard{ display:flex; flex-direction:column; min-height:0; height:100%; }
-
 </style>
 </head>
 
@@ -662,8 +652,8 @@
 
       <div class="boardArea" id="boardArea" tabindex="0" aria-label="Chessboard area">
         <div class="boardWrap" id="boardWrap">
-          <div id="boardMount"></div>
-          <div id="spareMount" class="spareMount"></div>
+          <div id="board"></div>
+          <svg id="overlay" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
         </div>
       </div>
 
@@ -861,34 +851,1196 @@
   </div>
 
 <script type="module">
-  // Priyome (refactor): No 3rd-party JS. All chess rules + board rendering handled by scratchchess.js.
-  // This file keeps Priyome layout + CQL runner + studies/games/priyomes panels, but delegates:
-  // - board rendering/resizing
-  // - drag/drop + touch
-  // - arrows/squares overlays
-  // - PGN/FEN import/export + move legality
-  // to scratchchess.js (Game + BoardView).
+  import { createGame, BoardView } from './scratchchess.js';
+(() => {
+  // ---------- hamburger menu ----------
+  const btnHamburger = document.getElementById('btnHamburger');
+  const menu = document.getElementById('menu');
+  btnHamburger.addEventListener('click', () => {
+    menu.classList.toggle('open');
+    sizeBoardSquare();
+    if (board && typeof board.resize === 'function') board.resize();
+    positionMainOverlayToGrid();
+    redrawDrawings();
+    resizeMiniBoards();
+  });
 
-  import { createGame, BoardView } from "./scratchchess.js";
+  // ---------- error logger ----------
+  const errorLog = document.getElementById('errorLog');
+  const errCount = document.getElementById('errCount');
+  let errorLines = [];
 
-  // ----------------------------- Utilities -----------------------------
-  const $ = (id) => document.getElementById(id);
-  const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-  }[c]));
-  function logLine(level, msg){
-    // existing UI has a status line; keep lightweight
-    const el = $("status");
-    if (!el) return;
-    el.textContent = `[${level}] ${msg}`;
+  function logLine(kind, msg){
+    const ts = new Date().toISOString().slice(11,19);
+    const line = `[${ts}] ${kind}: ${msg}`;
+    errorLines.push(line);
+    errCount.textContent = String(errorLines.length);
+
+    const el = document.createElement('div');
+    el.textContent = line;
+    if (kind === 'OK') el.className = 'okLine';
+    if (kind === 'WARN') el.className = 'warnLine';
+    errorLog.appendChild(el);
+    errorLog.scrollTop = errorLog.scrollHeight;
   }
-  function logStack(level, msg, err){
-    console[level === "ERR" ? "error" : "warn"](msg, err);
-    logLine(level, msg + (err ? ` (${err})` : ""));
+
+  function logBlock(kind, title, value, max=2000){
+    const s = (value === undefined) ? 'undefined'
+          : (value === null) ? 'null'
+          : (typeof value === 'string') ? value
+          : (() => { try { return JSON.stringify(value, null, 2); } catch { return String(value); } })();
+
+    const clipped = (s.length > max) ? (s.slice(0, max) + `\n… (${s.length-max} more chars)`) : s;
+    logLine(kind, `${title} (${s.length} chars)\n${clipped}`);
+  }
+
+  function logStack(kind, prefix, e){
+    const msg = e && e.stack ? e.stack : String(e);
+    logLine(kind, `${prefix}${msg}`);
+  }
+
+  window.addEventListener('error', (e) => {
+    const where = e.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : '';
+    const detail = (e.error && e.error.stack) ? `\n${e.error.stack}` : '';
+    logLine('ERR', `${e.message || 'Error'}${where}${detail}`);
+  });
+
+  window.addEventListener('unhandledrejection', (e) => {
+    logLine('ERR', `Unhandled promise rejection: ${String(e.reason && e.reason.stack ? e.reason.stack : e.reason)}`);
+  });
+
+  document.getElementById('btnClearErrors').addEventListener('click', () => {
+    errorLines = [];
+    errCount.textContent = '0';
+    errorLog.innerHTML = '';
+    logLine('OK', 'Cleared error log.');
+  });
+
+  // ---------- dependency diagnostics ----------
+  function diag(){
+    logLine('OK', `User-Agent: ${navigator.userAgent}`);
+    
+    const haveChess = (typeof new Chess() !== 'undefined');
+    logLine(haveChess ? 'OK' : 'ERR', `Chess (chess.js) loaded: ${haveChess}`);
+
+    const testImg = new Image();
+    testImg.onload = () => logLine('OK', 'Piece sprite reachable (wikipedia set).');
+    testImg.onerror = () => logLine('ERR', 'Piece sprite failed to load (CDN blocked?).');
+    testImg.src = '';
+  }
+
+  function colorHex(c){
+    switch(c){
+      case 'G': return '#16a34a';
+      case 'R': return '#dc2626';
+      case 'B': return '#2563eb';
+      case 'Y': return '#d97706';
+      default: return '#16a34a';
+    }
+  }
+  
+  let GAMES = [];
+  // ---------- studies ----------
+  // A Study is just a list of game ids (subset of GAMES).
+  const STUDIES = Object.create(null); // name -> { name, gameIds:[], loaded:true }
+  let currentStudyName = 'Default';
+
+  function todayYMD(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${dd}`;
+  }
+  function uniqStudyName(base){
+    let name = base;
+    let n = 2;
+    while (STUDIES[name]) name = `${base} (${n++})`;
+    return name;
+  }
+  function ensureStudy(name, gameIds=[]){
+    if (!STUDIES[name]) STUDIES[name] = { name, gameIds: [], loaded:true };
+    const s = STUDIES[name];
+    for (const id of gameIds){
+      if (id && !s.gameIds.includes(id)) s.gameIds.push(id);
+    }
+    return s;
+  }
+  function currentStudy(){ return STUDIES[currentStudyName] || ensureStudy(currentStudyName, []); }
+
+  function getStudyGames(){
+    const ids = currentStudy().gameIds || [];
+    const map = new Map(GAMES.map(g => [g.id, g]));
+    const out = [];
+    for (const id of ids){
+      const g = map.get(id);
+      if (g) out.push(g);
+    }
+    return out;
+  }
+
+  function renderStudySelect(){
+    const sel = document.getElementById('studySelect');
+    if (!sel) return;
+    const names = Object.keys(STUDIES).sort((a,b)=>a.localeCompare(b));
+    sel.innerHTML = '';
+    for (const n of names){
+      const opt = document.createElement('option');
+      opt.value = n;
+      opt.textContent = n;
+      if (n === currentStudyName) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  function setCurrentStudy(name){
+    currentStudyName = name;
+    ensureStudy(name, []);
+    renderStudySelect();
+    renderGameList();
+    document.getElementById('gamePill').textContent = `Study • ${currentStudy().gameIds.length} games`;
+  }
+
+async function fetchText(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`fetchText: ${res.status} ${res.statusText} for ${url}`);
+  return await res.text();
+}
+  
+  // Boot: load default studies from ./pgn/Study.pgn (if present)
+async function bootLoadDefaultStudies() {
+  try {
+    const entries = Object.entries(STUDY_MANIFEST || {});
+    if (!entries.length) {
+      logLine('WARN', 'STUDY_MANIFEST empty; nothing to boot-load.');
+      return;
+    }
+
+    const loadedStudyNames = [];
+
+    // local fetch helper: avoids dependency on any global fetchText/fetchTextCached
+    async function _fetchTextNoStore(url) {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return await res.text();
+    }
+
+    for (const [keyRaw, urlRaw] of entries) {
+      const key = String(keyRaw || '').trim();
+      const url = String(urlRaw || '').trim();
+      if (!key || !url) continue;
+
+      const studyName = (key.toLowerCase() === 'default') ? 'Default' : key;
+
+      try {
+        logLine('OK', `Boot loading study "${studyName}" from ${url} …`);
+
+        const txt = await _fetchTextNoStore(url);
+        const parts = splitMultiPgn(txt);
+
+        if (!parts.length) {
+          logLine('WARN', `No games found in ${url} for study "${studyName}".`);
+          continue;
+        }
+
+        // Overwrite this study’s game list on boot (keeps boot deterministic)
+        STUDIES[studyName] = { name: studyName, gameIds: [], loaded: true };
+
+        const ids = [];
+        for (let i = 0; i < parts.length; i++) {
+          const pgn = String(parts[i] || '').trim();
+          if (!pgn) continue;
+
+          const h = parseHeaders(pgn);
+          const title = (h && h.Event) ? h.Event : `${studyName} • Game ${i + 1}`;
+          const resTok = (h && h.Result) ? h.Result : '*';
+
+          const id = `boot:${studyName}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+          GAMES.unshift({
+            id,
+            title,
+            opening: 'Boot Study',
+            result: resTok,
+            pgn
+          });
+
+          ids.push(id);
+        }
+
+        if (!ids.length) {
+          logLine('WARN', `All games empty/invalid in ${url} for "${studyName}".`);
+          continue;
+        }
+
+        // Ensure the study exists and has the ids we just created
+        ensureStudy(studyName, ids);
+        loadedStudyNames.push(studyName);
+
+        logLine('OK', `Boot-loaded "${studyName}" (${ids.length} games).`);
+      } catch (e) {
+        logStack('WARN', `Failed to boot-load "${studyName}" from ${url}:`, e);
+      }
+    }
+
+    if (!loadedStudyNames.length) {
+      logLine('WARN', 'No studies loaded successfully from STUDY_MANIFEST.');
+      return;
+    }
+
+    // Prefer Default if present; otherwise first successfully loaded.
+    const preferred =
+      loadedStudyNames.includes('Default') ? 'Default' : loadedStudyNames[0];
+
+    setCurrentStudy(preferred);
+    // On initial boot, immediately load the first game of the active study onto the main board.
+    try {
+      const s = currentStudy();
+      const firstId = s && s.gameIds && s.gameIds.length ? s.gameIds[0] : null;
+      if (firstId) {
+        // Ensure boards exist before loading
+        ensureMainBoard();
+        loadGame(firstId, { startAtFirst: true });
+        logLine('OK', `Boot: loaded first game (${firstId}) from study "${preferred}".`);
+      } else {
+        logLine('WARN', `Boot: study "${preferred}" has no games to auto-load.`);
+      }
+    } catch (e) {
+      logStack('WARN', 'Boot: failed to auto-load first game.', e);
+    }
+
+    logLine('OK', `Boot studies complete. Active study: "${preferred}".`);
+  } catch (e) {
+    logStack('ERR', 'bootLoadDefaultStudies() failed:', e);
+  }
+}
+
+  const discoveredIds = new Set();
+
+  // ---------- eval registry ----------
+  let EVALS_REGISTRY = [];
+  const evalListEl = document.getElementById('evalList');
+  const cqlEvalListEl = document.getElementById('cqlEvalList');
+  const evalsStatusEl = document.getElementById('evalsStatus');
+
+  // ---------- DOM ----------
+  const statusEl = document.getElementById('status');
+  const movesEl = document.getElementById('moves');
+  const gameListEl = document.getElementById('gameList');
+  const gamePill = document.getElementById('gamePill');
+  const toolStatusEl = document.getElementById('toolStatus');
+  const toolDotsEl = document.getElementById('toolDots');
+  const annoTitleEl = document.getElementById('annoTitle');
+  const annoTextEl = document.getElementById('annoText');
+  const overlay = document.getElementById('overlay');
+
+  // Bottom card DOM
+  const fenBottom = document.getElementById('fenBottom');
+  const pgnBottom = document.getElementById('pgnBottom');
+  const bottomMeta = document.getElementById('bottomMeta');
+
+  // Query tab DOM
+  const qCqlFile = document.getElementById('qCqlFile');
+  const qPgnFile = document.getElementById('qPgnFile');
+  const qCqlName = document.getElementById('qCqlName');
+  const qPgnName = document.getElementById('qPgnName');
+  const qCqlText = document.getElementById('qCqlText');
+  const qArgv = document.getElementById('qArgv');
+  const qRun = document.getElementById('qRun');
+  const qStatus = document.getElementById('qStatus');
+
+  // Board sizing DOM
+  const boardArea = document.getElementById('boardArea');
+  const boardWrap = document.getElementById('boardWrap');
+  const boardCard = document.getElementById('boardCard');
+  const boardHead = document.getElementById('boardHead');
+  const boardBelow = document.getElementById('boardBelow');
+
+  // Import modal DOM
+  const importModalBackdrop = document.getElementById('importModalBackdrop');
+  const importPgnText = document.getElementById('importPgnText');
+  const btnImportCancel = document.getElementById('btnImportCancel');
+  const btnImportAdd = document.getElementById('btnImportAdd');
+  const btnImportPgn = document.getElementById('btnImportPgn');
+
+  // Priyomes DOM
+  const prListEl = document.getElementById('prList');
+  const dbSelectEl = document.getElementById('dbSelect');
+  const btnPriyomesSearch = document.getElementById('btnPriyomesSearch');
+  const btnPriyomesNew = document.getElementById('btnPriyomesNew');
+
+  // Setup mode DOM
+  const setupRow = document.getElementById('setupRow');
+  const btnAddPriyome = document.getElementById('btnAddPriyome');
+  const btnCancelPriyome = document.getElementById('btnCancelPriyome');
+  const btnSetupImportPgn = document.getElementById('btnSetupImportPgn');
+  const setupPgnFile = document.getElementById('setupPgnFile');
+
+  // ---------- state ----------
+  // scratchchess core (single source of truth for board + legality + PGN/FEN + marks)
+  let scGame = null;
+  let scView = null;
+
+  // Legacy variable names retained so the rest of the original app code ports cleanly.
+  // `game` is a tiny adapter exposing the subset of chess.js APIs that index (14).html expects.
+  // `board` is a tiny adapter exposing the subset of chessboard.js APIs that index (14).html expects.
+  let board = null;
+  let orientation = 'white';
+  let currentGame = null;
+
+  let game = null;
+  let verboseHistory = [];
+  let activePly = 0;
+  let currentStartFen = 'start'; // per-game ply 0 start position (from PGN [FEN "..."] if present)
+
+  function _rebuildVerboseHistoryFromScratch(){
+    // Build mainline half-move list from scratchchess tree
+    const out = [];
+    if (!scGame) return out;
+    let node = scGame.root;
+    while (node && node.children && node.children.length){
+      const nxt = node.children[node.mainChildIndex || 0];
+      if (!nxt) break;
+      const uci = nxt.uci || '';
+      const from = uci.slice(0,2);
+      const to = uci.slice(2,4);
+      const promotion = (uci.length >= 5) ? uci[4] : undefined;
+      out.push({ san: nxt.san || '?', from, to, promotion, uci });
+      node = nxt;
+    }
+    return out;
+  }
+
+  function _syncFromScratch(reason){
+    // Keep legacy state variables consistent with scratchchess
+    verboseHistory = _rebuildVerboseHistoryFromScratch();
+    activePly = scGame ? (scGame.curNode ? scGame.curNode.ply : 0) : 0;
+
+    // Update bottom card fields and moves/status panels (existing functions further below)
+    try { setFen(); } catch(_e){}
+    try { setStatus(); } catch(_e){}
+    try { renderMoves(); } catch(_e){}
+    try { updateAnnoUI(); } catch(_e){}
+    try { updateBottomCard(); } catch(_e){}
+    try { if (typeof syncPriyomeTerminal === 'function') syncPriyomeTerminal(); } catch(_e){}
+
+    // Ensure board view stays in sync
+    try { if (scView) { scView.render(); } } catch(_e){}
+  }
+
+  function _ensureScratch(){
+    if (scGame) return;
+    scGame = createGame();
+
+    // Map scratchchess changes -> UI refresh
+    scGame.onChange(() => _syncFromScratch('onChange'));
+
+    // Adapter: chess.js subset
+    game = {
+      reset(){ scGame.initializePosition(); return true; },
+      load(fen){ try { scGame.loadFEN(fen); return true; } catch(_e){ return false; } },
+      load_pgn(pgn/*, opts*/){ try { scGame.loadPGN(pgn); return true; } catch(_e){ return false; } },
+      fen(){ try { return scGame.exportFEN(); } catch(_e){ return 'start'; } },
+      pgn(/*opts*/){ try { return scGame.exportPGN(); } catch(_e){ return ''; } },
+      history(opts){
+        if (opts && opts.verbose) return _rebuildVerboseHistoryFromScratch();
+        return _rebuildVerboseHistoryFromScratch().map(m => m.san);
+      },
+      turn(){ return (scGame && scGame.state && scGame.state.side) ? scGame.state.side : 'w'; },
+      // The original UI uses these for status text; scratchchess does not currently expose full end-state helpers,
+      // so we provide conservative defaults to keep the app functional.
+      inCheck(){ return false; },
+      isGameOver(){ return false; },
+      isCheckmate(){ return false; },
+      isDraw(){ return false; },
+      move(mv){
+        if (!mv || !mv.from || !mv.to) return null;
+        const promo = mv.promotion ? String(mv.promotion).toLowerCase()[0] : '';
+        const uci = mv.from + mv.to + (promo ? promo : '');
+        const ok = scGame.makeMoveUCI(uci);
+        return ok ? { san: (scGame.curNode && scGame.curNode.san) ? scGame.curNode.san : '' } : null;
+      },
+      undo(){
+        const ok = scGame.prevMove();
+        return ok;
+      },
+      validate_fen(/*fen*/){ return { valid:true, error_number:0, error:'' }; },
+    };
+
+    // Adapter: chessboard.js subset
+    board = {
+      position(arg/*fen*/, animate){
+        if (typeof arg === 'undefined'){
+          // Legacy callers used this only in setup preview; we return a FEN string now.
+          return game.fen();
+        }
+        scGame.loadFEN(arg);
+        if (scView) scView.render();
+        return true;
+      },
+      resize(){ if (scView) scView.fitToContainer(); },
+      flip(){
+        scGame.toggleFlip();
+        orientation = (orientation === 'white') ? 'black' : 'white';
+      }
+    };
+
+    _syncFromScratch('init');
+  }
+
+  function setBoardFen(reason, fen, animate=false){
+    if (!board) return;
+    const f = (fen && String(fen).trim()) ? String(fen).trim() : 'start';
+    // log to both console and the on-page log
+    try { console.log(`[board] position (${reason}) fen =>`, f); } catch(_e){}
+    logLine('OK', `BOARD FEN [${reason}]: ${f}`);
+    board.position(f, !!animate);
   }
 
   
-  // ----------------------------- Tabs -----------------------------
+  function resetGameToStartFen(){
+    const f = (currentStartFen && String(currentStartFen).trim()) ? String(currentStartFen).trim() : 'start';
+    if (f === 'start'){
+      game.reset();
+      return { ok:true, used:'start' };
+    }
+
+    // chess.js versions differ: some support load(fen, {skipValidation:true})
+    // We try strict first, then skipValidation, and log detailed validation errors when possible.
+    let ok = false;
+    let used = f;
+    try {
+      ok = !!game.load(f);
+    } catch (e) {
+      ok = false;
+    }
+    if (!ok){
+      try {
+        ok = !!game.load(f, { skipValidation: true });
+      } catch (_e) {
+        ok = false;
+      }
+    }
+
+    if (!ok){
+      // Some chess.js builds are strict or have different FEN loading paths.
+      // 1) Surface validation diagnostics if available
+      try {
+        if (typeof game.validate_fen === 'function'){
+          const v = game.validate_fen(f);
+          logLine('WARN', `Start FEN validate_fen: valid=${v.valid} err=${v.error_number} ${v.error || ''}`);
+        } else if (typeof game.validateFen === 'function'){
+          const v = game.validateFen(f);
+          logLine('WARN', `Start FEN validateFen: valid=${v.valid} err=${v.error_number} ${v.error || ''}`);
+        }
+      } catch(_e){}
+
+      // 2) Fallback: re-instantiate the Chess() object with the FEN (supported by many versions)
+      // This avoids relying on .load(...) semantics, while still letting us replay SAN on top.
+      try {
+        if (typeof Chess === 'function'){
+          const g2 = new Chess(f);
+          // If constructor succeeded, swap it in.
+          if (g2 && typeof g2.fen === 'function'){
+            game = g2;
+            ok = true;
+          }
+        }
+      } catch(_e){ ok = false; }
+
+      if (!ok){
+        logLine('WARN', `Failed to load start FEN from headers; falling back to standard start. FEN="${f}"`);
+        try { game.reset(); } catch(_e) {}
+        currentStartFen = 'start';
+        used = 'start';
+        return { ok:false, used };
+      }
+    }
+
+    return { ok:true, used };
+  }
+
+
+  // user annotations per ply
+  const annotations = Object.create(null);
+
+  // drawings PER PLY
+  const drawings = Object.create(null);
+
+  // Priyomes patterns
+  const PRIYOMES = [];
+  let selectedPriyomeId = null;
+
+  // Setup-mode import (PGN -> fen + optional cqlref)
+  let setupImportedCqlRef = null;
+  let setupImportedPgnTitle = null;
+
+  // Query Pgn input
+  // when set, Query runs against these bytes (e.g., current game)
+  let qPgnBytesOverride = null;
+
+  // mini boards
+  
+  function fenAtEndFromPgn(pgnText){
+    try{
+      const ch = new Chess();
+      ch.load_pgn(String(pgnText||''), { sloppy:true });
+      return ch.fen();
+    }catch(e){
+      return null;
+    }
+  }
+const miniBoards = new Map(); // id -> { board, fen, arrows:[...] }
+  let setupImportedMiniSquares = null;
+  let setupImportedMiniArrows  = null;
+
+  // ---------- Manifests (edit these paths to match your repo) ----------
+  // name -> URL for CQL file
+  const CQL_MANIFEST = {
+    // "b7_sac": "./cql/b7_sac.cql",
+    "weakd4" : "./cql/weakd4.cql"
+  };
+
+  // db key -> URL for PGN database
+  const PGN_MANIFEST = {
+    // "all": "./pgn/all.pgn",
+    "fischer": "./pgn/Fischer.pgn"
+  };
+
+  // priyomes
+  const PRIYOME_PGN_MANIFEST = {
+  default: "./priyomes/priyomes.pgn"
+};
+
+
+  // studies: PGN file that seeds default studies on boot
+  const STUDY_MANIFEST = {
+    default:"./pgn/Study.pgn",
+    fen_test: "./pgn/default games.pgn",
+    alignment_examples: "./pgn/alignment_examples.pgn"
+  };
+
+  // kick off boot load (non-blocking for UI)
+  bootLoadDefaultStudies();
+
+// name -> { url, description } for *Evals tab* CQL evals list
+  const CQL_EVAL_MANIFEST = {
+    naivealignments: {
+      url: "./cql/naivealignments.cql",
+      description: "Naive alignments."
+    },
+    humanlignments: {
+      url: "./cql/human_alignments.cql",
+      description: "Human alignments."
+    }
+  };
+
+  // All PGN should be loaded through this function
+  // to manage edge cases in chess.js 1.4.0
+  function SanitizedLoadPgn(pgnText) {
+  const raw = String(pgnText || "").replace(/\r/g, "");
+
+  // Merge adjacent brace-comments: "{a} {b}" -> "{a\n\nb}" (repeat until stable).
+  // This preserves the intent of "engine comment" + "human comment" as paragraphs.
+  function mergeAdjacentBraceComments(s) {
+    let out = s;
+    for (let i = 0; i < 200; i++) {
+      const next = out.replace(
+        /\{\s*([\s\S]*?)\s*\}\s*\{\s*([\s\S]*?)\s*\}/g,
+        "{ $1\n\n$2 }"
+      );
+      if (next === out) break;
+      out = next;
+    }
+    return out;
+  }
+
+  const sanitized = mergeAdjacentBraceComments(raw);
+
+  let game = new Chess();
+  let ok = true;
+
+  try {
+    game.loadPgn(sanitized);
+  } catch (e) {
+    ok = false;
+    return {ok, game};
+  }
+    return  {ok, game};
+}
+
+
+  const _cqlCache = new Map(); // name -> text
+  const _pgnCache = new Map(); // db -> Uint8Array
+
+  async function fetchTextCached(url, cache){
+    if (cache.has(url)) return cache.get(url);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
+    const txt = await res.text();
+    cache.set(url, txt);
+    return txt;
+  }
+
+  async function loadCqlByRef(name){
+    if (!name) return null;
+    const url = CQL_MANIFEST[name];
+    if (!url) throw new Error(`Unknown cqlref="${name}" (not in CQL_MANIFEST)`);
+    const txt = await fetchTextCached(url, _cqlCache);
+    qCqlName.textContent = `(manifest) ${name}`;
+    qCqlText.value = txt;
+    updateQueryUi();
+    return txt;
+  }
+
+  async function loadPriyomesFromPgn(url){
+  const text = await fetchTextCached(url, _pgnCache);
+  const games = splitMultiPgn(text);
+
+  const priyomes = [];
+
+  for (const pgn of games){
+    const headers = parseHeaders(pgn);
+
+    // REQUIRED: stable identifier
+    const id = crypto.randomUUID();
+
+    // Position
+    let fen;
+    if (headers.SetUp === "1" && headers.FEN){
+      fen = headers.FEN;
+    } else {
+      const { ok, g } = SanitizedLoadPgn(pgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in loadpr');
+      fen = g.fen();
+    }
+
+    // Optional overlays
+    const tagsByPly = parseDrawTagsByPlyFromPgn(pgn);
+    const d0 = tagsByPly["0"] || {};
+
+    priyomes.push({
+      id,
+      title: headers.Event || "Priyome",
+      subtitle: headers.Description || "",
+      fen,
+      cqlref: headers.cqlref || headers.CQLRef || null,
+      miniSquares: d0.squares || {},
+      miniArrows:  d0.arrows  || [],
+      _pgn: pgn          // keep raw PGN if you want
+    });
+  }
+
+  return priyomes;
+  }
+
+  (async () => {
+  const url = PRIYOME_PGN_MANIFEST.default;
+  const loaded = await loadPriyomesFromPgn(url);
+
+  PRIYOMES.length = 0;
+  PRIYOMES.push(...loaded);
+
+  renderPriyomes();
+})();
+
+  async function getPgnBytesForDb(dbKey){
+    const url = PGN_MANIFEST[dbKey];
+    if (!url) return null;
+    if (_pgnCache.has(dbKey)) return _pgnCache.get(dbKey);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed ${res.status} for ${url}`);
+    const ab = await res.arrayBuffer();
+    const bytes = new Uint8Array(ab);
+    _pgnCache.set(dbKey, bytes);
+    return bytes;
+  }
+
+
+  function ensureStores(gameId){
+    if (!annotations[gameId]) annotations[gameId] = Object.create(null);
+    if (!drawings[gameId]) drawings[gameId] = Object.create(null);
+  }
+
+  function ensureDrawAt(gameId, ply){
+    ensureStores(gameId);
+    const key = String(ply);
+    if (!drawings[gameId][key]){
+      drawings[gameId][key] = { squares:Object.create(null), arrows:[] };
+    }
+    return drawings[gameId][key];
+  }
+
+  function currentDraw(){
+    // In setup mode, drawings apply to the setup position (ply 0).
+    if (isQuerySetupMode){
+      const gid = (currentGame && currentGame.id) ? currentGame.id : (setupDraftId || setupDraftDrawId);
+      return ensureDrawAt(gid, 0);
+    }
+    if (!currentGame) return { squares:Object.create(null), arrows:[] };
+    return ensureDrawAt(currentGame.id, activePly);
+  }
+
+  const Tool = { NONE:'none', SQUARES:'squares', ARROWS:'arrows' };
+  let tool = Tool.NONE;
+  let tapFrom = null;
+
+  // Tool color
+  let toolColor = 'G'; // G,R,B,Y
+  function setToolColor(c){
+    toolColor = c;
+    document.querySelectorAll('.dotBtn').forEach(b => b.classList.toggle('active', b.dataset.color === c));
+    _ensureScratch();
+    scGame.setPigment(c);
+    logLine('OK', `Tool color set to: ${c}`);
+  }
+  document.querySelectorAll('.dotBtn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setToolColor(btn.dataset.color);
+    });
+  });
+  setToolColor(toolColor);
+
+  // Only suppress navigation gestures while a piece is actively being dragged
+  let isDraggingPiece = false;
+
+  // Query setup mode (free placement / trash / spare pieces)
+  let isQuerySetupMode = false;
+
+  // Setup-draft game (for query setup mode)
+  let setupDraftId = null;                 // game id once created
+  const setupDraftDrawId = '__setup__';    // temp drawings bucket before game exists
+
+  function boardObjToFen(posObj){
+    const files = 'abcdefgh';
+    const ranks = [];
+    for (let r=8;r>=1;r--){
+      let row = '';
+      let empties = 0;
+      for (let f=0;f<8;f++){
+        const sq = files[f] + r;
+        const p = posObj[sq];
+        if (!p){ empties++; continue; }
+        if (empties){ row += String(empties); empties = 0; }
+        const c = p[0]; // w/b
+        const t = p[1]; // P,N,B,R,Q,K
+        row += (c === 'w') ? t : t.toLowerCase();
+      }
+      if (empties) row += String(empties);
+      ranks.push(row || '8');
+    }
+    return ranks.join('/') + ' w - - 0 1';
+  }
+
+  function buildSetupPgn(fen, title, preComment=''){
+    const nm = (title || 'Untitled Setup').replace(/"/g, "'");
+    const comment = (preComment && String(preComment).trim()) ? String(preComment).trim() : '';
+    return `[Event "${nm}"]
+[Site "Local"]
+[Date "${todayYMD()}"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "*"]
+[SetUp "1"]
+[FEN "${fen}"]
+
+${comment ? (comment + " ") : ""}*`;
+  }
+
+  function updateSetupPreview(){
+    if (!isQuerySetupMode) return null; _ensureScratch(); ensureMainBoard();
+    const fen = scGame ? scGame.exportFEN() : game.fen();
+    const pgn = buildSetupPgn(fen, `Setup ${todayYMD()}`);
+
+    // Live preview in the bottom card (FEN + PGN) during setup mode
+    if (fenBottom) fenBottom.textContent = fen;
+    if (pgnBottom) pgnBottom.value = pgn;
+    if (bottomMeta) bottomMeta.textContent = 'Setup preview';
+
+    return { fen, pgn };
+  }
+
+  function ensureSetupDraftGame(){
+    const prev = updateSetupPreview();
+    if (!prev) return null;
+    if (setupDraftId) return setupDraftId;
+
+    const title = `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
+    const tags0 = drawTagsCommentFor(setupDraftDrawId, 0);
+    const pgn = buildSetupPgn(prev.fen, title, tags0);
+    const newId = `setup:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+
+    GAMES.unshift({ id:newId, title, opening:'Priyome', result:'*', pgn, isPriyome:true });
+
+    // carry drawings made in setup mode, if any
+    if (drawings[setupDraftDrawId]){
+      drawings[newId] = JSON.parse(JSON.stringify(drawings[setupDraftDrawId]));
+    }
+
+    ensureStudy(currentStudyName, [newId]);
+    setCurrentStudy(currentStudyName);
+
+    setupDraftId = newId;
+    return newId;
+  }
+
+  function clearSetupDraftTemp(){
+    setupDraftId = null;
+    drawings[setupDraftDrawId] = null;
+  }
+
+
+  function setTool(t){
+    tool = t;
+    tapFrom = null;
+    toolStatusEl.textContent = t;
+    toolDotsEl.hidden = (t === Tool.NONE);
+
+    document.getElementById('btnSquares').classList.toggle('on', t === Tool.SQUARES);
+    document.getElementById('btnArrows').classList.toggle('on', t === Tool.ARROWS);
+    logLine('OK', `Tool set to: ${t}`);
+  }
+
+  // ---------- board sizing ----------
+function sizeBoardSquare(){
+  // layout.html-style sizing: board fills available panel space while staying square
+  const areaRect = boardArea.getBoundingClientRect();
+  const cs = getComputedStyle(boardArea);
+
+  const padX = (parseFloat(cs.paddingLeft)||0) + (parseFloat(cs.paddingRight)||0);
+  const padY = (parseFloat(cs.paddingTop)||0) + (parseFloat(cs.paddingBottom)||0);
+
+  const availW = Math.max(0, areaRect.width  - padX);
+  const availH = Math.max(0, areaRect.height - padY);
+
+  const inPiecesMode = !!isQuerySetupMode;
+  const maxSide = inPiecesMode ? 600 : 800;
+
+  let side;
+  let height;
+
+  if (inPiecesMode){
+    // Keep the "pieces mode" taller board, but ensure it fits in the panel.
+    side = Math.floor(Math.min(maxSide, availW, availH / 1.3));
+    height = Math.floor(side * 1.3);
+  } else {
+    side = Math.floor(Math.min(maxSide, availW, availH));
+    height = side;
+  }
+
+  boardWrap.style.width  = side + 'px';
+  boardWrap.style.height = height + 'px';
+
+  positionMainOverlayToGrid();
+}
+
+  // Use ResizeObserver to keep the board sized like layout.html
+  let _boardRO = null;
+  function ensureBoardRO(){
+    if (_boardRO) return;
+    if (typeof ResizeObserver === 'undefined') return;
+    _boardRO = new ResizeObserver(() => {
+      sizeBoardSquare();
+      if (board && typeof board.resize === 'function') board.resize();
+      redrawDrawings();
+      resizeMiniBoards();
+    });
+    _boardRO.observe(boardArea);
+  }
+
+
+  // ---------- overlay ----------
+  function clearOverlay(){ while(overlay.firstChild) overlay.removeChild(overlay.firstChild); }
+
+  function ensureDefs(){
+    let defs = overlay.querySelector('defs');
+    if (!defs){
+      defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+      overlay.appendChild(defs);
+    }
+    for (const c of ['G','R','B','Y']){
+      if (!overlay.querySelector(`#arrowHead${c}`)){
+        const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
+        marker.setAttribute('id',`arrowHead${c}`);
+        marker.setAttribute('markerWidth','5');
+        marker.setAttribute('markerHeight','5');
+        marker.setAttribute('refX','4.6');
+        marker.setAttribute('refY','2.5');
+        marker.setAttribute('orient','auto');
+        marker.setAttribute('markerUnits','userSpaceOnUse');
+        const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+        path.setAttribute('d','M0,0 L5,2.5 L0,5 L1.2,2.5 Z');
+        path.setAttribute('fill', colorHex(c));
+        marker.appendChild(path);
+        defs.appendChild(marker);
+      }
+    }
+  }
+
+  function squareToXY(sq){
+    const f = sq.charCodeAt(0)-97;
+    const r = parseInt(sq[1],10)-1;
+    if (orientation === 'white'){
+      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
+    } else {
+      return { x:(7-f+0.5)*12.5, y:(r+0.5)*12.5 };
+    }
+  }
+  function positionMainOverlayToGrid(){
+    // In setup mode, chessboard.js adds a spare-pieces strip inside #board, making #boardWrap taller than the 8x8 grid.
+    // Align overlay to the actual grid (div.board-b72b1), not the entire wrap.
+    const wrap = boardWrap;
+    const grid = wrap ? wrap.querySelector('.board-b72b1') : null;
+    if (!wrap || !overlay) return;
+    if (!grid){
+      overlay.style.left = '0px';
+      overlay.style.top = '0px';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      return;
+    }
+    const wr = wrap.getBoundingClientRect();
+    const gr = grid.getBoundingClientRect();
+    overlay.style.left = (gr.left - wr.left) + 'px';
+    overlay.style.top  = (gr.top  - wr.top)  + 'px';
+    overlay.style.width  = gr.width + 'px';
+    overlay.style.height = gr.height + 'px';
+  }
+
+
+  function drawSquare(sq, c){
+    const {x,y} = squareToXY(sq);
+    const size = 12.5;
+    const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', x - size/2);
+    rect.setAttribute('y', y - size/2);
+    rect.setAttribute('width', size);
+    rect.setAttribute('height', size);
+    rect.setAttribute('fill', colorHex(c));
+    rect.setAttribute('opacity', '0.82');
+    rect.setAttribute('shape-rendering','crispEdges');
+    rect.setAttribute('shape-rendering','crispEdges');
+    overlay.appendChild(rect);
+  }
+
+  function drawArrow(from, to, c){
+    const a = squareToXY(from), b = squareToXY(to);
+    const dx=b.x-a.x, dy=b.y-a.y;
+    const len=Math.hypot(dx,dy)||1;
+    const shrink=4.6;
+    const ux=dx/len, uy=dy/len;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', a.x);
+    line.setAttribute('y1', a.y);
+    line.setAttribute('x2', b.x - ux*shrink);
+    line.setAttribute('y2', b.y - uy*shrink);
+    line.setAttribute('stroke', colorHex(c));
+    line.setAttribute('stroke-width', '0.34');
+    line.setAttribute('stroke-linecap','round');
+    line.setAttribute('opacity', '0.92');
+    line.setAttribute('marker-end', `url(#arrowHead${c})`);
+    overlay.appendChild(line);
+  }
+
+  function redrawDrawings(){
+    clearOverlay();
+    ensureDefs();
+    if (!currentGame) return;
+
+    const d = currentDraw();
+
+    // squares
+    for (const sq of Object.keys(d.squares)){
+      const c = d.squares[sq];
+      if (c) drawSquare(sq, c);
+    }
+
+    // arrows
+    for (const ar of d.arrows){
+      drawArrow(ar.from, ar.to, ar.color || 'G');
+    }
+
+    // If user started an arrow, show an immediate anchor dot so they know the tool is active.
+    if (tool === Tool.ARROWS && tapFrom){
+      try{
+        const {x,y} = squareToXY(tapFrom);
+        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        dot.setAttribute('cx', x);
+        dot.setAttribute('cy', y);
+        dot.setAttribute('r', '0.85');
+        dot.setAttribute('fill', colorHex(toolColor || 'G'));
+        dot.setAttribute('opacity', '0.95');
+        overlay.appendChild(dot);
+      }catch(_e){}
+    }
+  }
+
+  // ---------- PGN draw-tags helpers ----------
+  function buildCslTag(d){
+    const items = Object.keys(d.squares || {}).sort().map(sq => `${d.squares[sq]}${sq}`);
+    return items.length ? `[%csl ${items.join(',')}]` : '';
+  }
+  function buildCalTag(d){
+    const items = (d.arrows || []).map(a => `${a.color || 'G'}${a.from}${a.to}`);
+    return items.length ? `[%cal ${items.join(',')}]` : '';
+  }
+
+  function drawTagsCommentFor(gameId, ply){
+    const d = drawings[gameId]?.[String(ply)];
+    if (!d) return '';
+    const csl = buildCslTag(d);
+    const cal = buildCalTag(d);
+    const tags = [csl, cal].filter(Boolean).join(' ');
+    return tags ? `{ ${tags} }` : '';
+  }
+
+  function parseDrawTagsByPlyFromPgn(pgn){
+    const out = Object.create(null);
+    const body = String(pgn || "")
+      .replace(/\r/g,'')
+      .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
+      .trim();
+
+    let ply = 0;
+    const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
+    let m;
+
+    while ((m = re.exec(body)) !== null){
+      const tok = m[0];
+
+      if (tok.startsWith('{')){
+        const txt = tok.slice(1,-1);
+        const cslM = txt.match(/\[%csl\s+([^\]]+)\]/);
+        const calM = txt.match(/\[%cal\s+([^\]]+)\]/);
+
+        if (cslM || calM){
+          const key = String(ply);
+          if (!out[key]) out[key] = { squares:Object.create(null), arrows:[] };
+
+          if (cslM){
+            for (const part of cslM[1].split(/[\s,]+/).map(s=>s.trim()).filter(Boolean)){
+              const c = part[0], sq = part.slice(1);
+              if (/^[GRBY]$/.test(c) && /^[a-h][1-8]$/.test(sq)) out[key].squares[sq] = c;
+            }
+          }
+          if (calM){
+            for (const part of calM[1].split(/[\s,]+/).map(s=>s.trim()).filter(Boolean)){
+              const c = part[0];
+              const rest = part.slice(1);
+              const from = rest.slice(0,2), to = rest.slice(2,4);
+              if (/^[GRBY]$/.test(c) && /^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)){
+                out[key].arrows.push({from,to,color:c});
+              }
+            }
+          }
+        }
+        continue;
+      }
+
+      if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
+      ply++;
+    }
+
+    return out;
+  }
+
+  function parseCommentsByPlyFromPgn(pgn){
+    const out = Object.create(null);
+    const body = String(pgn || "")
+      .replace(/\r/g,'')
+      .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
+      .trim();
+
+    let ply = 0;
+    const re = /\{[^}]*\}|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|\S+/g;
+    let m;
+
+    while ((m = re.exec(body)) !== null){
+      const tok = m[0];
+
+      if (tok.startsWith('{')){
+        let txt = tok.slice(1,-1);
+        txt = txt.replace(/\[%csl\s+[^\]]+\]/g, '').replace(/\[%cal\s+[^\]]+\]/g, '');
+        txt = txt.replace(/\s+/g,' ').trim();
+
+        if (txt){
+          const key = String(ply);
+          out[key] = out[key] ? (out[key] + ' ' + txt).trim() : txt;
+        }
+        continue;
+      }
+
+      if (/^\d+\.(?:\.\.)?$/.test(tok)) continue;
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) break;
+      ply++;
+    }
+
+    return out;
+  }
+
+  function syncDrawingsToPgn(){
+    updateBottomCard();
+    renderMoves();
+  }
+
+  function toggleSquare(gameId, sq){
+    const ply = isQuerySetupMode ? 0 : activePly;
+    const d = ensureDrawAt(gameId, ply);
+    const cur = d.squares[sq];
+    if (cur === toolColor){
+      delete d.squares[sq];
+      logLine('OK', `Square ${sq} removed @ ply ${ply}`);
+    } else {
+      d.squares[sq] = toolColor;
+      logLine('OK', `Square ${sq} => ${toolColor} @ ply ${ply}`);
+    }
+    redrawDrawings();
+    syncDrawingsToPgn();
+  }
+
+  function toggleArrow(gameId, from, to){
+    if (from === to) return;
+    const ply = isQuerySetupMode ? 0 : activePly;
+    const d = ensureDrawAt(gameId, ply);
+    const key = (from < to) ? `${from}-${to}` : `${to}-${from}`;
+    const arr = d.arrows;
+
+    const idx = arr.findIndex(x => {
+      const k = (x.from < x.to) ? `${x.from}-${x.to}` : `${x.to}-${x.from}`;
+      return k === key;
+    });
+
+    if (idx >= 0){
+      if ((arr[idx].color || 'G') === toolColor){
+        arr.splice(idx, 1);
+        logLine('OK', `Arrow ${from}->${to} removed @ ply ${ply}`);
+      } else {
+        arr[idx] = { from, to, color: toolColor };
+        logLine('OK', `Arrow ${from}->${to} recolored to ${toolColor} @ ply ${activePly}`);
+      }
+    } else {
+      arr.push({ from, to, color: toolColor });
+      logLine('OK', `Arrow ${from}->${to} added (${toolColor}) @ ply ${ply}`);
+    }
+
+    redrawDrawings();
+    syncDrawingsToPgn();
+  }
+
+  function clearAll(gameId){
+    const d = ensureDrawAt(gameId, activePly);
+    d.squares = Object.create(null);
+    d.arrows = [];
+    logLine('OK', `Cleared drawings @ ply ${activePly}.`);
+    redrawDrawings();
+    syncDrawingsToPgn();
+  }
+
+  // ---------- tabs ----------
   function setTab(which){
     const map = {
       moves:    ['tabMoves','paneMoves'],
@@ -898,28 +2050,593 @@
       evals:    ['tabEvals','paneEvals'],
       errors:   ['tabErrors','paneErrors'],
     };
+
     for (const k of Object.keys(map)){
       const [t,p] = map[k];
-      const tabEl = document.getElementById(t);
-      const paneEl = document.getElementById(p);
-      if (tabEl) tabEl.classList.toggle('active', k===which);
-      if (paneEl) paneEl.classList.toggle('active', k===which);
+      document.getElementById(t).classList.toggle('active', k===which);
+      document.getElementById(p).classList.toggle('active', k===which);
     }
-    // Priyomes tab shows mini boards; size them once visible.
+    logLine('OK', `Tab: ${which}`);
+
     if (which === 'priyomes'){
-      setTimeout(() => { try { renderPriyomes?.(); } catch(_){} try { resizeMiniBoards?.(); } catch(_){} }, 0);
+      // ensure mini boards are sized once visible
+      setTimeout(() => { renderPriyomes(); resizeMiniBoards(); }, 0);
     }
   }
 
-function parseHeaders(pgn){
+  document.getElementById('tabMoves').addEventListener('click', () => setTab('moves'));
+  document.getElementById('tabPriyomes').addEventListener('click', () => setTab('priyomes'));
+  document.getElementById('tabGames').addEventListener('click', () => setTab('games'));
+  document.getElementById('tabQuery').addEventListener('click', () => setTab('query'));
+  document.getElementById('tabEvals').addEventListener('click', () => setTab('evals'));
+  document.getElementById('tabErrors').addEventListener('click', () => setTab('errors'));
+
+  // ---------- move list / nav ----------
+  
+  function rebuildToPly(ply){
+    resetGameToStartFen();
+    for (let i=0;i<ply;i++){
+      const mv = verboseHistory[i];
+      if (!mv) break;
+      game.move({from:mv.from,to:mv.to,promotion:mv.promotion||'q'});
+    }
+  }
+
+
+  function setStatus(){
+    let s = `${game.turn()==='w'?'White':'Black'} to move.`;
+    if (game.inCheck()) s += ' (Check)';
+    if (game.isGameOver()){
+      if (game.isCheckmate()) s = `Checkmate. ${game.turn()==='w'?'Black':'White'} wins.`;
+      else if (game.isDraw()) s = 'Draw.';
+      else s = 'Game over.';
+    }
+    statusEl.textContent = s;
+  }
+
+  function setFen(){
+    const f = game.fen();    fenBottom.textContent = f;
+  }
+
+  function mergedUserComment(gameId, ply){
+    ensureStores(gameId);
+    return (annotations[gameId] && annotations[gameId][ply]) ? String(annotations[gameId][ply]).trim() : "";
+  }
+
+function renderMoves(){
+  movesEl.innerHTML = '';
+  if (!currentGame) return;
+
+  const total = verboseHistory.length;
+  const rows = Math.ceil(total / 2);
+
+  function mkBtn(idx){
+    const mv = verboseHistory[idx];
+    if (!mv) return null;
+
+    const ply = idx + 1; // activePly counts half-moves applied
+    const b = document.createElement('button');
+    b.className = 'plyBtn' + (activePly === ply ? ' active' : '');
+    b.textContent = mv.san || '?';
+    b.onclick = () => gotoPly(ply); // gotoPly should alias to jumpTo
+    return b;
+  }
+
+  for (let r = 0; r < rows; r++){
+    const wIdx = r * 2;
+    const bIdx = wIdx + 1;
+
+    const row = document.createElement('div');
+    row.className = 'moveRow';
+
+    const mn = document.createElement('div');
+    mn.className = 'mn';
+    mn.textContent = (r + 1) + '.';
+    row.appendChild(mn);
+
+    const wBtn = mkBtn(wIdx);
+    const bBtn = mkBtn(bIdx);
+
+    row.appendChild(wBtn ? wBtn : document.createElement('div'));
+    row.appendChild(bBtn ? bBtn : document.createElement('div'));
+
+    // Show ONLY regular comments (no [%cal]/[%csl] directives)
+    const wC = wBtn ? mergedUserComment(currentGame.id, wIdx + 1) : '';
+    const bC = bBtn ? mergedUserComment(currentGame.id, bIdx + 1) : '';
+    const combined = [wC, bC].filter(Boolean).join(' • ').trim();
+
+    if (combined){
+      const cWrap = document.createElement('div');
+      cWrap.className = 'moveCmt';
+      const c = document.createElement('div');
+      c.className = 'cmt';
+      c.textContent = combined;
+      cWrap.appendChild(c);
+      row.appendChild(cWrap);
+    }
+
+    movesEl.appendChild(row);
+  }
+
+  // Auto-scroll active ply inside the moves panel ONLY (do not scroll page)
+  const active = movesEl.querySelector('button.plyBtn.active');
+  if (active){
+    const scroller = movesEl;
+    const top =
+      active.offsetTop
+      - scroller.clientHeight / 2
+      + active.clientHeight / 2;
+
+    scroller.scrollTo({ top, behavior: 'smooth' });
+  }
+}
+
+  function updateAnnoUI(){
+    ensureStores(currentGame.id);
+    annoTitleEl.textContent = `Annotation (ply ${activePly}${activePly===0?' / start':''})`;
+    annoTextEl.value = annotations[currentGame.id][activePly] || '';
+  }
+
+  function updateBottomCard(){
+    if (!currentGame){
+      bottomMeta.textContent = '—';
+      pgnBottom.value = '';
+      return;
+    }
+
+
+
+    bottomMeta.textContent = currentGame.title;
+    pgnBottom.value = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
+  }
+  function syncPriyomeTerminal(){
+    try{
+      if (!currentGame || !currentGame.isPriyome || !currentGame.priyomeId) return;
+      const p = PRIYOMES.find(pp => pp.id === currentGame.priyomeId);
+      if (!p) return;
+      // terminal position (end of mainline)
+      const fen = (game && typeof game.fen === 'function') ? game.fen() : (p.fen || 'start');
+      p.fen = fen;
+      // update mini-boards display
+      renderPriyomes();
+    }catch(_e){}
+  }
+
+
+
+  function jumpTo(ply){
+    activePly = Math.max(0, Math.min(ply, verboseHistory.length));
+    rebuildToPly(activePly);
+    setBoardFen(`jumpTo ply ${activePly}`, game.fen(), false);
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    updateBottomCard();
+    logLine('OK', `Jump to ply ${activePly}`);
+  }
+
+// compatibility: older/newer UI code calls gotoPly()
+function gotoPly(ply){
+  jumpTo(ply);
+}
+
+
+  // ---------- board callbacks ----------
+  function onDragStart(source, piece){
+    // In setup mode, allow dragging any piece freely
+    if (isQuerySetupMode) {
+      isDraggingPiece = true;
+      return true;
+    }
+
+    if (tool !== Tool.NONE) return false;
+    if (game.isGameOver()) return false;
+    if (activePly !== verboseHistory.length) return false;
+    if (game.turn()==='w' && piece.startsWith('b')) return false;
+    if (game.turn()==='b' && piece.startsWith('w')) return false;
+
+    isDraggingPiece = true;
+    return true;
+  }
+
+  function onDrop(source,target){
+    // Setup mode: just accept the drop; keep board state (no chess.js validation)
+    if (isQuerySetupMode){
+      isDraggingPiece = false;
+      // Allow trashing pieces
+      return;
+    }
+    let mv;
+    try {
+      mv = game.move({from:source,to:target});
+    } catch (e) {
+      return 'snapback';
+  }
+
+
+    isDraggingPiece = false;
+    if (!mv) return 'snapback';
+    verboseHistory = game.history({verbose:true});
+    activePly = verboseHistory.length;
+    setStatus(); setFen(); renderMoves(); updateAnnoUI();
+    updateBottomCard();
+    syncPriyomeTerminal();
+    logLine('OK', `Move: ${mv.san}`);
+  }
+
+  function onSnapEnd(){
+    isDraggingPiece = false;
+    if (!isQuerySetupMode){
+      setBoardFen('onSnapEnd', game.fen(), false);
+    }
+    if (isQuerySetupMode) updateSetupPreview();
+    positionMainOverlayToGrid();
+    redrawDrawings();
+  }
+
+  document.addEventListener('touchmove', (e) => {
+    if (isDraggingPiece) e.preventDefault();
+  }, { passive:false });
+
+  window.addEventListener('mouseup', () => { isDraggingPiece = false; });
+
+  // ---------- square detection ----------
+  function squareFromTarget(t){
+    const el = t.closest?.('div.square-55d63');
+    if (!el) return null;
+    const sqClass = Array.from(el.classList).find(c => /^square-[a-h][1-8]$/.test(c));
+    return sqClass ? sqClass.slice('square-'.length) : null;
+  }
+
+  document.getElementById('boardArea').addEventListener('click', (e) => {
+    if (!currentGame) return;
+    // In setup mode, allow squares/arrows too (but don't interfere with dragging)
+    if (isQuerySetupMode && isDraggingPiece) return;
+    if (tool === Tool.NONE) return;
+
+    const sq = squareFromTarget(e.target);
+    if (!sq) return;
+
+    if (tool === Tool.SQUARES){
+      toggleSquare(currentGame.id, sq);
+      return;
+    }
+
+    if (tool === Tool.ARROWS){
+      if (!tapFrom){
+        tapFrom = sq;
+        redrawDrawings();
+        logLine('OK', `Arrow start = ${sq} (tap destination)`);
+      } else {
+        toggleArrow(currentGame.id, tapFrom, sq);
+        tapFrom = null;
+      }
+    }
+  });
+
+  // ---------- games list ----------
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  
+  function deletePriyomeGame(gameId){
+    try{
+      const g = GAMES.find(x=>x.id===gameId);
+      if (!g) return;
+      // remove from studies
+      for (const k of Object.keys(STUDIES)){
+        const st = STUDIES[k];
+        st.gameIds = st.gameIds.filter(id=>id!==gameId);
+      }
+      // remove linked priyome entry
+      if (g.priyomeId){
+        const idx = PRIYOMES.findIndex(p=>p.id===g.priyomeId);
+        if (idx>=0) PRIYOMES.splice(idx,1);
+        if (selectedPriyomeId === g.priyomeId) selectedPriyomeId = null;
+      }
+      // remove game
+      const gi = GAMES.findIndex(x=>x.id===gameId);
+      if (gi>=0) GAMES.splice(gi,1);
+      // clear drawings
+      delete drawings[gameId];
+
+      // if current, load another
+      if (currentGame && currentGame.id===gameId){
+        const next = getStudyGames()[0] || null;
+        if (next) loadGame(next.id);
+        else { currentGame=null; game.reset(); setBoardFen('delete priyome', 'start', false); }
+      }
+      renderGameList();
+      renderPriyomes();
+      logLine('OK', `Deleted Priyome game ${gameId}`);
+    }catch(e){
+      logStack('ERR','Delete Priyome failed: ',e);
+    }
+  }
+function renderGameList(){
+    gameListEl.innerHTML = '';
+    for (const g of getStudyGames()){
+      const card = document.createElement('div');
+      card.className = 'gameCard' + (currentGame?.id === g.id ? ' active' : '');
+      card.innerHTML = `
+        <div class="gameTitle">${escapeHtml(g.title)}</div>
+        <div class="meta"><span class="kbd">${escapeHtml(g.result || '*')}</span><span>${escapeHtml(g.opening || '')}</span></div>
+      `;
+      card.onclick = () => { loadGame(g.id, { startAtFirst:true }); syncPriyomeTerminal();
+      setTab('moves'); };
+      gameListEl.appendChild(card);
+    }
+  }
+
+  function ensureMainBoard(){
+    _ensureScratch();
+    if (scView) return;
+
+    const boardDiv = document.getElementById('board');
+    if (!boardDiv) throw new Error('Board mount #board not found');
+
+    // Ensure the board container can actually fill its parent.
+    boardDiv.style.width = '100%';
+    boardDiv.style.height = '100%';
+
+    scView = new BoardView(boardDiv, scGame, { minSizePx: 180 });
+    scView.fitToContainer();
+    scView.render();
+
+    // ResizeObserver: keep board perfectly sized to its container
+    ensureBoardRO();
+    sizeBoardSquare();
+    if (board && typeof board.resize === 'function') board.resize();
+  }
+
+  function loadGame(gameId, opts={}){
+    const startAtFirst = !!opts.startAtFirst;
+
+    const g = GAMES.find(x => x.id===gameId);
+    if (!g) return;
+
+    // leaving setup mode when loading games
+    if (isQuerySetupMode) setQuerySetupMode(false);
+
+    currentGame = g;
+    ensureStores(g.id);
+    gamePill.innerHTML = '';
+          const tspan = document.createElement('span');
+          tspan.textContent = g.title;
+          gamePill.appendChild(tspan);
+          if (g.isPriyome){
+            const xb = document.createElement('button');
+            xb.className = 'miniX';
+            xb.type = 'button';
+            xb.textContent = '✕';
+            xb.title = 'Delete Priyome game';
+            xb.addEventListener('click', (ev)=>{ ev.stopPropagation(); deletePriyomeGame(g.id); });
+            gamePill.appendChild(xb);
+          }
+
+    drawings[g.id] = parseDrawTagsByPlyFromPgn(g.pgn);
+
+    const parsedComments = parseCommentsByPlyFromPgn(g.pgn);
+    const existing = annotations[g.id] || Object.create(null);
+    const existingKeys = Object.keys(existing);
+    if (existingKeys.length === 0){
+      annotations[g.id] = parsedComments;
+    } else {
+      for (const k of Object.keys(parsedComments)){
+        if (!existing[k]) existing[k] = parsedComments[k];
+      }
+      annotations[g.id] = existing;
+    }
+
+    game.reset();
+
+    const { ok, game : gg } = SanitizedLoadPgn(g.pgn);
+    if (!ok) throw new Error('SanitizedLoadPgn err in loadgame');
+    game = gg;
+    // Determine ply-0 start position from PGN headers (FEN/SetUp).
+    try {
+      const h = (typeof game.header === 'function') ? game.header() : null;
+      const fenTag = h && (h.FEN || h.Fen || h.fen);
+      currentStartFen = (fenTag && String(fenTag).trim()) ? String(fenTag).trim() : 'start';
+      logLine('OK', `PGN start FEN for "${g.title}": ${currentStartFen}`);
+    } catch (e) {
+      currentStartFen = 'start';
+      logStack('WARN', 'Failed to read PGN headers for start FEN; using standard start.', e);
+    }
+
+
+    verboseHistory = game.history({verbose:true});
+    activePly = verboseHistory.length;
+
+    sizeBoardSquare();
+    ensureMainBoard();
+
+    const target = startAtFirst ? 0 : verboseHistory.length;
+    jumpTo(target);
+
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    updateBottomCard();
+    syncPriyomeTerminal();
+    renderGameList();
+  }
+
+  // ---------- export ----------
+  function downloadText(filename, text){
+    const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
+    logLine('OK', `Downloaded: ${filename}`);
+  }
+
+ function pgnWithComments(gameId, basePgn){
+  const raw = String(basePgn || "").replace(/\r/g, "");
+
+  // 1) Preserve the ORIGINAL header block exactly (do not regenerate headers).
+  // Split at the first blank line (PGN convention: headers then blank line then movetext).
+  let headerBlock = "";
+  let sepIdx = -1;
+  {
+    const m = raw.match(/\n\s*\n/);
+    if (m && typeof m.index === "number") sepIdx = m.index;
+  }
+  if (sepIdx >= 0) headerBlock = raw.slice(0, sepIdx).replace(/\s+$/g, "");
+
+  // 2) Determine result token (prefer header, else fallback to '*').
+  let resultToken = "*";
+  const resM = headerBlock.match(/^\[Result\s+"([^"]*)"\]\s*$/m);
+  if (resM && resM[1]) resultToken = resM[1];
+
+  // 3) Parse moves ONCE via chess.js to get a reliable mainline history.
+  // We use chess.js only for move parsing/history, not for PGN/header output.
+  const {ok, game : tmp } = SanitizedLoadPgn(raw);
+  if (!ok) throw new Error('SanitizedLoadPgn err in pgnwithcomments');
+
+  const hist = tmp.history({ verbose: true });
+
+  // 4) Rebuild movetext while injecting:
+  //    - draw tags: drawTagsCommentFor(gameId, ply)  (already wrapped like "{ [%csl ...] [%cal ...] }")
+  //    - user comments: mergedUserComment(gameId, ply) (we wrap as "{ ... }")
+  const parts = [];
+
+  function pushPlyExtras(ply){
+    const tag = drawTagsCommentFor(gameId, ply);
+    if (tag) parts.push(tag);
+
+    const c = mergedUserComment(gameId, ply);
+    if (c) parts.push(`{ ${String(c).trim()} }`);
+  }
+
+  // Start-position extras (ply 0)
+  pushPlyExtras(0);
+
+  for (let i = 0; i < hist.length; i++){
+    const mv = hist[i];
+    const ply = i + 1;
+
+    if (i % 2 === 0){
+      const moveNo = (i / 2) + 1;
+      parts.push(`${moveNo}. ${mv.san}`);
+    } else {
+      parts.push(mv.san);
+    }
+
+    pushPlyExtras(ply);
+  }
+
+  // Append result token
+  parts.push(resultToken);
+
+  const movetext = parts.join(" ").replace(/\s+/g, " ").trim();
+
+  // If there were headers, keep the canonical blank line between headers and movetext.
+  return headerBlock ? `${headerBlock}\n\n${movetext}` : movetext;
+}
+
+  document.getElementById('btnExportGame').onclick = () => {
+    if (!currentGame) return;
+    downloadText(`${currentGame.title.replace(/\s+/g,'_')}.pgn`, pgnWithComments(currentGame.id, currentGame.pgn) + '\n');
+  };
+  document.getElementById('btnExportStudy').onclick = () => {
+    const blocks = GAMES.map(g => pgnWithComments(g.id, g.pgn));
+    downloadText(`Study.pgn`, blocks.join('\n\n\n') + '\n');
+  };
+
+  // ---------- buttons ----------
+  document.getElementById('btnPrev').onclick = () => { if (game && !isQuerySetupMode) jumpTo(activePly - 1); };
+  document.getElementById('btnNext').onclick = () => { if (game && !isQuerySetupMode) jumpTo(activePly + 1); };
+
+  document.getElementById('btnFlip').onclick = () => {
+    if (!board) return;
+    board.flip();
+    orientation = (orientation==='white') ? 'black' : 'white';
+    redrawDrawings();
+    logLine('OK', `Flip => ${orientation}`);
+  };
+
+  document.getElementById('btnReset').onclick = () => {
+    if (!board || !game) return;
+
+    if (isQuerySetupMode){
+      // reset to empty in setup mode
+      setBoardFen('setup mode: clear board', '8/8/8/8/8/8/8/8', false);
+      logLine('OK', 'Setup mode: cleared board.');
+      return;
+    }
+
+    game.reset();
+    verboseHistory = [];
+    activePly = 0;
+    board.start(false);
+    if (typeof board.resize === 'function') board.resize();
+    setStatus(); setFen(); renderMoves(); updateAnnoUI(); redrawDrawings();
+    updateBottomCard();
+    logLine('OK', 'Reset line to start position.');
+  };
+
+  document.getElementById('btnSquares').onclick = () => {
+    setTool(tool===Tool.SQUARES ? Tool.NONE : Tool.SQUARES);
+  };
+  document.getElementById('btnArrows').onclick = () => {
+    setTool(tool===Tool.ARROWS ? Tool.NONE : Tool.ARROWS);
+  };
+  document.getElementById('btnClear').onclick = () => { if(currentGame){ clearAll(currentGame.id); } };
+
+  annoTextEl.addEventListener('input', () => {
+    if (!currentGame) return;
+    if (isQuerySetupMode) return;
+    ensureStores(currentGame.id);
+    annotations[currentGame.id][activePly] = annoTextEl.value;
+    updateBottomCard();
+    renderMoves();
+    logLine('OK', `Annotation saved for ply ${activePly} (${annoTextEl.value.length} chars)`);
+  });
+
+  window.addEventListener('resize', () => {
+    sizeBoardSquare();
+    positionMainOverlayToGrid();
+    redrawDrawings();
+    if (board && typeof board.resize === 'function') board.resize();
+    resizeMiniBoards();
+  });
+
+  // ---------- Import PGN modal ----------
+  function openImportModal(){
+    importModalBackdrop.classList.add('open');
+    importModalBackdrop.setAttribute('aria-hidden','false');
+    importPgnText.value = '';
+    setTimeout(() => importPgnText.focus(), 0);
+    logLine('OK', 'Opened Import PGN modal.');
+  }
+  function closeImportModal(){
+    importModalBackdrop.classList.remove('open');
+    importModalBackdrop.setAttribute('aria-hidden','true');
+    logLine('OK', 'Closed Import PGN modal.');
+  }
+
+  btnImportPgn.addEventListener('click', () => openImportModal());
+  btnImportCancel.addEventListener('click', () => closeImportModal());
+  importModalBackdrop.addEventListener('click', (e) => {
+    if (e.target === importModalBackdrop) closeImportModal();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && importModalBackdrop.classList.contains('open')) closeImportModal();
+  });
+
+  function parseHeaders(pgn){
     const headers = {};
-    const headerRe = /^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
     let m;
-    while ((m = headerRe.exec(String(pgn || ""))) !== null){
+    while ((m = headerRe.exec(pgn)) !== null){
       headers[m[1]] = m[2];
     }
     return headers;
   }
+
   function splitMultiPgn(text){
     const t = (text || "").trim();
     if (!t) return [];
@@ -927,454 +2644,16 @@ function parseHeaders(pgn){
     return parts.length ? parts : [t];
   }
 
-  // ----------------------------- Persistent store -----------------------------
-  const LS_GAMES = "pry_games_v2";
-  const LS_STUDY = "pry_active_study_v2";
-  const LS_PRIYOMES = "pry_priyomes_v2";
-
-  function loadJson(key, fallback){
-    try{ const v = JSON.parse(localStorage.getItem(key) || ""); return v ?? fallback; }catch{ return fallback; }
-  }
-  function saveJson(key, v){
-    try{ localStorage.setItem(key, JSON.stringify(v)); }catch{}
-  }
-
-  // A "study" is just a named list of game indices.
-  function defaultState(){
-    return {
-      studies: { "Default": { name:"Default", gameIdx: [] } },
-      activeStudy: "Default",
-      games: [], // array of { id, pgn }
-      priyomes: [] // array of { id, name, fen, cql, createdAt }
-    };
-  }
-
-  let STATE = (function(){
-    const base = defaultState();
-    const games = loadJson(LS_GAMES, base.games);
-    const activeStudy = localStorage.getItem(LS_STUDY) || base.activeStudy;
-    const priyomes = loadJson(LS_PRIYOMES, base.priyomes);
-    const studies = loadJson("pry_studies_v2", base.studies);
-    // Reconcile: ensure active study exists
-    if (!studies[activeStudy]) studies[base.activeStudy] = base.studies[base.activeStudy];
-    return { games, studies, activeStudy: (studies[activeStudy] ? activeStudy : base.activeStudy), priyomes };
-  })();
-
-  function persist(){
-    saveJson(LS_GAMES, STATE.games);
-    saveJson("pry_studies_v2", STATE.studies);
-    localStorage.setItem(LS_STUDY, STATE.activeStudy);
-    saveJson(LS_PRIYOMES, STATE.priyomes);
-  }
-
-  // ----------------------------- ScratchChess wiring -----------------------------
-  const boardMount = $("boardMount");
-  const spareMount = $("spareMount");
-
-  const game = createGame({ Event:"Priyome", Site:"priyomes.com" });
-  const boardView = new BoardView(boardMount, game, { spareDiv: spareMount, minSizePx: 180 });
-
-  // UI DOM we keep from original layout
-  const movesEl = $("moves");
-  const fenBottom = $("fenBottom");
-  const pgnBottom = $("pgnBottom");
-  const bottomMeta = $("bottomMeta");
-
-  const btnPrev = $("btnPrev");
-  const btnNext = $("btnNext");
-
-  // Setup / Priyome creation row
-  const setupRow = $("setupRow");
-  const btnAddPriyome = $("btnAddPriyome");
-  const btnCancelPriyome = $("btnCancelPriyome");
-  const btnPlayFromHere = $("btnPlayFromHere");
-  const btnSetupImportPgn = $("btnSetupImportPgn");
-  const setupPgnFile = $("setupPgnFile");
-
-  // Tabs
-  const paneMoves = $("paneMoves");
-  const panePriyomes = $("panePriyomes");
-  const paneQuery = $("paneQuery");
-  const paneStudies = $("paneStudies");
-  const tabMoves = $("tabMoves");
-  const tabPriyomes = $("tabPriyomes");
-  const tabQuery = $("tabQuery");
-  const tabStudies = $("tabStudies");
-
-  // Priyomes panel
-  const prListEl = $("prList");
-  const btnPriyomesNew = $("btnPriyomesNew");
-
-  // Studies panel
-  const gameListEl = $("gameList");
-  const btnImportPgn = $("btnImportPgn");
-
-  // Import modal
-  const importModalBackdrop = $("importModalBackdrop");
-  const importPgnText = $("importPgnText");
-  const btnImportCancel = $("btnImportCancel");
-  const btnImportAdd = $("btnImportAdd");
-
-  // Query panel
-  const qCqlText = $("qCqlText");
-  const qRun = $("qRun");
-  const qStatus = $("qStatus");
-  const qArgv = $("qArgv");
-  const qPgnFile = $("qPgnFile");
-  const qPgnName = $("qPgnName");
-  const qCqlFile = $("qCqlFile");
-  const qCqlName = $("qCqlName");
-  const dbSelectEl = $("dbSelect");
-
-  let currentGameId = null;
-  let isQuerySetupMode = false;
-  let qPgnBytesOverride = null;
-
-  function setActivePane(which){
-    for (const [pane, tab] of [
-      [paneMoves, tabMoves],
-      [panePriyomes, tabPriyomes],
-      [paneQuery, tabQuery],
-      [paneStudies, tabStudies],
-    ]){
-      if (!pane || !tab) continue;
-      const on = pane.id === which;
-      pane.classList.toggle("active", on);
-      tab.classList.toggle("on", on);
-    }
-  }
-
-  tabMoves?.addEventListener("click", () => setActivePane("paneMoves"));
-  tabPriyomes?.addEventListener("click", () => setActivePane("panePriyomes"));
-  tabQuery?.addEventListener("click", () => setActivePane("paneQuery"));
-  tabStudies?.addEventListener("click", () => setActivePane("paneStudies"));
-
-  function ensureSetupUI(){
-    if (!setupRow) return;
-    setupRow.style.display = isQuerySetupMode ? "flex" : "none";
-  }
-
-  function gotoRoot(){
-    while (game.prevMove()) {}
-  }
-  function gotoPly(ply){
-    gotoRoot();
-    for (let i=0; i<ply; i++){
-      if (!game.nextMove()) break;
-    }
-  }
-
-  function mainlineSAN(){
-    const san = [];
-    let node = game.root;
-    while (node.children && node.children.length){
-      const child = node.children[node.mainChildIndex] || node.children[0];
-      san.push(child.san);
-      node = child;
-    }
-    return san;
-  }
-
-  function renderMoves(){
-    if (!movesEl) return;
-    const san = mainlineSAN();
-    const rows = [];
-    for (let i=0; i<san.length; i+=2){
-      const mn = (i/2)+1;
-      const w = san[i] || "";
-      const b = san[i+1] || "";
-      rows.push({ mn, w, b, plyW: i+1, plyB: i+2 });
-    }
-
-    let htmlOut = "";
-    for (const r of rows){
-      htmlOut += `<div class="moveRow">` +
-        `<div class="mn">${r.mn}.</div>` +
-        `<button class="plyBtn" data-ply="${r.plyW}" type="button">${escapeHtml(r.w)}</button>` +
-        `<button class="plyBtn" data-ply="${r.plyB}" type="button">${escapeHtml(r.b)}</button>` +
-      `</div>`;
-    }
-    movesEl.innerHTML = htmlOut || `<div class="hint">No moves yet.</div>`;
-
-    movesEl.querySelectorAll("button.plyBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const ply = +btn.getAttribute("data-ply");
-        if (Number.isFinite(ply) && ply > 0) gotoPly(ply);
-      });
-    });
-  }
-
-  function refreshBottom(){
-    try{
-      fenBottom && (fenBottom.value = game.exportFEN());
-      pgnBottom && (pgnBottom.value = game.exportPGN());
-      if (bottomMeta){
-        bottomMeta.textContent = `${game.tags.White} vs ${game.tags.Black} — ${game.tags.Result || "*"}`;
-      }
-    }catch(e){
-      // exportPGN can throw only in very broken states; keep UI alive
-      logStack("WARN", "Failed to refresh bottom export fields.", e);
-    }
-  }
-
-  game.onChange(() => {
-    renderMoves();
-    refreshBottom();
-    // when in setup mode, we want query exports to use the current position; keep qPgn override in sync
-    try{
-      qPgnBytesOverride = new TextEncoder().encode(game.exportPGN());
-    }catch{}
-    ensureSetupUI();
-  });
-
-  btnPrev?.addEventListener("click", () => game.prevMove());
-  btnNext?.addEventListener("click", () => game.nextMove());
-
-  // ----------------------------- Studies/Games -----------------------------
-  function makeGameId(){
-    return "g_" + Math.random().toString(36).slice(2, 10);
-  }
-  function addGamesFromMultiPgn(text){
-    const blocks = splitMultiPgn(text);
-    if (!blocks.length) throw new Error("No PGN game found.");
-    const ids = [];
-    for (const pgn of blocks){
-      const id = makeGameId();
-      STATE.games.push({ id, pgn });
-      ids.push(id);
-    }
-    // add to active study
-    const study = STATE.studies[STATE.activeStudy];
-    const existing = new Set(study.gameIdx || []);
-    for (const g of STATE.games){
-      // ensure each game id exists in study list at least once if new
-    }
-    for (const id of ids){
-      const idx = STATE.games.findIndex(g => g.id === id);
-      if (idx >= 0 && !existing.has(idx)){
-        study.gameIdx.push(idx);
-        existing.add(idx);
-      }
-    }
-    persist();
-    return ids;
-  }
-
-  function renderGameList(){
-    if (!gameListEl) return;
-    const study = STATE.studies[STATE.activeStudy];
-    const idxs = (study?.gameIdx || []).filter((i) => STATE.games[i]);
-    if (!idxs.length){
-      gameListEl.innerHTML = `<div class="hint">No games in this study yet. Use “Import PGN”.</div>`;
-      return;
-    }
-    let htmlOut = "";
-    for (const i of idxs){
-      const g = STATE.games[i];
-      const h = parseHeaders(g.pgn);
-      const title = `${h.White || "White"} vs ${h.Black || "Black"}`;
-      const sub = `${h.Event || "Game"} — ${h.Date || ""}`;
-      const active = g.id === currentGameId;
-      htmlOut += `
-        <button class="gameCard ${active ? "on" : ""}" type="button" data-gid="${g.id}">
-          <div class="gcTitle">${escapeHtml(title)}</div>
-          <div class="gcSub">${escapeHtml(sub)}</div>
-        </button>
-      `;
-    }
-    gameListEl.innerHTML = htmlOut;
-    gameListEl.querySelectorAll("[data-gid]").forEach(btn => {
-      btn.addEventListener("click", () => loadGame(btn.getAttribute("data-gid")));
-    });
-  }
-
-  function loadGame(id){
-    const found = STATE.games.find(g => g.id === id);
-    if (!found) return;
-    try{
-      isQuerySetupMode = false;
-      ensureSetupUI();
-      game.toggleSetup(false);
-      game.setMode("moves");
-      game.loadPGN(found.pgn); // scratchchess parses marks too
-      currentGameId = id;
-      logLine("OK", `Loaded game ${id}`);
-      renderGameList();
-    }catch(e){
-      logStack("ERR", "Failed to load PGN into game.", e);
-    }
-  }
-
-  // ----------------------------- Import PGN modal -----------------------------
-  function openImportModal(){
-    importModalBackdrop?.classList.add("open");
-    importModalBackdrop?.setAttribute("aria-hidden","false");
-    if (importPgnText) importPgnText.value = "";
-    setTimeout(() => importPgnText?.focus(), 0);
-  }
-  function closeImportModal(){
-    importModalBackdrop?.classList.remove("open");
-    importModalBackdrop?.setAttribute("aria-hidden","true");
-  }
-
-  btnImportPgn?.addEventListener("click", openImportModal);
-  btnImportCancel?.addEventListener("click", closeImportModal);
-  importModalBackdrop?.addEventListener("click", (e) => {
-    if (e.target === importModalBackdrop) closeImportModal();
-  });
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && importModalBackdrop?.classList.contains("open")) closeImportModal();
-  });
-
-  btnImportAdd?.addEventListener("click", () => {
-    try{
-      const text = importPgnText?.value || "";
-      const ids = addGamesFromMultiPgn(text);
-      closeImportModal();
-      renderGameList();
-      if (ids[0]) loadGame(ids[0]);
-      logLine("OK", `Imported ${ids.length} game(s).`);
-    }catch(e){
-      logStack("ERR", "Import failed.", e);
-    }
-  });
-
-  // ----------------------------- Priyomes (Query setup) -----------------------------
-  function makePriyomeId(){
-    return "p_" + Math.random().toString(36).slice(2, 10);
-  }
-
-  function enterQuerySetup(){
-    // Query setup means: user edits a position + marks (squares/arrows), then we can generate a CQL stub.
-    isQuerySetupMode = true;
-    ensureSetupUI();
-    game.toggleSetup(true);          // enable setup interactions (drag pieces freely)
-    game.setMode("squares");         // default to squares (pigment controls exist in BoardView)
-    logLine("OK", "Entered query setup mode.");
-  }
-
-  function exitQuerySetup({ keepPosition=false } = {}){
-    isQuerySetupMode = false;
-    ensureSetupUI();
-    game.toggleSetup(false);
-    game.setMode("moves");
-    if (!keepPosition){
-      // leave board as-is; caller can load a game afterwards
-    }
-    logLine("OK", "Exited query setup mode.");
-  }
-
-  btnPriyomesNew?.addEventListener("click", () => {
-    // Start from a blank board with spare pieces.
-    enterQuerySetup();
-    game.clearBoard();
-  });
-
-  btnCancelPriyome?.addEventListener("click", () => exitQuerySetup({ keepPosition:true }));
-
-  btnPlayFromHere?.addEventListener("click", () => {
-    // Turn the current setup position into a playable line (no moves yet).
-    // scratchchess already ensures Setup/FEN headers when loading from FEN; here we just keep current.
-    exitQuerySetup({ keepPosition:true });
-  });
-
-  btnSetupImportPgn?.addEventListener("click", () => {
-    if (!isQuerySetupMode) return;
-    setupPgnFile.value = "";
-    setupPgnFile.click();
-  });
-
-  setupPgnFile?.addEventListener("change", async () => {
-    if (!isQuerySetupMode) return;
-    const f = setupPgnFile.files?.[0];
-    if (!f) return;
-    try{
-      const text = await f.text();
-      const blocks = splitMultiPgn(text);
-      if (!blocks.length) throw new Error("No PGN game found.");
-      game.loadPGN(blocks[0]);
-      // stay in setup mode
-      game.toggleSetup(true);
-      game.setMode("squares");
-      logLine("OK", `Loaded setup from PGN: ${f.name}`);
-    }catch(e){
-      logStack("ERR", "Setup import from PGN failed.", e);
-    }finally{
-      setupPgnFile.value = "";
-    }
-  });
-
-  function renderPriyomes(){
-    if (!prListEl) return;
-    if (!STATE.priyomes.length){
-      prListEl.innerHTML = `<div class="hint">No Priyomes yet. Click “New Query”.</div>`;
-      return;
-    }
-    prListEl.innerHTML = STATE.priyomes.map(p => `
-      <button class="prCard" type="button" data-pid="${p.id}">
-        <div class="prTitle">${escapeHtml(p.name || "Priyome")}</div>
-        <div class="prSub">${escapeHtml(p.createdAt || "")}</div>
-      </button>
-    `).join("");
-    prListEl.querySelectorAll("[data-pid]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const pid = btn.getAttribute("data-pid");
-        const p = STATE.priyomes.find(x => x.id === pid);
-        if (!p) return;
-        try{
-          // Load as a setup position so marks can be edited.
-          enterQuerySetup();
-          game.loadFEN(p.fen);
-          // Put the CQL in the query editor for convenience.
-          if (qCqlText) qCqlText.value = p.cql || "";
-          setActivePane("paneQuery");
-          logLine("OK", `Loaded Priyome ${pid}`);
-        }catch(e){
-          logStack("ERR", "Failed to load Priyome.", e);
-        }
-      });
-    });
-  }
-
-  btnAddPriyome?.addEventListener("click", () => {
-    if (!isQuerySetupMode) return;
-    try{
-      const fen = game.exportFEN();
-      let cql = "";
-      if (typeof game.exportCQL === "function"){
-        try{ cql = game.exportCQL(); }catch{ cql = ""; }
-      }
-      // If scratchchess exportCQL isn't available/implemented, just store the FEN and let user write CQL manually.
-      if (!cql) cql = (qCqlText?.value || "").trim();
-      const id = makePriyomeId();
-      const name = `Priyome ${STATE.priyomes.length + 1}`;
-      STATE.priyomes.unshift({ id, name, fen, cql, createdAt: new Date().toISOString().slice(0,10) });
-      persist();
-      renderPriyomes();
-      logLine("OK", `Added ${name}`);
-    }catch(e){
-      logStack("ERR", "Failed to add Priyome.", e);
-    }
-  });
-
-  // ----------------------------- Query Runner (WASM) -----------------------------
-  let _runnerModPromise = null;
-  async function getRunnerMod() {
-    if (!_runnerModPromise) _runnerModPromise = import('./wasm/cql_runner.js');
-    return _runnerModPromise;
-  }
-
-  function textToUtf8Bytes(s){ return new TextEncoder().encode(String(s || "")); }
-  async function fileToUint8(file){
-    const buf = await file.arrayBuffer();
-    return new Uint8Array(buf);
-  }
-
-  // Dummy-game workaround retained (same behavior as old index (14).html)
+  // ---------- CQL runner workaround: ensure >=2 games ----------
+  // Some CQL runner / PGN edge cases appear when the input PGN contains only a single game.
+  // Workaround: if the input has exactly 1 game, append a distinctive dummy game before running.
+  // Then, strip that dummy from output PGN (even if modified) before importing discovered games.
   const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
   const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
   const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
   function buildDummyGamePgn(){
+    // 10 plies = 5 full moves
     const headers = [
       `[Event "${DUMMY_CQL_EVENT}"]`,
       `[Site "Local"]`,
@@ -1384,150 +2663,1114 @@ function parseHeaders(pgn){
       `[Black "${DUMMY_CQL_BLACK}"]`,
       `[Result "0-1"]`,
     ].join("\n");
+
     const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
     return `${headers}\n\n${moves}\n`;
   }
+
   function isDummyGamePgn(pgn){
     const h = parseHeaders(String(pgn || ""));
     return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
   }
+
   function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
     const bytes = (pgnBytes instanceof Uint8Array) ? pgnBytes : new Uint8Array(pgnBytes || []);
     const text = new TextDecoder().decode(bytes);
     const games = splitMultiPgn(text);
-    if (games.length !== 1) return { bytes, injected:false, originalGameCount: games.length };
+    if (games.length !== 1){
+      return { bytes, injected:false, originalGameCount: games.length };
+    }
     const dummy = buildDummyGamePgn();
     const outText = (text.trim() ? (text.trim() + "\n\n" + dummy) : dummy) + "\n";
     return { bytes: textToUtf8Bytes(outText), injected:true, originalGameCount:1 };
   }
+
   function stripDummyFromMultiPgnText(multiPgnText){
     const games = splitMultiPgn(String(multiPgnText || ""));
+    if (!games.length) return "";
     const kept = games.filter(g => !isDummyGamePgn(g));
     return kept.join("\n\n").trim();
   }
 
-  qCqlFile?.addEventListener("change", async () => {
-    const f = qCqlFile.files?.[0];
-    if (!f) return;
-    try{
-      qCqlName && (qCqlName.textContent = f.name);
-      qCqlText && (qCqlText.value = await f.text());
-      logLine("OK", `Loaded CQL: ${f.name}`);
-    }catch(e){
-      logStack("ERR", "Failed to read CQL file.", e);
-    }
-  });
-  qPgnFile?.addEventListener("change", async () => {
-    const f = qPgnFile.files?.[0];
-    if (!f) return;
-    qPgnName && (qPgnName.textContent = f.name);
-    qPgnBytesOverride = null; // explicit file wins
+
+  // ---------- Setup-mode: Import from PGN  ----------
+  btnSetupImportPgn.addEventListener('click', () => {
+    if (!isQuerySetupMode) return;
+    setupPgnFile.value = '';
+    setupPgnFile.click();
   });
 
-  qRun?.addEventListener("click", async () => {
+  setupPgnFile.addEventListener('change', async () => {
+    if (!isQuerySetupMode) return;
+    const f = setupPgnFile.files?.[0];
+    if (!f) return;
     try{
-      const cqlText = qCqlText?.value || "";
+      const text = await f.text();
+      const blocks = splitMultiPgn(text);
+      if (!blocks.length) throw new Error('No PGN game found.');
+      const pgn = blocks[0];
+
+      const tagsByPly = parseDrawTagsByPlyFromPgn(pgn);
+      const d0 = tagsByPly["0"];               // tags before the first move
+      setupImportedMiniSquares = d0?.squares || null;
+      setupImportedMiniArrows  = d0?.arrows  || null;
+
+      const h = parseHeaders(pgn);
+
+      setupImportedCqlRef = null;
+      for (const k of Object.keys(h)){
+        if (k.toLowerCase() === 'cqlref') setupImportedCqlRef = h[k];
+      }
+      if (setupImportedCqlRef && !CQL_MANIFEST[setupImportedCqlRef]){
+        throw new Error(`PGN cqlref="${setupImportedCqlRef}" not found in CQL_MANIFEST`);
+      }
+
+      let fen = null;
+      if ((h.SetUp === '1' || h.SetUp === 'true') && h.FEN){
+        fen = h.FEN;
+      } else {
+         const { ok, game : tmp } = SanitizedLoadPgn(pgn);
+         if (!ok) throw new Error('SanitizedLoadPgn err in SetupPgnFile');
+        fen = tmp.fen();
+      }
+
+      setBoardFen('setup import', fen, false);
+      setupImportedPgnTitle = h.Event || f.name;
+      setupHint.innerHTML = `Imported <b>${escapeHtml(setupImportedPgnTitle)}</b>` +
+        (setupImportedCqlRef ? ` • cqlref=<span class="kbd">${escapeHtml(setupImportedCqlRef)}</span>` : '');
+      logLine('OK', `Setup import: applied fen; cqlref=${setupImportedCqlRef || '(none)'}`);
+    }catch(e){
+      setupImportedCqlRef = null;
+      setupImportedPgnTitle = null;
+      logStack('ERR', 'Setup import failed: ', e);
+      setTab('errors');
+    }
+  });
+
+  
+  function addGamesFromText(multiPgnText, sourceLabel){
+    const blocks = splitMultiPgn(multiPgnText);
+    let added = 0;
+    const ids = [];
+    for (let i=0;i<blocks.length;i++){
+      const pgn = blocks[i].trim();
+      if (!pgn) continue;
+
+      const { ok, game: tmp } = SanitizedLoadPgn(pgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in addGamesFromText');
+
+      const h = parseHeaders(pgn);
+      const title = h.Event ? h.Event : `Imported Game ${i+1}`;
+      const white = h.White || "?";
+      const black = h.Black || "?";
+      const res   = h.Result || "*";
+
+      const id = `${sourceLabel}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+      GAMES.unshift({
+        id,
+        title: `${title} — ${white} vs ${black}`,
+        opening: (h.Opening || sourceLabel),
+        result: res,
+        pgn
+      });
+      ids.push(id);
+      added++;
+    }
+
+    if (added){
+      // IMPORTANT: import output should land in the current active study
+      ensureStudy(currentStudyName, ids);
+      setCurrentStudy(currentStudyName);
+
+      logLine('OK', `Imported ${added} game(s) into active study "${currentStudyName}".`);
+      renderGameList();
+      document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
+    }
+    return { added, ids };
+  }
+
+  btnImportAdd.addEventListener('click', () => {
+    const txt = importPgnText.value || '';
+    if (!txt.trim()){
+      logLine('WARN', 'Import PGN: empty input.');
+      return;
+    }
+    const { added } = addGamesFromText(txt, 'import');
+    if (added > 0){
+      closeImportModal();
+      setTab('games');
+    } else {
+      setTab('errors');
+    }
+  });
+
+  // ---------- Query tab ----------
+  function updateQueryUi(){
+    const haveCql = !!qCqlText.value.trim();
+    const haveUploadedPgn = !!qPgnFile.files?.[0];
+    const haveManifestPgn = !!PGN_MANIFEST[dbSelectEl.value];
+    const haveOverridePgn = !!qPgnBytesOverride;
+
+    qRun.disabled = !(haveCql && (haveUploadedPgn || haveManifestPgn || haveOverridePgn));
+
+    if (!haveCql){
+      qStatus.textContent = "Provide CQL (file or edit box) to enable.";
+    } else if (!(haveUploadedPgn || haveManifestPgn || haveOverridePgn)){
+      qStatus.textContent = "Choose a PGN upload, select a DB with a manifest PGN, or run from current game.";
+    } else {
+      qStatus.textContent = haveUploadedPgn ? "Ready (upload)."
+        : haveOverridePgn ? "Ready (current game)."
+        : `Ready (manifest: ${dbSelectEl.value}).`;
+    }
+  // After any CQL run we clear transient Query overrides so other panes (e.g., Priyomes DB search)
+  // don't accidentally keep running against the last "current game" or eval-selected PGN.
+  function resetAfterCqlRunTransientState(){
+    // 1) Clear "current game" override PGN (used by evals / run-from-game flows)
+    if (qPgnBytesOverride){
+      qPgnBytesOverride = null;
+      // If the user didn't pick a file, return the label to neutral (manifest selection still applies)
+      if (!qPgnFile.files?.[0]) qPgnName.textContent = "—";
+    }
+
+    // 2) Clear setup-import transient hints (so next action doesn't inherit them)
+    setupImportedCqlRef = null;
+    setupImportedPgnTitle = null;
+
+    // 3) If the CQL name was set by evals, de-pin the label (keep the text box untouched)
+    const cqlLabel = (qCqlName.textContent || "");
+    if (cqlLabel.startsWith("(eval)")) qCqlName.textContent = "—";
+  }
+
+  }
+
+  qCqlFile.addEventListener('change', async () => {
+    const f = qCqlFile.files?.[0];
+    qCqlName.textContent = f ? f.name : "—";
+    if (!f) { updateQueryUi(); return; }
+    try{
+      const txt = await f.text();
+      qCqlText.value = txt;
+      logLine('OK', `Loaded CQL file (${txt.length} chars): ${f.name}`);
+    }catch(e){
+      logLine('ERR', `Failed reading CQL: ${String(e)}`);
+    }finally{
+      updateQueryUi();
+    }
+  });
+
+  qPgnFile.addEventListener('change', () => {
+    const f = qPgnFile.files?.[0];
+    if (f) qPgnBytesOverride = null; // user explicitly chose a file; override off
+    qPgnName.textContent = f ? f.name : "—";
+    if (f) logLine('OK', `Selected PGN file: ${f.name}`);
+    updateQueryUi();
+  });
+
+
+  qCqlText.addEventListener('input', updateQueryUi);
+
+  async function fileToUint8(file) {
+    const ab = await file.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+  function textToUtf8Bytes(text){
+    return new TextEncoder().encode(text ?? "");
+  }
+
+  
+function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
+    const games = splitMultiPgn(multiPgnText);
+    if (!games.length){
+      logLine('WARN', 'No games found in output PGN.');
+      return 0;
+    }
+
+    const newIds = [];
+    for (let i=0;i<games.length;i++){
+      const pgn = games[i];
+      const h = parseHeaders(pgn);
+      const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
+      const date  = h.Date || todayYMD();
+      const res   = h.Result || "*";
+      const newId = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+      GAMES.unshift({
+        id: newId,
+        title,
+        opening: sourceKey ? `CQL: ${sourceKey}` : 'CQL result',
+        result: res,
+        pgn
+      });
+      newIds.push(newId);
+    }
+
+    if (newIds.length > 1){
+      const name = uniqStudyName(`${todayYMD()} Position Query`);
+      ensureStudy(name, newIds);
+      setCurrentStudy(name);
+      logLine('OK', `Created new study "${name}" with ${newIds.length} games from query result.`);
+    } else if (newIds.length === 1){
+      ensureStudy(currentStudyName, [newIds[0]]);
+      setCurrentStudy(currentStudyName);
+    }
+
+    renderGameList();
+    return newIds.length;
+  }
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const mod = await import('./wasm/cql_runner.js');
+    if (typeof mod.ensureWarmPool !== 'function') throw new Error('ensureWarmPool export not found');
+    logLine('OK', 'Warming wasm pool (2 workers)…');
+    await mod.ensureWarmPool({
+      onLog: (line) => logLine('OK', String(line)),
+    });
+    logLine('OK', 'Wasm pool warm: primary+standby ready (2/2).');
+  } catch (e) {
+    logLine('WARN', 'Warm-up failed; will warm on demand. ' + String(e && e.stack ? e.stack : e));
+  }
+});
+
+let _runnerModPromise = null;
+async function getRunnerMod() {
+  if (!_runnerModPromise) _runnerModPromise = import('./wasm/cql_runner.js');
+  return _runnerModPromise;
+}
+
+  qRun.addEventListener('click', async () => {
+    const pgnFile = qPgnFile.files?.[0] || null;
+    try{
+      const cqlText = qCqlText.value || "";
       if (!cqlText.trim()) throw new Error("CQL is empty.");
 
       let pgnBytes = null;
-      const file = qPgnFile?.files?.[0] || null;
 
-      if (qPgnBytesOverride && !file){
+      if (qPgnBytesOverride){
         pgnBytes = qPgnBytesOverride;
-      } else if (file){
-        pgnBytes = await fileToUint8(file);
       } else {
-        // Fallback: if nothing uploaded, run against current game PGN.
-        pgnBytes = textToUtf8Bytes(game.exportPGN());
-        qPgnName && (qPgnName.textContent = "(current game)");
+        const pgnFile = qPgnFile.files?.[0];
+        if (pgnFile){
+          pgnBytes = await fileToUint8(pgnFile);
+        } else {
+          const db = dbSelectEl.value;
+          pgnBytes = await getPgnBytesForDb(db);
+          if (!pgnBytes) throw new Error(`No uploaded PGN and no PGN manifest for db="${db}"`);
+          qPgnName.textContent = `(manifest) ${db}`;
+          }
       }
 
-      // Dummy-game workaround
-      try{
-        const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
-        pgnBytes = ensured.bytes;
-      }catch{}
+      const sourceKey =
+       qPgnBytesOverride ? `game:${currentGame?.id || 'unknown'}`
+       : (pgnFile ? `upload:${pgnFile.name}` : `db:${dbSelectEl.value}`);
+
+       // Workaround: if PGN has only one game, append a dummy second game for CQL execution.
+       let _dummyInjected = false;
+       try{
+         const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+         pgnBytes = ensured.bytes;
+         _dummyInjected = !!ensured.injected;
+         if (_dummyInjected){
+           logLine('WARN', `CQL workaround: input had 1 game; appended dummy game (${DUMMY_CQL_EVENT}).`);
+         
+            try{
+              const _pgnPassed = new TextDecoder('utf-8').decode(pgnBytes);
+              logLine('WARN', 'CQL workaround: BEGIN exact PGN passed to CQL parser (dummy appended)');
+              logLine('WARN', _pgnPassed);
+              logLine('WARN', 'CQL workaround: END exact PGN passed to CQL parser');
+            }catch(e){
+              logLine('WARN', 'CQL workaround: failed to log input PGN bytes: ' + String(e));
+            }
+}
+       }catch(e){
+         logLine('WARN', 'CQL workaround failed (continuing without dummy): ' + String(e));
+       }
+
+
 
       qRun.disabled = true;
-      qStatus && (qStatus.textContent = "Running…");
+      qStatus.textContent = "Running…";
+      logLine('OK', `Running query with argv: ${qArgv.value}`);
 
       const mod = await getRunnerMod();
       const runCqlWasm = mod.runCqlWasm;
-      if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
+      if (typeof runCqlWasm !== 'function') throw new Error("runCqlWasm export not found");
+
 
       const cqlBytes = textToUtf8Bytes(cqlText);
-      const job = runCqlWasm(cqlBytes, pgnBytes, qArgv?.value || "", {
+      const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
         onLog: (line) => {
           const s = String(line);
-          if (s.startsWith("[stderr]")) console.warn(s);
-          else console.log(s);
+          if (s.startsWith("[stderr]")) logLine('WARN', s);
+          else logLine('OK', s);
         }
       });
 
       const unsub = job.subscribe((j) => {
         const st = j.status ? j.status() : {busy:0,total:1};
-        qStatus && (qStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : ""));
+        qStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "");
         if (j.state === "done" || j.state === "error"){
-          try{ unsub(); }catch{}
-          qRun.disabled = false;
-          if (j.state === "done"){
-            const outTextRaw = new TextDecoder().decode(j.outPgn || new Uint8Array());
-            const outText = stripDummyFromMultiPgnText(outTextRaw);
-            // Import discovered games into the active study
-            try{
-              const ids = addGamesFromMultiPgn(outText);
-              renderGameList();
-              if (ids[0]) loadGame(ids[0]);
-              logLine("OK", `Query produced ${ids.length} game(s).`);
-            }catch(e){
-              logStack("WARN", "Query produced output, but import failed.", e);
-            }
+          unsub();
+          if (j.state === "error"){
+            logLine('ERR', `Query failed: ${j.error || "unknown error"}`);
+            setTab('errors');
           } else {
-            logLine("ERR", "Query failed.");
+            logLine('OK', `Query done (rc=${String(j.rc)}). outputPgn=${j.outputPgn.length} chars`);
+            if (j.outputMissing) logLine('WARN', 'output.pgn not found by runner (empty output).');
+            let outPgnText = j.outputPgn || "";
+              
+                try{
+                  logLine('WARN', 'CQL workaround: BEGIN exact raw CQL output (before dummy stripping)');
+                  logLine('WARN', outPgnText || '');
+                  logLine('WARN', 'CQL workaround: END exact raw CQL output');
+                }catch(e){
+                  logLine('WARN', 'CQL workaround: failed to log raw output: ' + String(e));
+                }
+if (_dummyInjected){
+                const stripped = stripDummyFromMultiPgnText(outPgnText);
+                if (stripped !== outPgnText.trim()){
+                  logLine('OK', 'CQL workaround: stripped dummy game from output.');
+                }
+                outPgnText = stripped;
+              }
+              if (outPgnText && outPgnText.trim()){
+                const added = addDiscoveredGamesFromPgn(outPgnText, sourceKey);
+                if (added > 0) setTab('games');
+              } else if (_dummyInjected){
+                logLine('WARN', 'CQL workaround: output contained only dummy game (or nothing); ignoring.');
+              }
           }
+          resetAfterCqlRunTransientState();
+          qRun.disabled = false;
+          updateQueryUi();
         }
       });
 
     }catch(e){
-      qRun && (qRun.disabled = false);
-      qStatus && (qStatus.textContent = "Error");
-      logStack("ERR", "Query run failed.", e);
+      logLine('ERR', `Run exception: ${e && e.stack ? e.stack : String(e)}`);
+      resetAfterCqlRunTransientState();
+      qRun.disabled = false;
+      updateQueryUi();
+      setTab('errors');
     }
   });
 
-  // Wire tab clicks
-  document.getElementById('tabMoves')?.addEventListener('click', () => setTab('moves'));
-  document.getElementById('tabPriyomes')?.addEventListener('click', () => setTab('priyomes'));
-  document.getElementById('tabGames')?.addEventListener('click', () => setTab('games'));
-  document.getElementById('tabQuery')?.addEventListener('click', () => setTab('query'));
-  document.getElementById('tabEvals')?.addEventListener('click', () => setTab('evals'));
-  document.getElementById('tabErrors')?.addEventListener('click', () => setTab('errors'));
+  // ---------- Evals tab ----------
+  async function loadEvals(){
+    evalsStatusEl.textContent = 'loading…';
+    try{
+      const mod = await import(`./evals.js?ts=${Date.now()}`);
+      const list = Array.isArray(mod.EVALS) ? mod.EVALS : (Array.isArray(mod.default) ? mod.default : []);
+      EVALS_REGISTRY = list.filter(e => e && typeof e.id === 'string' && typeof e.run === 'function');
 
-  // ----------------------------- Boot -----------------------------
-  ensureSetupUI();
-  renderPriyomes();
-  renderGameList();
-
-  // Auto-load first game in active study
-  try{
-    const study = STATE.studies[STATE.activeStudy];
-    const idx = (study?.gameIdx || []).find(i => STATE.games[i]);
-    if (idx != null){
-      loadGame(STATE.games[idx].id);
-    } else {
-      // Start from standard position
-      game.initializePosition();
-      renderMoves();
-      refreshBottom();
+      evalsStatusEl.textContent = `${EVALS_REGISTRY.length} eval(s)`;
+      logLine('OK', `Loaded evals from ./evals.js: ${EVALS_REGISTRY.map(e=>e.id).join(', ') || '(none)'}`);
+      renderEvalList();
+      renderCqlEvalList();
+    }catch(e){
+      evalsStatusEl.textContent = 'load failed';
+      logStack('ERR', 'Failed to load ./evals.js: ', e);
+      renderEvalList();
+      setTab('errors');
     }
-  }catch(e){
-    game.initializePosition();
   }
 
-  // Start on Moves pane.
-  setActivePane("paneMoves");
+  function renderEvalList(){
+    evalListEl.innerHTML = '';
+    if (!EVALS_REGISTRY.length){
+      const d = document.createElement('div');
+      d.className = 'hint';
+      d.textContent = 'No evals registered. Check ./evals.js exports EVALS (or default) and each entry has {id, run()}.';
+      evalListEl.appendChild(d);
+      return;
+    }
 
+    for (const entry of EVALS_REGISTRY){
+      const card = document.createElement('div');
+      card.className = 'evalCard';
+
+      const name = entry.name || entry.id;
+      const desc = entry.description || '';
+
+      card.innerHTML = `
+        <div class="evalTop">
+          <div style="min-width:0;">
+            <div class="evalName">${escapeHtml(name)} <span class="kbd">${escapeHtml(entry.id)}</span></div>
+            <div class="evalDesc">${escapeHtml(desc)}</div>
+          </div>
+          <div class="evalBtns">
+            <button type="button" data-run="${escapeHtml(entry.id)}">Run</button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('button[data-run]').addEventListener('click', () => runEval(entry));
+      evalListEl.appendChild(card);
+    }
+  }
+
+  function renderCqlEvalList(){
+  if (!cqlEvalListEl) return;
+
+  cqlEvalListEl.innerHTML = '';
+
+  const entries = Object.entries(CQL_EVAL_MANIFEST || {});
+  if (!entries.length){
+    const d = document.createElement('div');
+    d.className = 'hint';
+    d.textContent = 'No CQL evals.';
+    cqlEvalListEl.appendChild(d);
+    return;
+  }
+
+  for (const [ref, meta] of entries){
+    const url  = meta?.url || '';
+    const desc = meta?.description || '';
+
+    const card = document.createElement('div');
+    card.className = 'evalCard';
+
+    card.innerHTML = `
+      <div class="evalTop">
+        <div style="min-width:0;">
+          <div class="evalName">
+            ${escapeHtml(ref)} <span class="kbd">.cql</span>
+          </div>
+          <div class="evalDesc">
+            ${escapeHtml(desc)}
+          </div>
+        </div>
+        <div class="evalBtns">
+          <button type="button" data-cqlref="${escapeHtml(ref)}">Run</button>
+        </div>
+      </div>
+    `;
+
+    card.querySelector('button[data-cqlref]')
+      .addEventListener('click', () => runCqlEvalFromManifest(ref));
+
+    cqlEvalListEl.appendChild(card);
+  }
+}
+
+
+async function runCqlEvalFromManifest(ref){
+  try{
+    if (!currentGame) throw new Error('No current game selected.');
+
+    const meta = CQL_EVAL_MANIFEST[ref];
+    if (!meta) throw new Error(`CQL_EVAL_MANIFEST missing ref="${ref}"`);
+
+    const url = meta.url;
+    if (!url) throw new Error(`CQL_EVAL_MANIFEST["${ref}"].url missing`);
+
+    const cql = await fetchTextCached(url, _cqlCache);
+
+    qCqlText.value = cql;
+    qCqlName.textContent = `(eval) ${ref}`;
+
+    const inputPgn = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
+    qPgnBytesOverride = textToUtf8Bytes(inputPgn);
+    qPgnFile.value = '';
+    qPgnName.textContent = '(current game)';
+
+    updateQueryUi();
+    setTab('query');
+    qRun.click();
+  }catch(e){
+    logStack('ERR', `CQL eval "${ref}" failed: `, e);
+    setTab('errors');
+  }
+}
+
+  async function runEval(entry){
+    try{
+      if (!currentGame) throw new Error('No current game selected.');
+      if (typeof Chess === 'undefined') throw new Error('Chess is undefined (chess.js missing).');
+
+      const evalId = entry.id;
+      logLine('OK', `Running eval "${evalId}" on: ${currentGame.title}`);
+
+      const inputPgn = pgnWithComments(currentGame.id, currentGame.pgn) + '\n';
+      logBlock('OK', `EVAL/${evalId} INPUT PGN`, inputPgn, 8000);
+
+      const ctx = {
+        log:  (s) => logLine('OK',   `EVAL/${evalId}: ${String(s)}`),
+        warn: (s) => logLine('WARN', `EVAL/${evalId}: ${String(s)}`),
+        err:  (s) => logLine('ERR',  `EVAL/${evalId}: ${String(s)}`),
+      };
+
+      let res;
+      try{
+        ctx.log('calling eval function…');
+        res = (entry.run.length >= 2) ? await entry.run(inputPgn, ctx) : await entry.run(inputPgn);
+        ctx.log('eval function returned');
+      }catch(e){
+        logStack('ERR', `Eval run failed (threw): `, e);
+        setTab('errors');
+        return;
+      }
+
+      logBlock('OK', `EVAL/${evalId} RAW RETURN`, res, 8000);
+
+      const outPgn =
+        (typeof res === 'string') ? res :
+        (res && typeof res.pgn === 'string') ? res.pgn :
+        '';
+
+      logBlock('OK', `EVAL/${evalId} OUTPUT PGN`, outPgn, 12000);
+
+      if (!outPgn.trim()) throw new Error(`Eval "${evalId}" returned empty output PGN.`);
+
+      const { ok, game: tmp } = SanitizedLoadPgn(outPgn);
+      if (!ok) throw new Error('SanitizedLoadPgn err in runeval');
+
+      const h = parseHeaders(outPgn);
+      const titleBase = currentGame.title;
+      const title = `Evaluated (${evalId}) • ${titleBase}`;
+      const resTok = h.Result || '*';
+
+      const newId = `eval:${evalId}:${currentGame.id}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+
+      GAMES.unshift({
+        id: newId,
+        title,
+        opening: `Eval: ${entry.name || evalId}`,
+        result: resTok,
+        pgn: outPgn
+      });
+      // IMPORTANT: eval output should land in the current active study
+      ensureStudy(currentStudyName, [newId]);
+      setCurrentStudy(currentStudyName);
+
+
+      document.getElementById('studyPill').textContent = `Study • ${GAMES.length} games`;
+      renderGameList();
+      logLine('OK', `Eval added as new game: ${title}`);
+      setTab('games');
+
+    }catch(e){
+      logStack('ERR', 'Eval run failed: ', e);
+      setTab('errors');
+    }
+  }
+
+  document.getElementById('btnReloadEvals').addEventListener('click', () => loadEvals());
+
+
+  // ---------- Studies UI ----------
+  const studySelectEl = document.getElementById('studySelect');
+  const btnNewStudy = document.getElementById('btnNewStudy');
+  const btnImportStudy = document.getElementById('btnImportStudy');
+  const btnPlayFromHere = document.getElementById('btnPlayFromHere');
+
+  if (studySelectEl){
+    studySelectEl.addEventListener('change', () => setCurrentStudy(studySelectEl.value));
+  }
+  if (btnNewStudy){
+    btnNewStudy.addEventListener('click', () => {
+      const name = uniqStudyName(`${todayYMD()} Study`);
+      ensureStudy(name, []);
+      setCurrentStudy(name);
+    });
+  }
+  if (btnImportStudy){
+    btnImportStudy.addEventListener('click', () => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.pgn';
+      inp.addEventListener('change', async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const txt = await f.text();
+        const parts = splitMultiPgn(txt);
+        if (!parts.length){ logLine('WARN','No games found in study PGN.'); return; }
+        const name = uniqStudyName(f.name.replace(/\.pgn$/i,'') || `${todayYMD()} Study`);
+        const ids = [];
+        for (let i=0;i<parts.length;i++){
+          const pgn = parts[i];
+          const h = parseHeaders(pgn);
+          const title = h.Event ? h.Event : `${name} • Game ${i+1}`;
+          const id = `study:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+          GAMES.unshift({ id, title, opening:'Imported Study', result:(h.Result||'*'), pgn });
+          ids.push(id);
+        }
+        ensureStudy(name, ids);
+        setCurrentStudy(name);
+        setTab('games');
+      });
+      inp.click();
+    });
+  }
+  if (btnPlayFromHere){
+    btnPlayFromHere.addEventListener('click', () => {
+      // Commit the CURRENT setup board state into the existing Priyome game (no new game).
+      const id = ensureSetupDraftGame();
+      if (!id) return;
+      const prev = updateSetupPreview();
+      const g = GAMES.find(x => x.id === id);
+      if (g && prev){
+        const tags0 = drawTagsCommentFor(id, 0);
+        g.pgn = buildSetupPgn(prev.fen, g.title, tags0);
+        // also update the linked Priyome entry FEN so the mini board stays correct
+        if (g.priyomeId){
+          const p = PRIYOMES.find(pp => pp.id === g.priyomeId);
+          if (p) p.fen = prev.fen;
+        }
+      }
+
+      setQuerySetupMode(false);
+      loadGame(id);
+      jumpTo(0);
+      setTab('moves');
+    });
+  }
+
+
+  // ---------------- Priyomes ----------------
+  function addPriyome(def){
+    // def: {id,title,subtitle,fen,miniSquares?,miniArrows?}
+    PRIYOMES.push(def);
+  }
+
+  function buildGreekGift(){
+    // Position: black king castled; pawns on f7 g7 h7; white bishop+queen aimed at h7.
+    // We'll use a simple illustrative setup (not claiming it's legal from a real game).
+    const fen = "rnbq1rk1/pppp1ppp/8/4p3/4P3/2N2B2/PPPP1PPP/R2QK2R w KQ - 0 1";
+
+    addPriyome({
+      id: "gg",
+      title: "Greek Gift",
+      subtitle: "Idea: Bxh7+ and Qxh7+ (illustration)",
+      fen,
+      arrows: [
+        {from:"f3", to:"h5", color:"G"}, // bishop line suggestion (rough)
+        {from:"d1", to:"h5", color:"G"}, // queen line suggestion (rough)
+      ],
+      // In the mini-board overlay we will draw arrows to h7 more explicitly
+      miniArrows: [
+        {from:"f3", to:"h5", color:"G"},
+        {from:"d1", to:"h5", color:"G"},
+        {from:"f3", to:"h7", color:"G"},
+        {from:"d1", to:"h5", color:"G"},
+      ],
+      miniSquares: {
+        "h7":"G"
+      }
+    });
+  }
+
+  function renderPriyomes(){
+    miniBoards.clear(); // Fresh creation
+    prListEl.innerHTML = '';
+    if (!PRIYOMES.length){
+      const d = document.createElement('div');
+      d.className = 'hint';
+      d.textContent = 'No priyomes yet.';
+      prListEl.appendChild(d);
+      return;
+    }
+
+    for (const p of PRIYOMES){
+      const item = document.createElement('div');
+      item.className = 'prItem' + (selectedPriyomeId === p.id ? ' active' : '');
+      const boardId = `mini_${p.id}`;
+      item.innerHTML = `
+        <div>
+          <div id="${boardId}" class="small-board" aria-label="${escapeHtml(p.title)} mini board"></div>
+        </div>
+        <div>
+          <div class="prTitle">${escapeHtml(p.title)}</div>
+          <div class="prSub">${escapeHtml(p.subtitle || '')}</div>
+          <div class="prSub" style="margin-top:6px;">
+            <span class="kbd">DB</span> <span class="kbd">${escapeHtml(dbSelectEl.value)}</span>
+          </div>
+        </div>
+      `;
+      item.addEventListener('click', async () => {
+        selectedPriyomeId = p.id;
+        renderPriyomes();
+        setTimeout(() => { resizeMiniBoards(); }, 0);
+
+        if (p.cqlref){
+          try{
+            await loadCqlByRef(p.cqlref);
+            logLine('OK', `Loaded CQL via cqlref=${p.cqlref}`);
+          }catch(e){
+            logStack('ERR', `Failed loading cqlref=${p.cqlref}: `, e);
+            setTab('errors');
+          }
+        }
+      });
+      prListEl.appendChild(item);
+
+      // init mini board after it's in DOM
+      setTimeout(() => initMiniBoard(boardId, p), 0);
+    }
+  }
+
+  function initMiniBoard(elId, pr){
+    const el = document.getElementById(elId);
+    if (!el) return;
+
+    if (miniBoards.has(elId)) return;
+
+    // Mini board uses its own scratchchess game instance (read-only).
+    const g = createGame();
+    g.toggleMini(true);
+    try { g.loadFEN(pr.fen || 'start'); } catch(_e){ g.initializePosition(); }
+
+    const v = new BoardView(el, g, { minSizePx: 80 });
+    v.fitToContainer();
+    v.render();
+
+    miniBoards.set(elId, { game: g, view: v });
+  }
+
+  function attachMiniOverlay(containerEl, pr){
+    // Avoid duplicates
+    if (containerEl.querySelector('svg[data-mini-overlay="1"]')) return;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('data-mini-overlay','1');
+    svg.style.position = 'absolute';
+    // don't use inset; we'll align to the internal 8x8 grid
+    svg.style.left = '0';
+    svg.style.top = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.pointerEvents = 'none';
+    svg.setAttribute('viewBox','0 0 100 100');
+    svg.setAttribute('preserveAspectRatio','none');
+
+    // container needs position:relative; chessboardjs uses internal div, so we wrap with relative by styling here
+    containerEl.style.position = 'relative';
+    containerEl.appendChild(svg);
+
+    positionMiniOverlayToGrid();
+    setTimeout(positionMiniOverlayToGrid, 0);
+    window.addEventListener('resize', positionMiniOverlayToGrid);
+
+
+    function positionMiniOverlayToGrid(){
+      const grid = containerEl.querySelector('.board-b72b1');
+      if (!grid) return;
+      const cr = containerEl.getBoundingClientRect();
+      const gr = grid.getBoundingClientRect();
+      svg.style.left = (gr.left - cr.left) + 'px';
+      svg.style.top  = (gr.top  - cr.top)  + 'px';
+      svg.style.width  = gr.width + 'px';
+      svg.style.height = gr.height + 'px';
+    }
+
+    const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+    svg.appendChild(defs);
+
+    for (const c of ['G','R','B','Y']){
+      const marker = document.createElementNS('http://www.w3.org/2000/svg','marker');
+      marker.setAttribute('id',`miniArrowHead_${containerEl.id}_${c}`);
+      marker.setAttribute('markerWidth','5');
+      marker.setAttribute('markerHeight','5');
+      marker.setAttribute('refX','4.6');
+      marker.setAttribute('refY','2.5');
+      marker.setAttribute('orient','auto');
+      marker.setAttribute('markerUnits','userSpaceOnUse');
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d','M0,0 L5,2.5 L0,5 L1.2,2.5 Z');
+      path.setAttribute('fill', colorHex(c));
+      marker.appendChild(path);
+      defs.appendChild(marker);
+    }
+
+    function sqToXY(sq){
+      const f = sq.charCodeAt(0)-97;
+      const r = parseInt(sq[1],10)-1;
+      return { x:(f+0.5)*12.5, y:(7-r+0.5)*12.5 };
+    }
+
+    function drawMiniSquare(sq, c){
+      const {x,y} = sqToXY(sq);
+      const size = 12.5;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x', x - size/2);
+      rect.setAttribute('y', y - size/2);
+      rect.setAttribute('width', size);
+      rect.setAttribute('height', size);
+      rect.setAttribute('fill', colorHex(c));
+      rect.setAttribute('opacity', '0.82');
+    rect.setAttribute('shape-rendering','crispEdges');
+      rect.setAttribute('shape-rendering','crispEdges');
+      svg.appendChild(rect);
+    }
+
+    function drawMiniArrow(from,to,c){
+      const a = sqToXY(from), b = sqToXY(to);
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const len=Math.hypot(dx,dy)||1;
+      const shrink=4.6;
+      const ux=dx/len, uy=dy/len;
+
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1', a.x);
+      line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x - ux*shrink);
+      line.setAttribute('y2', b.y - uy*shrink);
+      line.setAttribute('stroke', colorHex(c));
+      line.setAttribute('stroke-width', '0.34');
+    line.setAttribute('stroke-linecap','round');
+      line.setAttribute('opacity', '0.92');
+      line.setAttribute('marker-end', `url(#miniArrowHead_${containerEl.id}_${c})`);
+      svg.appendChild(line);
+    }
+
+    // render overlays
+    const sqs = pr.miniSquares || {};
+    for (const k of Object.keys(sqs)){
+      drawMiniSquare(k, sqs[k]);
+    }
+    const ars = pr.miniArrows || pr.arrows || [];
+    for (const a of ars){
+      drawMiniArrow(a.from, a.to, a.color || 'G');
+    }
+  }
+
+  function resizeMiniBoards(){
+    for (const [, obj] of miniBoards.entries()){
+      try { obj.view.fitToContainer(); obj.view.render(); } catch(_e){}
+    }
+  }
+
+  btnPriyomesSearch.addEventListener('click', async () => {
+    // Priyomes DB search should ALWAYS run against the selected DB (manifest),
+    // not whatever Query tab previously ran against (upload/current-game override).
+    // Force Query input to "manifest mode" immediately.
+    qPgnBytesOverride = null;
+    if (qPgnFile) qPgnFile.value = '';
+    const db = dbSelectEl.value;
+    if (db && PGN_MANIFEST[db]) {
+      qPgnName.textContent = `(manifest) ${db}`;
+    } else {
+      // fallback label (Query will still validate availability)
+      qPgnName.textContent = '—';
+    }
+    updateQueryUi();
+
+    // behave like "Run Query"
+    setTab('query');
+
+    // let the tab switch/layout settle so disabled state is correct
+    setTimeout(() => {
+      if (qRun.disabled) {
+        logLine('WARN', 'Cannot run: Query is not ready (missing CQL or PGN).');
+        return;
+      }
+      qRun.click(); // triggers the existing Run Query handler
+    }, 0);
+  });
+
+
+  dbSelectEl.addEventListener('change', () => {
+    // update labels
+    if (document.getElementById('panePriyomes').classList.contains('active')) renderPriyomes();
+    updateQueryUi();
+  });
+
+  function setQuerySetupMode(on){
+    isQuerySetupMode = !!on;
+
+    setupRow.classList.toggle('open', isQuerySetupMode);
+
+    _ensureScratch();
+    ensureMainBoard();
+
+    // Delegate all setup behavior (free placement + delete-on-tap + promotion UI, etc.) to scratchchess.
+    scGame.toggleSetup(isQuerySetupMode);
+
+    if (isQuerySetupMode){
+      // Start new priyomes with a blank board in setup mode (spares handled by scratchchess UI).
+      scGame.clearBoard();
+      updateSetupPreview();
+      logLine('OK', 'Entered query setup mode (scratchchess setup).');
+    } else {
+      // Return to normal mode showing the current game position
+      if (currentGame && currentGame.pgn){
+        try { scGame.loadPGN(currentGame.pgn); } catch(_e){}
+        // Jump back to activePly (which is now derived from scratch); safest is to go to end.
+        while (scGame.nextMove()) {}
+      }
+      logLine('OK', 'Exited query setup mode.');
+    }
+
+    sizeBoardSquare();
+    setTimeout(() => { try { if (board && typeof board.resize === 'function') board.resize(); } catch(_e){} }, 0);
+  }
+
+  btnPriyomesNew.addEventListener('click', () => {
+    setupImportedCqlRef = null;
+    setupImportedPgnTitle = null;
+    setupImportedMiniSquares = null;
+    setupImportedMiniArrows  = null;
+
+    setupHint.innerHTML = 'Drag pieces to set a position. This immediately creates a new game in the current study. Click <b>Play from here</b> when ready.';
+    setQuerySetupMode(true);
+
+    // Create the draft game AND its linked Priyome entry immediately so:
+    // - drawings have a stable bucket
+    // - Priyomes tab shows the new item right away
+    // Default to a clean start position unless the board already shows something.
+    try {
+      if (board) setBoardFen('setup mode init', 'start', false);
+      clearSetupDraftTemp();
+      const id = ensureSetupDraftGame();
+      if (id){
+        const g = GAMES.find(x => x.id === id);
+        if (g){
+          currentGame = g;
+          ensureStores(g.id);
+          // Ensure we have a Priyome entry linked immediately (no separate Add step)
+          if (!g.priyomeId){
+            const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+            const fen = scGame ? scGame.exportFEN() : game.fen();
+            addPriyome({
+              id: pid,
+              user: true,
+              title: g.title,
+              subtitle: 'User-created',
+              fen,
+              gameId: g.id,
+              study: currentStudyName,
+              cqlref: null,
+              miniSquares: {},
+              miniArrows: [],
+            });
+            g.isPriyome = true;
+            g.priyomeId = pid;
+            selectedPriyomeId = pid;
+          }
+
+          // Refresh the pill so the delete ✕ appears for Priyome games
+          // (Do NOT call loadGame() here; it would exit setup mode.)
+          gamePill.innerHTML = '';
+          {
+            const tspan = document.createElement('span');
+            tspan.textContent = g.title;
+            gamePill.appendChild(tspan);
+            if (g.isPriyome){
+              const xb = document.createElement('button');
+              xb.className = 'miniX';
+              xb.type = 'button';
+              xb.textContent = '✕';
+              xb.title = 'Delete Priyome game';
+              xb.addEventListener('click', (ev)=>{ ev.stopPropagation(); deletePriyomeGame(g.id); });
+              gamePill.appendChild(xb);
+            }
+          }
+          document.getElementById('studyPill').textContent = `${currentStudyName} • ${currentStudy().gameIds.length} games`;
+          renderGameList();
+          renderPriyomes();
+          setTimeout(() => { resizeMiniBoards(); }, 0);
+        }
+      }
+      updateSetupPreview();
+      redrawDrawings();
+      logLine('OK', 'New Query: created a draft game in the current study.');
+    } catch (e) {
+      logStack('ERR', 'New Query failed: ', e);
+    }
+  });
+
+  btnCancelPriyome.addEventListener('click', () => {
+    setQuerySetupMode(false);
+  });
+
+  btnAddPriyome.addEventListener('click', () => {
+    if (!isQuerySetupMode || !board) return;
+
+    // Ensure we have a real game inside the current study (no naming prompt).
+    const gid = ensureSetupDraftGame();
+    if (!gid) return;
+
+    const g = GAMES.find(x => x.id === gid);
+    if (!g) return;
+
+    // Tie this game to a Priyome entry
+    const pid = `pry_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const title = g.title || `Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
+
+    const fen = (typeof board.fen === 'function' ? board.fen() : (game ? game.fen() : '8/8/8/8/8/8/8/8'));
+
+    addPriyome({
+      id: pid,
+      user: true,
+      title,
+      subtitle: setupImportedPgnTitle ? `Imported from ${setupImportedPgnTitle}` : 'User-created',
+      fen,
+      gameId: gid,
+      study: currentStudyName,
+      cqlref: setupImportedCqlRef || null,
+      miniSquares: setupImportedMiniSquares || {},
+      miniArrows:  setupImportedMiniArrows  || [],
+    });
+
+    g.isPriyome = true;
+    g.priyomeId = pid;
+
+    selectedPriyomeId = pid;
+    currentGame = g;
+    ensureStores(g.id);
+
+    // Stay in setup/edit mode, but switch to Priyomes tab and show the editor immediately.
+    setTab('priyomes');
+    renderPriyomes();
+    setTimeout(() => {
+      prListEl.scrollTop = prListEl.scrollHeight;
+      resizeMiniBoards();
+      redrawDrawings();
+    }, 0);
+
+    logLine('OK', `Added new Priyome ${pid} tied to game ${gid}`);
+  });
+
+  // ---------- boot ----------
+  try {
+    diag();
+
+    if (typeof Chess === 'undefined') {
+      logLine('ERR', 'Chess is undefined. chess.js did not load (CDN blocked?).');
+      setTab('errors');
+      return;
+    }
+    if (typeof Chessboard === 'undefined') {
+      logLine('ERR', 'Chessboard is undefined. chessboard.js did not load (CDN blocked?), or jQuery missing.');
+      setTab('errors');
+      return;
+    }
+
+    game = new Chess();
+    setTool(Tool.NONE); try{ _ensureScratch(); scGame.setMode('moves'); }catch(_e){}
+
+    // build Priyomes list
+    buildGreekGift();
+    selectedPriyomeId = 'gg';
+
+    renderGameList();
+
+    sizeBoardSquare();
+    loadGame('mock1');
+
+    updateQueryUi();
+    loadEvals();
+
+    // initial priyomes render (hidden until tab opened; still fine)
+    renderPriyomes();
+
+    logLine('OK', 'Boot complete.');
+  } catch (e) {
+    logLine('ERR', `Boot exception: ${e && e.stack ? e.stack : String(e)}`);
+    setTab('errors');
+  }
+
+})();
 </script>
-
 </body>
 </html>
