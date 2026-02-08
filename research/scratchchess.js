@@ -127,6 +127,7 @@ export class Game {
       ep: null,
       halfmove: 0,
       fullmove: 1,
+      pendingPromotion: null,
     };
 
     this.sel = { fromSq: null, legalTo: [] };
@@ -172,6 +173,7 @@ export class Game {
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
+    this.state.pendingPromotion = null;
     this._emit();
   }
 
@@ -223,6 +225,7 @@ export class Game {
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
+    this.state.pendingPromotion = null;
     this._emit();
   }
 
@@ -671,6 +674,7 @@ export class Game {
       if (tr === last) {
         if (!promo) {
           this._pendingPromotion = { fromIdx, toIdx };
+          this.state.pendingPromotion = { fromIdx, toIdx };
           this._emit();
           return "PROMO";
         } else {
@@ -685,11 +689,19 @@ export class Game {
   }
 
   resolvePendingPromotion(letter) {
-    if (!this._pendingPromotion) return false;
+    if (!this._pendingPromotion) throw new Error("pending promotion");
     const { fromIdx, toIdx } = this._pendingPromotion;
-    this._finalizeMove(fromIdx, toIdx, letter);
+    const L = String(letter || "").toUpperCase();
+    if (!"QRBN".includes(L)) throw new Error("invalid promotion piece");
+    this._finalizeMove(fromIdx, toIdx, L);
     return true;
   }
+
+  promoteToQueen() { return this.resolvePendingPromotion("Q"); }
+  promoteToRook() { return this.resolvePendingPromotion("R"); }
+  promoteToBishop() { return this.resolvePendingPromotion("B"); }
+  promoteToKnight() { return this.resolvePendingPromotion("N"); }
+
 
   _finalizeMove(fromIdx, toIdx, promoLetterOrNull) {
     const S = this.state;
@@ -714,6 +726,7 @@ export class Game {
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
+    this.state.pendingPromotion = null;
     this._emit();
   }
 
@@ -724,6 +737,7 @@ export class Game {
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
+    this.state.pendingPromotion = null;
     this._emit();
     return true;
   }
@@ -743,6 +757,7 @@ export class Game {
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
+    this.state.pendingPromotion = null;
     this._emit();
     return true;
   }
@@ -760,6 +775,7 @@ export class Game {
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
+    this.state.pendingPromotion = null;
     this._emit();
     return true;
   }
@@ -773,6 +789,71 @@ export class Game {
     this._emit();
     return true;
   }
+
+
+
+// --- CQL export (Query Mode) ---
+// Current scope (for tests):
+// - Only supported when ui.mode === "query"
+// - Only supported for "FEN-only" trees (no moves): root has no children and curNode === root
+// - Base query: one constraint per piece, like "pc7" or "Kh8"
+// - Extra semantics: a blue square ("B") with a green arrow ("G") from that square to another means:
+//     "<Piece><fromSq>" and "attacks <toSq>"
+//   (single such pair supported for now)
+exportCQL() {
+  if (this.ui.mode !== "query") throw new Error("not implemented");
+  const hasMoves = this.root.children && this.root.children.length > 0;
+  if (hasMoves || this.curNode !== this.root) throw new Error("not implemented");
+
+  const m = this.curNode.marks;
+  for (const [, c] of m.sqMarks.entries()) {
+    if (c !== "B") throw new Error("not implemented");
+  }
+  for (const a of m.arrows) {
+    if (a.color !== "G") throw new Error("not implemented");
+  }
+
+  const map = { p: "p", n: "n", b: "b", r: "r", q: "q", k: "k" };
+
+  const pieceLineForSquare = (sq) => {
+    const bi = parseSq(sq);
+    const p = this.state.board[bi];
+    if (!p) return null;
+    let L = map[p.type] || "?";
+    if (p.color === "w") L = L.toUpperCase();
+    return L + sq;
+  };
+
+  const lines = [];
+  for (let bi = 0; bi < 64; bi++) {
+    const p = this.state.board[bi];
+    if (!p) continue;
+    const sq = sqName(bi);
+    let L = map[p.type] || "?";
+    if (p.color === "w") L = L.toUpperCase();
+    lines.push(L + sq);
+  }
+
+  if (m.sqMarks.size || m.arrows.length) {
+    if (m.sqMarks.size !== 1 || m.arrows.length !== 1) throw new Error("not implemented");
+    const [[fromSq, c]] = Array.from(m.sqMarks.entries());
+    if (c !== "B") throw new Error("not implemented");
+    const ar = m.arrows[0];
+    if (ar.color !== "G") throw new Error("not implemented");
+    if (String(ar.from) !== String(fromSq)) throw new Error("not implemented");
+
+    const pl = pieceLineForSquare(String(fromSq));
+    if (!pl) throw new Error("not implemented");
+
+    const j = lines.findIndex((x) => x.endsWith(String(fromSq)));
+    if (j < 0) throw new Error("not implemented");
+    lines[j] = pl;
+    lines.push("attacks " + String(ar.to));
+  }
+
+  const body = lines.join("\n");
+  return "cql(quiet)\n{\nline -> {\n" + body + "\n}\n}";
+}
 
   // --- PGN I/O (same pragmatic import strategy as before) ---
   _buildMarksComment(node) {
