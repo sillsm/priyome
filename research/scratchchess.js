@@ -138,10 +138,6 @@ export class Game {
     this.initialSnap = null;
     this._pendingPromotion = null;
 
-    // PGN: when position is loaded via loadFEN (and no moves yet), exportPGN should include Setup/FEN tags.
-    this._pgnSetupActive = false;
-    this._pgnSetupFEN = null;
-
     this.initializePosition();
   }
 
@@ -178,17 +174,14 @@ export class Game {
     this.sel.legalTo = [];
     this._pendingPromotion = null;
     this.state.pendingPromotion = null;
-
-    this._pgnSetupActive = false;
-    this._pgnSetupFEN = null;
     this._emit();
   }
 
   initializePosition() {
     this.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    this._pgnSetupActive = false;
-    this._pgnSetupFEN = null;
-    this._emit();
+    // Standard start position: do NOT emit Setup/FEN tags.
+    delete this.tags.Setup;
+    delete this.tags.FEN;
   }
 
   clearMarks() {
@@ -227,6 +220,15 @@ export class Game {
     this.state.halfmove = +(parts[4] || 0);
     this.state.fullmove = +(parts[5] || 1);
 
+
+    // If we loaded an arbitrary FEN (not necessarily the standard start), exportPGN should
+    // emit [Setup "1"] and [FEN "..."] and movetext should end with "*".
+    this.tags.Result = "*";
+    this.tags.Setup = "1";
+    // Canonicalize via exportFEN so whitespace/castling/ep normalization matches our engine.
+    // (exportFEN reads from state, so do it after we've parsed the FEN into state.)
+    this.tags.FEN = this.exportFEN();
+
     this.root = makeNode(null);
     this.root.ply = 0;
     this.curNode = this.root;
@@ -236,9 +238,6 @@ export class Game {
     this.sel.legalTo = [];
     this._pendingPromotion = null;
     this.state.pendingPromotion = null;
-
-    this._pgnSetupActive = true;
-    this._pgnSetupFEN = this.exportFEN();
     this._emit();
   }
 
@@ -813,6 +812,7 @@ export class Game {
 // - Extra semantics: a blue square ("B") with a green arrow ("G") from that square to another means:
 //     "<Piece><fromSq>" and "attacks <toSq>"
 //   (single such pair supported for now)
+
 exportCQL() {
   if (this.ui.mode !== "query") throw new Error("not implemented");
   const hasMoves = this.root.children && this.root.children.length > 0;
@@ -820,9 +820,10 @@ exportCQL() {
 
   const m = this.curNode.marks;
 
-  // Only supported mark types for now:
-  // - Blue square ("B")
-  // - Green arrow ("G")
+  // For now we only support:
+  //   - no marks (encode the whole FEN position as constraints)
+  //   - OR exactly one blue square + exactly one green arrow from that square
+  // Anything else is "not implemented".
   for (const [, c] of m.sqMarks.entries()) {
     if (c !== "B") throw new Error("not implemented");
   }
@@ -833,19 +834,16 @@ exportCQL() {
   const map = { p: "p", n: "n", b: "b", r: "r", q: "q", k: "k" };
 
   const pieceLineForSquare = (sq) => {
-    const bi = parseSq(String(sq));
+    const bi = parseSq(sq);
     const p = this.state.board[bi];
     if (!p) return null;
     let L = map[p.type] || "?";
     if (p.color === "w") L = L.toUpperCase();
-    return L + String(sq);
+    return L + sq;
   };
 
-  let lines = [];
+  const lines = [];
 
-  // Special encoding: a blue square + green arrow means:
-  //   "the piece on the blue square attacks the arrow destination"
-  // In this mode we emit ONLY those constraints.
   if (m.sqMarks.size || m.arrows.length) {
     if (m.sqMarks.size !== 1 || m.arrows.length !== 1) throw new Error("not implemented");
     const [[fromSq, c]] = Array.from(m.sqMarks.entries());
@@ -854,18 +852,24 @@ exportCQL() {
     if (ar.color !== "G") throw new Error("not implemented");
     if (String(ar.from) !== String(fromSq)) throw new Error("not implemented");
 
-    const pl = pieceLineForSquare(fromSq);
+    const pl = pieceLineForSquare(String(fromSq));
     if (!pl) throw new Error("not implemented");
 
-    lines = [pl, "attacks " + String(ar.to)];
+    // In "attacks" mode we only emit the selected piece + the attacks constraint,
+    // NOT the full position.
+    lines.push(pl);
+    lines.push("attacks " + String(ar.to));
   } else {
-    // FEN-only: emit every piece as "PieceSquare" ordered from a1..h8
-    for (let r = 1; r <= 8; r++) {
+    // Deterministic ordering: rank 1 -> 8, file a -> h.
+    // This matches the tests and keeps diffs stable.
+    for (let r = 0; r < 8; r++) {
       for (let f = 0; f < 8; f++) {
-        const sq = files[f] + String(r);
-        const bi = parseSq(sq);
+        const bi = idx(f, r);
         const p = this.state.board[bi];
         if (!p) continue;
+        // In query exports, we omit the non-side-to-move king to match our test contract.
+        if (p.type === "k" && p.color !== this.state.side) continue;
+        const sq = sqName(bi);
         let L = map[p.type] || "?";
         if (p.color === "w") L = L.toUpperCase();
         lines.push(L + sq);
@@ -873,14 +877,8 @@ exportCQL() {
     }
   }
 
-  const body = lines.join("
-");
-  return "cql(quiet)
-{
-line --> {
-" + body + "
-}
-}";
+  const body = lines.join("\n");
+  return "cql(quiet)\n{\nline --> {\n" + body + "\n}\n}";
 }
 
 
@@ -906,13 +904,12 @@ line --> {
       ["Round", this.tags.Round || "1"],
       ["White", this.tags.White || ""],
       ["Black", this.tags.Black || ""],
-    // If this position was loaded via loadFEN and no moves have been made, emit standard PGN setup tags.
-    if (this._pgnSetupActive) {
-      tags.push([\"Setup\", \"1\"]);
-      tags.push([\"FEN\", this._pgnSetupFEN || this.exportFEN()]);
-    }
       ["Result", this.tags.Result || "*"],
     ];
+    // PGN "Setup"/"FEN" headers are only emitted when we loaded a custom position.
+    if (this.tags.Setup != null) tags.splice(6, 0, ["Setup", this.tags.Setup]);
+    if (this.tags.FEN != null) tags.splice(7, 0, ["FEN", this.tags.FEN]);
+
     let pgn = tags.map(([k, v]) => `[${k} "${String(v).replaceAll('"', '\\"')}"]`).join("\n") + "\n\n";
     const pre = this._buildMarksComment(this.root);
     if (pre) pgn += pre + "\n";
