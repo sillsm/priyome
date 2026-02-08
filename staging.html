@@ -438,6 +438,20 @@ import { createGame, BoardView } from "./scratchchess.js";
     alignment_examples: "./pgn/alignment_examples.pgn"
   };
 
+  const PGN_MANIFEST = {
+      // "all": "./pgn/all.pgn",
+      "fischer": "./pgn/Fischer.pgn"
+    };
+  
+    // priyomes
+    const PRIYOME_PGN_MANIFEST = {
+    default: "./priyomes/priyomes.pgn"
+  };
+  
+  
+  
+
+
   const CQL_EVAL_MANIFEST = {
     naivealignments: { url: "./cql/naivealignments.cql", description: "Naive alignments." },
     humanlignments: { url: "./cql/human_alignments.cql", description: "Human alignments." }
@@ -593,14 +607,32 @@ import { createGame, BoardView } from "./scratchchess.js";
   // -----------------------------
   const GAME_INSTANCES = new Map(); // gameId -> { game, loadedPgnHash }
   let current = createGame({ Event:"ScratchChess", White:"White", Black:"Black", Date:"2026.02.08" });
+  // Main board view is remounted per selected game so per-game properties (mini/setup/flip) don't "stick".
+  let boardView = null;
 
-  const board = new BoardView($("boardHost"), current, {
-    spareDiv: $("sparesHost"),
-    minSizePx: 320,
-  });
+  function mountMainView(game){
+    // Clear hosts to avoid view-state bleed
+    const bh = $("boardHost");
+    const sh = $("sparesHost");
+    if (bh) bh.innerHTML = "";
+    if (sh) sh.innerHTML = "";
 
-  current.onChange(() => syncText());
+    boardView = new BoardView($("boardHost"), game, {
+      spareDiv: $("sparesHost"),
+      minSizePx: 320,
+    });
 
+    // Ensure we only attach one onChange handler per game instance
+    if (!game.__sc_onchange_attached){
+      game.__sc_onchange_attached = true;
+      if (typeof game.onChange === "function"){
+        game.onChange(() => syncText());
+      }
+    }
+    syncText();
+  }
+
+  mountMainView(current);
   function syncText(){
     try{
       $("fenBox").value = current.exportFEN();
