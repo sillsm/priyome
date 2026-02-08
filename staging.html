@@ -229,6 +229,23 @@
       overflow:auto;
       white-space:pre-wrap;
     }
+  
+    /* --- Priyomes layout (ported from reference) --- */
+    .priyomesGrid{ display:grid; grid-template-columns: 1fr 320px; gap:12px; }
+    .prLeftCard,.prRightCard{ background:var(--panel2); border:1px solid var(--border); border-radius:14px; padding:12px; }
+    @media (max-width: 980px){
+      .priyomesGrid{ grid-template-columns: 1fr; }
+    }
+
+    /* --- Moves (inline variations) --- */
+    .mvTok{ background:transparent; border:1px solid rgba(255,255,255,.10); color:var(--text);
+      border-radius:10px; padding:2px 8px; margin:2px 4px 2px 0; cursor:pointer; font:inherit; }
+    .mvTok:hover{ border-color: rgba(255,255,255,.28); }
+    .parTok{ color: var(--muted); }
+    .cmtTok{ color: rgba(233,238,248,.75); font-style: italic; }
+    .mnTok{ color: rgba(233,238,248,.65); }
+    .resTok{ color: rgba(233,238,248,.85); font-weight:600; }
+
   </style>
 </head>
 <body>
@@ -295,22 +312,50 @@
           <button id="tabErrors">Errors</button>
         </div>
 
-        <!-- Priyomes -->
+        
+<!-- Priyomes -->
         <div class="pane active" id="panePriyomes">
           <div class="hint">
-            Mini boards are rendered by loading each Priyome PGN into a ScratchChess game and toggling <span class="mono">mini</span>.
-            Click a Priyome to load it into the main board. User-created Priyomes are stored in localStorage.
+            Select a pattern on the left. Choose a database on the right.
+            <b>New Query</b> enables setup mode on the main board; click <b>Save as Priyome</b> to store it.
           </div>
-          <div class="row" style="margin-bottom:10px;">
-            <button id="btnNewPriyome" class="good">New Query</button>
-            <button id="btnSavePriyome" class="good">Save as Priyome</button>
-            <button id="btnResetPriyome" class="bad">Reset to empty</button>
-            <span class="pill" id="pryCount">—</span>
+
+          <div class="priyomesGrid">
+            <div class="prLeftCard">
+              <div class="row" style="align-items:center; gap:10px;">
+                <div class="status"><b>Patterns</b></div>
+                <div class="hint" id="prSelHint" style="margin-left:auto;">Tap a card to select.</div>
+              </div>
+              <div class="miniGrid" id="pryGrid"></div>
+            </div>
+
+            <div class="prRightCard">
+              <div class="status"><b>Database</b></div>
+              <select id="dbSelect" aria-label="Database select">
+                <option value="all">all</option>
+                <option value="fischer">Fischer</option>
+              </select>
+
+              <div class="row" style="margin-top:10px; gap:10px;">
+                <button class="smallBtn" id="btnPriyomesSearch" type="button">Search</button>
+                <button class="smallBtn good" id="btnPriyomesNew" type="button">New Query</button>
+              </div>
+
+              <div class="hint" id="prRightHint" style="margin-top:10px;">
+                Search runs the selected pattern against the selected database (CQL via wasm runner).
+                New Query turns the main board into a setup tool.
+              </div>
+
+              <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
+                <button id="btnSavePriyome" class="good">Save as Priyome</button>
+                <button id="btnResetPriyome" class="bad">Reset to empty</button>
+                <span class="pill" id="pryCount">—</span>
+              </div>
+            </div>
           </div>
-          <div class="miniGrid" id="pryGrid"></div>
         </div>
 
-        <!-- Games -->
+<!-- Games -->
         <div class="pane" id="paneGames">
           <div class="hint">
             Studies are loaded from <span class="mono">STUDY_MANIFEST</span> (same as reference.html). The default study should include the Fischer games if <span class="mono">./pgn/Study.pgn</span> exists.
@@ -374,38 +419,7 @@
           <div class="hint">
             Runtime logs (including query output). If something fails, copy the stack trace from here.
           </div>
-          <div class="row" style="margin-bottom:10px;">
-            <button id="btnClearErrors">Clear</button>
-          </div>
-          <div id="errLog" class="status"></div>
-        </div>
-
-        <h3 style="margin-top:14px;">FEN</h3>
-        <textarea id="fenBox" rows="3"></textarea>
-        <div class="row" style="margin-top:8px;">
-          <button id="btnLoadFEN">Load FEN</button>
-          <button id="btnExportFEN">Export FEN</button>
-        </div>
-
-        <h3 style="margin-top:14px;">PGN</h3>
-        <textarea id="pgnBox" rows="7"></textarea>
-        <div class="row" style="margin-top:8px;">
-          <button id="btnLoadPGN">Load PGN</button>
-          <button id="btnExportPGN">Export PGN</button>
-        </div>
-
-        <h3 style="margin-top:14px;">CQL (export from current marks)</h3>
-        <textarea id="cqlBox" rows="7" readonly></textarea>
-        <div class="row" style="margin-top:8px;">
-          <button id="btnExportCQL">Export CQL</button>
-          <button id="btnClearCQL">Clear</button>
-        </div>
-        <div id="cqlErr" class="status" style="margin-top:10px;"></div>
-
-      </div>
-    </div>
-  </div>
-
+          <div clas
 <script type="module">
 import { createGame, BoardView } from "./scratchchess.js";
 
@@ -413,57 +427,62 @@ import { createGame, BoardView } from "./scratchchess.js";
   const $ = (id) => document.getElementById(id);
 
   // -----------------------------
-  // Manifests (copied from reference.html)
+  // Manifests (verbatim from reference.html)
   // -----------------------------
-  const PRIYOME_PGN_MANIFEST = { default: "./priyomes/priyomes.pgn" };
-
+  const PRIYOME_PGN_MANIFEST = {
+  default: "./priyomes/priyomes.pgn"
+};
   const STUDY_MANIFEST = {
     default:"./pgn/Study.pgn",
     fen_test: "./pgn/default games.pgn",
     alignment_examples: "./pgn/alignment_examples.pgn"
   };
-
+  const PGN_MANIFEST = {
+    // "all": "./pgn/all.pgn",
+    "fischer": "./pgn/Fischer.pgn"
+  };
   const CQL_EVAL_MANIFEST = {
-    naivealignments: { url: "./cql/naivealignments.cql", description: "Naive alignments." },
-    humanlignments: { url: "./cql/human_alignments.cql", description: "Human alignments." }
+    naivealignments: {
+      url: "./cql/naivealignments.cql",
+      description: "Naive alignments."
+    },
+    humanlignments: {
+      url: "./cql/human_alignments.cql",
+      description: "Human alignments."
+    }
   };
 
   // -----------------------------
-  // Logging (Errors tab)
+  // Logging / Errors
   // -----------------------------
-  const errLog = $("errLog");
-  function logLine(level, msg){
-    const tag = level === "OK" ? "badgeOK" : (level === "WARN" ? "badgeWARN" : "badgeERR");
-    const line = `[${level}] ${msg}`;
-    const span = document.createElement("div");
-    span.innerHTML = `<span class="${tag}">${level}</span> ${escapeHtml(msg)}`;
-    errLog.appendChild(span);
-    errLog.scrollTop = errLog.scrollHeight;
-    // also mirror to console
-    if (level === "ERR") console.error(line);
-    else if (level === "WARN") console.warn(line);
-    else console.log(line);
+  const logLines = [];
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
-  function logStack(level, prefix, e){
-    const s = (e && e.stack) ? e.stack : String(e);
-    logLine(level, prefix + s);
+  function logLine(level, msg) {
+    const line = `[${new Date().toLocaleTimeString()}] ${level}: ${msg}`;
+    logLines.push(line);
+    const el = $("errorsBox");
+    if (el) {
+      el.textContent = logLines.slice(-400).join("\n");
+      el.scrollTop = el.scrollHeight;
+    }
   }
-  $("btnClearErrors").onclick = () => { errLog.textContent=""; };
-
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function logStack(level, prefix, e) {
+    logLine(level, `${prefix}${e?.message || e}`);
+    if (e?.stack) logLine(level, e.stack);
   }
+  window.addEventListener("error", (ev) => logLine("ERR", `${ev.message} @ ${ev.filename}:${ev.lineno}:${ev.colno}`));
+  window.addEventListener("unhandledrejection", (ev) => logStack("ERR", "Unhandled rejection: ", ev.reason));
 
   // -----------------------------
-  // Helpers (PGN parsing like reference)
+  // PGN helpers (from reference.html; lightly adapted)
   // -----------------------------
   function parseHeaders(pgn){
     const headers = {};
-    const headerRe = /^\[([A-Za-z0-9_]+)\s+\"([^\"]*)\"\]\s*$/gm;
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
     let m;
-    while ((m = headerRe.exec(pgn)) !== null){
-      headers[m[1]] = m[2];
-    }
+    while ((m = headerRe.exec(pgn)) !== null){ headers[m[1]] = m[2]; }
     return headers;
   }
 
@@ -474,383 +493,17 @@ import { createGame, BoardView } from "./scratchchess.js";
     return parts.length ? parts : [t];
   }
 
-  function pgnTitleFromHeaders(h){
-    const w = h.White || "White";
-    const b = h.Black || "Black";
-    const ev = h.Event || "";
-    const site = h.Site || "";
-    const date = h.Date || "";
-    const base = `${w} vs ${b}`.trim();
-    const bits = [ev, site, date].filter(Boolean).join(" • ");
-    return bits ? `${base} — ${bits}` : base;
+  function textToUtf8Bytes(text) {
+    return new TextEncoder().encode(text ?? "");
   }
 
-  function stripHeadersFromPgn(pgn){
-    const body = String(pgn || "")
-      .replace(/\r/g,'')
-      .replace(/^\s*\[[^\]]+\]\s*$/gm,'')
-      .trim();
-    return body;
-  }
-
-  function extractMoveTextForPane(pgn){
-    // Avoid showing PGN tags in the move pane.
-    const body = stripHeadersFromPgn(pgn);
-    // Collapse multiple blank lines.
-    return body.replace(/\n{3,}/g, "\n\n").trim();
-  }
-
-  async function fetchText(url){
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`fetchText: ${res.status} ${res.statusText} for ${url}`);
-    return await res.text();
-  }
-
-  // -----------------------------
-  // Studies / games state
-  // -----------------------------
-  const STUDIES = Object.create(null); // name -> { gameIds: [] }
-  const GAMES = []; // { id, title, pgn, headers, study, user? }
-  let currentStudyName = "default";
-  let currentGameId = null;
-
-  function ensureStudy(name){
-    if (!STUDIES[name]) STUDIES[name] = { gameIds: [] };
-    return STUDIES[name];
-  }
-  function currentStudy(){ return ensureStudy(currentStudyName); }
-  function getGame(id){ return GAMES.find(g => g.id === id) || null; }
-
-  function addGameToStudy(studyName, pgn, meta={}){
-    const blocks = splitMultiPgn(pgn);
-    if (!blocks.length) return null;
-    const first = blocks[0];
-    const h = parseHeaders(first);
-    const id = meta.id || `g_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const title = meta.title || pgnTitleFromHeaders(h);
-    const g = { id, title, pgn: first, headers:h, study:studyName, user:!!meta.user };
-    GAMES.push(g);
-    ensureStudy(studyName).gameIds.push(id);
-    return g;
-  }
-
-  function renderStudySelect(){
-    const sel = $("studySelect");
-    const names = Object.keys(STUDIES).sort((a,b)=>a.localeCompare(b));
-    sel.innerHTML = "";
-    for (const n of names){
-      const opt = document.createElement("option");
-      opt.value = n;
-      opt.textContent = n;
-      if (n === currentStudyName) opt.selected = true;
-      sel.appendChild(opt);
-    }
-    $("studyPill").textContent = `Study • ${currentStudyName}`;
-  }
-
-  function setCurrentStudy(name){
-    currentStudyName = name;
-    ensureStudy(name);
-    renderStudySelect();
-    renderGameList();
-    $("studyPill").textContent = `Study • ${currentStudyName} • ${currentStudy().gameIds.length} games`;
-  }
-
-  function renderGameList(){
-    const list = $("gameList");
-    list.innerHTML = "";
-    const ids = currentStudy().gameIds.slice();
-    for (const id of ids){
-      const g = getGame(id);
-      if (!g) continue;
-      const card = document.createElement("div");
-      card.className = "card";
-      card.innerHTML = `<div class="cardTitle">${escapeHtml(g.title)}</div>
-                        <div class="cardSub">${escapeHtml((g.headers.Event||"") + (g.headers.Date ? (" • " + g.headers.Date) : ""))}</div>`;
-      card.onclick = () => loadGameIntoMain(g.id);
-      list.appendChild(card);
-    }
-    $("gamePill").textContent = currentGameId ? `Game • ${escapeHtml(getGame(currentGameId)?.title || "—")}` : "Game • —";
-  }
-
-  // -----------------------------
-  // ScratchChess main game + board view
-  // -----------------------------
-  let current = createGame({ Event:"ScratchChess", White:"White", Black:"Black", Date:"2026.02.08" });
-
-  const board = new BoardView($("boardHost"), current, {
-    spareDiv: $("sparesHost"),
-    minSizePx: 320,
-  });
-
-  current.onChange(() => syncText());
-
-  function syncText(){
-    try{
-      $("fenBox").value = current.exportFEN();
-    }catch(e){}
-    try{
-      $("pgnBox").value = current.exportPGN();
-    }catch(e){}
-    try{
-      $("movesPane").textContent = extractMoveTextForPane(current.exportPGN());
-    }catch(e){
-      $("movesPane").textContent = "(moves unavailable)";
-    }
-    $("modePill").textContent = `Mode • ${current.ui?.mode || "?"}${current.ui?.setup ? " • setup" : ""}${current.ui?.mini ? " • mini" : ""}`;
-    // spares visibility is controlled by library; we also mirror:
-    $("sparesHost").hidden = !(current.ui && current.ui.setup);
-    setActive("btnMovesMode", current.ui?.mode === "moves");
-    setActive("btnSquaresMode", current.ui?.mode === "squares");
-    setActive("btnArrowsMode", current.ui?.mode === "arrows");
-    setActive("btnSetupMode", !!current.ui?.setup);
-    setActive("btnMiniMain", !!current.ui?.mini);
-  }
-
-  function setActive(id, on){
-    const b = $(id);
-    if (!b) return;
-    b.classList.toggle("active", !!on);
-  }
-
-  function loadGameIntoMain(gameId){
-    const g = getGame(gameId);
-    if (!g) return;
-    try{
-      current.loadPGN(g.pgn);
-      currentGameId = g.id;
-      $("gamePill").textContent = `Game • ${g.title}`;
-      $("pgnBox").value = g.pgn;
-      syncText();
-      logLine("OK", `Loaded game: ${g.title}`);
-    }catch(e){
-      logStack("ERR", "Failed to load PGN: ", e);
-      setTab("Errors");
-    }
-  }
-
-  // -----------------------------
-  // Modes / controls wiring (using ScratchChess API)
-  // -----------------------------
-  $("btnMovesMode").onclick = () => current.setMode("moves");
-  $("btnSquaresMode").onclick = () => current.setMode("squares");
-  $("btnArrowsMode").onclick = () => current.setMode("arrows");
-  $("btnSetupMode").onclick = () => current.toggleSetup();
-  $("btnFlip").onclick = () => current.toggleFlip();
-  $("btnMiniMain").onclick = () => current.toggleMini();
-
-  $("btnPrev").onclick = () => current.prevMove();
-  $("btnNext").onclick = () => current.nextMove();
-  $("btnPromote").onclick = () => current.promoteVariationFromHere();
-  $("btnDelete").onclick = () => current.deleteMoveFromHere();
-
-  $("btnInit").onclick = () => current.initializePosition();
-  $("btnClear").onclick = () => current.clearBoard();
-  $("btnClearMarks").onclick = () => current.clearMarks();
-
-  $("btnLoadFEN").onclick = () => current.loadFEN($("fenBox").value);
-  $("btnExportFEN").onclick = () => $("fenBox").value = current.exportFEN();
-
-  $("btnLoadPGN").onclick = () => current.loadPGN($("pgnBox").value);
-  $("btnExportPGN").onclick = () => $("pgnBox").value = current.exportPGN();
-
-  $("btnExportCQL").onclick = () => {
-    try{
-      $("cqlBox").value = current.exportCQL();
-      $("cqlErr").textContent = "";
-    }catch(e){
-      $("cqlBox").value = "";
-      $("cqlErr").textContent = (e && e.stack) ? e.stack : String(e);
-    }
-  };
-  $("btnClearCQL").onclick = () => { $("cqlBox").value = ""; $("cqlErr").textContent = ""; };
-
-  // -----------------------------
-  // Tabs
-  // -----------------------------
-  const TAB_IDS = ["Priyomes","Games","Query","Evals","Errors"];
-  function setTab(name){
-    for (const t of TAB_IDS){
-      $("tab"+t).classList.toggle("active", t===name);
-      $("pane"+t).classList.toggle("active", t===name);
-    }
-  }
-  $("tabPriyomes").onclick = () => setTab("Priyomes");
-  $("tabGames").onclick = () => setTab("Games");
-  $("tabQuery").onclick = () => setTab("Query");
-  $("tabEvals").onclick = () => setTab("Evals");
-  $("tabErrors").onclick = () => setTab("Errors");
-
-  // -----------------------------
-  // Priyomes: load + mini render using scratchchess toggleMini()
-  // -----------------------------
-  const pryGrid = $("pryGrid");
-  const PRY_LS_KEY = "scratchchess_user_priyomes_v1";
-  let PRIYOMES = []; // {id,title,subtitle,pgn,user}
-
-  function loadUserPriyomes(){
-    try{
-      const raw = localStorage.getItem(PRY_LS_KEY);
-      if (!raw) return [];
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) return [];
-      return arr.filter(x => x && typeof x.pgn === "string").slice(0,200);
-    }catch{ return []; }
-  }
-  function saveUserPriyomes(list){
-    try{
-      localStorage.setItem(PRY_LS_KEY, JSON.stringify(list));
-    }catch(e){
-      logLine("WARN","Failed to persist priyomes to localStorage (quota?)");
-    }
-  }
-
-  async function loadDefaultPriyomes(){
-    try{
-      const url = PRIYOME_PGN_MANIFEST.default;
-      const txt = await fetchText(url);
-      const blocks = splitMultiPgn(txt);
-      const list = blocks.map((pgn, i) => {
-        const h = parseHeaders(pgn);
-        const title = h.Event || h.Site || `Priyome ${i+1}`;
-        const subtitle = [h.White,h.Black,h.Date].filter(Boolean).join(" • ");
-        return { id:`pry_default_${i}`, title, subtitle, pgn, user:false };
-      });
-      return list;
-    }catch(e){
-      logLine("WARN", `Could not load default Priyomes: ${e.message || e}`);
-      return [];
-    }
-  }
-
-  const miniViews = new Map(); // priyome id -> { game, view }
-  function clearMiniViews(){
-    for (const v of miniViews.values()){
-      try{ v.view?.destroy?.(); }catch{}
-    }
-    miniViews.clear();
-  }
-
-  function renderPriyomes(){
-    pryGrid.innerHTML = "";
-    clearMiniViews();
-    $("pryCount").textContent = `${PRIYOMES.length} priyomes`;
-    for (const pr of PRIYOMES){
-      const card = document.createElement("div");
-      card.className = "miniCard";
-      const hostId = `mini_${pr.id}`;
-      card.innerHTML = `
-        <div class="miniHost" id="${hostId}"></div>
-        <div>
-          <div class="cardTitle">${escapeHtml(pr.title || "Priyome")}</div>
-          <div class="cardSub">${escapeHtml(pr.subtitle || (pr.user ? "User-created" : ""))}</div>
-          <div class="row" style="margin-top:8px;">
-            <button class="good" data-act="load">Load</button>
-            ${pr.user ? `<button class="bad" data-act="delete">Delete</button>` : ``}
-          </div>
-        </div>
-      `;
-      card.querySelector('[data-act="load"]').onclick = (e) => {
-        e.stopPropagation();
-        try{
-          current.loadPGN(pr.pgn);
-          $("pgnBox").value = pr.pgn;
-          current.setMode("moves");
-          syncText();
-          logLine("OK", `Loaded Priyome: ${pr.title}`);
-        }catch(err){
-          logStack("ERR", "Failed to load Priyome PGN: ", err);
-          setTab("Errors");
-        }
-      };
-      const del = card.querySelector('[data-act="delete"]');
-      if (del){
-        del.onclick = (e) => {
-          e.stopPropagation();
-          PRIYOMES = PRIYOMES.filter(x => x.id !== pr.id);
-          saveUserPriyomes(PRIYOMES.filter(x => x.user));
-          renderPriyomes();
-        };
-      }
-      card.onclick = () => card.querySelector('[data-act="load"]').click();
-      pryGrid.appendChild(card);
-
-      // Create mini view
-      try{
-        const g = createGame({ Event: pr.title || "Priyome", White:"", Black:"", Date:"" });
-        g.loadPGN(pr.pgn);
-        if (!g.ui?.mini) g.toggleMini();
-        g.setMode("moves");
-        const view = new BoardView($(hostId), g, { minSizePx: 110 });
-        miniViews.set(pr.id, { game:g, view });
-      }catch(e){
-        logLine("WARN", `Mini render failed for "${pr.title}": ${e.message || e}`);
-      }
-    }
-  }
-
-  $("btnNewPriyome").onclick = () => {
-    try{
-      current.clearBoard();
-      if (!current.ui?.setup) current.toggleSetup();
-      current.clearMarks();
-      current.setMode("moves");
-      syncText();
-      logLine("OK","New Query: cleared board and entered setup mode.");
-    }catch(e){
-      logStack("ERR","New Query failed: ", e);
-    }
-  };
-
-  $("btnResetPriyome").onclick = () => {
-    try{
-      current.clearBoard();
-      current.clearMarks();
-      syncText();
-      logLine("OK","Cleared board and marks.");
-    }catch(e){
-      logStack("ERR","Reset failed: ", e);
-    }
-  };
-
-  $("btnSavePriyome").onclick = () => {
-    try{
-      const pgn = current.exportPGN();
-      const h = parseHeaders(pgn);
-      const title = (h.Event && h.Event !== "ScratchChess") ? h.Event : `User Priyome ${PRIYOMES.filter(p=>p.user).length + 1}`;
-      const pr = { id:`pry_user_${Date.now()}_${Math.random().toString(16).slice(2)}`, title, subtitle:"User-created", pgn, user:true };
-      PRIYOMES.push(pr);
-      saveUserPriyomes(PRIYOMES.filter(x => x.user));
-      renderPriyomes();
-      logLine("OK", `Saved Priyome: ${title}`);
-    }catch(e){
-      logStack("ERR","Save Priyome failed: ", e);
-      setTab("Errors");
-    }
-  };
-
-  // -----------------------------
-  // Query runner (copied structure from reference.html)
-  // -----------------------------
-  let _runnerModPromise = null;
-  function getRunnerMod(){
-    if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
-    return _runnerModPromise;
-  }
-
-  function textToUtf8Bytes(s){
-    return new TextEncoder().encode(String(s||""));
-  }
-  async function fileToUint8(file){
-    const buf = await file.arrayBuffer();
-    return new Uint8Array(buf);
-  }
-
-  // Dummy-game workaround from reference.html (simplified)
+  // ---------- CQL runner workaround: ensure >=2 games (VERBATIM FROM reference.html)
   const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
   const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
   const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
   function buildDummyGamePgn(){
+    // 10 plies = 5 full moves
     const headers = [
       `[Event "${DUMMY_CQL_EVENT}"]`,
       `[Site "Local"]`,
@@ -860,229 +513,654 @@ import { createGame, BoardView } from "./scratchchess.js";
       `[Black "${DUMMY_CQL_BLACK}"]`,
       `[Result "0-1"]`,
     ].join("\n");
+
     const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
     return `${headers}\n\n${moves}\n`;
   }
+
   function isDummyGamePgn(pgn){
-    const h = parseHeaders(String(pgn||""));
+    const h = parseHeaders(String(pgn || ""));
     return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
   }
+
   function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
-    const bytes = (pgnBytes instanceof Uint8Array) ? pgnBytes : new Uint8Array(pgnBytes||[]);
+    const bytes = (pgnBytes instanceof Uint8Array) ? pgnBytes : new Uint8Array(pgnBytes || []);
     const text = new TextDecoder().decode(bytes);
     const games = splitMultiPgn(text);
-    if (games.length !== 1) return { bytes, injected:false, originalGameCount: games.length };
+    if (games.length !== 1){
+      return { bytes, injected:false, originalGameCount: games.length };
+    }
     const dummy = buildDummyGamePgn();
     const outText = (text.trim() ? (text.trim() + "\n\n" + dummy) : dummy) + "\n";
     return { bytes: textToUtf8Bytes(outText), injected:true, originalGameCount:1 };
   }
+
   function stripDummyFromMultiPgnText(multiPgnText){
-    const games = splitMultiPgn(String(multiPgnText||""));
+    const games = splitMultiPgn(String(multiPgnText || ""));
+    if (!games.length) return "";
     const kept = games.filter(g => !isDummyGamePgn(g));
     return kept.join("\n\n").trim();
   }
 
-  let qPgnBytesOverride = null;
 
-  const qCqlFile = $("qCqlFile");
-  const qPgnFile = $("qPgnFile");
-  const qCqlName = $("qCqlName");
-  const qPgnName = $("qPgnName");
-  const qCqlText = $("qCqlText");
-  const qArgv = $("qArgv");
-  const qStatus = $("qStatus");
-  const qRun = $("qRun");
+  
 
-  qCqlFile.addEventListener("change", async () => {
-    try{
-      const f = qCqlFile.files?.[0];
-      if (!f) return;
-      qCqlName.textContent = f.name;
-      qCqlText.value = await f.text();
-      logLine("OK", `Loaded CQL file: ${f.name}`);
-    }catch(e){
-      logStack("ERR","Failed to read CQL file: ", e);
-      setTab("Errors");
+  // Strip PGN headers; return move-text only
+  function extractMoveText(pgn){
+    const s = String(pgn || "");
+    const idx = s.search(/\n\s*\n/);
+    return (idx >= 0) ? s.slice(idx).trim() : s.trim();
+  }
+
+  // -----------------------------
+  // Moves renderer with inline variations (lightweight)
+  // -----------------------------
+  function renderMovesPretty(pgn){
+    const movetext = extractMoveText(pgn);
+    const host = $("movesPane");
+    host.innerHTML = "";
+    if (!movetext) {
+      host.textContent = "(no moves)";
+      return;
     }
-  });
 
-  qPgnFile.addEventListener("change", async () => {
-    try{
-      const f = qPgnFile.files?.[0];
-      if (!f) return;
-      qPgnName.textContent = f.name;
-      qPgnBytesOverride = null;
-      logLine("OK", `Selected PGN file: ${f.name}`);
-    }catch(e){
-      logStack("ERR","Failed to set PGN file: ", e);
+    // Tokenize: parentheses, comments, move numbers, results, NAGs, SAN-ish tokens
+    const re = /\(|\)|\{[^}]*\}|\$\d+|\d+\.(?:\.\.)?|1-0|0-1|1\/2-1\/2|\*|[^\s(){}]+/g;
+    const tokens = movetext.match(re) || [];
+
+    let depth = 0;
+    const stack = [];
+    let ply = 0;
+
+    const frag = document.createDocumentFragment();
+
+    function mkText(txt, cls="") {
+      const s = document.createElement("span");
+      if (cls) s.className = cls;
+      s.textContent = txt;
+      return s;
     }
-  });
 
-  $("qUseCurrent").onclick = () => {
-    try{
-      const pgn = current.exportPGN() + "\n";
-      qPgnBytesOverride = textToUtf8Bytes(pgn);
-      qPgnFile.value = "";
-      qPgnName.textContent = "(current game)";
-      logLine("OK","Query input set to current game.");
-    }catch(e){
-      logStack("ERR","Failed to use current game PGN: ", e);
+    function mkMove(tok, plyNum, depthNow) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "mvTok" + (depthNow ? " depth"+depthNow : "");
+      b.textContent = tok;
+      b.onclick = () => gotoPlySafe(plyNum);
+      return b;
     }
-  };
 
-  qRun.addEventListener("click", async () => {
-    try{
-      const cqlText = qCqlText.value || "";
-      if (!cqlText.trim()) throw new Error("CQL is empty.");
-
-      let pgnBytes = null;
-      if (qPgnBytesOverride){
-        pgnBytes = qPgnBytesOverride;
-      } else {
-        const f = qPgnFile.files?.[0];
-        if (!f) throw new Error("PGN input missing (choose a .pgn or click 'Use current game').");
-        pgnBytes = await fileToUint8(f);
+    for (const tok of tokens) {
+      if (tok === "(") {
+        stack.push(ply);
+        depth++;
+        frag.appendChild(mkText(" (", "parTok"));
+        continue;
+      }
+      if (tok === ")") {
+        depth = Math.max(0, depth - 1);
+        ply = stack.length ? stack.pop() : ply;
+        frag.appendChild(mkText(") ", "parTok"));
+        continue;
+      }
+      if (/^\{/.test(tok)) {
+        // comment
+        frag.appendChild(mkText(" " + tok + " ", "cmtTok"));
+        continue;
+      }
+      if (/^\$\d+$/.test(tok)) continue;
+      if (/^\d+\.(?:\.\.)?$/.test(tok)) {
+        // move number
+        frag.appendChild(mkText(" " + tok + " ", "mnTok"));
+        continue;
+      }
+      if (/^(1-0|0-1|1\/2-1\/2|\*)$/.test(tok)) {
+        frag.appendChild(mkText(" " + tok, "resTok"));
+        break;
       }
 
-      // Ensure >=2 games workaround
-      const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
-      pgnBytes = ensured.bytes;
-
-      qStatus.textContent = "loading runner…";
-      logLine("OK", `Running query with argv: ${qArgv.value}`);
-
-      const mod = await getRunnerMod();
-      const runCqlWasm = mod.runCqlWasm;
-      if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found in ./wasm/cql_runner.js");
-
-      const cqlBytes = textToUtf8Bytes(cqlText);
-      const job = runCqlWasm(cqlBytes, pgnBytes, qArgv.value, {
-        onLog: (line) => {
-          const s = String(line);
-          if (s.startsWith("[stderr]")) logLine("WARN", s);
-          else logLine("OK", s);
-        }
-      });
-
-      const unsub = job.subscribe((j) => {
-        const st = j.status ? j.status() : {busy:0,total:1};
-        qStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "");
-        if (j.state === "done" || j.state === "error"){
-          unsub();
-          if (j.state === "error"){
-            logLine("ERR", `Query failed: ${j.error || "unknown error"}`);
-            setTab("Errors");
-            return;
-          }
-          try{
-            const out = j.result ? j.result() : null;
-            const outText = out ? new TextDecoder().decode(out) : "";
-            const cleaned = ensured.injected ? stripDummyFromMultiPgnText(outText) : outText;
-            if (!cleaned.trim()){
-              logLine("WARN","Query completed but produced empty PGN.");
-              return;
-            }
-            // Add discovered games to current study
-            const blocks = splitMultiPgn(cleaned);
-            let n=0;
-            for (const b of blocks){
-              const g = addGameToStudy(currentStudyName, b, { user:true });
-              if (g) n++;
-            }
-            renderGameList();
-            logLine("OK", `Query done. Added ${n} discovered game(s) to study "${currentStudyName}".`);
-            setTab("Games");
-          }catch(e){
-            logStack("ERR","Failed to import query output: ", e);
-            setTab("Errors");
-          }
-        }
-      });
-
-    }catch(e){
-      logStack("ERR","Run Query failed: ", e);
-      setTab("Errors");
-      qStatus.textContent = "error";
+      ply++;
+      frag.appendChild(mkText(" "));
+      frag.appendChild(mkMove(tok, ply, depth));
     }
-  });
 
-  // -----------------------------
-  // Evals tab (CQL evals => load CQL and click Run)
-  // -----------------------------
-  function renderEvals(){
-    const list = $("evalList");
-    list.innerHTML = "";
-    const keys = Object.keys(CQL_EVAL_MANIFEST || {});
-    for (const k of keys){
-      const meta = CQL_EVAL_MANIFEST[k];
-      const card = document.createElement("div");
-      card.className = "card";
-      card.innerHTML = `<div class="cardTitle">${escapeHtml(k)}</div>
-                        <div class="cardSub">${escapeHtml(meta?.description || "")}</div>
-                        <div class="row" style="margin-top:8px;">
-                          <button class="good">Run on current game</button>
-                        </div>`;
-      card.querySelector("button").onclick = async (e) => {
-        e.stopPropagation();
-        try{
-          if (!current) throw new Error("No current game.");
-          const cql = await fetchText(meta.url);
-          qCqlText.value = cql;
-          qCqlName.textContent = `(eval) ${k}`;
-          $("qUseCurrent").click();
-          setTab("Query");
-          qRun.click();
-        }catch(err){
-          logStack("ERR", `Eval "${k}" failed: `, err);
-          setTab("Errors");
+    host.appendChild(frag);
+  }
+
+  function gotoPlySafe(targetPly) {
+    try {
+      // Prefer native API if present
+      if (typeof current.gotoPly === "function") {
+        current.gotoPly(targetPly);
+        return;
+      }
+      if (typeof current.jumpToPly === "function") {
+        current.jumpToPly(targetPly);
+        return;
+      }
+      // Fallback: step via prev/next
+      const maxIter = 4000;
+      let guard = 0;
+      // Try to discover current ply
+      let curPly = (typeof current.getPly === "function") ? current.getPly()
+                : (typeof current.ply === "function") ? current.ply()
+                : null;
+
+      // If no getter, just rewind hard then step
+      if (curPly == null) {
+        for (let i=0;i<maxIter;i++) {
+          const before = current.exportFEN?.();
+          current.prevMove();
+          guard++;
+          if (guard>maxIter) break;
+          const after = current.exportFEN?.();
+          if (before === after) break;
         }
-      };
-      list.appendChild(card);
+        for (let i=0;i<targetPly;i++) current.nextMove();
+        return;
+      }
+
+      while (curPly > targetPly && guard < maxIter) {
+        current.prevMove();
+        guard++;
+        curPly--;
+      }
+      while (curPly < targetPly && guard < maxIter) {
+        current.nextMove();
+        guard++;
+        curPly++;
+      }
+    } catch(e) {
+      logStack("ERR", "gotoPly failed: ", e);
     }
   }
 
   // -----------------------------
-  // Boot: load studies + priyomes
+  // Game registry (per-game instances; do NOT reuse one object across different PGNs)
   // -----------------------------
-  async function bootLoadDefaultStudies(){
-    try{
-      const entries = Object.entries(STUDY_MANIFEST || {});
-      if (!entries.length){
-        logLine("WARN","STUDY_MANIFEST empty; nothing to load.");
-        return;
-      }
-      // Clear existing default studies/games
-      for (const k of Object.keys(STUDIES)) delete STUDIES[k];
-      GAMES.length = 0;
+  const GAMES = new Map(); // id -> { game, title, kind, pgn }
+  const STUDIES = {};
+  let currentStudyName = "default";
+  let currentGameId = null;
+  let current = null;
+  let boardView = null;
 
-      const loadedStudyNames = [];
-      for (const [studyName, url] of entries){
-        try{
-          const pgnText = await fetchText(url);
-          const blocks = splitMultiPgn(pgnText);
-          ensureStudy(studyName);
-          let i=0;
-          for (const b of blocks){
-            const g = addGameToStudy(studyName, b, { id: `${studyName}_${i}` });
-            if (g) i++;
-          }
-          loadedStudyNames.push(studyName);
-          logLine("OK", `Loaded study "${studyName}" from ${url} (${blocks.length} games)`);
-        }catch(e){
-          logLine("WARN", `Failed to load study "${studyName}" from ${url}: ${e.message || e}`);
+  function ensureStudy(name) {
+    if (!STUDIES[name]) STUDIES[name] = { gameIds: [] };
+    return STUDIES[name];
+  }
+  function currentStudy() { return ensureStudy(currentStudyName); }
+  function getGame(id) { return GAMES.get(id) || null; }
+
+  function newId(prefix="g") {
+    return `${prefix}_${Math.random().toString(36).slice(2,9)}`;
+  }
+
+  function mountBoardForGame(game) {
+    const host = $("boardHost");
+    host.innerHTML = "";
+    boardView = new BoardView(host, game, {
+      spareDiv: $("sparesHost"),
+      minSizePx: 320,
+    });
+  }
+
+  function setCurrentGame(gameId) {
+    const g = getGame(gameId);
+    if (!g) return;
+    currentGameId = gameId;
+    current = g.game;
+    mountBoardForGame(current);
+    current.onChange(() => syncText());
+    syncText();
+    refreshTopTitle();
+  }
+
+  function refreshTopTitle() {
+    $("titleLine").textContent = currentGameId ? `Game • ${escapeHtml(getGame(currentGameId)?.title || "—")}` : "Game • —";
+  }
+
+  // -----------------------------
+  // Main UI sync
+  // -----------------------------
+  function syncText() {
+    try { $("fenBox").value = current.exportFEN(); } catch(e) {}
+    try {
+      const pgn = current.exportPGN();
+      $("pgnBox").value = pgn;
+      renderMovesPretty(pgn);
+    } catch(e) {}
+  }
+
+  // -----------------------------
+  // Loaders (manifests)
+  // -----------------------------
+  async function fetchText(url) {
+    const r = await fetch(url, {cache:"no-cache"});
+    if (!r.ok) throw new Error(`Fetch failed ${r.status} for ${url}`);
+    return await r.text();
+  }
+
+  async function bootLoadStudies() {
+    try {
+      // Load default study
+      const studyKey = "default";
+      const studyFile = STUDY_MANIFEST[studyKey];
+      if (studyFile) {
+        const txt = await fetchText(studyFile);
+        const games = splitMultiPgn(txt);
+        const study = ensureStudy(studyKey);
+        study.gameIds = [];
+        for (const pgn of games) {
+          const headers = parseHeaders(pgn);
+          const id = newId("game");
+          const game = createGame(headers);
+          game.loadPGN(pgn);
+          const title = `${headers.White || "White"} vs ${headers.Black || "Black"} • ${headers.Event || "Game"}`;
+          GAMES.set(id, { game, title, kind:"study", pgn });
+          study.gameIds.push(id);
+        }
+        logLine("OK", `Loaded study '${studyKey}' (${study.gameIds.length} games)`);
+      }
+      renderGamesList();
+      // Set first game as current if present
+      const first = currentStudy().gameIds[0];
+      if (first) setCurrentGame(first);
+    } catch(e) {
+      logStack("WARN", "Boot: failed to auto-load study: ", e);
+    }
+  }
+
+  // -----------------------------
+  // Games tab UI
+  // -----------------------------
+  function renderGamesList() {
+    const host = $("gamesList");
+    host.innerHTML = "";
+    const ids = currentStudy().gameIds || [];
+    if (!ids.length) {
+      host.innerHTML = `<div class="hint">(no games loaded)</div>`;
+      return;
+    }
+    for (const id of ids) {
+      const g = getGame(id);
+      if (!g) continue;
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `<div class="cardTitle">${escapeHtml(g.title)}</div>
+                        <div class="cardSub">${escapeHtml(g.kind)} • click to load</div>`;
+      card.onclick = () => setCurrentGame(id);
+      host.appendChild(card);
+    }
+  }
+
+  // -----------------------------
+  // Priyomes: load + render mini boards + dropdown + search/new query
+  // -----------------------------
+  const PRIYOMES = []; // {id, title, pgn, game}
+  let selectedPriyomeId = null;
+
+  function loadPriyomesFromLocal() {
+    try {
+      const raw = localStorage.getItem("priyomes_user_pgn") || "";
+      const games = splitMultiPgn(raw);
+      return games;
+    } catch(e) {
+      return [];
+    }
+  }
+
+  function savePriyomesToLocal(list) {
+    try {
+      const txt = list.map(x => x.pgn.trim()).filter(Boolean).join("\n\n");
+      localStorage.setItem("priyomes_user_pgn", txt);
+    } catch(e) {}
+  }
+
+  async function bootLoadPriyomes() {
+    PRIYOMES.length = 0;
+
+    // Manifest priyomes
+    try {
+      const url = PRIYOME_PGN_MANIFEST.default;
+      if (url) {
+        const txt = await fetchText(url);
+        for (const pgn of splitMultiPgn(txt)) {
+          const headers = parseHeaders(pgn);
+          const game = createGame(headers);
+          game.loadPGN(pgn);
+          if (typeof game.toggleMini === "function") game.toggleMini(true);
+          const title = headers.Event || `${headers.White||"Pattern"} vs ${headers.Black||""}`;
+          PRIYOMES.push({ id:newId("pry"), title, pgn, game, source:"manifest" });
         }
       }
-      if (!loadedStudyNames.includes(currentStudyName)){
-        currentStudyName = loadedStudyNames[0] || "default";
-      }
-      renderStudySelect();
-      renderGameList();
+    } catch(e) {
+      logStack("WARN", "Priyomes: could not load manifest: ", e);
+    }
 
-      // auto-load first game in current study
-      const firstId = currentStudy().gameIds[0] || null;
-      if (firstId){
-        loadGameIntoMain(firstId);
-      } else {
+    // User priyomes
+    try {
+      for (const pgn of loadPriyomesFromLocal()) {
+        const headers = parseHeaders(pgn);
+        const game = createGame(headers);
+        game.loadPGN(pgn);
+        if (typeof game.toggleMini === "function") game.toggleMini(true);
+        const title = (headers.Event ? headers.Event + " (user)" : "User Priyome");
+        PRIYOMES.push({ id:newId("pryU"), title, pgn, game, source:"user" });
+      }
+    } catch(e) {}
+
+    renderPriyomesList();
+  }
+
+  function renderPriyomesList() {
+    const grid = $("pryGrid");
+    grid.innerHTML = "";
+    $("pryCount").textContent = `${PRIYOMES.length}`;
+    for (const pry of PRIYOMES) {
+      const card = document.createElement("div");
+      card.className = "miniCard" + (selectedPriyomeId === pry.id ? " selected" : "");
+      const t = document.createElement("div");
+      t.className = "miniTitle";
+      t.textContent = pry.title;
+      const host = document.createElement("div");
+      host.className = "miniHost";
+      card.appendChild(t);
+      card.appendChild(host);
+
+      // Mount mini board
+      try {
+        new BoardView(host, pry.game, { minSizePx: 140 });
+      } catch(e) {
+        host.textContent = "(mini failed)";
+      }
+
+      card.onclick = () => {
+        selectedPriyomeId = pry.id;
+        $("prSelHint").textContent = `Selected: ${pry.title}`;
+        renderPriyomesList();
+        // Load into main board as a game instance (do not overwrite existing games)
+        const id = newId("pryMain");
+        const headers = parseHeaders(pry.pgn);
+        const game = createGame(headers);
+        game.loadPGN(pry.pgn);
+        const title = pry.title;
+        GAMES.set(id, { game, title, kind:"priyome", pgn:pry.pgn });
+        ensureStudy(currentStudyName).gameIds.unshift(id);
+        renderGamesList();
+        setCurrentGame(id);
+      };
+
+      grid.appendChild(card);
+    }
+  }
+
+  // Priyomes right-side actions
+  $("btnPriyomesNew").onclick = () => {
+    try {
+      // Blank setup board for creating a new priyome
+      const id = newId("newPry");
+      const headers = { Event:"(New Priyome)", White:"", Black:"", Date:"2026.02.08", Setup:"1" };
+      const game = createGame(headers);
+      // Start blank board in setup mode if the library supports it
+      if (typeof game.clearBoard === "function") game.clearBoard();
+      if (typeof game.toggleSetup === "function") game.toggleSetup(true);
+      GAMES.set(id, { game, title:"(New Priyome)", kind:"priyome_draft", pgn:"" });
+      ensureStudy(currentStudyName).gameIds.unshift(id);
+      renderGamesList();
+      setCurrentGame(id);
+      logLine("OK", "New Query: setup mode enabled for draft Priyome.");
+    } catch(e) {
+      logStack("ERR", "New Query failed: ", e);
+    }
+  };
+
+  $("btnPriyomesSearch").onclick = async () => {
+    try {
+      if (!selectedPriyomeId) {
+        $("prRightHint").textContent = "Select a pattern first.";
+        return;
+      }
+      const db = $("dbSelect").value || "all";
+      const pry = PRIYOMES.find(p => p.id === selectedPriyomeId);
+      if (!pry) return;
+
+      // Pick DB PGN by manifest key (reference supports 'fischer' and 'all')
+      const dbKey = (db === "fischer") ? "fischer" : "all";
+      const dbUrl = PGN_MANIFEST[dbKey];
+      if (!dbUrl) {
+        $("prRightHint").textContent = `No PGN manifest for '${dbKey}'.`;
+        return;
+      }
+
+      $("prRightHint").textContent = "Running CQL…";
+      const pgnText = await fetchText(dbUrl);
+      const runner = await import("./wasm/cql_runner.js");
+      if (!runner?.run_cql) throw new Error("wasm runner missing run_cql export");
+
+      // CQL: from priyome PGN header/annotations — simplest: use entire priyome PGN as CQL source if it contains it
+      // In your reference this is a stub; here we route through Query tab by exporting CQL from current position when possible.
+      const cql = pry.pgn; // fallback (often your priyomes store CQL in comments / tags)
+      const ensured = ensureAtLeastTwoGamesPgnBytes(textToUtf8Bytes(pgnText));
+      const outBytes = await runner.run_cql(textToUtf8Bytes(cql), ensured.bytes);
+      const outText = new TextDecoder().decode(outBytes);
+      const cleaned = ensured.injected ? stripDummyFromMultiPgnText(outText) : outText;
+
+      // Add resulting games into current study
+      let added = 0;
+      for (const gPgn of splitMultiPgn(cleaned)) {
+        const headers = parseHeaders(gPgn);
+        const id = newId("hit");
+        const game = createGame(headers);
+        game.loadPGN(gPgn);
+        const title = `${headers.White||"White"} vs ${headers.Black||"Black"} • ${headers.Event||"Hit"}`;
+        GAMES.set(id, { game, title, kind:"query_hit", pgn:gPgn });
+        ensureStudy(currentStudyName).gameIds.push(id);
+        added++;
+      }
+      renderGamesList();
+      $("prRightHint").textContent = `Done. Added ${added} hits to Games.`;
+      logLine("OK", `Priyomes Search: added ${added} games`);
+    } catch(e) {
+      logStack("ERR", "Priyomes Search failed: ", e);
+      $("prRightHint").textContent = "Error running search; see Errors tab.";
+    }
+  };
+
+  $("btnSavePriyome").onclick = () => {
+    try {
+      if (!current) return;
+      const pgn = current.exportPGN();
+      const headers = parseHeaders(pgn);
+      // Ensure priyomes are "mini-ready" (annotations already in PGN)
+      const title = headers.Event || "User Priyome";
+      // Add to local and refresh
+      const newItem = { id:newId("pryU2"), title: title + " (user)", pgn, game: (()=>{ const gg=createGame(headers); gg.loadPGN(pgn); if (typeof gg.toggleMini==="function") gg.toggleMini(true); return gg; })(), source:"user" };
+      PRIYOMES.unshift(newItem);
+      savePriyomesToLocal(PRIYOMES.filter(x=>x.source==="user"));
+      renderPriyomesList();
+      logLine("OK", "Saved current game as a Priyome (localStorage).");
+    } catch(e) {
+      logStack("ERR", "Save Priyome failed: ", e);
+    }
+  };
+
+  $("btnResetPriyome").onclick = () => {
+    try {
+      if (!current) return;
+      if (typeof current.clearBoard === "function") current.clearBoard();
+      else current.loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1");
+      if (typeof current.toggleSetup === "function") current.toggleSetup(true);
+      syncText();
+      logLine("OK", "Reset draft board to empty (setup mode).");
+    } catch(e) {
+      logStack("ERR", "Reset failed: ", e);
+    }
+  };
+
+  // -----------------------------
+  // Tabs
+  // -----------------------------
+  function setTab(name) {
+    const tabs = {
+      Priyomes: ["tabPriyomes","panePriyomes"],
+      Games: ["tabGames","paneGames"],
+      Query: ["tabQuery","paneQuery"],
+      Evals: ["tabEvals","paneEvals"],
+      Errors: ["tabErrors","paneErrors"],
+    };
+    for (const k of Object.keys(tabs)) {
+      const [tb, pn] = tabs[k];
+      $(tb).classList.toggle("active", k===name);
+      $(pn).classList.toggle("active", k===name);
+    }
+  }
+  $("tabPriyomes").onclick = () => setTab("Priyomes");
+  $("tabGames").onclick = () => setTab("Games");
+  $("tabQuery").onclick = () => setTab("Query");
+  $("tabEvals").onclick = () => setTab("Evals");
+  $("tabErrors").onclick = () => setTab("Errors");
+
+  // -----------------------------
+  // Top bar controls (delegate to current game instance)
+  // -----------------------------
+  $("btnMovesMode").onclick = () => current?.setMode?.("moves");
+  $("btnSquaresMode").onclick = () => current?.setMode?.("squares");
+  $("btnArrowsMode").onclick = () => current?.setMode?.("arrows");
+  $("btnSetupMode").onclick = () => current?.toggleSetup?.();
+  $("btnFlip").onclick = () => current?.toggleFlip?.();
+  $("btnMiniMain").onclick = () => current?.toggleMini?.();
+
+  $("btnPrev").onclick = () => current?.prevMove?.();
+  $("btnNext").onclick = () => current?.nextMove?.();
+  $("btnPromote").onclick = () => current?.promoteVariationFromHere?.();
+  $("btnDelete").onclick = () => current?.deleteMoveFromHere?.();
+
+  $("btnInit").onclick = () => current?.initializePosition?.();
+  $("btnClear").onclick = () => current?.clearBoard?.();
+
+  // -----------------------------
+  // Moves box: keep fen/pgn boxes consistent
+  // -----------------------------
+  $("btnLoadFEN").onclick = () => {
+    try {
+      current.loadFEN($("fenBox").value.trim());
+      logLine("OK", "Loaded FEN.");
+    } catch(e) {
+      logStack("ERR", "Load FEN failed: ", e);
+    }
+  };
+  $("btnLoadPGN").onclick = () => {
+    try {
+      current.loadPGN($("pgnBox").value);
+      logLine("OK", "Loaded PGN.");
+    } catch(e) {
+      logStack("ERR", "Load PGN failed: ", e);
+    }
+  };
+
+  // -----------------------------
+  // Evals tab: list evals from manifest; clicking routes into Query runner
+  // -----------------------------
+  async function bootLoadEvals() {
+    const host = $("evalList");
+    host.innerHTML = "";
+    for (const key of Object.keys(CQL_EVAL_MANIFEST)) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.style.justifyContent = "space-between";
+      row.style.marginBottom = "8px";
+      const lab = document.createElement("div");
+      lab.textContent = key;
+      lab.className = "mono";
+      const btn = document.createElement("button");
+      btn.textContent = "Run";
+      btn.onclick = async () => {
+        try {
+          const cql = await fetchText(CQL_EVAL_MANIFEST[key]);
+          $("cqlBox").value = cql;
+          setTab("Query");
+          await runCqlAgainstCurrentDb("all");
+        } catch(e) {
+          logStack("ERR", `Eval '${key}' failed: `, e);
+          setTab("Errors");
+        }
+      };
+      row.appendChild(lab);
+      row.appendChild(btn);
+      host.appendChild(row);
+    }
+  }
+
+  // -----------------------------
+  // Query tab: run CQL against DB, using exact dummy workaround
+  // -----------------------------
+  async function runCqlAgainstCurrentDb(dbKey) {
+    const status = $("cqlErr");
+    status.textContent = "";
+    const runner = await import("./wasm/cql_runner.js");
+    if (!runner?.run_cql) throw new Error("wasm runner missing run_cql export");
+
+    const dbUrl = PGN_MANIFEST[dbKey] || PGN_MANIFEST.all;
+    const pgnText = await fetchText(dbUrl);
+    const cql = $("cqlBox").value;
+
+    const ensured = ensureAtLeastTwoGamesPgnBytes(textToUtf8Bytes(pgnText));
+    const outBytes = await runner.run_cql(textToUtf8Bytes(cql), ensured.bytes);
+    const outText = new TextDecoder().decode(outBytes);
+    const cleaned = ensured.injected ? stripDummyFromMultiPgnText(outText) : outText;
+
+    $("cqlOut").value = cleaned;
+
+    // Import results into Games
+    let added = 0;
+    for (const gPgn of splitMultiPgn(cleaned)) {
+      const headers = parseHeaders(gPgn);
+      const id = newId("q");
+      const game = createGame(headers);
+      game.loadPGN(gPgn);
+      const title = `${headers.White||"White"} vs ${headers.Black||"Black"} • ${headers.Event||"Query"}`;
+      GAMES.set(id, { game, title, kind:"query_hit", pgn:gPgn });
+      ensureStudy(currentStudyName).gameIds.push(id);
+      added++;
+    }
+    renderGamesList();
+    status.textContent = `OK • added ${added} games`;
+    logLine("OK", `Query: added ${added} games`);
+  }
+
+  $("btnRunCQL").onclick = async () => {
+    try {
+      await runCqlAgainstCurrentDb($("dbSelect2").value || "all");
+    } catch(e) {
+      logStack("ERR", "Run CQL failed: ", e);
+      setTab("Errors");
+    }
+  };
+  $("btnExportCQL").onclick = () => {
+    try {
+      // If the library exposes an exporter for current drawings/pattern, use it; otherwise keep current text.
+      const fn = current?.exportCQL;
+      if (typeof fn === "function") $("cqlBox").value = fn.call(current);
+      logLine("OK", "Export CQL.");
+    } catch(e) {
+      logStack("WARN", "Export CQL not available: ", e);
+    }
+  };
+  $("btnClearCQL").onclick = () => { $("cqlBox").value = ""; $("cqlOut").value=""; $("cqlErr").textContent=""; };
+
+  // -----------------------------
+  // Boot
+  // -----------------------------
+  await bootLoadStudies();
+  await bootLoadPriyomes();
+  await bootLoadEvals();
+
+  // Ensure initial sync if a game exists
+  if (current) syncText();
+})();
+</script>
+     } else {
         $("gamePill").textContent = "Game • —";
       }
       $("studyPill").textContent = `Study • ${currentStudyName} • ${currentStudy().gameIds.length} games`;
