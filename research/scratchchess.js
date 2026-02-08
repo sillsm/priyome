@@ -685,8 +685,18 @@ export class Game {
       const last = p.color === "w" ? 7 : 0;
       if (tr === last) {
         // Always pause on promotion so UI / caller can choose piece.
-        // (PGN import handles this by immediately calling resolvePendingPromotion.)
-        this._pendingPromotion = { fromIdx, toIdx };
+        // We *preview* the pawn move to the last rank (as a pawn) without toggling side
+        // or committing a PGN node, then wait for resolvePendingPromotion().
+        const snapBefore = snapshotFrom(this.state);
+
+        // preview move (no promotion applied, no turn/counters change)
+        // handle capture (promotion can't be en-passant)
+        this.state.board[toIdx] = this.state.board[fromIdx];
+        this.state.board[fromIdx] = null;
+        this.state.ep = null; // promotion move clears en-passant target
+        this.state.halfmove = 0;
+
+        this._pendingPromotion = { fromIdx, toIdx, snapBefore };
         this.state.pendingPromotion = { fromIdx, toIdx };
         this._emit();
         return true;
@@ -699,9 +709,14 @@ export class Game {
 
   resolvePendingPromotion(letter) {
     if (!this._pendingPromotion) throw new Error("pending promotion");
-    const { fromIdx, toIdx } = this._pendingPromotion;
+    const { fromIdx, toIdx, snapBefore } = this._pendingPromotion;
     const L = String(letter || "").toUpperCase();
     if (!"QRBN".includes(L)) throw new Error("invalid promotion piece");
+
+    // We may be sitting in a preview state (pawn already on last rank).
+    // Restore to the pre-move snapshot so _finalizeMove can apply the full move cleanly.
+    if (snapBefore) restoreInto(this.state, snapBefore);
+
     this._finalizeMove(fromIdx, toIdx, L);
     return true;
   }
@@ -1648,6 +1663,13 @@ export class BoardView {
     const p = this.game.state.board[fromIdx];
     if (!p || p.id !== pieceId) return;
 
+    // Setup mode: tapping/clicking a piece deletes it (mobile-friendly).
+    if (this.game.ui.setup) {
+      this.game.state.board[fromIdx] = null;
+      this.game._emit();
+      return;
+    }
+
     if (!this.game.ui.setup) {
       if (p.color !== this.game.state.side) return;
       this.game.sel.fromSq = fromSq;
@@ -1765,11 +1787,16 @@ export class BoardView {
       const pid = this.drag.pieceId;
 
       const pel = this.pieceEls.get(pid);
-      if (pel) pel.style.display = "block";
+      // Keep the original piece hidden until we know whether we need to restore it.
+      // This avoids a distracting "return to origin then slide" effect on drop.
       this.ghost.style.display = "none";
       this.drag = null;
 
-      if (!dropSq) { this.game._emit(); return; }
+      if (!dropSq) {
+        if (pel) pel.style.display = "block";
+        this.game._emit();
+        return;
+      }
 
       if (this.game.ui.setup) {
         // setup drag just moves piece (already handled in Game.makeMoveUCI setup path, but we can do direct)
@@ -1783,7 +1810,12 @@ export class BoardView {
       // Suppress origin->destination slide for manual drops: snap instantly.
       this._suppressAnimPieceId = pid;
 
-      this.game.makeMoveUCI(fromSq + dropSq);
+      const okMove = this.game.makeMoveUCI(fromSq + dropSq);
+      if (!okMove) {
+        if (pel) pel.style.display = "block";
+        this.game._emit();
+        return;
+      }
 
       if (this.game.state.pendingPromotion) {
         // Visually place the pawn on the promotion square while waiting for user choice.
