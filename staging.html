@@ -137,11 +137,12 @@
             <span id="qStatus" class="hint" style="margin:0;"></span>
           </div>
 
-    <div class="row" style="margin-top:8px;">
-      <label style="color:var(--m);font-weight:800;font-size:12px;">Argv</label>
-      <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql" style="flex:1;min-width:260px;padding:8px 10px;border-radius:10px;border:1px solid var(--b);background:rgba(255,255,255,.04);color:var(--t);font-family:var(--mono);font-size:12px;"/>
-    </div>
-    <textarea id="cqlText" style="min-height:160px;margin-top:10px;" placeholder="CQL goes here…"></textarea>
+          <div class="row" style="margin-top:8px;">
+            <label style="color:var(--m);font-weight:800;font-size:12px;">Argv</label>
+            <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql" style="flex:1;min-width:260px;padding:8px 10px;border-radius:10px;border:1px solid var(--b);background:rgba(255,255,255,.04);color:var(--t);font-family:var(--mono);font-size:12px;"/>
+          </div>
+
+          <textarea id="cqlText" style="min-height:160px;margin-top:10px;" placeholder="CQL goes here…"></textarea>
           <div class="row" style="margin-top:8px;">
             <button id="qRun">Run</button>
             <button id="qImport" title="Import CQL output into Games">Import output</button>
@@ -197,7 +198,6 @@
 </div>
 
 <script type="module">
-  // External deps (on your staging host these paths already exist)
   import * as ScratchChess from "./scratchchess.js";
   const enc = new TextEncoder();
   const dec = new TextDecoder("utf-8");
@@ -216,7 +216,6 @@
     ERR_LINES++;
     errCount.textContent = String(ERR_LINES);
     errorLog.scrollTop = errorLog.scrollHeight;
-    // Also mirror to console
     if (level === "ERR") console.error(msg);
     else if (level === "WARN") console.warn(msg);
     else console.log(msg);
@@ -231,15 +230,13 @@
     errCount.textContent = "0";
   };
 
-  // ------------------------ Manifests (same keys as your staging logs) ------------------------
-  // NOTE: You told me these are available on your host; keep them as-is.
+  // ------------------------ Manifests ------------------------
   const STUDY_MANIFEST = {
     "default": "./pgn/Study.pgn",
     "fen_test": "./pgn/default games.pgn",
     "alignment_examples": "./pgn/alignment_examples.pgn"
   };
 
-  // Used by Query DB select
   const PGN_MANIFEST = {
     "default": "./pgn/Study.pgn",
     "fen_test": "./pgn/default games.pgn",
@@ -247,22 +244,18 @@
     "priyomes": "./priyomes/priyomes.pgn"
   };
 
-  // Query dropdown CQL files (you can add more)
   const CQL_MANIFEST = {
     "naivealignments": "./cql/naivealignments.cql"
   };
 
-  // Priyomes PGN source
   const PRIYOMES_PGN_URL = "./priyomes/priyomes.pgn";
 
   // ------------------------ ScratchChess integration ------------------------
-  // We'll maintain per-game UI properties (flip/mini/setup) *in the model*, not in the view.
-  const games = new Map(); // id -> { id, title, pgn, ui:{flip,mini,setup}, meta:{} }
-  const studies = new Map(); // studyName -> [gameIds]
+  const games = new Map();
+  const studies = new Map();
   let currentStudy = "default";
   let currentGameId = null;
 
-  // Main scratchchess objects
   const boardEl = document.getElementById("board");
   const boardMeta = document.getElementById("boardMeta");
   const plyHint = document.getElementById("plyHint");
@@ -270,7 +263,6 @@
   const pgnBottom = document.getElementById("pgnBottom");
   const bottomMeta = document.getElementById("bottomMeta");
 
-  // ScratchChess wants a container element, not an id
   let view = null;
   let gameObj = null;
 
@@ -278,23 +270,19 @@
 
   function ensureMain(){
     if (view) return;
-    // BoardView expects an element
     view = new ScratchChess.BoardView(boardEl);
     pushLog("OK","Main board view created.");
   }
 
-  function applyUiToView(g){
-    if (!g) return;
-    // flip / mini / setup are stored on the game model and applied on load.
-    try{ if (g.ui?.flip && typeof gameObj?.setFlipped === "function") gameObj.setFlipped(true); }catch{}
-    try{ if (!g.ui?.flip && typeof gameObj?.setFlipped === "function") gameObj.setFlipped(false); }catch{}
-    try{ if (typeof gameObj?.setMini === "function") gameObj.setMini(!!g.ui?.mini); }catch{}
+  function applyUiToView(m){
+    if (!m) return;
+    try{ cg()?.setFlipped?.(!!m.ui?.flip); }catch{}
+    try{ cg()?.setMini?.(!!m.ui?.mini); }catch{}
     try{
-      // Setup mode: some builds expose toggleSetup() and ui.setup boolean
-      if (typeof gameObj?.toggleSetup === "function"){
-        const want = !!g.ui?.setup;
-        const have = !!gameObj.ui?.setup;
-        if (want !== have) gameObj.toggleSetup();
+      if (typeof cg()?.toggleSetup === "function"){
+        const want = !!m.ui?.setup;
+        const have = !!cg().ui?.setup;
+        if (want !== have) cg().toggleSetup();
       }
     }catch{}
   }
@@ -328,10 +316,8 @@
     if (!m) throw new Error(`Unknown game id: ${id}`);
     currentGameId = id;
 
-    // Create a fresh ScratchChess game object on each load to avoid view-state leakage.
+    // Create a fresh ScratchChess game object each time to avoid view-state leakage.
     gameObj = new ScratchChess.Game(view);
-
-    // Load PGN through library (sanitized within library)
     gameObj.loadPGN(m.pgn);
 
     applyUiToView(m);
@@ -342,7 +328,6 @@
     pushLog("OK", `Loaded game: ${m.title || id}`);
   }
 
-  // Board navigation
   document.getElementById("btnPrev").onclick = ()=>{ try{ cg()?.prevMove?.(); refreshBottom(); }catch(e){ pushLog("ERR","Prev failed: "+e); } };
   document.getElementById("btnNext").onclick = ()=>{ try{ cg()?.nextMove?.(); refreshBottom(); }catch(e){ pushLog("ERR","Next failed: "+e); } };
 
@@ -352,12 +337,11 @@
       navigator.clipboard?.writeText?.(pgn);
       pushLog("OK","Copied PGN to clipboard.");
     }catch(e){
-      pushLog("WARN","Copy failed (still exported to textarea): "+e);
+      pushLog("WARN","Copy failed: "+e);
     }
     refreshBottom();
   };
 
-  // Persist per-game ui flags
   function updateGameUi(mut){
     const m = currentGameId ? games.get(currentGameId) : null;
     if (!m) return;
@@ -377,19 +361,18 @@
 
   document.getElementById("btnSetup").onclick = ()=>{
     updateGameUi((ui)=> ui.setup = !ui.setup);
-    try{
-      if (typeof cg()?.toggleSetup === "function") cg().toggleSetup();
-    }catch(e){ pushLog("ERR","toggleSetup failed: "+e); }
+    try{ if (typeof cg()?.toggleSetup === "function") cg().toggleSetup(); }catch(e){ pushLog("ERR","toggleSetup failed: "+e); }
   };
 
   document.getElementById("prReset").onclick = ()=>{
-    // reset initial position (standard chess) but keep setup if you want; here we keep current setup flag.
     const g=cg(); if(!g) return;
     const wasSetup = !!g.ui?.setup;
     try{ g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); }catch{}
     try{
-      if (wasSetup && !g.ui?.setup) g.toggleSetup?.();
-      if (!wasSetup && g.ui?.setup) g.toggleSetup?.();
+      if (typeof g.toggleSetup === "function"){
+        if (wasSetup && !g.ui?.setup) g.toggleSetup();
+        if (!wasSetup && g.ui?.setup) g.toggleSetup();
+      }
     }catch{}
     pushLog("OK","Reset initial position.");
     refreshBottom();
@@ -440,7 +423,33 @@
     return h;
   }
 
-  // ------------------------ Load studies & games ------------------------
+  function escapeHtml(s){
+    return String(s||"").replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  async function fetchText(url){
+    const r = await fetch(url, {cache:"no-store"});
+    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+    return await r.text();
+  }
+
+  async function loadStudy(name, url){
+    const txt = await fetchText(url);
+    const blocks = splitMultiPgn(txt);
+    const ids = [];
+    for (let i=0;i<blocks.length;i++){
+      const pgn = blocks[i];
+      const h = parseHeaders(pgn);
+      const id = `${name}:${i}:${Math.random().toString(16).slice(2)}`;
+      const title = (h.Event ? h.Event : `${name} • Game ${i+1}`) + (h.White || h.Black ? ` — ${h.White||"?"} vs ${h.Black||"?"}` : "");
+      games.set(id, { id, title, pgn, ui:{flip:false,mini:false,setup:false}, meta:{event:h.Event||"", opening:h.Opening||"", result:h.Result||"*"} });
+      ids.push(id);
+    }
+    studies.set(name, ids);
+    pushLog("OK", `Loaded study "${name}" (${ids.length} games) from ${url}`);
+  }
+
+  // ------------------------ Render studies & games ------------------------
   const gamesList = document.getElementById("gamesList");
   const studySel = document.getElementById("studySel");
   const studyPill = document.getElementById("studyPill");
@@ -472,33 +481,7 @@
     studyPill.textContent = `Study • ${ids.length} games`;
   }
 
-  function escapeHtml(s){
-    return String(s||"").replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-  }
-
-  async function fetchText(url){
-    const r = await fetch(url, {cache:"no-store"});
-    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
-    return await r.text();
-  }
-
-  async function loadStudy(name, url){
-    const txt = await fetchText(url);
-    const blocks = splitMultiPgn(txt);
-    const ids = [];
-    for (let i=0;i<blocks.length;i++){
-      const pgn = blocks[i];
-      const h = parseHeaders(pgn);
-      const id = `${name}:${i}:${Math.random().toString(16).slice(2)}`;
-      const title = (h.Event ? h.Event : `${name} • Game ${i+1}`) + (h.White || h.Black ? ` — ${h.White||"?"} vs ${h.Black||"?"}` : "");
-      games.set(id, { id, title, pgn, ui:{flip:false,mini:false,setup:false}, meta:{event:h.Event||"", opening:h.Opening||"", result:h.Result||"*"} });
-      ids.push(id);
-    }
-    studies.set(name, ids);
-    pushLog("OK", `Loaded study "${name}" (${ids.length} games) from ${url}`);
-  }
-
-  // ------------------------ Priyomes ------------------------
+  // ------------------------ Priyomes (FIXED mini render) ------------------------
   const prSel = document.getElementById("prSel");
   const prLoad = document.getElementById("prLoad");
   const prList = document.getElementById("prList");
@@ -508,6 +491,7 @@
   function renderPriyomes(){
     prSel.innerHTML = "";
     prList.innerHTML = "";
+
     for (let i=0;i<PRIYOMES.length;i++){
       const p = PRIYOMES[i];
       const o = document.createElement("option");
@@ -515,7 +499,6 @@
       o.textContent = p.title;
       prSel.appendChild(o);
 
-      // Mini render: just pass pgn to ScratchChess with mini enabled (no custom arrow code).
       const div = document.createElement("div");
       div.className = "item";
       const miniId = `mini_${i}_${Math.random().toString(16).slice(2)}`;
@@ -525,18 +508,22 @@
                          <div id="${miniId}" style="width:100%; aspect-ratio: 1/1;"></div>
                        </div>`;
       div.onclick = ()=>{ prSel.value = String(i); prLoad.click(); };
-
       prList.appendChild(div);
 
-      // mount mini board
+      // ✅ FIX: use the same proven ScratchChess API as the showcase:
+      // createGame(...) + new BoardView(host, game, {mini:true})
       try{
         const host = div.querySelector("#"+miniId);
-        const v = new ScratchChess.BoardView(host);
-        const g = new ScratchChess.Game(v);
-        g.loadPGN(p.pgn);
-        g.setMini?.(true);
+        const miniGame = ScratchChess.createGame({ Event: p.title || `Priyome ${i+1}` });
+        miniGame.loadPGN?.(p.pgn);
+
+        // If the game object supports setMini/toggleMini, also set it (harmless).
+        if (typeof miniGame.setMini === "function") miniGame.setMini(true);
+        else if (typeof miniGame.toggleMini === "function" && !miniGame.ui?.mini) miniGame.toggleMini();
+
+        new ScratchChess.BoardView(host, miniGame, { mini:true, minSizePx: 90 });
       }catch(e){
-        pushLog("WARN","Mini render failed: "+e);
+        pushLog("WARN","Mini render failed: "+(e?.stack||e));
       }
     }
   }
@@ -545,7 +532,6 @@
     const i = parseInt(prSel.value || "0", 10);
     const p = PRIYOMES[i];
     if (!p) return;
-    // Add as a normal game into current study (so it shows in Games too)
     const id = `priyome:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
     games.set(id, { id, title: p.title, pgn: p.pgn, ui:{flip:false,mini:false,setup:false}, meta:{event:p.headers.Event||"", opening:p.headers.Opening||"Priyome", result:p.headers.Result||"*"} });
     const ids = studies.get(currentStudy) || [];
@@ -568,7 +554,7 @@
     renderPriyomes();
   }
 
-  // ------------------------ QUERY ----------------
+  // ------------------------ QUERY (unchanged) ------------------------
   const dbSel = document.getElementById("dbSel");
   const cqlSel = document.getElementById("cqlSel");
   const cqlText = document.getElementById("cqlText");
@@ -609,14 +595,12 @@
     return enc.encode(txt);
   }
 
-  // ---- CQL runner import ----
   let _runnerPromise = null;
   async function runner(){
     if (!_runnerPromise) _runnerPromise = import("./wasm/cql_runner.js");
     return _runnerPromise;
   }
 
-  // Workaround: CQL needs 2 games. Append dummy second game to bytes if needed.
   const DUMMY_EVENT = "__DUMMY_CQL_GAME__";
   function ensure2GamesBytes(pgnBytes){
     try{
@@ -636,7 +620,6 @@
 `;
       const joined = s.trim() + "\n\n" + dummy;
       pushLog("WARN", `CQL workaround: input had 1 game; appended dummy game (${DUMMY_EVENT}).`);
-      // Log exact PGN passed (as you requested in earlier guidance)
       try{
         pushLog("WARN","CQL workaround: BEGIN exact PGN passed to CQL parser (dummy appended)");
         pushLog("WARN", joined);
@@ -669,11 +652,9 @@
 
     const cqlBytes = enc.encode(cqlSource);
 
-    // The runner is async and returns a job with .subscribe()
     const job = runCqlWasm(cqlBytes, patched.bytes, argvString, {
       onLog: (line)=>{
         const s = String(line);
-        // Mirror reference: stderr lines are WARN
         pushLog(s.startsWith("[stderr]") ? "WARN" : "OK", s);
       }
     });
@@ -720,7 +701,7 @@
       pushLog("OK", `Query done. Output length=${out.length}.`);
       setQStatus("done");
     }catch(e){
-      pushLog("ERR", `Eval failed: ${e && e.stack ? e.stack : String(e)}`);
+      pushLog("ERR", `Query failed: ${e && e.stack ? e.stack : String(e)}`);
       setQStatus("error");
       setTab("errors");
     }
@@ -751,7 +732,7 @@
     }
   };
 
-  // ------------------------ EVALS ------------------------
+  // ------------------------ EVALS (left as in previous) ------------------------
   const evalsStatus = document.getElementById("evalsStatus");
   const evalList = document.getElementById("evalList");
   const cqlEvalList = document.getElementById("cqlEvalList");
@@ -765,7 +746,6 @@
       const mod = await import(`./evals.js?ts=${Date.now()}`);
       const list = Array.isArray(mod.EVALS) ? mod.EVALS : (Array.isArray(mod.default) ? mod.default : []);
       EVALS_REGISTRY = list.filter(e => e && typeof e.id === "string" && typeof e.run === "function");
-
       evalsStatus.textContent = `${EVALS_REGISTRY.length} evals`;
       for (const e of EVALS_REGISTRY){
         const div = document.createElement("div");
@@ -778,7 +758,6 @@
             pushLog("OK", `Running eval "${e.id}"…`);
             const outPgn = await e.run(g.exportPGN?.() || "");
             if (!outPgn || !String(outPgn).trim()) throw new Error(`Eval "${e.id}" returned empty output PGN.`);
-            // Add as game
             const id = `eval:${e.id}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
             games.set(id, { id, title:`Evaluated (${e.id}) • ${(games.get(currentGameId)?.title)||"Current"}`, pgn:String(outPgn), ui:{flip:false,mini:false,setup:false}, meta:{opening:`Eval: ${e.name||e.id}`, result:"*"} });
             const ids = studies.get(currentStudy) || [];
@@ -795,7 +774,6 @@
         evalList.appendChild(div);
       }
 
-      // CQL evals: you can add more keys in CQL_MANIFEST; we'll render buttons for them.
       for (const [key, url] of Object.entries(CQL_MANIFEST)){
         const div = document.createElement("div");
         div.className = "item";
@@ -847,7 +825,6 @@
 
   async function boot(){
     pushLog("OK","Booting…");
-    // Load studies
     for (const [name, url] of Object.entries(STUDY_MANIFEST)){
       await loadStudy(name, url);
     }
@@ -855,20 +832,16 @@
     renderStudies();
     renderGameList();
 
-    // Load priyomes
     await loadPriyomes();
 
-    // Query selects
     fillSelect(dbSel, PGN_MANIFEST);
     fillSelect(cqlSel, CQL_MANIFEST);
 
-    // Hook study change
     studySel.onchange = ()=>{
       currentStudy = studySel.value;
       renderGameList();
     };
 
-    // Ensure main and load first game
     const ids = studies.get(currentStudy) || [];
     if (ids.length){
       await loadGameIntoMain(ids[0]);
@@ -877,9 +850,7 @@
       pushLog("WARN","No games in default study.");
     }
 
-    // Evals
     await loadEvals();
-
     pushLog("OK","Ready.");
   }
 
