@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Priyome</title>
   <link href="./favicon.svg" rel="icon">
-  
+
   <style>
     :root{
       --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
@@ -122,12 +122,6 @@
       pointer-events:auto;
       z-index:20;
     }
-    .below{
-      padding:10px 12px 12px;
-      border-top:1px solid var(--border);
-      background: rgba(15,23,42,.02);
-      display:grid; gap:8px;
-    }
     .navRow{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
     .smallBtn{padding:8px 10px; border-radius:10px; font-size:12px; font-weight:900;}
     .hint{font-size:12px;color:var(--muted);line-height:1.35}
@@ -162,7 +156,26 @@
       color: rgba(15,23,42,.78);
       white-space:nowrap;
     }
-    .moves{overflow:auto; padding-right:4px; min-height:120px; flex:1; display:flex; flex-direction:column; gap:2px;}
+
+    /* Move tree (lichess-ish) */
+    .moveTree{display:flex; flex-direction:column; gap:8px;}
+    .mtLine{display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 6px; border-radius:12px; border:1px solid rgba(15,23,42,.06); background: rgba(15,23,42,.02);}
+    .mtMn{min-width:38px; text-align:right; color:var(--muted); font-weight:900;}
+    .mtBtn{
+      padding:6px 10px; border-radius:12px;
+      border:1px solid var(--border);
+      background:#fff;
+      font-family: var(--mono);
+      font-size:12px;
+      cursor:pointer;
+    }
+    .mtBtn.active{
+      border-color: rgba(22,163,74,.55);
+      box-shadow:0 0 0 1px rgba(22,163,74,.15) inset;
+      background: rgba(22,163,74,.08);
+    }
+    .mtVar{margin-left:16px; padding-left:10px; border-left:2px dashed rgba(15,23,42,.12); display:flex; flex-direction:column; gap:8px;}
+
     .gameList{overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
     .gameCard{
       border:1px solid var(--border);
@@ -175,6 +188,7 @@
     .gameCard.active{border-color:rgba(37,99,235,.55); box-shadow:0 0 0 1px rgba(37,99,235,.12) inset;}
     .gameTitle{font-weight:900;font-size:13px;margin-bottom:4px;}
     .meta{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;}
+
     .errorBody{
       padding:10px 12px 12px;
       border:1px solid rgba(220,38,38,.25);
@@ -190,6 +204,7 @@
     }
     .okLine{color:#166534}
     .warnLine{color:#92400e}
+
     .bottomGrid{padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0}
     .fenRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;}
     .fenLabel{color:var(--muted);font-weight:900;letter-spacing:.2px}
@@ -201,66 +216,50 @@
       overflow:auto; white-space:nowrap;
     }
 
-    /* Priyomes pane */
-    .priyomeList{overflow:auto; display:flex; flex-direction:column; gap:10px; min-height:120px; flex:1;}
-    .pryCard{
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.02);
-      border-radius:14px;
-      padding:10px;
-      display:grid;
-      grid-template-columns: 160px 1fr;
-      gap:10px;
-      align-items:start;
-    }
-    @media (max-width: 520px){
-      .pryCard{ grid-template-columns: 1fr; }
-    }
-    .pryBoard{
-      width:160px; height:160px;
-      border-radius:12px;
-      overflow:hidden;
-    }
-    .pryMeta{display:flex; flex-direction:column; gap:6px; min-width:0}
-    .pryTitle{font-weight:900; font-size:13px; margin:0}
-    .pryCql{
-      font-family: var(--mono);
-      font-size:11px;
-      white-space:pre-wrap;
-      color: rgba(15,23,42,.78);
-      background: rgba(15,23,42,.02);
-      border: 1px solid rgba(15,23,42,.08);
-      border-radius:12px;
-      padding:8px;
-      max-height: 140px;
-      overflow:auto;
-    }
-    .pryActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    /* Priyomes */
+    .priyomeList{display:flex; flex-direction:column; gap:10px; overflow:auto; min-height:120px; flex:1;}
+    .pryCard{display:grid; grid-template-columns: 120px 1fr; gap:10px; border:1px solid var(--border); border-radius:14px; background: rgba(15,23,42,.02); padding:10px;}
+    .pryBoard{width:120px; height:120px; border-radius:12px; overflow:hidden; border:1px solid rgba(15,23,42,.08); background:#fff;}
+    .pryMeta{display:flex; flex-direction:column; gap:6px; min-width:0;}
+    .pryTitle{font-weight:900; font-size:13px;}
+    .pryCql{font-family:var(--mono); font-size:12px; color: rgba(15,23,42,.78); white-space:pre-wrap; overflow:hidden; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical;}
+    .pryActions{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
 
-    /* Lichess-ish move tree */
-    .moveTree{line-height:1.7; font-size:13px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
-    .mvNum{color:var(--muted); font-weight:900; margin-right:6px;}
-    .mvBtn{
-      padding:3px 7px;
-      border-radius:10px;
-      border:1px solid transparent;
-      background:transparent;
-      font-weight:700;
-      cursor:pointer;
-      margin-right:4px;
-      white-space:nowrap;
+    /* --- Right-pane tools bar (mobile top, desktop bottom) --- */
+    .toolsBar{
+      padding:10px;
+      border-bottom:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      order:-1; /* mobile: top */
     }
-    .mvBtn:hover{ border-color: var(--border); background: rgba(15,23,42,.03); }
-    .mvBtn.active{ border-color: rgba(22,163,74,.65); box-shadow: 0 0 0 1px rgba(22,163,74,.12) inset; }
-    .mvVar{
-      display:inline;
-      margin-left:6px;
-      padding-left:6px;
-      border-left:2px solid rgba(15,23,42,.06);
-      color: rgba(15,23,42,.72);
-      font-size:12px;
+    .toolRow{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    .toolToggle.active{
+      border-color: rgba(22,163,74,.55);
+      box-shadow:0 0 0 1px rgba(22,163,74,.15) inset;
+      background: rgba(22,163,74,.08);
     }
-    .mvPar{color:rgba(15,23,42,.55); font-weight:900; margin:0 4px;}
+    .pigBtn{
+      width:24px; height:24px; border-radius:999px;
+      border:2px solid rgba(15,23,42,.18);
+      background:#fff;
+      padding:0;
+    }
+    .pigBtn.active{ outline: 3px solid rgba(37,99,235,.18); outline-offset: 2px; }
+    #btnPigR{ background: #ef4444; }
+    #btnPigB{ background: #3b82f6; }
+    #btnPigY{ background: #f59e0b; }
+    #btnPigG{ background: #22c55e; }
+    @media (min-width: 900px){
+      .toolsBar{
+        order: 99; /* desktop: bottom */
+        border-bottom:none;
+        border-top:1px solid var(--border);
+        margin-top:auto;
+      }
+    }
   </style>
 </head>
 
@@ -279,20 +278,12 @@
         <button id="btnFlip">Flip</button>
         <button id="btnReset">Reset</button>
         <button id="btnSetup">Setup</button>
-        <button id="btnModeMoves" class="smallBtn" type="button">Moves</button>
-        <button id="btnModeArrows" class="smallBtn" type="button">Arrows</button>
-        <button id="btnModeSquares" class="smallBtn" type="button">Squares</button>
-        <span class="kbd">Pigment</span>
-        <button id="btnPigR" class="smallBtn" type="button">R</button>
-        <button id="btnPigB" class="smallBtn" type="button">B</button>
-        <button id="btnPigY" class="smallBtn" type="button">Y</button>
-        <button id="btnPigG" class="smallBtn" type="button">G</button>
-        <button id="btnClearMarks" class="smallBtn" type="button">Clear Marks</button>
+        <button id="btnAddQuery">Query</button>
 
         <button id="btnImportPgn">Import PGN</button>
         <button id="btnExportGame">Export Game PGN</button>
         <button id="btnExportStudy">Export Study PGN</button>
-      </div>
+</div>
     </div>
   </div>
 
@@ -300,22 +291,14 @@
     <!-- Board -->
     <div class="card boardCard" id="boardCard">
       <div class="head">
-        <div class="status" id="status">—</div>
-        <div class="status" id="toolStatus">—</div>
+        <div class="status" id="matchupTitle">—</div>
+        <div class="status"><span id="gameResult">—</span> <span class="pill" id="toolStatus">—</span></div>
       </div>
 
       <div class="boardArea" id="boardArea">
         <div class="boardWrap" id="boardWrap">
           <div id="boardHost"></div>
           <div id="sparesHost" hidden></div>
-        </div>
-      </div>
-
-      <div class="below">
-        <div class="navRow">
-          <button class="smallBtn" id="btnPrev" type="button">◀︎</button>
-          <button class="smallBtn" id="btnNext" type="button">▶︎</button>
-          <span class="kbd" id="navMeta">ply —</span>
         </div>
       </div>
     </div>
@@ -331,11 +314,40 @@
         <div class="tab" data-tab="errors">Errors</div>
       </div>
 
+      <div class="toolsBar" id="rightTools">
+        <div class="toolRow">
+          <button class="smallBtn" id="btnPrev" type="button">◀︎</button>
+          <button class="smallBtn" id="btnNext" type="button">▶︎</button>
+          <span class="kbd" id="navMeta">ply —</span>
+        </div>
+
+        <div class="toolRow">
+          <button id="btnModeMoves" class="toolToggle smallBtn" type="button">Moves</button>
+          <button id="btnModeArrows" class="toolToggle smallBtn" type="button">Arrows</button>
+          <button id="btnModeSquares" class="toolToggle smallBtn" type="button">Squares</button>
+          <button id="btnClearMarks" class="smallBtn" type="button">Clear</button>
+        </div>
+
+        <div class="toolRow">
+          <span class="kbd">Pigment</span>
+          <button id="btnPigR" class="pigBtn" type="button" aria-label="Red pigment"></button>
+          <button id="btnPigB" class="pigBtn" type="button" aria-label="Blue pigment"></button>
+          <button id="btnPigY" class="pigBtn" type="button" aria-label="Yellow pigment"></button>
+          <button id="btnPigG" class="pigBtn" type="button" aria-label="Green pigment"></button>
+        </div>
+      </div>
+
       <div class="pane active" id="pane-moves">
-        <div class="moves" id="moves"></div>
+        <div class="moveTree" id="moveTree"></div>
+
         <div>
           <div class="hint">Annotation (per-ply storage is handled inside scratchchess)</div>
           <textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
+        </div>
+
+        <div>
+          <div class="hint">CQL (from Priyome <span class="kbd">[cqlref]</span> or Query mode <span class="kbd">exportCQL()</span>)</div>
+          <textarea id="movesCql" readonly placeholder="(CQL will appear here)"></textarea>
         </div>
       </div>
 
@@ -351,8 +363,8 @@
 
       <div class="pane" id="pane-priyomes">
         <div class="hint">
-          Priyomes from <span class="kbd">PRIYOME_PGN_MANIFEST</span>. Each item renders a mini ScratchChess board (marks/arrows/squares
-          come from <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span> in the PGN).
+          Priyomes from <span class="kbd">PRIYOME_PGN_MANIFEST</span>. Each item renders a mini ScratchChess board. Their CQL is loaded by
+          <span class="kbd">[cqlref "…"]</span> from <span class="kbd">./cql/&lt;ref&gt;.cql</span>.
         </div>
         <div class="row" style="gap:8px; align-items:center;">
           <button class="smallBtn" id="btnReloadPriyomes" type="button">Reload Priyomes</button>
@@ -465,7 +477,6 @@
   </div>
 
 <script type="module">
-  import { Chess } from "./third_party/chess.js";
   import { createGame, BoardView } from "./scratchchess.js";
 
   // ---------------- MANIFESTS ----------------
@@ -475,14 +486,10 @@
     alignment_examples: "./pgn/alignment_examples.pgn",
   };
   const PGN_MANIFEST = { fischer: "./pgn/Fischer.pgn" };
-  // priyomes
-  const PRIYOME_PGN_MANIFEST = {
-    default: "./priyomes/priyomes.pgn"
-  };
+  const PRIYOME_PGN_MANIFEST = { default: "./priyomes/priyomes.pgn" };
   const CQL_MANIFEST = {}; // optional extra dropdown items
   const CQL_EVAL_MANIFEST = {
     naivealignments: { url:"./cql/naivealignments.cql", description:"Naive alignments demo" },
-    humanlignments:  { url: "./cql/human_alignments.cql", description: "Human alignments."  },
   };
 
   // ---------------- basic UI helpers ----------------
@@ -505,6 +512,9 @@
   // ---------------- error logger ----------------
   const errorLogEl = $("errorLog");
   const errCountEl = $("errCount");
+  const movesCqlEl = $("movesCql");
+  const matchupTitleEl = $("matchupTitle");
+  const gameResultEl = $("gameResult");
   let _errCount = 0;
   function pushLine(kind, msg){
     _errCount++;
@@ -534,14 +544,12 @@
     }
     return headers;
   }
-
   function splitMultiPgn(text){
     const t = (text || "").trim();
     if (!t) return [];
     const parts = t.split(/\n\s*\n(?=\[Event\s+)/g).map(s => s.trim()).filter(Boolean);
     return parts.length ? parts : [t];
   }
-
   function todayYMD(){
     const d = new Date();
     const yyyy = d.getFullYear();
@@ -550,15 +558,60 @@
     return `${yyyy}.${mm}.${dd}`;
   }
 
+  function extractCqlFromPgnRaw(pgn){
+    // Legacy: allow a few embeddings, but prefer [cqlref "..."] + ./cql/<ref>.cql
+    const s = String(pgn || "");
+    const mRef = s.match(/^\[cqlref\s+"([^\"]*)"\]\s*$/mi);
+    if (mRef) return `@ref:${mRef[1].trim()}`;
+    const m1 = s.match(/^\[CQL\s+"([^\"]*)"\]\s*$/mi);
+    if (m1) return m1[1].trim();
+    const m2 = s.match(/\{[^}]*cql[^}]*\}/i);
+    if (m2) return m2[0].replace(/^\{|\}$/g,"").trim();
+    const m3 = s.match(/\[%cql\s+([^\]]+)\]/i);
+    if (m3) return ("%cql " + m3[1]).trim();
+    return "";
+  }
+
+  async function fetchCqlByRef(ref){
+    const key = String(ref||"").trim();
+    if (!key) return "";
+    try{
+      if (typeof CQL_MANIFEST === "object" && CQL_MANIFEST && CQL_MANIFEST[key]) {
+        const r = await fetch(CQL_MANIFEST[key], { cache:"no-store" });
+        if (r.ok) return await r.text();
+      }
+    }catch{}
+    try{
+      if (typeof CQL_EVAL_MANIFEST === "object" && CQL_EVAL_MANIFEST && CQL_EVAL_MANIFEST[key] && CQL_EVAL_MANIFEST[key].url) {
+        const r = await fetch(CQL_EVAL_MANIFEST[key].url, { cache:"no-store" });
+        if (r.ok) return await r.text();
+      }
+    }catch{}
+    const url = `./cql/${encodeURIComponent(key)}.cql`;
+    const r = await fetch(url, { cache:"no-store" });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+    return await r.text();
+  }
+
+  function formatCqlForDisplay(src){
+    const s = String(src || "").replace(/\r/g,"").trim();
+    if (!s) return "";
+    return s
+      .replace(/\{\s*/g, "{\n")
+      .replace(/\s*\}/g, "\n}\n")
+      .replace(/\n\n+/g, "\n\n")
+      .trim() + "\n";
+  }
+
   // ---------------- ScratchChess glue (game/study state) ----------------
-  const STUDIES = {};            // name -> array of game IDs
-  const GAMES = [];              // most recent first {id,title,pgn,game,opening,result}
+  const STUDIES = {};
+  const GAMES = [];
   let currentStudyName = "default";
   let currentGame = null;
 
   const boardHost = $("boardHost");
   const sparesHost = $("sparesHost");
-  const initboot = createGame({ Event:"Boot", White:"", Black:"" });
+  const initboot = createGame({ Event:"Boot", White:"", Black:"", Result:"*" });
   const board = new BoardView(boardHost, initboot, { spareDiv: sparesHost, minSizePx: 115 });
 
   function uniqStudyName(base){
@@ -592,6 +645,13 @@
     currentGame = rec;
     board.setGame(rec.game);
     $("gamePill").textContent = rec.title || "—";
+    try{
+      const w = rec.headers?.White || "White";
+      const b = rec.headers?.Black || "Black";
+      if (matchupTitleEl) matchupTitleEl.textContent = `${w} v ${b}`;
+      if (gameResultEl) gameResultEl.textContent = rec.headers?.Result || rec.result || "*";
+    }catch{}
+    try{ if (movesCqlEl) movesCqlEl.value = formatCqlForDisplay(rec.cqlText || ""); }catch{}
     syncUi();
     renderGameList();
   }
@@ -611,7 +671,21 @@
     const opening = meta.opening || "";
     const game = loadPgnIntoScratchGame(pgn);
 
-    const rec = { id, title, opening, result: res, pgn, game };
+    const rec = { id, title, opening, result: res, pgn, game, headers: h, cqlText: "" };
+    rec.game.onChange?.(() => { if (currentGame && currentGame.id === rec.id) syncUi(); });
+    GAMES.unshift(rec);
+    ensureStudy(currentStudyName, [id]);
+    return rec;
+  }
+
+  function addGameFromScratchGame(game, meta = {}, headers = {}){
+    const h = headers || {};
+    const title = meta.title || h.Event || `Game ${GAMES.length+1}`;
+    const id = meta.id || `g:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+    const res = h.Result || "*";
+    const opening = meta.opening || "";
+    const pgn = game?.exportPGN?.() || "";
+    const rec = { id, title, opening, result: res, pgn, game, headers: h, cqlText: "" };
     rec.game.onChange?.(() => { if (currentGame && currentGame.id === rec.id) syncUi(); });
     GAMES.unshift(rec);
     ensureStudy(currentStudyName, [id]);
@@ -662,148 +736,125 @@
     }
   }
 
-  // ---------------- Moves rendering (tree + variations) ----------------
-  function jumpToNode(target){
-    const g = currentGame?.game;
-    if (!g || !target) return;
-
-    // Build path root -> target
-    const path = [];
-    let n = target;
-    while (n && n.parent){
-      path.push(n);
-      n = n.parent;
-    }
-    path.reverse();
-
-    // Rewind to root
-    while (g.curNode && g.curNode.parent){
-      g.prevMove();
-    }
-
-    // Walk down the path, selecting the right variation at each step
-    for (const step of path){
-      const parent = g.curNode;
-      const idx = parent.children.indexOf(step);
-      if (idx >= 0) parent.mainChildIndex = idx;
-      g.nextMove();
-    }
-  }
+  // ---------------- Move tree (lichess-ish) ----------------
+  const moveTreeEl = $("moveTree");
 
   function renderMoveTree(){
-    const host = $("moves");
-    host.innerHTML = "";
     const g = currentGame?.game;
-    if (!g) return;
+    if (!g || !moveTreeEl) return;
+    moveTreeEl.innerHTML = "";
 
-    const root = g.root;
-    const wrap = document.createElement("div");
-    wrap.className = "moveTree";
+    function renderLine(lineNodes){
+      const line = document.createElement("div");
+      line.className = "mtLine";
 
-    const renderLine = (startNode, prefixNeedsMoveNum = true) => {
-      let node = startNode;
-      while (node && node.children && node.children.length){
-        const child = node.children[node.mainChildIndex] || node.children[0];
-        const ply = child.ply || 0; // root=0, white1=1, black1=2...
-        const moveNo = Math.floor((ply + 1) / 2);
-        const isWhite = (ply % 2) === 1;
+      const mn = document.createElement("div");
+      mn.className = "mtMn";
+      mn.textContent = String(lineNodes[0]?.moveNumber || "");
+      line.appendChild(mn);
 
-        // Move number label (lichess-like)
-        if (isWhite){
-          const mn = document.createElement("span");
-          mn.className = "mvNum";
-          mn.textContent = `${moveNo}.`;
-          wrap.appendChild(mn);
-        } else if (prefixNeedsMoveNum){
-          const mn = document.createElement("span");
-          mn.className = "mvNum";
-          mn.textContent = `${moveNo}...`;
-          wrap.appendChild(mn);
-        }
-
-        const btn = document.createElement("button");
-        btn.className = "mvBtn" + (g.curNode === child ? " active" : "");
-        btn.textContent = child.san || child.uci || "?";
-        btn.addEventListener("click", () => {
-          jumpToNode(child);
-          syncUi();
-        });
-        wrap.appendChild(btn);
-
-        // Side variations (everything except main)
-        const vars = node.children.filter((c) => c !== child);
-        if (vars.length){
-          const varWrap = document.createElement("span");
-          varWrap.className = "mvVar";
-          for (let vi=0; vi<vars.length; vi++){
-            const v = vars[vi];
-            const open = document.createElement("span");
-            open.className = "mvPar";
-            open.textContent = "(";
-            varWrap.appendChild(open);
-
-            const tmp = document.createElement("span");
-            const renderVar = (vnode) => {
-              let vn = vnode;
-              let needsNum = true;
-              while (vn && vn.children && vn.children.length){
-                const vchild = vn.children[vn.mainChildIndex] || vn.children[0];
-                const vply = vchild.ply || 0;
-                const vmoveNo = Math.floor((vply + 1) / 2);
-                const visWhite = (vply % 2) === 1;
-
-                if (visWhite){
-                  const mn = document.createElement("span");
-                  mn.className = "mvNum";
-                  mn.textContent = `${vmoveNo}.`;
-                  tmp.appendChild(mn);
-                  needsNum = false;
-                } else if (needsNum){
-                  const mn = document.createElement("span");
-                  mn.className = "mvNum";
-                  mn.textContent = `${vmoveNo}...`;
-                  tmp.appendChild(mn);
-                  needsNum = false;
-                }
-
-                const b = document.createElement("button");
-                b.className = "mvBtn" + (g.curNode === vchild ? " active" : "");
-                b.textContent = vchild.san || vchild.uci || "?";
-                b.addEventListener("click", () => {
-                  jumpToNode(vchild);
-                  syncUi();
-                });
-                tmp.appendChild(b);
-
-                vn = vchild;
-                needsNum = false;
-              }
-            };
-            renderVar(v);
-
-            varWrap.appendChild(tmp);
-
-            const close = document.createElement("span");
-            close.className = "mvPar";
-            close.textContent = ")";
-            varWrap.appendChild(close);
-
-            if (vi < vars.length-1){
-              const sep = document.createElement("span");
-              sep.textContent = " ";
-              varWrap.appendChild(sep);
-            }
+      for (const node of lineNodes){
+        const b = document.createElement("button");
+        b.className = "mtBtn" + ((g.curNode === node) ? " active" : "");
+        b.textContent = node.san || node.move || "(?)";
+        b.addEventListener("click", () => {
+          try{
+            // scratchchess exposes a node graph; safest is: rewind/advance via node pointers if available
+            g.goToNode?.(node) || g.setCurrentNode?.(node);
+            syncUi();
+          }catch(e){
+            // fallback: nothing
           }
-          wrap.appendChild(varWrap);
-        }
-
-        node = child;
-        prefixNeedsMoveNum = false;
+        });
+        line.appendChild(b);
       }
-    };
+      return line;
+    }
 
-    renderLine(root, true);
-    host.appendChild(wrap);
+    function walkMainline(start){
+      const out = [];
+      let n = start;
+      while (n){
+        out.push(n);
+        n = n.children?.[n.mainChildIndex ?? 0] || null;
+      }
+      return out;
+    }
+
+    // Fallback: if scratchchess doesn't expose full tree helpers, just show current PGN tokens
+    if (!g.root || !g.root.children){
+      const pre = document.createElement("div");
+      pre.className = "hint";
+      pre.textContent = "(move tree unavailable for this game object)";
+      moveTreeEl.appendChild(pre);
+      return;
+    }
+
+    // Build a lichess-ish tree: mainline with nested variations
+    function renderNodeChain(node, depth=0){
+      // group into move-number lines
+      const chain = walkMainline(node);
+      let bucket = [];
+      let lastMn = null;
+
+      for (const n of chain){
+        const mn = n.moveNumber ?? Math.floor((n.ply ?? 0)/2)+1;
+        if (lastMn === null) lastMn = mn;
+        if (mn !== lastMn){
+          moveTreeEl.appendChild(renderLine(bucket));
+          bucket = [];
+          lastMn = mn;
+        }
+        bucket.push(n);
+
+        // render variations off this node (excluding main child)
+        const kids = n.children || [];
+        const mainIdx = n.mainChildIndex ?? 0;
+        const vars = kids.filter((_,i)=>i!==mainIdx);
+        if (vars.length){
+          const wrap = document.createElement("div");
+          wrap.className = "mtVar";
+          for (const v of vars){
+            // each variation rendered as its own little chain block
+            renderVariationInto(wrap, v);
+          }
+          moveTreeEl.appendChild(wrap);
+        }
+      }
+      if (bucket.length) moveTreeEl.appendChild(renderLine(bucket));
+    }
+
+    function renderVariationInto(host, node){
+      const chain = walkMainline(node);
+      let bucket = [];
+      let lastMn = null;
+
+      for (const n of chain){
+        const mn = n.moveNumber ?? Math.floor((n.ply ?? 0)/2)+1;
+        if (lastMn === null) lastMn = mn;
+        if (mn !== lastMn){
+          host.appendChild(renderLine(bucket));
+          bucket = [];
+          lastMn = mn;
+        }
+        bucket.push(n);
+
+        const kids = n.children || [];
+        const mainIdx = n.mainChildIndex ?? 0;
+        const vars = kids.filter((_,i)=>i!==mainIdx);
+        if (vars.length){
+          const wrap = document.createElement("div");
+          wrap.className = "mtVar";
+          for (const v of vars){
+            renderVariationInto(wrap, v);
+          }
+          host.appendChild(wrap);
+        }
+      }
+      if (bucket.length) host.appendChild(renderLine(bucket));
+    }
+
+    renderNodeChain(g.root.children?.[g.root.mainChildIndex ?? 0] || g.root, 0);
   }
 
   function syncUi(){
@@ -823,32 +874,52 @@
     sparesHost.hidden = !(g.ui?.setup);
     $("btnSetup").classList.toggle("on", !!g.ui?.setup);
 
+    // Tools state (mode + pigment)
+    const mode = g.ui?.mode || "moves";
+    $("btnModeMoves")?.classList.toggle("active", mode === "moves");
+    $("btnModeArrows")?.classList.toggle("active", mode === "arrows");
+    $("btnModeSquares")?.classList.toggle("active", mode === "squares");
+    const pig = g.ui?.pig || "R";
+    $("btnPigR")?.classList.toggle("active", pig === "R");
+    $("btnPigB")?.classList.toggle("active", pig === "B");
+    $("btnPigY")?.classList.toggle("active", pig === "Y");
+    $("btnPigG")?.classList.toggle("active", pig === "G");
+
+    try{
+      const bits = [];
+      if (g.ui?.setup) bits.push("setup");
+      if (g.ui?.mini) bits.push("mini");
+      if (g.ui?.mode) bits.push(g.ui.mode);
+      $("toolStatus").textContent = bits.length ? bits.join(" • ") : "—";
+    }catch{ $("toolStatus").textContent = "—"; }
+
+    try{
+      if (movesCqlEl){
+        if (g.ui?.mode === "query" && typeof g.exportCQL === "function") {
+          movesCqlEl.value = formatCqlForDisplay(g.exportCQL());
+        } else if (currentGame?.cqlText) {
+          movesCqlEl.value = formatCqlForDisplay(currentGame.cqlText);
+        }
+      }
+    }catch{ if (movesCqlEl) movesCqlEl.value=""; }
+
     renderMoveTree();
   }
 
   // ---------------- Board controls ----------------
   function cg(){ return currentGame?.game || null; }
 
-  $("btnPrev").addEventListener("click", () => { try{ cg()?.prevMove?.(); }catch(e){ logStack("ERR","Prev failed: ", e); } });
-  $("btnNext").addEventListener("click", () => { try{ cg()?.nextMove?.(); }catch(e){ logStack("ERR","Next failed: ", e); } });
+  function setModeToggle(target){
+    const g = cg(); if (!g) return;
+    const cur = g.ui?.mode || "moves";
+    if (target === "moves") { g.setMode?.("moves"); return; }
+    if (cur === target) g.setMode?.("moves");
+    else g.setMode?.(target);
+  }
 
-  $("btnFlip").addEventListener("click", () => { try{ cg()?.toggleFlip?.(); syncUi(); }catch(e){ logStack("ERR","Flip failed: ", e); } });
-  $("btnReset").addEventListener("click", () => {
-    try{
-      const g = cg(); if (!g) return;
-      const wasSetup = !!g.ui?.setup;
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
-      logLine("OK","Reset to initial position.");
-      syncUi();
-    }catch(e){ logStack("ERR","Reset failed: ", e); }
-  });
-  $("btnSetup").addEventListener("click", () => { try{ cg()?.toggleSetup?.(); syncUi(); }catch(e){ logStack("ERR","Setup toggle failed: ", e); } });
-
-  // Marks / drawing controls (ScratchChess owns the drawing; we just wire buttons)
-  $("btnModeMoves")?.addEventListener("click", () => { try{ cg()?.setMode?.("moves"); }catch(e){ logStack("ERR","Mode moves failed: ", e);} });
-  $("btnModeArrows")?.addEventListener("click", () => { try{ cg()?.setMode?.("arrows"); }catch(e){ logStack("ERR","Mode arrows failed: ", e);} });
-  $("btnModeSquares")?.addEventListener("click", () => { try{ cg()?.setMode?.("squares"); }catch(e){ logStack("ERR","Mode squares failed: ", e);} });
+  $("btnModeMoves")?.addEventListener("click", () => { try{ setModeToggle("moves"); }catch(e){ logStack("ERR","Mode moves failed: ", e);} });
+  $("btnModeArrows")?.addEventListener("click", () => { try{ setModeToggle("arrows"); }catch(e){ logStack("ERR","Mode arrows failed: ", e);} });
+  $("btnModeSquares")?.addEventListener("click", () => { try{ setModeToggle("squares"); }catch(e){ logStack("ERR","Mode squares failed: ", e);} });
 
   $("btnPigR")?.addEventListener("click", () => { try{ cg()?.setPigment?.("R"); }catch(e){ logStack("ERR","Pigment R failed: ", e);} });
   $("btnPigB")?.addEventListener("click", () => { try{ cg()?.setPigment?.("B"); }catch(e){ logStack("ERR","Pigment B failed: ", e);} });
@@ -856,6 +927,37 @@
   $("btnPigG")?.addEventListener("click", () => { try{ cg()?.setPigment?.("G"); }catch(e){ logStack("ERR","Pigment G failed: ", e);} });
 
   $("btnClearMarks")?.addEventListener("click", () => { try{ cg()?.clearMarks?.(); }catch(e){ logStack("ERR","Clear marks failed: ", e);} });
+
+  $("btnAddQuery")?.addEventListener("click", () => {
+    try{
+      const h = { Event: "Query Position", Site:"Local", Date: todayYMD(), Round:"?", White:"White", Black:"Black", Result:"*" };
+      const g = createGame(h);
+      g.clearBoard?.();
+      g.setMode?.("query");
+      const rec = addGameFromScratchGame(g, { title: `Query • ${todayYMD()}`, opening:"Query" }, h);
+      ensureStudy(currentStudyName, [rec.id]);
+      setCurrentGameById(rec.id);
+      setTab("moves");
+      logLine("OK","Added a query-position game to current study (blank board, Query mode).");
+    }catch(e){
+      logStack("ERR","Add Query failed: ", e);
+      setTab("errors");
+    }
+  });
+
+  $("btnPrev").addEventListener("click", () => { try{ cg()?.prevMove?.(); syncUi(); }catch(e){ logStack("ERR","Prev failed: ", e); } });
+  $("btnNext").addEventListener("click", () => { try{ cg()?.nextMove?.(); syncUi(); }catch(e){ logStack("ERR","Next failed: ", e); } });
+
+  $("btnFlip").addEventListener("click", () => { try{ cg()?.toggleFlip?.(); syncUi(); }catch(e){ logStack("ERR","Flip failed: ", e); } });
+  $("btnReset").addEventListener("click", () => {
+    try{
+      const g = cg(); if (!g) return;
+      g.initializePosition?.();
+      logLine("OK","Reset to initial position.");
+      syncUi();
+    }catch(e){ logStack("ERR","Reset failed: ", e); }
+  });
+  $("btnSetup").addEventListener("click", () => { try{ cg()?.toggleSetup?.(); syncUi(); }catch(e){ logStack("ERR","Setup toggle failed: ", e); } });
 
   function downloadText(filename, text){
     const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
@@ -924,35 +1026,18 @@
     }catch(e){ logStack("ERR","Import failed: ", e); setTab("errors"); }
   });
 
-  // ---------------- Query DB dropdown population (manifest) ----------------
-  const dbSelectEl = $("dbSelectEl");
-
-  // ---------------- Priyomes pane (mini boards) ----------------
-  const priyomeListEl = $("priyomeList");
+  // ---------------- Priyomes ----------------
   const priyomesStatusEl = $("priyomesStatus");
+  const priyomeListEl = $("priyomeList");
   const btnReloadPriyomes = $("btnReloadPriyomes");
-  let PRIYOMES = []; // { title, pgnRaw, cql, game, view }
-
-  function extractCqlFromPgnRaw(pgn){
-    const s = String(pgn || "");
-    // 1) Header tag
-    const m1 = s.match(/^\[CQL\s+"([^"]*)"\]\s*$/mi);
-    if (m1) return m1[1].trim();
-    // 2) Curly comment containing "cql"
-    const m2 = s.match(/\{[^}]*cql[^}]*\}/i);
-    if (m2) return m2[0].replace(/^\{|\}$/g,"").trim();
-    // 3) %cql style comment
-    const m3 = s.match(/\[%cql\s+([^\]]+)\]/i);
-    if (m3) return ("%cql " + m3[1]).trim();
-    return "";
-  }
+  const PRIYOMES = [];
 
   function destroyPriyomeViews(){
     for (const p of PRIYOMES){
       try{ p.view?.destroy?.(); }catch{}
+      p.view = null;
     }
-    PRIYOMES = [];
-    if (priyomeListEl) priyomeListEl.innerHTML = "";
+    PRIYOMES.length = 0;
   }
 
   async function loadPriyomes(){
@@ -970,12 +1055,27 @@
         const raw = parts[i];
         const h = parseHeaders(raw);
         const title = h.Event || `Priyome ${i+1}`;
-        const cql = extractCqlFromPgnRaw(raw);
+
+        let cql = "";
+        const cqlRef = (h.cqlref || h.CQLRef || h.Cqlref || "").trim();
+        if (cqlRef){
+          try{ cql = await fetchCqlByRef(cqlRef); }
+          catch(e){ cql = `/* failed to load cqlref ${cqlRef}: ${String(e)} */`; }
+        } else {
+          const embedded = extractCqlFromPgnRaw(raw);
+          if (embedded.startsWith("@ref:")){
+            const ref = embedded.slice(5);
+            try{ cql = await fetchCqlByRef(ref); }
+            catch(e){ cql = `/* failed to load cqlref ${ref}: ${String(e)} */`; }
+          } else {
+            cql = embedded;
+          }
+        }
 
         const g = createGame(h);
         g.toggleMini(true);
         g.loadPGN?.(raw);
-        g.onChange?.(() => { /* no-op */ });
+        g.onChange?.(() => {});
 
         PRIYOMES.push({ title, pgnRaw: raw, cql, game: g, view: null });
       }
@@ -1009,7 +1109,7 @@
 
       const cql = document.createElement("div");
       cql.className = "pryCql";
-      cql.textContent = p.cql || "(no CQL found in this PGN)";
+      cql.textContent = (p.cql && p.cql.trim()) ? p.cql.trim() : "(no CQL found)";
 
       const actions = document.createElement("div");
       actions.className = "pryActions";
@@ -1020,6 +1120,8 @@
         try{
           const newId = `pry:${Date.now()}:${Math.random().toString(16).slice(2)}`;
           const rec = addGameRecord(p.pgnRaw, { id:newId, title: p.title, opening:"Priyome" });
+          rec.cqlText = p.cql || "";
+          try{ if (movesCqlEl) movesCqlEl.value = formatCqlForDisplay(rec.cqlText); }catch{}
           ensureStudy(currentStudyName, [rec.id]);
           setCurrentGameById(rec.id);
           setTab("moves");
@@ -1050,6 +1152,18 @@
 
   btnReloadPriyomes?.addEventListener("click", () => loadPriyomes());
 
+  // ---------------- Query DB dropdown population ----------------
+  const dbSelectEl = $("dbSelectEl");
+  const qCqlFile = $("qCqlFile");
+  const qPgnFile = $("qPgnFile");
+  const qCqlName = $("qCqlName");
+  const qPgnName = $("qPgnName");
+  const qCqlText = $("qCqlText");
+  const qArgv = $("qArgv");
+  const qRun = $("qRun");
+  const qStatus = $("qStatus");
+  const qUseCurrent = $("qUseCurrent");
+
   function populateDbSelect(){
     dbSelectEl.innerHTML = "";
     const keys = Object.keys(PGN_MANIFEST);
@@ -1066,18 +1180,8 @@
   }
   populateDbSelect();
 
-  // ---------------- CQL runner logic (copied from reference harness) ----------------
+  // ---------------- CQL runner logic (copied from reference harness; wired here) ----------------
   let qPgnBytesOverride = null;
-
-  const qCqlFile = $("qCqlFile");
-  const qPgnFile = $("qPgnFile");
-  const qCqlName = $("qCqlName");
-  const qPgnName = $("qPgnName");
-  const qCqlText = $("qCqlText");
-  const qArgv = $("qArgv");
-  const qRun = $("qRun");
-  const qStatus = $("qStatus");
-  const qUseCurrent = $("qUseCurrent");
 
   async function fileToUint8(file) {
     const ab = await file.arrayBuffer();
@@ -1111,7 +1215,6 @@
       `[Black "${DUMMY_CQL_BLACK}"]`,
       `[Result "0-1"]`,
     ].join("\n");
-
     const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
     return `${headers}\n\n${moves}\n`;
   }
@@ -1135,13 +1238,16 @@
     return kept.join("\n\n").trim();
   }
 
+  function resetAfterCqlRunTransientState(){
+    qStatus.textContent = "Ready.";
+  }
+
   function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
     const games = splitMultiPgn(multiPgnText);
     if (!games.length){
       logLine("WARN","No games found in output PGN.");
       return 0;
     }
-
     const newIds = [];
     for (let i=0;i<games.length;i++){
       const pgn = games[i];
@@ -1252,9 +1358,9 @@
       if (qPgnBytesOverride){
         pgnBytes = qPgnBytesOverride;
       } else {
-        const pgnFile2 = qPgnFile.files?.[0];
-        if (pgnFile2){
-          pgnBytes = await fileToUint8(pgnFile2);
+        const pgnFile = qPgnFile.files?.[0];
+        if (pgnFile){
+          pgnBytes = await fileToUint8(pgnFile);
         } else {
           const db = dbSelectEl.value;
           pgnBytes = await getPgnBytesForDb(db);
@@ -1315,6 +1421,7 @@
           } else {
             logLine("OK", `Query done (rc=${String(j.rc)}). outputPgn=${j.outputPgn.length} chars`);
             if (j.outputMissing) logLine("WARN", "output.pgn not found by runner (empty output).");
+
             let outPgnText = j.outputPgn || "";
 
             try{
@@ -1341,6 +1448,7 @@
             }
           }
 
+          resetAfterCqlRunTransientState();
           qRun.disabled = false;
           updateQueryUi();
         }
@@ -1348,13 +1456,14 @@
 
     }catch(e){
       logLine("ERR", `Run exception: ${e && e.stack ? e.stack : String(e)}`);
+      resetAfterCqlRunTransientState();
       qRun.disabled = false;
       updateQueryUi();
       setTab("errors");
     }
   });
 
-  // ---------------- Evals (minimal; JS evals + CQL eval manifest) ----------------
+  // ---------------- Evals (minimal) ----------------
   const evalsStatusEl = $("evalsStatus");
   const evalListEl = $("evalList");
   const cqlEvalListEl = $("cqlEvalList");
@@ -1400,6 +1509,7 @@
           const pgnIn = g.exportPGN?.() || "";
           const outPgn = await entry.run({ pgn: pgnIn });
           if (!String(outPgn||"").trim()) throw new Error(`Eval "${entry.id}" returned empty output PGN.`);
+          const h = parseHeaders(outPgn);
           const titleBase = currentGame?.title || "Game";
           const title = `Evaluated (${entry.id}) • ${titleBase}`;
           const newId = `eval:${entry.id}:${currentGame?.id || "unknown"}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -1473,6 +1583,7 @@
 
             if (!outPgnText.trim()) throw new Error(`CQL eval "${id}" returned empty output PGN.`);
 
+            const h = parseHeaders(outPgnText);
             const titleBase = currentGame?.title || "Game";
             const title = `Evaluated (${id}) • ${titleBase}`;
             const newId = `eval:${id}:${currentGame?.id || "unknown"}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -1520,22 +1631,22 @@
 
       renderStudySelect();
       renderGameList();
+
       if (STUDIES[currentStudyName]?.length){
         setCurrentGameById(STUDIES[currentStudyName][0]);
       } else {
-        currentGame = { id:"", title:"", game: initboot, pgn:"" };
+        currentGame = { id:"", title:"", game: initboot, pgn:"", headers:{White:"",Black:"",Result:"*"}, cqlText:"" };
         board.setGame(initboot);
+        if (matchupTitleEl) matchupTitleEl.textContent = "White v Black";
+        if (gameResultEl) gameResultEl.textContent = "*";
         syncUi();
       }
 
-      // load evals
+      await loadPriyomes();
+
       loadEvals();
-
-      // load priyomes (mini boards)
-      loadPriyomes();
-
-      // query UI
       updateQueryUi();
+
       logLine("OK","Boot complete.");
     }catch(e){
       logStack("ERR","Boot failed: ", e);
