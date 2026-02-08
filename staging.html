@@ -603,6 +603,16 @@
     .miniX:hover{ border-color: rgba(255,255,255,.35); }
 
     .spareMount{ margin-top:8px; }
+
+
+/* --- ScratchChess mounting sizing fixes --- */
+#boardWrap{ display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; }
+#boardMount{ width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+#boardMount > .sc-shell{ margin:auto; } /* keep square centered */
+.spareMount{ width:100%; }
+.leftCard{ display:flex; flex-direction:column; min-height:0; }
+.boardCard{ display:flex; flex-direction:column; min-height:0; height:100%; }
+
 </style>
 </head>
 
@@ -877,7 +887,31 @@
     logLine(level, msg + (err ? ` (${err})` : ""));
   }
 
-  function parseHeaders(pgn){
+  
+  // ----------------------------- Tabs -----------------------------
+  function setTab(which){
+    const map = {
+      moves:    ['tabMoves','paneMoves'],
+      priyomes: ['tabPriyomes','panePriyomes'],
+      games:    ['tabGames','paneGames'],
+      query:    ['tabQuery','paneQuery'],
+      evals:    ['tabEvals','paneEvals'],
+      errors:   ['tabErrors','paneErrors'],
+    };
+    for (const k of Object.keys(map)){
+      const [t,p] = map[k];
+      const tabEl = document.getElementById(t);
+      const paneEl = document.getElementById(p);
+      if (tabEl) tabEl.classList.toggle('active', k===which);
+      if (paneEl) paneEl.classList.toggle('active', k===which);
+    }
+    // Priyomes tab shows mini boards; size them once visible.
+    if (which === 'priyomes'){
+      setTimeout(() => { try { renderPriyomes?.(); } catch(_){} try { resizeMiniBoards?.(); } catch(_){} }, 0);
+    }
+  }
+
+function parseHeaders(pgn){
     const headers = {};
     const headerRe = /^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
     let m;
@@ -1460,6 +1494,14 @@
       logStack("ERR", "Query run failed.", e);
     }
   });
+
+  // Wire tab clicks
+  document.getElementById('tabMoves')?.addEventListener('click', () => setTab('moves'));
+  document.getElementById('tabPriyomes')?.addEventListener('click', () => setTab('priyomes'));
+  document.getElementById('tabGames')?.addEventListener('click', () => setTab('games'));
+  document.getElementById('tabQuery')?.addEventListener('click', () => setTab('query'));
+  document.getElementById('tabEvals')?.addEventListener('click', () => setTab('evals'));
+  document.getElementById('tabErrors')?.addEventListener('click', () => setTab('errors'));
 
   // ----------------------------- Boot -----------------------------
   ensureSetupUI();
