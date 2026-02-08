@@ -133,6 +133,7 @@
         <button id="btnMoves" class="active">Moves</button>
         <button id="btnSquares">Squares</button>
         <button id="btnArrows">Arrows</button>
+        <button id="btnQuery">Query</button>
         <button id="btnSetup">Setup</button>
         <button id="btnFlip">Flip</button>
         <button id="btnMini">Mini</button>
@@ -193,6 +194,16 @@
           <button id="btnExportPGN">Export PGN</button>
         </div>
 
+        <h3 style="margin-top:14px;">CQL</h3>
+        <textarea id="cqlBox" rows="10" readonly></textarea>
+        <div class="row" style="margin-top:8px;">
+          <button id="btnExportCQL">Export CQL</button>
+          <button id="btnClearCQL">Clear</button>
+        </div>
+
+        <h3 style="margin-top:14px;">CQL Errors</h3>
+        <div id="cqlErr" class="status"></div>
+
         <h3 style="margin-top:14px;">Status</h3>
         
 <div id="status" class="status"></div>
@@ -216,7 +227,7 @@
 
   <script type="module">
     import { createGame, BoardView } from "./scratchchess.js";
-    import { parseTableText, runTable } from "./tabletest.js";
+    import { parseTableText, runTable } from "./tabletest_new.js";
 
     // Two independent games to demonstrate state persistence
     const game1 = createGame({ Event: "Showcase Game 1", White: "Demo", Black: "Opponent" });
@@ -233,6 +244,8 @@
     const $ = (id) => document.getElementById(id);
     const fenBox = $("fenBox");
     const pgnBox = $("pgnBox");
+    const cqlBox = $("cqlBox");
+    const cqlErr = $("cqlErr");
     const status = $("status");
 
     function setActive(btnId, isOn) {
@@ -244,6 +257,20 @@
     function syncText() {
       fenBox.value = current.exportFEN();
       pgnBox.value = current.exportPGN();
+
+      // CQL (query mode)
+      try {
+        if (current.ui.mode === "query" && typeof current.exportCQL === "function") {
+          cqlBox.value = current.exportCQL();
+          cqlErr.textContent = "";
+        } else {
+          cqlBox.value = "";
+          cqlErr.textContent = "";
+        }
+      } catch (e) {
+        cqlBox.value = "";
+        cqlErr.textContent = (e && e.stack) ? e.stack : String(e);
+      }
 
       const st = (() => {
         // minimal status
@@ -258,6 +285,7 @@
       setActive("btnMoves", current.ui.mode === "moves");
       setActive("btnSquares", current.ui.mode === "squares");
       setActive("btnArrows", current.ui.mode === "arrows");
+      setActive("btnQuery", current.ui.mode === "query");
       setActive("btnSetup", current.ui.setup);
       setActive("btnMini", current.ui.mini);
 
@@ -283,6 +311,7 @@
     $("btnMoves").onclick = () => current.setMode("moves");
     $("btnSquares").onclick = () => current.setMode("squares");
     $("btnArrows").onclick = () => current.setMode("arrows");
+    $("btnQuery").onclick = () => current.setMode("query");
 
     $("btnSetup").onclick = () => current.toggleSetup();
     $("btnFlip").onclick = () => current.toggleFlip();
@@ -307,6 +336,18 @@
 
     $("btnLoadPGN").onclick = () => current.loadPGN(pgnBox.value);
     $("btnExportPGN").onclick = () => pgnBox.value = current.exportPGN();
+
+    $("btnExportCQL").onclick = () => {
+      try {
+        cqlBox.value = current.exportCQL();
+        cqlErr.textContent = "";
+      } catch (e) {
+        cqlBox.value = "";
+        cqlErr.textContent = (e && e.stack) ? e.stack : String(e);
+      }
+    };
+
+    $("btnClearCQL").onclick = () => { cqlBox.value = ""; cqlErr.textContent = ""; };
 
 
 
