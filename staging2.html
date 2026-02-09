@@ -121,7 +121,10 @@
       aspect-ratio:1 / 1; /* largest square that fits BOTH axes */
       margin:0;
     }
-    #boardHost{width:100%; height:100%;}
+    #boardHost{width:100%; height:100%; display:flex; align-items:center; justify-content:center;}
+    /* ensure ScratchChess root shell centers within host */
+    #boardHost .sc-shell{margin:auto; max-width:100%; max-height:100%;}
+
     #sparesHost{
       position:absolute;
       left:0; right:0; bottom:0;
@@ -367,9 +370,30 @@
     .rightTools .smallBtn{ min-width:72px; }
     #pigmentRow[hidden]{ display:none !important; }
 
-  
-    .sparesRow{padding:8px 0 0; display:flex; justify-content:center;}
+    /* Setup mode: keep board centered, add breathing room, and place setup strip below board */
+    .boardCard.setup .boardArea{
+      flex-direction:column;
+      align-items:center;
+      justify-content:flex-start;
+    }
+    .boardCard.setup .boardWrap{
+      flex: 1 1 auto;
+      height:auto;
+    }
+    .sparesRow{
+      padding:0;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
     .sparesRow[hidden]{display:none !important;}
+    /* Try to keep spare pieces close to on-board piece size */
+    #sparesHost button, #sparesHost .piece, #sparesHost img{
+      width:44px; height:44px;
+    }
+
 </style>
 </head>
 <body>
@@ -406,7 +430,12 @@
 <div id="boardHost"></div>
 </div>
 
-</div><div class="sparesRow"><div hidden="" id="sparesHost"></div></div>
+</div>
+<div class="sparesRow" id="setupStrip" hidden>
+  <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
+  <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
+  <div id="sparesHost"></div>
+</div>
 </div>
 <!-- Right panel -->
 <div class="card rightCard">
@@ -688,7 +717,8 @@
   boardHost.addEventListener('pointerdown', (ev) => {
     try{
       const g = (typeof cg === 'function' ? cg() : null) || currentGame?.game;
-      if (!g || !g.ui?.setup) return;
+      const isSetup = !!(g && (g.ui?.setup));
+      if (!g || !isSetup) return;
 
       const t = ev.target;
       if (!_looksLikePieceTarget(t) && !_looksLikePieceTarget(t?.closest?.('[data-square],[data-sq],.piece'))){
@@ -1053,8 +1083,11 @@
       $("navMeta").textContent = "ply —";
     }
 
-    sparesHost.hidden = !(g.ui?.setup);
-    $("btnSetup").classList.toggle("on", !!g.ui?.setup);
+    const isSetup = !!(g.ui?.setup);
+    $("boardCard").classList.toggle("setup", isSetup);
+    const setupStrip = $("setupStrip");
+    if (setupStrip) setupStrip.hidden = !isSetup;
+    $("btnSetup").classList.toggle("on", isSetup);
 
     
     // CQL box: only show in query mode or when a priyome provides cqlText
@@ -1104,6 +1137,27 @@
     }catch(e){ logStack("ERR","Reset failed: ", e); }
   });
   $("btnSetup").addEventListener("click", () => { try{ cg()?.toggleSetup?.(); syncUi(); }catch(e){ logStack("ERR","Setup toggle failed: ", e); } });
+
+  // Setup strip controls (only meaningful while in setup mode)
+  $("btnSetupInitial")?.addEventListener("click", () => {
+    try{
+      const g = cg(); if (!g) return;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      if (!g.ui?.setup) g.toggleSetup?.();
+      syncUi();
+    }catch(e){ logStack("ERR","Setup Initial failed: ", e); }
+  });
+  $("btnSetupClear")?.addEventListener("click", () => {
+    try{
+      const g = cg(); if (!g) return;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.clearBoard?.();
+      if (!g.ui?.setup) g.toggleSetup?.();
+      syncUi();
+    }catch(e){ logStack("ERR","Setup Clear failed: ", e); }
+  });
+
 
   $("btnQuery").addEventListener("click", () => {
     try{
