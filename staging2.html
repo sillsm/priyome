@@ -104,6 +104,8 @@
     .rightCard{min-height:0; display:flex; flex-direction:column;}
     .boardCard{display:flex; flex-direction:column; min-height:0; height:100%;}
     .boardArea{
+      flex:1;
+
       position:relative;
       padding:0;
       display:flex;
@@ -125,13 +127,12 @@
     /* ensure ScratchChess root shell centers within host */
     #boardHost .sc-shell{margin:auto; max-width:100%; max-height:100%;}
 
+    .boardCard.setup .sparesRow{display:flex;}
+
     #sparesHost{
-      position:absolute;
-      left:0; right:0; bottom:0;
       display:flex; gap:10px; flex-wrap:wrap; justify-content:center;
-      padding:10px 12px;
+      padding:0;
       pointer-events:auto;
-      z-index:20;
     }
     .below{
       padding:10px 12px 12px;
@@ -377,8 +378,16 @@
       justify-content:flex-start;
     }
     .boardCard.setup .boardWrap{
-      flex: 1 1 auto;
+      width:100%;
       height:auto;
+      max-width:100%;
+      max-height:none;
+      aspect-ratio:auto;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      padding-bottom:8px; /* breathing room inside host */
     }
     .sparesRow{
       padding:0;
@@ -389,11 +398,6 @@
       flex-wrap:wrap;
     }
     .sparesRow[hidden]{display:none !important;}
-    /* Try to keep spare pieces close to on-board piece size */
-    #sparesHost button, #sparesHost .piece, #sparesHost img{
-      width:44px; height:44px;
-    }
-
 </style>
 </head>
 <body>
@@ -428,14 +432,13 @@
 <div class="boardArea" id="boardArea">
 <div class="boardWrap" id="boardWrap">
 <div id="boardHost"></div>
+<div class="sparesRow" hidden="" id="setupStrip">
+<button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
+<button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
+<div id="sparesHost"></div>
+</div></div>
 </div>
 
-</div>
-<div class="sparesRow" id="setupStrip" hidden>
-  <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
-  <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
-  <div id="sparesHost"></div>
-</div>
 </div>
 <!-- Right panel -->
 <div class="card rightCard">
@@ -672,8 +675,59 @@
 
   const boardHost = $("boardHost");
   const sparesHost = $("sparesHost");
+  const boardWrap = $("boardWrap");
+  const setupStrip = $("setupStrip");
   const initboot = createGame({ Event:"Boot", White:"", Black:"" });
   const board = new BoardView(boardHost, initboot, { spareDiv: sparesHost, minSizePx: 115 });
+
+    // --- Setup layout helpers (keep board size stable; show spares inside board host) ---
+    let __frozenShellSize = null;
+    function freezeShellSizeForSetup(){
+      const shell = boardHost.querySelector(".sc-shell");
+      if(!shell) return;
+      const r = shell.getBoundingClientRect();
+      if(!r.width || !r.height) return;
+      __frozenShellSize = { w: r.width, h: r.height };
+      shell.style.width = r.width + "px";
+      shell.style.height = r.height + "px";
+      shell.style.maxWidth = "none";
+      shell.style.maxHeight = "none";
+      shell.style.flex = "0 0 auto";
+      // ensure the setup strip sits after the shell, inside boardHost
+      if (setupStrip && setupStrip.parentElement !== boardHost){
+        boardHost.appendChild(setupStrip);
+      } else if (setupStrip && setupStrip.parentElement === boardHost){
+        // move to bottom
+        boardHost.appendChild(setupStrip);
+      }
+      // boardHost becomes a vertical stack in setup mode
+      boardHost.style.display = "flex";
+      boardHost.style.flexDirection = "column";
+      boardHost.style.alignItems = "center";
+      boardHost.style.justifyContent = "center";
+      boardHost.style.gap = "0px";
+    }
+    function unfreezeShellSizeAfterSetup(){
+      const shell = boardHost.querySelector(".sc-shell");
+      if(shell){
+        shell.style.width = "";
+        shell.style.height = "";
+        shell.style.maxWidth = "";
+        shell.style.maxHeight = "";
+        shell.style.flex = "";
+      }
+      __frozenShellSize = null;
+      // return setupStrip to be inside boardWrap (so layout stays predictable)
+      if (setupStrip && setupStrip.parentElement !== boardWrap){
+        boardWrap.appendChild(setupStrip);
+      }
+      boardHost.style.display = "";
+      boardHost.style.flexDirection = "";
+      boardHost.style.alignItems = "";
+      boardHost.style.justifyContent = "";
+      boardHost.style.gap = "";
+    }
+
 
   // Setup-mode UX: tapping/clicking an existing on-board piece deletes it.
   // We do this on pointerdown and stop propagation so normal setup interactions don't also fire.
@@ -1085,9 +1139,10 @@
 
     const isSetup = !!(g.ui?.setup);
     $("boardCard").classList.toggle("setup", isSetup);
-    const setupStrip = $("setupStrip");
     if (setupStrip) setupStrip.hidden = !isSetup;
-    $("btnSetup").classList.toggle("on", isSetup);
+    // In setup mode, keep the board square size stable and place spares INSIDE the board host.
+    if (isSetup) freezeShellSizeForSetup(); else unfreezeShellSizeAfterSetup();
+$("btnSetup").classList.toggle("on", isSetup);
 
     
     // CQL box: only show in query mode or when a priyome provides cqlText
