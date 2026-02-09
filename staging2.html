@@ -1,12 +1,12 @@
-<!doctype html>
+<!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Priyome</title>
-  <link href="./favicon.svg" rel="icon">
-
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<title>Priyome</title>
+<link href="./favicon.svg" rel="icon"/>
+<style>
     :root{
       --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
       --border:#dbe3f0; --accent:#2563eb; --good:#16a34a; --bad:#dc2626; --warn:#d97706;
@@ -105,45 +105,34 @@
     .boardCard{display:flex; flex-direction:column; min-height:0; height:100%;}
     .boardArea{
       position:relative;
-      padding:12px; flex:1 1 auto;
-      display:flex; align-items:center; justify-content:center;
-      overflow:hidden;
+      padding:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:hidden; /* keep board contained on desktop */
+      background:var(--panel);
     }
     .boardWrap{
       position:relative;
-      width:100%; height:100%;
-      max-width:800px; max-height:800px;
-    }
-    #boardHost{width:100%; height:100%;}
-    /* --- Setup strip lives INSIDE boardHost; board square must not shrink --- */
-    #boardHost{ position:relative; }
-    #boardHost .sc-shell{
-      position:absolute;
-      left:50%; top:50%;
-      transform: translate(-50%,-50%);
+      width:100%;
+      height:100%;
       max-width:100%;
       max-height:100%;
+      aspect-ratio:1 / 1; /* largest square that fits BOTH axes */
+      margin:0;
     }
-    #setupStrip{
-      position:absolute;
-      left:12px; right:12px; bottom:12px;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      gap:8px;
-      z-index:30;
-      pointer-events:auto;
-    }
-    #setupStrip[hidden]{ display:none !important; }
-    #sparesHost{
-      position:static;
-      display:flex; gap:10px; flex-wrap:wrap;
-      justify-content:center;
-      pointer-events:auto;
-      z-index:30;
-    }
-    .setupBtns{ display:flex; gap:10px; justify-content:center; width:100%; }
+    #boardHost{width:100%; height:100%; display:flex; align-items:center; justify-content:center;}
+    /* ensure ScratchChess root shell centers within host */
+    #boardHost .sc-shell{margin:auto; max-width:100%; max-height:100%;}
 
+    #sparesHost{
+      position:absolute;
+      left:0; right:0; bottom:0;
+      display:flex; gap:10px; flex-wrap:wrap; justify-content:center;
+      padding:10px 12px;
+      pointer-events:auto;
+      z-index:20;
+    }
     .below{
       padding:10px 12px 12px;
       border-top:1px solid var(--border);
@@ -349,27 +338,27 @@
 
 
   
-    /* --- Right-pane tools (nav + arrows/squares/pigments) --- */
-    .rightCard{ display:flex; flex-direction:column; }
-    .tabs{ order:0; }
-    .pane{ order:2; flex:1 1 auto; min-height:0; }
-    .rightTools{
-      order:1;
-      padding:10px 12px 12px;
-      border-bottom:1px solid var(--border);
-      background: rgba(15,23,42,.02);
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
-    @media (min-width: 900px){
-      .rightTools{
-        order:3;
-        border-bottom:none;
-        border-top:1px solid var(--border);
-        margin-top:auto;
-      }
-    }
+    /* --- Right-pane tools (mobile order: nav -> pane -> draw tools -> tabs) --- */
+.rightCard{ display:flex; flex-direction:column; }
+#navHost{ padding:10px 12px 0; }
+#navHost .navRow{ margin:0; }
+.tabs{ order:3; }
+.pane{ order:1; flex:1 1 auto; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch; }
+.rightTools{
+  order:2;
+  padding:10px 12px 12px;
+  border-top:1px solid var(--border);
+  background: rgba(15,23,42,.02);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+@media (min-width: 900px){
+  .tabs{ order:0; }
+  .pane{ order:1; }
+  .rightTools{ order:3; border-top:0; border-bottom:1px solid var(--border); }
+  #navHost{ order:4; padding:10px 12px 12px; border-top:1px solid var(--border); background: rgba(15,23,42,.02); }
+}
     .rightTools .navRow,
     .rightTools .toolRow{
       display:flex;
@@ -381,229 +370,218 @@
     .rightTools .smallBtn{ min-width:72px; }
     #pigmentRow[hidden]{ display:none !important; }
 
-  </style>
+    /* Setup mode: keep board centered, add breathing room, and place setup strip below board */
+    .boardCard.setup .boardArea{
+      flex-direction:column;
+      align-items:center;
+      justify-content:flex-start;
+    }
+    .boardCard.setup .boardWrap{
+      flex: 1 1 auto;
+      height:auto;
+    }
+    .sparesRow{
+      padding:0;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .sparesRow[hidden]{display:none !important;}
+    /* Try to keep spare pieces close to on-board piece size */
+    #sparesHost button, #sparesHost .piece, #sparesHost img{
+      width:44px; height:44px;
+    }
+
+</style>
 </head>
-
 <body>
-  <div class="topbarWrap">
-    <div class="topbar">
-      <div class="brand">
-        <button class="hamburger" id="btnHamburger" aria-label="Menu">☰</button>
-        <span class="brandTitle">Priyoиes</span>
-        <span class="pill" id="studyPill">—</span>
-        <span class="pill" id="gamePill">—</span>
-      </div>
-    </div>
-    <div class="menu" id="menu">
-      <div class="actions">
-        <button id="btnFlip">Flip</button>
-        <button id="btnReset">Reset</button>
-        <button id="btnSetup">Setup</button>
-
-                <button id="btnQuery">Query</button>
-
+<div class="topbarWrap">
+<div class="topbar">
+<div class="brand">
+<button aria-label="Menu" class="hamburger" id="btnHamburger">☰</button>
+<span class="brandTitle">Priyoиes</span>
+<span class="pill" id="studyPill">—</span>
+<span class="pill" id="gamePill">—</span>
+</div>
+</div>
+<div class="menu" id="menu">
+<div class="actions">
+<button id="btnFlip">Flip</button>
+<button id="btnReset">Reset</button>
+<button id="btnSetup">Setup</button>
+<button id="btnQuery">Query</button>
 <button id="btnImportPgn">Import PGN</button>
-        <button id="btnExportGame">Export Game PGN</button>
-        <button id="btnExportStudy">Export Study PGN</button>
-      </div>
-    </div>
-  </div>
+<button id="btnExportGame">Export Game PGN</button>
+<button id="btnExportStudy">Export Study PGN</button>
+</div>
+</div>
+</div>
+<div class="layout">
+<!-- Board -->
+<div class="card boardCard" id="boardCard">
+<div class="head">
+<div class="status" id="status">—</div>
+<div class="status" id="toolStatus">—</div>
+</div>
+<div class="boardArea" id="boardArea">
+<div class="boardWrap" id="boardWrap">
+<div id="boardHost"></div>
+</div>
 
-  <div class="layout">
-    <!-- Board -->
-    <div class="card boardCard" id="boardCard">
-      <div class="head">
-        <div class="status" id="status">—</div>
-        <div class="status" id="toolStatus">—</div>
-      </div>
-
-      <div class="boardArea" id="boardArea">
-        <div class="boardWrap" id="boardWrap">
-          <div id="boardHost"></div>
-          <div id="setupStrip" hidden>
-            <div class="setupBtns">
-              <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
-              <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
-            </div>
-            <div id="sparesHost"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="below">
-        <div class="navRow">
-          <button class="smallBtn" id="btnPrev" type="button">◀︎</button>
-          <button class="smallBtn" id="btnNext" type="button">▶︎</button>
-          <span class="kbd" id="navMeta">ply —</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right panel -->
-    <div class="card rightCard">
-      <div class="tabs">
-        <div class="tab active" data-tab="moves">Moves</div>
-        <div class="tab" data-tab="games">Games</div>
-        <div class="tab" data-tab="priyomes">Priyomes</div>
-        <div class="tab" data-tab="query">Query</div>
-        <div class="tab" data-tab="evals">Evals</div>
-        <div class="tab" data-tab="errors">Errors</div>
-      </div>
-
-      <div class="pane active" id="pane-moves">
-        <div class="movesWide"><div class="mlWrap" id="movesWide"></div></div>
-        <div class="movesMobile"><div class="mlWrap" id="movesMobile"></div></div>
-
-        <div id="cqlBoxWrap" hidden>
-          <div class="hint">CQL (from Priyome <span class="kbd">[cqlref]</span> or Query mode <span class="kbd">exportCQL()</span>)</div>
-          <textarea id="movesCql" readonly placeholder="(CQL will appear here)"></textarea>
-        </div>
-
-        <div>
-          <div class="hint">Annotation (per-ply storage is handled inside scratchchess)</div>
-          <textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
-        </div>
-
-      </div>
-
-      <div class="pane" id="pane-games">
-        <div class="hint">Studies + games. Click a game to load it.</div>
-        <div class="row" style="gap:8px; align-items:center; margin: 8px 0 10px;">
-          <label class="kbd" for="studySelect" style="min-width:auto;">Study</label>
-          <select id="studySelect" style="flex:1; min-width:0;"></select>
-          <button class="smallBtn" id="btnNewStudy" type="button">New Study</button>
-        </div>
-        <div class="gameList" id="gameList"></div>
-      </div>
-
-      
-      <div class="pane" id="pane-priyomes">
-        <div class="hint">Priyomes from <span class="kbd">./priyomes/priyomes.pgn</span>. Tap one to load to the main board.</div>
-        <div class="gameList" id="priyomeList"></div>
-      </div>
+</div>
+<div class="sparesRow" id="setupStrip" hidden>
+  <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
+  <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
+  <div id="sparesHost"></div>
+</div>
+</div>
+<!-- Right panel -->
+<div class="card rightCard">
+<div id="navHost">
+<div class="navRow" id="navRow">
+<button class="smallBtn" id="btnPrev" type="button">◀︎</button>
+<button class="smallBtn" id="btnNext" type="button">▶︎</button>
+<span class="kbd" id="navMeta">ply —</span>
+</div>
+</div>
+<div class="tabs">
+<div class="tab active" data-tab="moves">Moves</div>
+<div class="tab" data-tab="games">Games</div>
+<div class="tab" data-tab="priyomes">Priyomes</div>
+<div class="tab" data-tab="query">Query</div>
+<div class="tab" data-tab="evals">Evals</div>
+<div class="tab" data-tab="errors">Errors</div>
+</div>
+<div class="pane active" id="pane-moves">
+<div class="movesWide"><div class="mlWrap" id="movesWide"></div></div>
+<div class="movesMobile"><div class="mlWrap" id="movesMobile"></div></div>
+<div hidden="" id="cqlBoxWrap">
+<div class="hint">CQL (from Priyome <span class="kbd">[cqlref]</span> or Query mode <span class="kbd">exportCQL()</span>)</div>
+<textarea id="movesCql" placeholder="(CQL will appear here)" readonly=""></textarea>
+</div>
+<div>
+<div class="hint">Annotation (per-ply storage is handled inside scratchchess)</div>
+<textarea id="annoText" placeholder="Add a comment for this ply…"></textarea>
+</div>
+</div>
+<div class="pane" id="pane-games">
+<div class="hint">Studies + games. Click a game to load it.</div>
+<div class="row" style="gap:8px; align-items:center; margin: 8px 0 10px;">
+<label class="kbd" for="studySelect" style="min-width:auto;">Study</label>
+<select id="studySelect" style="flex:1; min-width:0;"></select>
+<button class="smallBtn" id="btnNewStudy" type="button">New Study</button>
+</div>
+<div class="gameList" id="gameList"></div>
+</div>
+<div class="pane" id="pane-priyomes">
+<div class="hint">Priyomes from <span class="kbd">./priyomes/priyomes.pgn</span>. Tap one to load to the main board.</div>
+<div class="gameList" id="priyomeList"></div>
+</div>
 <div class="pane" id="pane-query">
-        <div class="hint">
+<div class="hint">
           CQL logic is copied directly from the reference harness (warm pool, runCqlWasm job, dummy-game workaround,
           stripping dummy from output, importing discovered games into the active study).
         </div>
-
-        <div class="row">
-          <label for="dbSelectEl">DB (manifest)</label>
-          <select id="dbSelectEl"></select>
-          <button class="smallBtn" id="qUseCurrent">Use board as query</button>
-          <span class="kbd" id="qPgnName">—</span>
-        </div>
-
-        <div class="row">
-          <label for="qCqlFile">CQL file</label>
-          <input id="qCqlFile" type="file" accept=".cql"/>
-          <span class="kbd" id="qCqlName">—</span>
-        </div>
-
-        <div class="row">
-          <label for="qPgnFile">PGN file</label>
-          <input id="qPgnFile" type="file" accept=".pgn"/>
-        </div>
-
-        <div class="row">
-          <label for="qArgv">Argv</label>
-          <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql"/>
-        </div>
-
-        <div class="row">
-          <label>CQL (editable)</label>
-          <span class="kbd">in-memory</span>
-        </div>
-        <textarea id="qCqlText" placeholder="CQL will load here; you can edit before running…"></textarea>
-
-        <div class="row">
-          <button class="smallBtn" id="qRun" disabled>Run Query</button>
-          <span class="hint" id="qStatus">Choose CQL + PGN (or choose DB/current game) to enable.</span>
-        </div>
-      </div>
-
-      <div class="pane" id="pane-evals">
-        <div class="hint">
+<div class="row">
+<label for="dbSelectEl">DB (manifest)</label>
+<select id="dbSelectEl"></select>
+<button class="smallBtn" id="qUseCurrent">Use board as query</button>
+<span class="kbd" id="qPgnName">—</span>
+</div>
+<div class="row">
+<label for="qCqlFile">CQL file</label>
+<input accept=".cql" id="qCqlFile" type="file"/>
+<span class="kbd" id="qCqlName">—</span>
+</div>
+<div class="row">
+<label for="qPgnFile">PGN file</label>
+<input accept=".pgn" id="qPgnFile" type="file"/>
+</div>
+<div class="row">
+<label for="qArgv">Argv</label>
+<input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql"/>
+</div>
+<div class="row">
+<label>CQL (editable)</label>
+<span class="kbd">in-memory</span>
+</div>
+<textarea id="qCqlText" placeholder="CQL will load here; you can edit before running…"></textarea>
+<div class="row">
+<button class="smallBtn" disabled="" id="qRun">Run Query</button>
+<span class="hint" id="qStatus">Choose CQL + PGN (or choose DB/current game) to enable.</span>
+</div>
+</div>
+<div class="pane" id="pane-evals">
+<div class="hint">
           JS evals are loaded from <span class="kbd">./evals.js</span>. CQL evals are loaded from <span class="kbd">CQL_EVAL_MANIFEST</span>.
         </div>
-
-        <div class="row">
-          <button class="smallBtn" id="btnReloadEvals" type="button">Reload evals.js</button>
-          <span class="kbd" id="evalsStatus">—</span>
-        </div>
-
-        <div id="evalList"></div>
-
-        <div class="hint" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">CQL evals</div>
-        <div id="cqlEvalList"></div>
-      </div>
-
-      <div class="pane" id="pane-errors">
-        <div class="row" style="justify-content:space-between;">
-          <div class="hint">All logs & errors show here.</div>
-          <div class="row" style="gap:8px;">
-            <span class="kbd">Lines</span><span class="kbd" id="errCount">0</span>
-            <button class="smallBtn" id="btnClearErrors" type="button">Clear</button>
-          </div>
-        </div>
-        <div class="errorBody" id="errorLog"></div>
-      </div>
-      <div id="rightTools" class="rightTools">
-        <div class="navRow" id="rightNavRow">
-          <!-- moved here on load -->
-        </div>
-
-        <div class="toolRow" id="drawModeRow">
-          <button class="smallBtn" id="btnModeArrows" type="button">Arrows</button>
-          <button class="smallBtn" id="btnModeSquares" type="button">Squares</button>
-          <button class="smallBtn" id="btnClearMarks" type="button">Clear</button>
-        </div>
-
-        <div class="toolRow" id="pigmentRow" hidden>
-          <span class="kbd">Pigment</span>
-          <button class="smallBtn" id="btnPigR" type="button" title="Red">🔴</button>
-          <button class="smallBtn" id="btnPigG" type="button" title="Green">🟢</button>
-          <button class="smallBtn" id="btnPigB" type="button" title="Blue">🔵</button>
-          <button class="smallBtn" id="btnPigY" type="button" title="Yellow">🟡</button>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- Bottom -->
-    <div class="card" id="bottomCard">
-      <div class="head">
-        <div class="status">Position FEN & Game PGN</div>
-        <div class="status" id="bottomMeta">—</div>
-      </div>
-      <div class="bottomGrid">
-        <div class="fenRow">
-          <span class="fenLabel">FEN</span>
-          <div class="fenBox" id="fenBottom"></div>
-        </div>
-        <div class="hint">PGN shown includes inline <span class="kbd">{ comments }</span> and draw tags <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span>.</div>
-        <textarea id="pgnBottom" readonly></textarea>
-      </div>
-    </div>
-  </div>
-
-  <!-- Import modal (minimal) -->
-  <div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true" style="display:none;">
-    <div class="card" style="width:min(980px,100%); height:min(84vh,860px); margin:14px auto; padding:12px;">
-      <div class="row" style="justify-content:space-between;">
-        <div class="status"><b>Import PGN</b> <span class="pill">paste one or more games</span></div>
-        <div class="row">
-          <button class="smallBtn" id="btnImportCancel" type="button">Cancel</button>
-          <button class="smallBtn" id="btnImportAdd" type="button">Add to Games</button>
-        </div>
-      </div>
-      <div class="hint" style="margin-top:8px;">
+<div class="row">
+<button class="smallBtn" id="btnReloadEvals" type="button">Reload evals.js</button>
+<span class="kbd" id="evalsStatus">—</span>
+</div>
+<div id="evalList"></div>
+<div class="hint" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">CQL evals</div>
+<div id="cqlEvalList"></div>
+</div>
+<div class="pane" id="pane-errors">
+<div class="row" style="justify-content:space-between;">
+<div class="hint">All logs &amp; errors show here.</div>
+<div class="row" style="gap:8px;">
+<span class="kbd">Lines</span><span class="kbd" id="errCount">0</span>
+<button class="smallBtn" id="btnClearErrors" type="button">Clear</button>
+</div>
+</div>
+<div class="errorBody" id="errorLog"></div>
+</div>
+<div class="rightTools" id="rightTools">
+<div class="toolRow" id="drawModeRow">
+<button class="smallBtn" id="btnModeArrows" type="button">Arrows</button>
+<button class="smallBtn" id="btnModeSquares" type="button">Squares</button>
+<button class="smallBtn" id="btnClearMarks" type="button">Clear</button>
+</div>
+<div class="toolRow" hidden="" id="pigmentRow">
+<span class="kbd">Pigment</span>
+<button class="smallBtn" id="btnPigR" title="Red" type="button">🔴</button>
+<button class="smallBtn" id="btnPigG" title="Green" type="button">🟢</button>
+<button class="smallBtn" id="btnPigB" title="Blue" type="button">🔵</button>
+<button class="smallBtn" id="btnPigY" title="Yellow" type="button">🟡</button>
+</div>
+</div>
+</div>
+<!-- Bottom -->
+<div class="card" id="bottomCard">
+<div class="head">
+<div class="status">Position FEN &amp; Game PGN</div>
+<div class="status" id="bottomMeta">—</div>
+</div>
+<div class="bottomGrid">
+<div class="fenRow">
+<span class="fenLabel">FEN</span>
+<div class="fenBox" id="fenBottom"></div>
+</div>
+<div class="hint">PGN shown includes inline <span class="kbd">{ comments }</span> and draw tags <span class="kbd">[%csl]</span>/<span class="kbd">[%cal]</span>.</div>
+<textarea id="pgnBottom" readonly=""></textarea>
+</div>
+</div>
+</div>
+<!-- Import modal (minimal) -->
+<div aria-hidden="true" class="modalBackdrop" id="importModalBackdrop" style="display:none;">
+<div class="card" style="width:min(980px,100%); height:min(84vh,860px); margin:14px auto; padding:12px;">
+<div class="row" style="justify-content:space-between;">
+<div class="status"><b>Import PGN</b> <span class="pill">paste one or more games</span></div>
+<div class="row">
+<button class="smallBtn" id="btnImportCancel" type="button">Cancel</button>
+<button class="smallBtn" id="btnImportAdd" type="button">Add to Games</button>
+</div>
+</div>
+<div class="hint" style="margin-top:8px;">
         Multiple games supported if each game starts with <span class="kbd">[Event "…"]</span>.
       </div>
-      <textarea id="importPgnText" style="height: calc(84vh - 160px); margin-top:10px;"></textarea>
-    </div>
-  </div>
-
+<textarea id="importPgnText" style="height: calc(84vh - 160px); margin-top:10px;"></textarea>
+</div>
+</div>
 <script type="module">
   import { createGame, BoardView } from "./scratchchess.js";
 
@@ -693,71 +671,71 @@
   let currentGame = null;
 
   const boardHost = $("boardHost");
-  const setupStrip = $("setupStrip");
   const sparesHost = $("sparesHost");
   const initboot = createGame({ Event:"Boot", White:"", Black:"" });
   const board = new BoardView(boardHost, initboot, { spareDiv: sparesHost, minSizePx: 115 });
 
-  // Setup helpers
-  function setShellFrozen(enable){
-    const sh = boardHost.querySelector(".sc-shell");
-    if (!sh) return;
-    if (!enable){
-      sh.style.width = "";
-      sh.style.height = "";
-      sh.style.left = "";
-      sh.style.top = "";
-      sh.style.transform = "";
-      sh.style.position = "";
-      return;
-    }
-    // Freeze to current rendered square size so setup UI cannot shrink it.
-    const r = sh.getBoundingClientRect();
-    sh.style.position = "absolute";
-    sh.style.width = Math.round(r.width) + "px";
-    sh.style.height = Math.round(r.height) + "px";
-    sh.style.left = "50%";
-    sh.style.transform = "translate(-50%, -50%)";
-    sh.style.top = "50%";
-    // If setup strip is visible, shift the square up so it doesn't collide.
-    requestAnimationFrame(() => {
-      const stripH = setupStrip && !setupStrip.hidden ? setupStrip.getBoundingClientRect().height : 0;
-      if (stripH > 0){
-        sh.style.top = `calc(50% - ${Math.round(stripH/2)}px)`;
-      }
-    });
+  // Setup-mode UX: tapping/clicking an existing on-board piece deletes it.
+  // We do this on pointerdown and stop propagation so normal setup interactions don't also fire.
+  function _extractSquareFromEl(el){
+    if (!el) return null;
+    const ds = el.dataset || {};
+    const cand = ds.square || ds.sq || el.getAttribute?.('data-square') || el.getAttribute?.('data-sq') || null;
+    if (cand && /^[a-h][1-8]$/.test(cand)) return cand;
+    const cls = (el.className || '').toString();
+    const m1 = cls.match(/\b(?:sq-|square-|cell-)([a-h][1-8])\b/i);
+    if (m1) return m1[1].toLowerCase();
+    const m2 = (el.id || '').match(/(?:sq_|square_)([a-h][1-8])/i);
+    if (m2) return m2[1].toLowerCase();
+    return null;
   }
+  function _looksLikePieceTarget(el){
+    if (!el) return false;
+    const cls = (el.className || '').toString().toLowerCase();
+    return cls.includes('piece') || cls.includes('wp') || cls.includes('bp') || cls.includes('knight') || cls.includes('bishop') || cls.includes('rook') || cls.includes('queen') || cls.includes('king');
+  }
+  function _tryDeletePiece(g, sq){
+    const fns = [
+      () => g.removePiece?.(sq),
+      () => g.clearSquare?.(sq),
+      () => g.setPiece?.(sq, null),
+      () => g.setPiece?.(sq, ''),
+      () => g.put?.(null, sq),
+      () => g.put?.('', sq),
+      () => g.set?.(sq, null),
+      () => g.setAt?.(sq, null),
+      () => g.deleteAt?.(sq),
+    ];
+    for (const fn of fns){
+      try{
+        const r = fn();
+        if (r !== undefined) return true;
+      }catch(_e){}
+    }
+    return false;
+  }
+  boardHost.addEventListener('pointerdown', (ev) => {
+    try{
+      const g = (typeof cg === 'function' ? cg() : null) || currentGame?.game;
+      const isSetup = !!(g && (g.ui?.setup));
+      if (!g || !isSetup) return;
 
-  // Buttons inside setup strip
-  $("btnSetupInitial").addEventListener("click", () => {
-    try{
-      // Standard initial position
-      if (board && typeof board.loadFEN === "function") board.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-      else if (board && typeof board.setFEN === "function") board.setFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    }catch(e){ /* ignore */ }
-  });
-  $("btnSetupClear").addEventListener("click", () => {
-    try{
-      if (board && typeof board.clearBoard === "function") board.clearBoard();
-      else if (board && typeof board.clear === "function") board.clear();
-    }catch(e){ /* ignore */ }
-  });
+      const t = ev.target;
+      if (!_looksLikePieceTarget(t) && !_looksLikePieceTarget(t?.closest?.('[data-square],[data-sq],.piece'))){
+        return;
+      }
 
-  // In setup mode: tap/click an existing on-board piece deletes it.
-  boardHost.addEventListener("pointerdown", (ev) => {
-    try{
-      const g = (typeof cg==='function') ? cg() : null;
-      if (!g?.ui?.setup) return;
-      const sq = ev.target && ev.target.closest ? ev.target.closest("[data-square]") : null;
-      const square = sq ? sq.getAttribute("data-square") : null;
-      if (!square) return;
-      if (board && typeof board.deleteAt === "function") board.deleteAt(square);
-      else if (board && typeof board.removeAt === "function") board.removeAt(square);
-      else if (board && typeof board.setPieceAt === "function") board.setPieceAt(square, null);
+      const sq = _extractSquareFromEl(t) || _extractSquareFromEl(t?.closest?.('[data-square],[data-sq]')) || _extractSquareFromEl(t?.closest?.('[class*="sq-"],[class*="square-"]'));
+      if (!sq) return;
+
+      const ok = _tryDeletePiece(g, sq);
+      if (!ok) return;
+
       ev.preventDefault();
       ev.stopPropagation();
-    }catch(_){}
-  }, { passive:false });
+      syncUi?.();
+    }catch(e){ /* non-fatal */ }
+  }, true);
 
 
   function uniqStudyName(base){
@@ -1105,10 +1083,11 @@
       $("navMeta").textContent = "ply —";
     }
 
-    setupStrip.hidden = !(g.ui?.setup);
-    $("btnSetup").classList.toggle("on", !!g.ui?.setup);
-    setShellFrozen(!!g.ui?.setup);
-
+    const isSetup = !!(g.ui?.setup);
+    $("boardCard").classList.toggle("setup", isSetup);
+    const setupStrip = $("setupStrip");
+    if (setupStrip) setupStrip.hidden = !isSetup;
+    $("btnSetup").classList.toggle("on", isSetup);
 
     
     // CQL box: only show in query mode or when a priyome provides cqlText
@@ -1157,7 +1136,28 @@
       syncUi();
     }catch(e){ logStack("ERR","Reset failed: ", e); }
   });
-  $("btnSetup").addEventListener("click", () => { try{ cg()?.toggleSetup?.(); syncUi(); setShellFrozen(!!((typeof cg==='function' ? cg()?.ui?.setup : false))); }catch(e){ logStack("ERR","Setup toggle failed: ", e); } });
+  $("btnSetup").addEventListener("click", () => { try{ cg()?.toggleSetup?.(); syncUi(); }catch(e){ logStack("ERR","Setup toggle failed: ", e); } });
+
+  // Setup strip controls (only meaningful while in setup mode)
+  $("btnSetupInitial")?.addEventListener("click", () => {
+    try{
+      const g = cg(); if (!g) return;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      if (!g.ui?.setup) g.toggleSetup?.();
+      syncUi();
+    }catch(e){ logStack("ERR","Setup Initial failed: ", e); }
+  });
+  $("btnSetupClear")?.addEventListener("click", () => {
+    try{
+      const g = cg(); if (!g) return;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.clearBoard?.();
+      if (!g.ui?.setup) g.toggleSetup?.();
+      syncUi();
+    }catch(e){ logStack("ERR","Setup Clear failed: ", e); }
+  });
+
 
   $("btnQuery").addEventListener("click", () => {
     try{
