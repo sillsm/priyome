@@ -326,6 +326,39 @@
     .boardWrap{ margin:auto; }
 
 
+  
+    /* --- Right-pane tools (nav + arrows/squares/pigments) --- */
+    .rightCard{ display:flex; flex-direction:column; }
+    .tabs{ order:0; }
+    .pane{ order:2; flex:1 1 auto; min-height:0; }
+    .rightTools{
+      order:1;
+      padding:10px 12px 12px;
+      border-bottom:1px solid var(--border);
+      background: rgba(15,23,42,.02);
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    @media (min-width: 900px){
+      .rightTools{
+        order:3;
+        border-bottom:none;
+        border-top:1px solid var(--border);
+        margin-top:auto;
+      }
+    }
+    .rightTools .navRow,
+    .rightTools .toolRow{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .rightTools .smallBtn{ min-width:72px; }
+    #pigmentRow[hidden]{ display:none !important; }
+
   </style>
 </head>
 
@@ -414,7 +447,12 @@
         <div class="gameList" id="gameList"></div>
       </div>
 
-      <div class="pane" id="pane-query">
+      
+      <div class="pane" id="pane-priyomes">
+        <div class="hint">Priyomes from <span class="kbd">./priyomes/priyomes.pgn</span>. Tap one to load to the main board.</div>
+        <div class="gameList" id="priyomeList"></div>
+      </div>
+<div class="pane" id="pane-query">
         <div class="hint">
           CQL logic is copied directly from the reference harness (warm pool, runCqlWasm job, dummy-game workaround,
           stripping dummy from output, importing discovered games into the active study).
@@ -481,6 +519,26 @@
         </div>
         <div class="errorBody" id="errorLog"></div>
       </div>
+      <div id="rightTools" class="rightTools">
+        <div class="navRow" id="rightNavRow">
+          <!-- moved here on load -->
+        </div>
+
+        <div class="toolRow" id="drawModeRow">
+          <button class="smallBtn" id="btnModeArrows" type="button">Arrows</button>
+          <button class="smallBtn" id="btnModeSquares" type="button">Squares</button>
+          <button class="smallBtn" id="btnClearMarks" type="button">Clear</button>
+        </div>
+
+        <div class="toolRow" id="pigmentRow" hidden>
+          <span class="kbd">Pigment</span>
+          <button class="smallBtn" id="btnPigR" type="button" title="Red">🔴</button>
+          <button class="smallBtn" id="btnPigG" type="button" title="Green">🟢</button>
+          <button class="smallBtn" id="btnPigB" type="button" title="Blue">🔵</button>
+          <button class="smallBtn" id="btnPigY" type="button" title="Yellow">🟡</button>
+        </div>
+      </div>
+
     </div>
 
     <!-- Bottom -->
@@ -983,6 +1041,7 @@
     }
 
 
+    updateDrawUi();
     renderMovesDisplay();
   }
 
@@ -1615,12 +1674,178 @@ renderStudySelect();
 
       loadEvals();
       updateQueryUi();
-      logLine("OK","Boot complete.");
+            mountRightNavButtons();
+      await loadPriyomesPane();
+logLine("OK","Boot complete.");
     }catch(e){
       logStack("ERR","Boot failed: ", e);
       setTab("errors");
     }
   }
+  
+  // ---------------- Right-pane tools placement (move nav buttons into right pane) ----------------
+  function mountRightNavButtons(){
+    const rightNavRow = $("rightNavRow");
+    if (!rightNavRow) return;
+
+    // Move existing nav controls (created under boardCard) into right pane
+    const prev = $("btnPrev");
+    const next = $("btnNext");
+    const meta = $("navMeta");
+    if (prev && next && meta){
+      // clear target
+      rightNavRow.innerHTML = "";
+      rightNavRow.appendChild(prev);
+      rightNavRow.appendChild(next);
+      rightNavRow.appendChild(meta);
+    }
+  }
+
+  function setDrawModeToggle(target){
+    const g = cg();
+    if (!g || typeof g.setMode !== "function") return;
+    const cur = g.ui?.mode || "";
+    if (cur === target) g.setMode("");
+    else g.setMode(target);
+    syncUi();
+  }
+
+  function updateDrawUi(){
+    const g = cg();
+    const mode = g?.ui?.mode || "";
+    $("btnModeArrows")?.classList.toggle("active", mode === "arrows");
+    $("btnModeSquares")?.classList.toggle("active", mode === "squares");
+
+    const pigRow = $("pigmentRow");
+    if (pigRow) pigRow.hidden = !(mode === "arrows" || mode === "squares");
+
+    const pig = g?.ui?.pigment || g?.ui?.pig || "R";
+    $("btnPigR")?.classList.toggle("active", pig === "R");
+    $("btnPigG")?.classList.toggle("active", pig === "G");
+    $("btnPigB")?.classList.toggle("active", pig === "B");
+    $("btnPigY")?.classList.toggle("active", pig === "Y");
+  }
+
+  // Wire draw controls (ScratchChess handles actual arrow/square drawing)
+  $("btnModeArrows")?.addEventListener("click", () => setDrawModeToggle("arrows"));
+  $("btnModeSquares")?.addEventListener("click", () => setDrawModeToggle("squares"));
+  $("btnClearMarks")?.addEventListener("click", () => { try{ cg()?.clearMarks?.(); syncUi(); }catch(e){ logStack("ERR","Clear marks failed: ", e); } });
+
+  $("btnPigR")?.addEventListener("click", () => { try{ cg()?.setPigment?.("R"); syncUi(); }catch{} });
+  $("btnPigG")?.addEventListener("click", () => { try{ cg()?.setPigment?.("G"); syncUi(); }catch{} });
+  $("btnPigB")?.addEventListener("click", () => { try{ cg()?.setPigment?.("B"); syncUi(); }catch{} });
+  $("btnPigY")?.addEventListener("click", () => { try{ cg()?.setPigment?.("Y"); syncUi(); }catch{} });
+
+  // ---------------- Priyomes pane (mini boards + load-to-board) ----------------
+  async function loadPriyomesPane(){
+    const host = $("priyomeList");
+    if (!host) return;
+    host.innerHTML = "";
+    const url = PRIYOME_PGN_MANIFEST?.default;
+    if (!url){
+      host.innerHTML = `<div class="hint">PRIYOME_PGN_MANIFEST.default not set.</div>`;
+      return;
+    }
+    try{
+      const txt = await (await fetch(url, { cache:"no-store" })).text();
+      const parts = splitMultiPgn(txt);
+      if (!parts.length){
+        host.innerHTML = `<div class="hint">No Priyomes found in ${url}.</div>`;
+        return;
+      }
+
+      for (let i=0;i<parts.length;i++){
+        const pgn = parts[i];
+        const headers = parseHeaders(pgn);
+        const title = headers.Event || headers.White || `Priyome ${i+1}`;
+        const cqlref = getHeaderTag(pgn, "cqlref") || "";
+
+        const card = document.createElement("div");
+        card.className = "gameCard";
+        const t = document.createElement("div");
+        t.className = "gameTitle";
+        t.textContent = title;
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.innerHTML = `<span>${cqlref ? `cqlref: ${cqlref}` : ""}</span>`;
+
+        const miniWrap = document.createElement("div");
+        miniWrap.style.marginTop = "8px";
+        miniWrap.style.border = "1px solid rgba(15,23,42,.08)";
+        miniWrap.style.borderRadius = "12px";
+        miniWrap.style.overflow = "hidden";
+        miniWrap.style.background = "#fff";
+        miniWrap.style.padding = "8px";
+
+        const miniDiv = document.createElement("div");
+        miniDiv.style.width = "100%";
+        miniDiv.style.height = "220px";
+        miniWrap.appendChild(miniDiv);
+
+        // Build mini game
+        const gMini = createGame(headers);
+        gMini.loadPGN?.(pgn);
+        gMini.toggleMini?.(true);
+
+        // Render mini board
+        try{
+          new BoardView(miniDiv, gMini, { minSizePx: 90 });
+        }catch(e){
+          // If mini rendering fails, still allow loading
+        }
+
+        card.appendChild(t);
+        card.appendChild(meta);
+        card.appendChild(miniWrap);
+
+        card.addEventListener("click", async () => {
+          try{
+            // Load priome to main board
+            const g = createGame(headers);
+            g.loadPGN?.(pgn);
+
+            let cqlText = "";
+            if (cqlref){
+              try{
+                cqlText = await (await fetch(`./cql/${cqlref}.cql`, { cache:"no-store" })).text();
+              }catch(e){
+                logLine("WARN", `Could not load CQL for cqlref "${cqlref}" (${String(e)})`);
+              }
+            }
+
+            currentGame = {
+              id: `priyome:${cqlref || i}:${Date.now()}`,
+              title,
+              opening: "Priyome",
+              result: headers.Result || "*",
+              pgn,
+              game: g,
+              headers,
+              cqlText
+            };
+
+            board.setGame(g);
+            $("gamePill").textContent = title;
+            $("studyPill").textContent = `Study • ${currentStudyName} • ${STUDIES[currentStudyName]?.length || 0} game(s)`;
+            setTab("moves");
+            syncUi();
+          }catch(e){
+            logStack("ERR","Failed to load Priyome to board: ", e);
+            setTab("errors");
+          }
+        });
+
+        host.appendChild(card);
+      }
+
+      logLine("OK", `Loaded Priyomes: ${parts.length} game(s).`);
+    }catch(e){
+      host.innerHTML = `<div class="hint">Failed loading Priyomes: ${String(e && e.stack ? e.stack : e)}</div>`;
+      logLine("ERR", `Priyomes load failed: ${String(e)}`);
+    }
+  }
+
   boot();
 </script>
 </body>
