@@ -3,320 +3,248 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Priyome</title>
-
+<title>Reducer (Testable)</title>
 <style>
-:root{ --b:#dbe3f0; --bg:#f6f7fb; --panel:#fff; }
-body{ margin:0; font-family:system-ui; background:var(--bg); }
-.layout{ display:grid; grid-template-columns: 2fr 1fr; height:100vh; gap:10px; padding:10px; }
-.card{ background:var(--panel); border:1px solid var(--b); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; }
-.head{ padding:10px; border-bottom:1px solid var(--b); font-size:12px; color:#475569; }
-#boardHost{ flex:1; display:grid; place-items:center; }
-.tabs{ display:flex; gap:6px; padding:10px; border-bottom:1px solid var(--b); flex-wrap:wrap;}
-.tab{ padding:6px 10px; border:1px solid var(--b); border-radius:10px; font-size:12px; cursor:pointer;}
-.tab.active{ background:#e0e7ff; }
-.pane{ display:none; padding:10px; overflow:auto; flex:1;}
-.pane.active{ display:block; }
+  :root{ --b:#dbe3f0; --bg:#f6f7fb; --panel:#fff; --ink:#0f172a; --muted:#475569; }
+  body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--ink); }
+  .layout{ display:grid; grid-template-columns: 2fr 1fr; gap:10px; padding:10px; height:100vh; box-sizing:border-box; }
+  .card{ background:var(--panel); border:1px solid var(--b); border-radius:12px; overflow:hidden; min-height:0; display:flex; flex-direction:column; }
+  .head{ padding:10px; border-bottom:1px solid var(--b); font-size:12px; color:var(--muted); display:flex; gap:8px; align-items:center; justify-content:space-between; }
+  #boardHost{ flex:1; min-height:0; display:grid; place-items:center; padding:12px; box-sizing:border-box; }
+  .boardBox{ width:min(520px, 100%); aspect-ratio: 1 / 1; border:1px dashed var(--b); border-radius:12px; display:grid; place-items:center; font-weight:600; color:var(--muted); user-select:none; }
+  .controls{ padding:10px; border-top:1px solid var(--b); display:flex; gap:6px; flex-wrap:wrap; }
+  .controls button{ padding:8px 10px; border:1px solid var(--b); border-radius:10px; background:#fff; cursor:pointer; }
+  #setupStrip{ padding:8px 10px; border-top:1px solid var(--b); background:#f8fafc; display:flex; gap:8px; align-items:center; }
+  #setupStrip[hidden]{ display:none; }
 
-.gameCard{
-  border:1px solid var(--b);
-  border-radius:10px;
-  padding:8px;
-  margin-bottom:6px;
-  cursor:pointer;
-}
-.gameCard.active{ background:#e0e7ff; }
+  .tabs{ display:flex; gap:6px; padding:10px; border-bottom:1px solid var(--b); flex-wrap:wrap; }
+  .tab{ padding:6px 10px; border:1px solid var(--b); border-radius:10px; font-size:12px; cursor:pointer; background:#fff; }
+  .tab.active{ background:#e0e7ff; }
 
-.moves button{
-  width:100%;
-  margin-bottom:4px;
-}
+  .pane{ display:none; padding:10px; overflow:auto; flex:1; min-height:0; }
+  .pane.active{ display:block; }
 
-.controls{
-  padding:10px;
-  border-top:1px solid var(--b);
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-}
+  .gameCard{ border:1px solid var(--b); border-radius:10px; padding:8px; margin:6px 0; cursor:pointer; background:#fff; }
+  .gameCard.active{ background:#e0e7ff; }
 
-#setupStrip{ padding:8px; border-top:1px solid var(--b); }
+  #fenBox{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:12px; color:var(--muted); word-break:break-all; }
 </style>
 </head>
-
 <body>
 <div class="layout">
 
-  <!-- BOARD -->
   <div class="card">
     <div class="head">
-      Study: <span id="studyName"></span> —
-      Game: <span id="gameName"></span>
+      <div>Study: <span id="studyName">default</span> — Game: <span id="gameName"></span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:11px;color:var(--muted)">Reducer-driven</span>
+      </div>
     </div>
 
-    <div id="boardHost"></div>
+    <div id="boardHost">
+      <div class="boardBox" id="boardBox">BOARD</div>
+    </div>
 
     <div id="setupStrip" hidden>
       <button id="btnSetupInitial">Initial</button>
       <button id="btnSetupClear">Clear</button>
+      <span style="font-size:12px;color:var(--muted)">Setup mode</span>
     </div>
 
     <div class="controls">
-      <button id="btnPrev">◀</button>
-      <button id="btnNext">▶</button>
-      <button id="btnFlip">Flip</button>
+      <button id="btnPrev" disabled>◀</button>
+      <button id="btnNext" disabled>▶</button>
+      <button id="btnFlip" disabled>Flip</button>
       <button id="btnReset">Reset</button>
       <button id="btnSetup">Setup</button>
     </div>
   </div>
 
-  <!-- RIGHT -->
   <div class="card">
     <div class="tabs">
       <div class="tab active" data-tab="moves">Moves</div>
       <div class="tab" data-tab="games">Games</div>
-      <div class="tab" data-tab="priyomes">Priyomes</div>
       <div class="tab" data-tab="errors">Errors</div>
     </div>
 
-    <!-- MOVES -->
     <div class="pane active" id="pane-moves">
-      <div id="moveList"></div>
+      <div style="color:var(--muted);font-size:12px">Move list placeholder (not under test).</div>
     </div>
 
-    <!-- GAMES -->
     <div class="pane" id="pane-games">
-      <button id="btnNewGame">+ New Game</button>
+      <button id="btnNewGame" style="padding:8px 10px;border:1px solid var(--b);border-radius:10px;background:#fff;cursor:pointer">+ New Game</button>
       <div id="gameList"></div>
     </div>
 
-    <!-- PRIYOMES -->
-    <div class="pane" id="pane-priyomes">
-      <div class="gameCard">Greek Gift</div>
-      <div class="gameCard">Back Rank</div>
-      <div class="gameCard">Smothered Mate</div>
-    </div>
-
-    <!-- ERRORS -->
     <div class="pane" id="pane-errors">
       Errors: <span id="errCount">0</span>
     </div>
 
     <div class="head">
-      FEN
-      <div id="fenBox" style="font-family:monospace;"></div>
+      <div>FEN</div>
+      <div id="fenBox"></div>
     </div>
   </div>
 
 </div>
 
-<script type="module">
-import { createGame, BoardView } from "./scratchchess.js";
+<script>
+(() => {
+  ////////////////////////////////////////////////////////////////////////////
+  // DATA
+  ////////////////////////////////////////////////////////////////////////////
+  const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
+  const EMPTY_FEN = "8/8/8/8/8/8/8/8 w - - 0 1";
 
-////////////////////////////////////////////////////////////////////////////////
-// STATE
-////////////////////////////////////////////////////////////////////////////////
+  const uid6 = () => (crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(16).slice(2) + Date.now().toString(16)))
+    .replace(/-/g,"")
+    .slice(0,6);
 
-let state = {
-  tab: "moves",
-  setup: false,
-  ply: 0,
-  errors: 0,
+  ////////////////////////////////////////////////////////////////////////////
+  // REDUCER STATE
+  ////////////////////////////////////////////////////////////////////////////
+  let state = {
+    tab: "moves",
+    setup: false,
+    errors: 0,
+    activeStudy: "default",
+    // newest-first registry for tests
+    gameOrder: [],           // array of ids (newest first)
+    games: {},               // id -> { fen }
+    currentGameId: null
+  };
 
-  activeStudy: "default",
-  studies: { default: [] },
-  games: {},           // id -> engine
-  currentGameId: null
-};
+  function reduce(prev, action){
+    switch(action.type){
 
-////////////////////////////////////////////////////////////////////////////////
-// BOOT GAME
-////////////////////////////////////////////////////////////////////////////////
+      case "SET_TAB":
+        return {...prev, tab: action.tab};
 
-function makeGame(name){
-  const g = createGame({Event:name});
-  const id = crypto.randomUUID();
-  state.games[id] = g;
-  state.studies[state.activeStudy].push(id);
-  return id;
-}
+      case "NEW_GAME": {
+        const id = uid6();
+        const games = {...prev.games, [id]: { fen: START_FEN }};
+        const gameOrder = [id, ...prev.gameOrder]; // newest first
+        return {...prev, games, gameOrder, currentGameId: id};
+      }
 
-state.currentGameId = makeGame("Game 1");
-
-let engine = state.games[state.currentGameId];
-const board = new BoardView(document.getElementById("boardHost"), engine);
-
-////////////////////////////////////////////////////////////////////////////////
-// REDUCER
-////////////////////////////////////////////////////////////////////////////////
-
-function reduce(s,a){
-  switch(a.type){
-
-    case "SET_TAB": return {...s, tab:a.tab};
-
-    case "NEW_GAME":{
-      const id = makeGame("Game " + (Object.keys(s.games).length));
-      return {...s, currentGameId:id};
-    }
-
-    case "SELECT_GAME":
-      return {...s, currentGameId:a.id};
-
-    case "SYNC_FROM_ENGINE":
-      return {...s, ply:a.ply};
-
-    case "TOGGLE_SETUP_UI":
-      return {...s, setup:!s.setup};
-
-    case "ERROR":
-      return {...s, errors:s.errors+1};
-
-    default: return s;
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// EFFECTS
-////////////////////////////////////////////////////////////////////////////////
-
-function effects(a){
-  engine = state.games[state.currentGameId];
-
-  try{
-    switch(a.type){
-      case "NEXT": engine.nextMove?.(); break;
-      case "PREV": engine.prevMove?.(); break;
-      case "RESET": engine.loadFEN?.("startpos"); break;
-      case "TOGGLE_SETUP": engine.toggleSetup?.(); break;
-      case "FLIP": engine.toggleFlip?.(); break;
       case "SELECT_GAME":
-        board.setGame(engine);
-        break;
+        if (!prev.games[action.id]) return prev;
+        return {...prev, currentGameId: action.id};
+
+      case "TOGGLE_SETUP_UI":
+        return {...prev, setup: !prev.setup};
+
+      case "SET_FEN": {
+        if (!prev.currentGameId) return prev;
+        const id = prev.currentGameId;
+        const games = {...prev.games, [id]: {...prev.games[id], fen: action.fen }};
+        return {...prev, games};
+      }
+
+      case "ERROR":
+        return {...prev, errors: prev.errors + 1};
+
+      default:
+        return prev;
     }
-  }catch(e){
-    dispatchSync({type:"ERROR"});
-    console.error(e);
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-// RENDER
-////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////
+  // RENDER
+  ////////////////////////////////////////////////////////////////////////////
+  const $ = (sel) => document.querySelector(sel);
 
-function render(){
+  function render(){
+    // tabs/panes
+    document.querySelectorAll(".tab").forEach(t => {
+      t.classList.toggle("active", t.dataset.tab === state.tab);
+    });
+    document.querySelectorAll(".pane").forEach(p => {
+      p.classList.toggle("active", p.id === "pane-" + state.tab);
+    });
 
-  document.getElementById("studyName").textContent = state.activeStudy;
-  document.getElementById("gameName").textContent = state.currentGameId?.slice(0,6);
+    // setup strip
+    $("#setupStrip").hidden = !state.setup;
 
-  document.querySelectorAll(".tab").forEach(t=>{
-    t.classList.toggle("active", t.dataset.tab === state.tab);
+    // error count
+    $("#errCount").textContent = String(state.errors);
+
+    // current game label + FEN
+    const gid = state.currentGameId || "";
+    $("#gameName").textContent = gid;
+    const fen = gid ? (state.games[gid]?.fen || "") : "";
+    $("#fenBox").textContent = fen;
+
+    // board display (simple visual)
+    $("#boardBox").textContent = state.setup ? "SETUP" : "BOARD";
+
+    // game list
+    const gl = $("#gameList");
+    gl.innerHTML = "";
+    for (const id of state.gameOrder){
+      const d = document.createElement("div");
+      d.className = "gameCard" + (id === state.currentGameId ? " active" : "");
+      d.textContent = id;
+      d.dataset.id = id;
+      gl.appendChild(d);
+    }
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
+  // DISPATCH
+  ////////////////////////////////////////////////////////////////////////////
+  function dispatch(action){
+    state = reduce(state, action);
+    render();
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
+  // EVENTS (delegated)
+  ////////////////////////////////////////////////////////////////////////////
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+
+    if (t.classList?.contains("tab") && t.dataset.tab){
+      dispatch({type:"SET_TAB", tab: t.dataset.tab});
+      return;
+    }
+
+    if (t.id === "btnNewGame"){
+      dispatch({type:"NEW_GAME"});
+      return;
+    }
+
+    if (t.classList?.contains("gameCard") && t.dataset.id){
+      dispatch({type:"SELECT_GAME", id: t.dataset.id});
+      return;
+    }
+
+    if (t.id === "btnReset"){
+      dispatch({type:"SET_FEN", fen: START_FEN});
+      return;
+    }
+
+    if (t.id === "btnSetup"){
+      dispatch({type:"TOGGLE_SETUP_UI"});
+      return;
+    }
+
+    if (t.id === "btnSetupClear"){
+      dispatch({type:"SET_FEN", fen: EMPTY_FEN});
+      return;
+    }
+
+    if (t.id === "btnSetupInitial"){
+      dispatch({type:"SET_FEN", fen: START_FEN});
+      return;
+    }
   });
 
-  document.querySelectorAll(".pane").forEach(p=>{
-    p.classList.toggle("active", p.id === "pane-"+state.tab);
-  });
-
-  document.getElementById("setupStrip").hidden = !state.setup;
-  document.getElementById("errCount").textContent = state.errors;
-
-  try{
-    document.getElementById("fenBox").textContent =
-      state.games[state.currentGameId].exportFEN?.() || "";
-  }catch{}
-
-  renderMoves();
-  renderGameList();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// MOVES
-////////////////////////////////////////////////////////////////////////////////
-
-function renderMoves(){
-  const g = state.games[state.currentGameId];
-  const list = document.getElementById("moveList");
-  list.innerHTML = "";
-
-  let node = g.root;
-  let i = 0;
-
-  while(node){
-    const next = node.children?.[0];
-    if(!next) break;
-    const btn = document.createElement("button");
-    btn.textContent = next.san || ("move "+(i+1));
-    list.appendChild(btn);
-    node = next;
-    i++;
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// GAME LIST
-////////////////////////////////////////////////////////////////////////////////
-
-function renderGameList(){
-  const list = document.getElementById("gameList");
-  list.innerHTML = "";
-
-  for(const id of state.studies[state.activeStudy]){
-    const div = document.createElement("div");
-    div.className = "gameCard" + (id===state.currentGameId ? " active" : "");
-    div.textContent = id.slice(0,8);
-    div.dataset.id = id;
-    list.appendChild(div);
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// DISPATCH
-////////////////////////////////////////////////////////////////////////////////
-
-function dispatchIntent(a){
-  state = reduce(state,a);
-  effects(a);
-  render();
-}
-
-function dispatchSync(a){
-  state = reduce(state,a);
-  render();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// EVENTS
-////////////////////////////////////////////////////////////////////////////////
-
-document.addEventListener("click", e=>{
-  const t = e.target;
-
-  if(t.dataset.tab) dispatchSync({type:"SET_TAB", tab:t.dataset.tab});
-  if(t.id==="btnNext") dispatchIntent({type:"NEXT"});
-  if(t.id==="btnPrev") dispatchIntent({type:"PREV"});
-  if(t.id==="btnReset") dispatchIntent({type:"RESET"});
-  if(t.id==="btnFlip") dispatchIntent({type:"FLIP"});
-
-  if(t.id==="btnSetup"){
-    dispatchIntent({type:"TOGGLE_SETUP"});
-    dispatchSync({type:"TOGGLE_SETUP_UI"});
-  }
-
-  if(t.id==="btnNewGame") dispatchSync({type:"NEW_GAME"});
-  if(t.dataset.id) dispatchSync({type:"SELECT_GAME", id:t.dataset.id});
-});
-
-////////////////////////////////////////////////////////////////////////////////
-// ENGINE → UI SYNC
-////////////////////////////////////////////////////////////////////////////////
-
-Object.values(state.games).forEach(g=>{
-  g.onChange?.(()=>{
-    dispatchSync({type:"SYNC_FROM_ENGINE", ply:g.getPly?.() ?? 0});
-  });
-});
-
-render();
+  ////////////////////////////////////////////////////////////////////////////
+  // BOOT
+  ////////////////////////////////////////////////////////////////////////////
+  dispatch({type:"NEW_GAME"}); // ensures currentGameId non-null and label populated
+})();
 </script>
 </body>
 </html>
