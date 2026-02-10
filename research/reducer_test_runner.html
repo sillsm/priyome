@@ -10,7 +10,8 @@
   .wrap{display:grid;grid-template-columns: 1.2fr .8fr;gap:12px;height:100vh;padding:12px;box-sizing:border-box;}
   .card{border:1px solid var(--b);border-radius:12px;background:rgba(255,255,255,.03);overflow:hidden;min-height:0;display:flex;flex-direction:column;}
   .head{padding:10px 12px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;gap:10px}
-  iframe{width:100%;height:100%;border:0;background:white}
+  iframe{border:0;background:white;align-self:center}
+  .frameWrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px}
   .log{padding:10px 12px;overflow:auto;flex:1;font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:13px;line-height:1.35;white-space:pre-wrap}
   button{padding:8px 10px;border-radius:10px;border:1px solid var(--b);background:rgba(255,255,255,.06);color:var(--t);cursor:pointer;}
   .pass{color:#a7f3d0}
@@ -37,7 +38,9 @@
         <button id="reloadBtn">Reload</button>
       </div>
     </div>
-    <iframe id="frame"></iframe>
+    <div class="frameWrap">
+      <iframe id="frame"></iframe>
+    </div>
   </div>
 
   <div class="card">
@@ -47,7 +50,7 @@
         <span class="dim" id="status">idle</span>
       </div>
       <div class="row">
-        <input id="appPath" placeholder="app path (default: reducer.html or ?app=...)" />
+        <input id="appPath" placeholder="app path (default: reducer_v3.html or ?app=...)" />
         <button id="runBtn">Run</button>
       </div>
     </div>
@@ -110,33 +113,59 @@
 
   function count(sel){ return frame.contentDocument?.querySelectorAll(sel).length ?? 0; }
 
+  function dispatchPointer(type, x, y, opts={}){
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+    const el = doc.elementFromPoint(x, y);
+    if (!el) throw new Error(`No element at point (${x.toFixed(1)},${y.toFixed(1)})`);
+    const ev = new PointerEvent(type, {
+      bubbles:true, cancelable:true, view: win,
+      clientX:x, clientY:y,
+      pointerId: opts.pointerId ?? 1,
+      pointerType: opts.pointerType ?? "mouse",
+      buttons: opts.buttons ?? (type === "pointerdown" ? 1 : 0),
+      pressure: opts.pressure ?? (type === "pointerdown" ? 0.5 : 0),
+      isPrimary: true
+    });
+    el.dispatchEvent(ev);
+  }
+
+  async function dragSquare(fromSq, toSq, durationMs=120){
+    const w = frame.contentWindow;
+    if (typeof w.__getSquareCenter !== "function"){
+      throw new Error("App missing __getSquareCenter(sq) helper for dragSquare");
+    }
+    const a = w.__getSquareCenter(fromSq);
+    const b = w.__getSquareCenter(toSq);
+    if (!a || !b) throw new Error(`__getSquareCenter returned null for ${fromSq} or ${toSq}`);
+
+    const steps = Math.max(4, Math.floor(durationMs / 20));
+    dispatchPointer("pointerdown", a.x, a.y, {buttons:1});
+    await sleep(16);
+    for (let i=1;i<steps;i++){
+      const t = i/(steps-1);
+      dispatchPointer("pointermove", a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, {buttons:1});
+      await sleep(16);
+    }
+    dispatchPointer("pointerup", b.x, b.y, {buttons:0});
+    await sleep(40);
+  }
+
   async function stepExec(step){
     const [op, ...raw] = step;
     const args = raw.map(resolveArg);
 
     switch(op){
-      case "sleep":
-        await sleep(args[0]||0);
-        return;
-
-      case "waitFor":
-        await waitFor(args[0], args[1] ?? 2000);
-        return;
-
-      case "click":
-        q(args[0]).dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view: frame.contentWindow}));
-        await sleep(10);
-        return;
-
-      case "expectVisible":
-        await waitFor(args[0], 500);
-        return;
+      case "sleep": await sleep(args[0]||0); return;
+      case "waitFor": await waitFor(args[0], args[1] ?? 2000); return;
+      case "click": q(args[0]).dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view: frame.contentWindow})); await sleep(10); return;
+      case "expectVisible": await waitFor(args[0], 500); return;
 
       case "expectContains": {
         const a0 = args[0];
         const needle = String(args[1] ?? "");
         const hay = (typeof a0 === "string" && (a0.startsWith("#") || a0.startsWith(".") || a0.includes("[") ))
-          ? q(a0).textContent.trim()
+          ? (q(a0).value != null && (q(a0).tagName==="TEXTAREA" || q(a0).tagName==="INPUT") ? q(a0).value : q(a0).textContent).trim()
           : String(a0);
         if (!String(hay).includes(needle)) throw new Error(`expectContains failed: "${needle}" not in "${String(hay)}"`);
         return;
@@ -151,7 +180,7 @@
 
       case "storeText": {
         const el = q(args[0]);
-        vars[args[1]] = (el.value != null && el.tagName === "TEXTAREA") ? el.value : el.textContent.trim();
+        vars[args[1]] = (el.value != null && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) ? el.value : el.textContent.trim();
         log(`stored $${args[1]} = ${JSON.stringify(vars[args[1]])}`, "dim");
         return;
       }
@@ -162,9 +191,9 @@
         return;
       }
 
-      case "expectContained":
-        expectContained(args[0], args[1], args[2] ?? 0);
-        return;
+      case "expectContained": expectContained(args[0], args[1], args[2] ?? 0); return;
+
+      case "dragSquare": await dragSquare(String(args[0]), String(args[1]), args[2] ?? 120); return;
 
       case "timeUnder": {
         const [budgetMs, steps] = args;
@@ -181,21 +210,12 @@
     }
   }
 
-  // Robust parser: supports steps written across multiple lines by buffering until JSON parses.
   function parseTests(src){
-    const blocks = src
-      .split(/\n\s*\n/)
-      .map(b => b.trim())
-      .filter(Boolean);
-
+    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
     const tests = [];
     for (const b of blocks){
-      const rawLines = b.split("\n");
-      const lines = rawLines
-        .map(l => l.replace(/\r/g,""))
-        .map(l => l.trim())
-        .filter(l => l && !l.startsWith("#"));
-
+      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
+      const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
       if (!lines.length) continue;
       const nameLine = lines.shift();
       if (!nameLine.startsWith("TEST ")) continue;
@@ -204,22 +224,18 @@
       const steps = [];
       let buf = "";
       for (const line of lines){
-        // If line is a lone ']' or ']]' etc, still buffer it.
         buf = buf ? (buf + "\n" + line) : line;
         try{
           const step = JSON.parse(buf);
           steps.push(step);
           buf = "";
         }catch(e){
-          // Keep buffering. Only throw if this is not an "incomplete JSON" situation.
-          // We'll decide at end.
+          // keep buffering
         }
       }
       if (buf.trim()){
-        // Give a helpful error that points at the offending buffered chunk.
         throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
       }
-
       tests.push({name, steps});
     }
     return tests;
@@ -233,7 +249,7 @@
 
   function getDefaultApp(){
     const u = new URL(location.href);
-    return u.searchParams.get("app") || "reducer.html";
+    return u.searchParams.get("app") || "reducer_v3.html";
   }
 
   function setApp(){
@@ -252,7 +268,7 @@
     try{
       testsText = await loadText("reducertests.txt");
       log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
-      log("--- preview ---\n" + testsText.split("\n").slice(0, 16).join("\n") + "\n--- end preview ---", "dim");
+      log("--- preview ---\n" + testsText.split("\n").slice(0, 18).join("\n") + "\n--- end preview ---", "dim");
     }catch(e){
       log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
       statusEl.textContent = "failed (tests not loaded)";
@@ -276,7 +292,7 @@
       log("\nTEST: " + t.name, "dim");
 
       frame.contentWindow.location.reload();
-      await sleep(350);
+      await sleep(400);
 
       try{
         for (const s of t.steps){
@@ -303,12 +319,10 @@
   document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
   document.getElementById("reloadBtn").addEventListener("click", () => frame.contentWindow.location.reload());
 
-  // Initial load (no run)
   appInput.value = getDefaultApp();
   setApp();
-  log("Ready. Click Run. Default app is reducer.html. Tests loaded from reducertests.txt.", "dim");
+  log("Ready. Click Run. Default app is reducer_v3.html. Tests loaded from reducertests.txt.", "dim");
 
-  // If ?autorun=1, run immediately
   const u = new URL(location.href);
   if (u.searchParams.get("autorun") === "1"){
     log("autorun=1 detected — running immediately", "ok");

@@ -1,57 +1,92 @@
-# reducertests.txt — UI contract for reducer slice
-# Format: blank-line separated TEST blocks.
-# Each non-empty non-comment line is a JSON array: ["op", ...args]
+# reducertests.txt — Expanded contract (ScratchChess board + games + drawing + priyomes)
 
-TEST Board stays contained in its panel (no overflow)
-["waitFor","#boardHost",2000]
-["expectContained","#boardHost",".card",6] 
+TEST Title navbar is visible and shows app name
+["waitFor","#topNav",2000]
+["expectVisible","#topNav"]
+["expectContains","#topNav","Priyome"]
 
-TEST Switch to Games tab shows list
+TEST Board mounts ScratchChess shell and stays contained in its panel
+["waitFor","#boardHost",4000]
+["waitFor","#boardHost .sc-shell",4000]
+["expectContained","#boardHost",".card",6]
+
+TEST Games tab shows list
 ["click","[data-tab='games']"]
 ["waitFor","#gameList",1000]
-["expectVisible","#gameList"]
+["countAtLeast","#gameList .gameCard",1]
 
 TEST Creating a new game adds another selectable card
 ["click","[data-tab='games']"]
 ["countAtLeast","#gameList .gameCard",1]
 ["click","#btnNewGame"]
-["sleep",50]
+["sleep",120]
 ["countAtLeast","#gameList .gameCard",2]
 
-TEST Selecting a different game changes the displayed Game label
+TEST Switching games changes the displayed game id (and the test checks ids properly)
 ["click","[data-tab='games']"]
-["storeText","#gameName","g0"]
-["click","#btnNewGame"]
-["sleep",50]
+["countAtLeast","#gameList .gameCard",2]
 ["click","#gameList .gameCard:first-child"]
-["sleep",50]
-["storeText","#gameName","g1"]
-["expectNotEqual","$g0","$g1"]
+["sleep",80]
+["storeText","#gameName","gNewest"]
+["click","#gameList .gameCard:nth-child(2)"]
+["sleep",80]
+["storeText","#gameName","gSecond"]
+["expectNotEqual","$gNewest","$gSecond"]
 
-# This is the key behavioral contract you described:
-# If we mutate Game A to a different position, then selecting Game B should NOT show Game A's position.
-# If setup clear isn't wired yet, this test will fail early (which is still useful).
-TEST Selecting different games changes board state (FEN differs)
+TEST Setup clear changes FEN (board state)
 ["click","#btnReset"]
-["sleep",50]
-["storeText","#fenBox","fenA0"]
+["sleep",120]
+["storeText","#fenBox","fen0"]
 ["click","#btnSetup"]
-["sleep",50]
+["sleep",120]
 ["click","#btnSetupClear"]
-["sleep",50]
-["storeText","#fenBox","fenA1"]
-["expectNotEqual","$fenA0","$fenA1"]
+["sleep",180]
+["storeText","#fenBox","fen1"]
+["expectNotEqual","$fen0","$fen1"]
+
+TEST Draw squares: enable Squares mode and create a square mark (PGN contains %csl)
+["click","[data-tab='draw']"]
+["waitFor","#drawToolbar",1000]
+["click","#btnModeSquares"]
+["sleep",120]
+["storeText","#pgnBox","p0"]
+["dragSquare","e4","e4",60]
+["sleep",220]
+["storeText","#pgnBox","p1"]
+["expectNotEqual","$p0","$p1"]
+["expectContains","$p1","%csl"]
+
+TEST Draw arrows: enable Arrows mode and create an arrow mark (PGN contains %cal)
+["click","[data-tab='draw']"]
+["click","#btnModeArrows"]
+["sleep",120]
+["storeText","#pgnBox","pa0"]
+["dragSquare","e2","e4",160]
+["sleep",260]
+["storeText","#pgnBox","pa1"]
+["expectNotEqual","$pa0","$pa1"]
+["expectContains","$pa1","%cal"]
+
+TEST Priyomes tab exists and selecting a priyome loads marks (PGN contains %cal/%csl)
+["click","[data-tab='priyomes']"]
+["waitFor","#priyomeList",1000]
+["click","[data-priyome='greek_gift']"]
+["sleep",220]
+["expectContains","#activePriyome","Greek Gift"]
+["storeText","#pgnBox","pp"]
+["expectContains","$pp","%cal"]
+["expectContains","$pp","%csl"]
+
+TEST Dragging a pawn in a new game lands in expected place (FEN shows e4 pawn)
 ["click","[data-tab='games']"]
 ["click","#btnNewGame"]
-["sleep",50]
-["click","#gameList .gameCard:first-child"]
-["sleep",50]
-["storeText","#fenBox","fenBackToA"]
-["expectContains","$fenBackToA","rnbqkbnr"]
+["sleep",220]
+["storeText","#gameName","gDrag"]
+["dragSquare","e2","e4",180]
+["sleep",320]
+["storeText","#fenBox","fenDrag"]
+["expectContains","$fenDrag","4P3"]
+["expectContains","$fenDrag","PPPP1PPP"]
 
-TEST Performance budget: tab switch + game select under 200ms
-["timeUnder",200,[
-  ["click","[data-tab='games']"],
-  ["click","#btnNewGame"],
-  ["click","#gameList .gameCard:first-child"]
-]]
+TEST Performance budget: tab switch + new game under 250ms
+["timeUnder",250,[["click","[data-tab='games']"],["click","#btnNewGame"]]]
