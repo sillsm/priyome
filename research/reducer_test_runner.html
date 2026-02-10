@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Reducer Test Runner</title>
+<title>Priyome Reducer Test Runner</title>
 <style>
   :root { --bg:#0b0d12; --b:rgba(255,255,255,.12); --t:#e5e7eb; }
   *{ box-sizing:border-box; }
@@ -115,7 +115,7 @@
         <span class="dim" id="status">idle</span>
       </div>
       <div class="row">
-        <input id="appPath" placeholder="app path (default: reducer.html or ?app=...)" />
+        <input id="appPath" placeholder="app path (default: ?app=staging.html or reducer.html)" />
         <button id="runBtn">Run</button>
       </div>
     </div>
@@ -148,22 +148,28 @@
     return x;
   }
 
-  // Strict selector check: only treat as selector if it *starts* like a selector.
-  
-function looksLikeSelector(s){
-  if (typeof s !== "string") return false;
-  const t = s.trim();
-  if (!t) return false;
-  // Only treat as selector if it starts like one AND is a single-line string.
-  // This avoids accidentally treating stored PGN/FEN blobs (which contain newlines) as selectors.
-  if (t.includes("\n")) return false;
-  return t.startsWith("#") || t.startsWith(".") || t.startsWith("[");
-}
+  function looksLikeSelector(s){
+    if (typeof s !== "string") return false;
+    const t = s.trim();
+    if (!t) return false;
+    // Only treat as selector if it starts like one AND is a single-line string.
+    // This prevents stored PGN/FEN blobs (which often begin with '[') from being treated as selectors.
+    if (t.includes("\\n")) return false;
+    return t.startsWith("#") || t.startsWith(".") || t.startsWith("[");
+  }
 
   function q(sel) {
     const el = frame.contentDocument?.querySelector(sel);
     if (!el) throw new Error(`Missing element: ${sel}`);
     return el;
+  }
+
+  function isVisible(el){
+    if (!el) return false;
+    const cs = frame.contentWindow.getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
   }
 
   async function waitFor(sel, ms=2000){
@@ -174,6 +180,16 @@ function looksLikeSelector(s){
       await sleep(25);
     }
     throw new Error(`Timeout waiting for ${sel}`);
+  }
+
+  async function waitForVisible(sel, ms=2000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const el = frame.contentDocument?.querySelector(sel);
+      if (el && isVisible(el)) return el;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for visible ${sel}`);
   }
 
   function rect(el){ return el.getBoundingClientRect(); }
@@ -189,6 +205,23 @@ function looksLikeSelector(s){
   }
 
   function count(sel){ return frame.contentDocument?.querySelectorAll(sel).length ?? 0; }
+
+  function clickSel(sel){
+    const el = q(sel);
+    el.dispatchEvent(new MouseEvent("pointerdown", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("pointerup", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mouseup", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+  }
+
+  function setValue(sel, value){
+    const el = q(sel);
+    el.focus();
+    if ("value" in el) el.value = value;
+    el.dispatchEvent(new Event("input", {bubbles:true}));
+    el.dispatchEvent(new Event("change", {bubbles:true}));
+  }
 
   function dispatchPointer(type, x, y, opts={}){
     const doc = frame.contentDocument;
@@ -207,14 +240,36 @@ function looksLikeSelector(s){
     el.dispatchEvent(ev);
   }
 
+  function getSquareCenterFallback(sq){
+    const doc = frame.contentDocument;
+    const candidates = [
+      `[data-square="${sq}"]`,
+      `[data-sq="${sq}"]`,
+      `.sq-${sq}`,
+      `.square-${sq}`
+    ];
+    for (const sel of candidates){
+      const el = doc.querySelector(sel);
+      if (el){
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width/2, y: r.top + r.height/2 };
+      }
+    }
+    return null;
+  }
+
   async function dragSquare(fromSq, toSq, durationMs=120){
     const w = frame.contentWindow;
-    if (typeof w.__getSquareCenter !== "function"){
-      throw new Error("App missing __getSquareCenter(sq) helper for dragSquare");
+    let a = null, b = null;
+    if (typeof w.__getSquareCenter === "function"){
+      a = w.__getSquareCenter(fromSq);
+      b = w.__getSquareCenter(toSq);
     }
-    const a = w.__getSquareCenter(fromSq);
-    const b = w.__getSquareCenter(toSq);
-    if (!a || !b) throw new Error(`__getSquareCenter returned null for ${fromSq} or ${toSq}`);
+    if (!a || !b){
+      a = a || getSquareCenterFallback(fromSq);
+      b = b || getSquareCenterFallback(toSq);
+    }
+    if (!a || !b) throw new Error(`dragSquare could not locate square centers for ${fromSq} or ${toSq}. Add __getSquareCenter(sq) to the app for reliability.`);
 
     const steps = Math.max(4, Math.floor(durationMs / 20));
     dispatchPointer("pointerdown", a.x, a.y, {buttons:1});
@@ -225,7 +280,7 @@ function looksLikeSelector(s){
       await sleep(16);
     }
     dispatchPointer("pointerup", b.x, b.y, {buttons:0});
-    await sleep(60);
+    await sleep(80);
   }
 
   async function stepExec(step){
@@ -235,8 +290,10 @@ function looksLikeSelector(s){
     switch(op){
       case "sleep": await sleep(args[0]||0); return;
       case "waitFor": await waitFor(args[0], args[1] ?? 2000); return;
-      case "click": q(args[0]).dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view: frame.contentWindow})); await sleep(12); return;
-      case "expectVisible": await waitFor(args[0], 500); return;
+      case "click": clickSel(args[0]); await sleep(12); return;
+      case "type": setValue(args[0], String(args[1] ?? "")); await sleep(20); return;
+
+      case "expectVisible": await waitForVisible(args[0], 2000); return;
 
       case "expectContains": {
         const a0 = args[0];
@@ -326,7 +383,9 @@ function looksLikeSelector(s){
 
   function getDefaultApp(){
     const u = new URL(location.href);
-    return u.searchParams.get("app") || "reducer.html";
+    const qp = u.searchParams.get("app");
+    if (qp) return qp;
+    return "staging.html";
   }
 
   function setApp(){
@@ -397,7 +456,7 @@ function looksLikeSelector(s){
 
   appInput.value = getDefaultApp();
   setApp();
-  log("Ready. Click Run. Default app is reducer.html. Tests loaded from reducertests.txt.", "dim");
+  log("Ready. Click Run. Default app is staging.html (or pass ?app=...). Tests loaded from reducertests.txt.", "dim");
 })();
 </script>
 </body>
