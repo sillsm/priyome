@@ -38,6 +38,76 @@ TEST Hamburger toggles menu open/close
 # future: expectHidden "#menu.open"
 ["expectNotEqual","1","0"]
 
+#-----------------------------
+# Level 0 UI/UX Basics
+#-----------------------------
+
+TEST Switching games changes the displayed game id (and the test checks ids properly)
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",2]
+["click","#gameList .gameCard:first-child"]
+["sleep",120]
+["storeText","#gameName","gNewest"]
+["click","#gameList .gameCard:nth-child(2)"]
+["sleep",120]
+["storeText","#gameName","gSecond"]
+["expectNotEqual","$gNewest","$gSecond"]
+
+TEST Setup clear changes FEN (board state)
+["click","#btnReset"]
+["sleep",220]
+["storeText","#fenBox","fen0"]
+["click","#btnSetup"]
+["sleep",220]
+["click","#btnSetupClear"]
+["sleep",260]
+["storeText","#fenBox","fen1"]
+["expectNotEqual","$fen0","$fen1"]
+
+TEST Draw squares: enable Squares mode and create a square mark (PGN contains %csl)
+["click","[data-tab='draw']"]
+["waitFor","#drawToolbar",1000]
+["click","#btnModeSquares"]
+["sleep",220]
+["storeText","#pgnBox","p0"]
+["dragSquare","e4","e4",60]
+["sleep",420]
+["storeText","#pgnBox","p1"]
+["expectNotEqual","$p0","$p1"]
+["expectContains","$p1","%csl"]
+
+TEST Draw arrows: enable Arrows mode and create an arrow mark (PGN contains %cal)
+["click","[data-tab='draw']"]
+["click","#btnModeArrows"]
+["sleep",220]
+["storeText","#pgnBox","pa0"]
+["dragSquare","e2","e4",220]
+["sleep",520]
+["storeText","#pgnBox","pa1"]
+["expectNotEqual","$pa0","$pa1"]
+["expectContains","$pa1","%cal"]
+
+TEST Priyomes tab exists and selecting a priyome loads marks (PGN contains %cal/%csl)
+["click","[data-tab='priyomes']"]
+["waitFor","#priyomeList",1000]
+["click","[data-priyome='greek_gift']"]
+["sleep",420]
+["expectContains","#activePriyome","Greek Gift"]
+["storeText","#pgnBox","pp"]
+["expectContains","$pp","%cal"]
+["expectContains","$pp","%csl"]
+
+TEST Dragging a pawn in a new game lands in expected place (FEN shows e4 pawn)
+["click","[data-tab='games']"]
+["click","#btnNewGame"]
+["sleep",420]
+["storeText","#gameName","gDrag"]
+["dragSquare","e2","e4",260]
+["sleep",620]
+["storeText","#fenBox","fenDrag"]
+["expectContains","$fenDrag","4P3"]
+["expectContains","$fenDrag","PPPP1PPP"]
+
 # -----------------------------
 # Level 1: games + studies basics
 # -----------------------------
