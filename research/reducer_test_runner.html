@@ -149,12 +149,17 @@
   }
 
   // Strict selector check: only treat as selector if it *starts* like a selector.
-  function looksLikeSelector(s){
-    if (typeof s !== "string") return false;
-    const t = s.trim();
-    if (!t) return false;
-    return t.startsWith("#") || t.startsWith(".") || t.startsWith("["); // attribute selectors OK
-  }
+  
+function looksLikeSelector(s){
+  if (typeof s !== "string") return false;
+  const t = s.trim();
+  if (!t) return false;
+  // Only treat as selector if it starts like one AND is a single-line string.
+  // This avoids accidentally treating stored PGN/FEN blobs (which contain newlines) as selectors.
+  if (t.includes("
+")) return false;
+  return t.startsWith("#") || t.startsWith(".") || t.startsWith("[");
+}
 
   function q(sel) {
     const el = frame.contentDocument?.querySelector(sel);
