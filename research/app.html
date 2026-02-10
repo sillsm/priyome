@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini MVC-ish App (Testable)</title>
+  <style>
+    :root { --bg:#0b0d12; --b:rgba(255,255,255,.12); --t:#e5e7eb; --m:#9aa7c7; }
+    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--t); }
+    .wrap { max-width:900px; margin:0 auto; padding:16px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+    .tab {
+      padding:8px 12px; border:1px solid var(--b); border-radius:10px; cursor:pointer;
+      background:rgba(255,255,255,.03); user-select:none;
+    }
+    .tab[aria-selected="true"] { background:rgba(255,255,255,.10); }
+    .card { margin-top:12px; padding:12px; border:1px solid var(--b); border-radius:12px; background:rgba(255,255,255,.03); }
+    label { color:var(--m); font-size:13px; }
+    input[type="text"] {
+      width:min(520px,100%); padding:10px 12px; border-radius:10px; border:1px solid var(--b);
+      background:rgba(0,0,0,.25); color:var(--t);
+    }
+    button {
+      padding:10px 12px; border-radius:10px; border:1px solid var(--b);
+      background:rgba(255,255,255,.06); color:var(--t); cursor:pointer;
+    }
+    .muted { color:var(--m); font-size:13px; }
+    .out { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .bad { color:#fecaca; }
+    .hidden { display:none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 style="margin:0 0 6px 0;">Mini testable app</h2>
+    <div class="muted">Built for table-driven UI tests via <span class="out">data-testid</span>.</div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="tabs" data-testid="tabs">
+          <button class="tab" type="button" role="tab"
+            data-action="NAV_TAB" data-tab="home" data-testid="tab-home">Home</button>
+
+          <button class="tab" type="button" role="tab"
+            data-action="NAV_TAB" data-tab="query" data-testid="tab-query">Query</button>
+
+          <button class="tab" type="button" role="tab"
+            data-action="NAV_TAB" data-tab="about" data-testid="tab-about">About</button>
+        </div>
+        <div class="muted out" data-testid="debug"></div>
+      </div>
+
+      <div class="card" style="background:rgba(0,0,0,.15);" data-testid="view">
+        <!-- IMPORTANT: all panels exist in DOM always; we hide/show for test stability -->
+
+        <div data-testid="home-panel">
+          <div class="muted">Try the Query tab. Commands: <span class="out">echo:</span>, <span class="out">add:</span>, <span class="out">len:</span></div>
+        </div>
+
+        <div data-testid="query-panel">
+          <div class="row" style="gap:12px;">
+            <div style="flex:1; min-width:240px;">
+              <label for="q">Query</label><br/>
+              <input id="q" type="text" data-testid="query-input" placeholder='e.g. add: 2+3' />
+            </div>
+            <div class="row" style="align-items:flex-end;">
+              <button type="button" data-testid="run-btn" data-action="RUN_QUERY">Run</button>
+              <button type="button" data-testid="clear-btn" data-action="CLEAR">Clear</button>
+            </div>
+          </div>
+
+          <div style="margin-top:10px;">
+            <div class="muted">Result</div>
+            <div class="card out" data-testid="result"></div>
+            <div class="muted" data-testid="error" style="margin-top:8px;"></div>
+          </div>
+        </div>
+
+        <div data-testid="about-panel">
+          <div class="muted">This app is intentionally structured as: state → reducer → render.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // -------------------------
+  // MODEL
+  // -------------------------
+  const initialState = Object.freeze({
+    activeTab: "home",
+    queryText: "",
+    resultText: "",
+    errorText: ""
+  });
+
+  let state = initialState;
+
+  // -------------------------
+  // PURE UPDATE (Reducer)
+  // -------------------------
+  function reduce(prev, action) {
+    switch (action.type) {
+      case "NAV_TAB":
+        return { ...prev, activeTab: action.tab };
+
+      case "SET_QUERY_TEXT":
+        return { ...prev, queryText: action.value, errorText: "" };
+
+      case "RUN_QUERY": {
+        const q = (prev.queryText || "").trim();
+        if (!q) return { ...prev, resultText: "", errorText: "Enter something to query." };
+
+        let result = "";
+        const lower = q.toLowerCase();
+
+        if (lower.startsWith("echo:")) {
+          result = q.slice(5).trim();
+        } else if (lower.startsWith("len:")) {
+          result = String(q.slice(4).trim().length);
+        } else if (lower.startsWith("add:")) {
+          const expr = q.slice(4).trim();
+          const m = expr.match(/^(-?\d+)\s*\+\s*(-?\d+)$/);
+          if (!m) return { ...prev, resultText: "", errorText: "Use add: A+B (integers)." };
+          result = String(parseInt(m[1], 10) + parseInt(m[2], 10));
+        } else {
+          result = `Unknown command: ${q}`;
+        }
+
+        return { ...prev, resultText: result, errorText: "" };
+      }
+
+      case "CLEAR":
+        return { ...prev, queryText: "", resultText: "", errorText: "" };
+
+      default:
+        return prev;
+    }
+  }
+
+  function dispatch(action) {
+    state = reduce(state, action);
+    render(state);
+  }
+
+  // -------------------------
+  // VIEW (show/hide only)
+  // -------------------------
+  const debugEl = document.querySelector('[data-testid="debug"]');
+
+  const homePanel  = document.querySelector('[data-testid="home-panel"]');
+  const queryPanel = document.querySelector('[data-testid="query-panel"]');
+  const aboutPanel = document.querySelector('[data-testid="about-panel"]');
+
+  const tabHome  = document.querySelector('[data-testid="tab-home"]');
+  const tabQuery = document.querySelector('[data-testid="tab-query"]');
+  const tabAbout = document.querySelector('[data-testid="tab-about"]');
+
+  const inputEl  = document.querySelector('[data-testid="query-input"]');
+  const resultEl = document.querySelector('[data-testid="result"]');
+  const errorEl  = document.querySelector('[data-testid="error"]');
+
+  function setHidden(el, yes) { el.classList.toggle("hidden", !!yes); }
+
+  function render(s) {
+    debugEl.textContent = `tab=${s.activeTab}`;
+
+    tabHome.setAttribute("aria-selected",  String(s.activeTab === "home"));
+    tabQuery.setAttribute("aria-selected", String(s.activeTab === "query"));
+    tabAbout.setAttribute("aria-selected", String(s.activeTab === "about"));
+
+    setHidden(homePanel,  s.activeTab !== "home");
+    setHidden(queryPanel, s.activeTab !== "query");
+    setHidden(aboutPanel, s.activeTab !== "about");
+
+    // Keep DOM stable; update values
+    if (inputEl.value !== s.queryText) inputEl.value = s.queryText;
+    resultEl.textContent = s.resultText || "";
+    errorEl.textContent  = s.errorText || "";
+    errorEl.classList.toggle("bad", !!s.errorText);
+  }
+
+  // -------------------------
+  // EVENTS (delegated)
+  // -------------------------
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-action]");
+    if (!t) return;
+    const type = t.getAttribute("data-action");
+    if (type === "NAV_TAB") dispatch({ type: "NAV_TAB", tab: t.getAttribute("data-tab") });
+    if (type === "RUN_QUERY") dispatch({ type: "RUN_QUERY" });
+    if (type === "CLEAR") dispatch({ type: "CLEAR" });
+  });
+
+  document.addEventListener("input", (e) => {
+    if (e.target && e.target.matches('[data-testid="query-input"]')) {
+      dispatch({ type: "SET_QUERY_TEXT", value: e.target.value });
+    }
+  });
+
+  // boot
+  render(state);
+
+  // optional exposure
+  window.__APP__ = { getState: () => state, dispatch, reduce };
+})();
+</script>
+</body>
+</html>
