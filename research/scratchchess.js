@@ -545,11 +545,15 @@ export class Game {
     };
   }
 
-  _legalMovesFrom(fromIdx) {
+  _legalMovesFrom(fromIdx, sideOverride = null) {
     const S = this.state;
     const p = S.board[fromIdx];
     if (!p) return [];
-    if (p.color !== S.side) return [];
+
+    // If sideOverride is provided, treat that as "side to move" for legality generation.
+    const side = sideOverride || S.side;
+    if (p.color !== side) return [];
+
     const pseudo = this._genPseudo(fromIdx, false);
     const res = [];
     for (const toIdx of pseudo) {
@@ -601,7 +605,7 @@ export class Game {
       const q = this.state.board[i];
       if (!q) continue;
       if (q.color !== color || q.type !== t) continue;
-      const tos = this._legalMovesFrom(i);
+      const tos = this._legalMovesFrom(i, color);
       if (tos.includes(toIdx)) others.push(i);
     }
     if (!others.length) return "";
