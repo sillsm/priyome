@@ -9,13 +9,8 @@
   *{ box-sizing:border-box; }
   html,body{height:100%}
   body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--ink); }
-  #topNav{
-    position:sticky; top:0; z-index:5;
-    background:rgba(255,255,255,.9); backdrop-filter: blur(8px);
-    border-bottom:1px solid var(--b);
-    padding:10px 12px;
-    display:flex; align-items:center; justify-content:space-between; gap:12px;
-  }
+  #topNav{ position:sticky; top:0; z-index:5; background:rgba(255,255,255,.9); backdrop-filter: blur(8px);
+    border-bottom:1px solid var(--b); padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
   #topNav .title{ font-weight:900; letter-spacing:.2px; }
   #topNav .right{ display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; }
   #activePriyome{ padding:6px 10px; border-radius:999px; background:var(--chip); display:inline-block; font-size:12px; }
@@ -44,15 +39,15 @@
   .pill{ padding:6px 10px; border:1px solid var(--b); border-radius:999px; background:#fff; cursor:pointer; font-size:12px; }
   .pill.active{ background:var(--chip); }
 
-  #fenBox, #pgnBox{
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size:12px; color:var(--muted);
-    width:100%;
-  }
+  #fenBox, #pgnBox{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:12px; color:var(--muted); width:100%; }
   #pgnBox{ height:72px; }
 
   #priyomeList .pr{ padding:8px; border:1px solid var(--b); border-radius:10px; background:#fff; cursor:pointer; margin-bottom:8px; }
   #priyomeList .pr:hover{ background:#f8fafc; }
+
+  #bootErr{ display:none; padding:10px 12px; border-bottom:1px solid var(--b); background:#fff1f2; color:#7f1d1d;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; }
+  #bootErr.show{ display:block; }
 
   @media (max-width: 980px){
     .layout{ grid-template-columns:1fr; grid-template-rows: 60vh 40vh; height:auto; }
@@ -71,6 +66,7 @@
 
 <div class="layout">
   <div class="card">
+    <div id="bootErr"></div>
     <div class="head">
       <div>Study: <span id="studyName">default</span> — Game: <span id="gameName"></span></div>
       <div style="font-size:11px;color:var(--muted)">ScratchChess</div>
@@ -147,38 +143,35 @@
   </div>
 </div>
 
-<script src="./scratchchess.js"></script>
-<script>
-(() => {
-  const $ = (id) => document.getElementById(id);
+<script type="module">
+import * as SC from "./scratchchess.js";
 
+const $ = (id) => document.getElementById(id);
+const bootErr = $("bootErr");
+const showBootErr = (msg) => { bootErr.textContent = msg; bootErr.classList.add("show"); $("errCount").textContent = "1"; $("errorLog").textContent = msg; };
+
+const createGame = SC.createGame ?? window.createGame;
+const BoardView  = SC.BoardView  ?? window.BoardView;
+
+if (typeof createGame !== "function" || typeof BoardView !== "function"){
+  showBootErr("ScratchChess failed to load: missing createGame / BoardView exports. Check scratchchess.js exports.");
+} else {
+  boot();
+}
+
+function boot(){
   const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
   const EMPTY_FEN = "8/8/8/8/8/8/8/8 w - - 0 1";
 
   const PRIYOMES_PGN = {
-    greek_gift: `[Event "Greek Gift"]\\n[White ""]\\n[Black ""]\\n\\n1. e4 {[%csl Gh7,Gg6][%cal Rh5h7]} *\\n`,
-    back_rank: `[Event "Back Rank"]\\n[White ""]\\n[Black ""]\\n\\n1. e4 {[%csl Rf8,Rg8,Rh8][%cal Re1e8]} *\\n`
+    greek_gift: `[Event "Greek Gift"]\n[White ""]\n[Black ""]\n\n1. e4 {[%csl Gh7,Gg6][%cal Rh5h7]} *\n`,
+    back_rank: `[Event "Back Rank"]\n[White ""]\n[Black ""]\n\n1. e4 {[%csl Rf8,Rg8,Rh8][%cal Re1e8]} *\n`
   };
 
-  if (typeof createGame !== "function" || typeof BoardView !== "function"){
-    $("errorLog").textContent = "scratchchess.js not found or missing createGame/BoardView globals.";
-    $("errCount").textContent = "1";
-    return;
-  }
-
-  let state = {
-    tab: "moves",
-    errors: 0,
-    gameOrder: [],
-    currentGameId: null,
-    activePriyome: null
-  };
-
-  const REG = new Map(); // id -> {id, game}
-
+  let state = { tab:"moves", errors:0, gameOrder:[], currentGameId:null, activePriyome:null };
+  const REG = new Map();
   const uid6 = () => (crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(16).slice(2) + Date.now().toString(16)))
-    .replace(/-/g,"")
-    .slice(0,6);
+    .replace(/-/g,"").slice(0,6);
 
   function reduce(prev, action){
     switch(action.type){
@@ -205,13 +198,12 @@
 
   function cg(){
     const id = state.currentGameId;
-    if (!id) return null;
-    return REG.get(id)?.game || null;
+    return id ? (REG.get(id)?.game || null) : null;
   }
 
   function ensureGame(id){
     if (REG.has(id)) return;
-    const g = createGame({ Event: id, White:"", Black:"" });
+    const g = createGame({ Event:id, White:"", Black:"" });
     try{ g.loadFEN?.(START_FEN); }catch{}
     try{ g.onChange?.(() => { if (state.currentGameId === id) syncUi(); }); }catch{}
     REG.set(id, {id, game:g});
@@ -219,61 +211,51 @@
 
   function syncUi(){
     const g = cg();
-    if (!g){
-      $("fenBox").textContent = "";
-      $("pgnBox").value = "";
-      $("setupStrip").hidden = true;
-      return;
-    }
-    try{ $("fenBox").textContent = g.exportFEN?.() || ""; }catch{ $("fenBox").textContent = ""; }
-    try{ $("pgnBox").value = g.exportPGN?.() || ""; }catch{ $("pgnBox").value = ""; }
+    if (!g){ $("fenBox").textContent=""; $("pgnBox").value=""; $("setupStrip").hidden=true; return; }
+    try{ $("fenBox").textContent = g.exportFEN?.() || ""; }catch{ $("fenBox").textContent=""; }
+    try{ $("pgnBox").value = g.exportPGN?.() || ""; }catch{ $("pgnBox").value=""; }
     $("setupStrip").hidden = !(g.ui && g.ui.setup);
 
     const mode = g?.ui?.mode || "";
-    $("btnModeSquares").classList.toggle("active", mode === "squares");
-    $("btnModeArrows").classList.toggle("active", mode === "arrows");
+    $("btnModeSquares").classList.toggle("active", mode==="squares");
+    $("btnModeArrows").classList.toggle("active", mode==="arrows");
     const pig = g?.ui?.pigment || g?.ui?.pig || "R";
-    $("btnPigR").classList.toggle("active", pig === "R");
-    $("btnPigG").classList.toggle("active", pig === "G");
-    $("btnPigB").classList.toggle("active", pig === "B");
-    $("btnPigY").classList.toggle("active", pig === "Y");
+    $("btnPigR").classList.toggle("active", pig==="R");
+    $("btnPigG").classList.toggle("active", pig==="G");
+    $("btnPigB").classList.toggle("active", pig==="B");
+    $("btnPigY").classList.toggle("active", pig==="Y");
   }
 
   function render(){
-    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === state.tab));
-    document.querySelectorAll(".pane").forEach(p => p.classList.toggle("active", p.id === "pane-" + state.tab));
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===state.tab));
+    document.querySelectorAll(".pane").forEach(p => p.classList.toggle("active", p.id==="pane-"+state.tab));
     $("errCount").textContent = String(state.errors);
 
-    $("activePriyome").textContent =
-      state.activePriyome ? (state.activePriyome === "greek_gift" ? "Greek Gift" : "Back Rank") : "No Priyome";
-
+    $("activePriyome").textContent = state.activePriyome ? (state.activePriyome==="greek_gift" ? "Greek Gift" : "Back Rank") : "No Priyome";
     $("gameName").textContent = state.currentGameId || "";
 
-    const gl = $("gameList");
-    gl.innerHTML = "";
+    const gl = $("gameList"); gl.innerHTML = "";
     for (const id of state.gameOrder){
       const d = document.createElement("div");
-      d.className = "gameCard" + (id === state.currentGameId ? " active" : "");
+      d.className = "gameCard" + (id===state.currentGameId ? " active" : "");
       d.textContent = id;
       d.dataset.id = id;
       gl.appendChild(d);
     }
-
     syncUi();
   }
 
-  // Test helper: square center coordinates (iframe viewport)
   window.__getSquareCenter = function(sq){
     const g = cg();
-    const host = boardHost.querySelector(".sc-shell") || boardHost;
-    const r = host.getBoundingClientRect();
+    const shell = boardHost.querySelector(".sc-shell") || boardHost;
+    const r = shell.getBoundingClientRect();
     if (!sq || !/^[a-h][1-8]$/.test(sq)) return null;
-    const file = sq.charCodeAt(0) - 97;
-    const rank = parseInt(sq[1],10) - 1;
+    const file = sq.charCodeAt(0)-97;
+    const rank = parseInt(sq[1],10)-1;
     const flip = !!(g && g.ui && g.ui.flip);
-    const fx = flip ? (7 - file) : file;
-    const ry = flip ? rank : (7 - rank);
-    return { x: r.left + (fx + 0.5) * (r.width/8), y: r.top + (ry + 0.5) * (r.height/8) };
+    const fx = flip ? (7-file) : file;
+    const ry = flip ? rank : (7-rank);
+    return { x: r.left + (fx+0.5)*(r.width/8), y: r.top + (ry+0.5)*(r.height/8) };
   };
 
   function createAndSelectGame(){
@@ -294,14 +276,10 @@
   function applyPriyome(id){
     state = reduce(state, {type:"APPLY_PRIYOME", id});
     const g = cg();
-    try{
-      const pgn = PRIYOMES_PGN[id] || "";
-      if (pgn) g.loadPGN?.(pgn);
-    }catch{}
+    try{ const pgn = PRIYOMES_PGN[id] || ""; if (pgn) g.loadPGN?.(pgn); }catch{}
     render();
   }
 
-  // Board controls
   $("btnPrev").addEventListener("click", () => { try{ cg()?.prevMove?.(); }catch{} });
   $("btnNext").addEventListener("click", () => { try{ cg()?.nextMove?.(); }catch{} });
   $("btnFlip").addEventListener("click", () => { try{ cg()?.toggleFlip?.(); }catch{} finally { render(); } });
@@ -310,7 +288,6 @@
   $("btnSetupClear").addEventListener("click", () => { try{ cg()?.loadFEN?.(EMPTY_FEN); }catch{} finally { render(); } });
   $("btnSetupInitial").addEventListener("click", () => { try{ cg()?.loadFEN?.(START_FEN); }catch{} finally { render(); } });
 
-  // Draw controls
   $("btnModeSquares").addEventListener("click", () => { try{ const g=cg(); if (!g?.setMode) return; g.setMode(g.ui?.mode==="squares" ? "" : "squares"); }catch{} finally { render(); } });
   $("btnModeArrows").addEventListener("click", () => { try{ const g=cg(); if (!g?.setMode) return; g.setMode(g.ui?.mode==="arrows" ? "" : "arrows"); }catch{} finally { render(); } });
   $("btnClearMarks").addEventListener("click", () => { try{ cg()?.clearMarks?.(); }catch{} finally { render(); } });
@@ -319,7 +296,6 @@
   $("btnPigB").addEventListener("click", () => { try{ cg()?.setPigment?.("B"); }catch{} finally { render(); } });
   $("btnPigY").addEventListener("click", () => { try{ cg()?.setPigment?.("Y"); }catch{} finally { render(); } });
 
-  // Delegated clicks
   document.addEventListener("click", (e) => {
     const t = e.target;
     if (t.classList?.contains("tab") && t.dataset.tab){
@@ -333,9 +309,8 @@
     if (pr && pr.dataset.priyome){ applyPriyome(pr.dataset.priyome); return; }
   });
 
-  // Boot
   createAndSelectGame();
-})();
+}
 </script>
 </body>
 </html>

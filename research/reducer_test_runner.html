@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Reducer Test Runner</title>
 <style>
-  :root { --bg:#0b0d12; --panel:#111827; --b:rgba(255,255,255,.12); --t:#e5e7eb; --m:#93a4c8; }
+  :root { --bg:#0b0d12; --b:rgba(255,255,255,.12); --t:#e5e7eb; }
   body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
   .wrap{display:grid;grid-template-columns: 1.2fr .8fr;gap:12px;height:100vh;padding:12px;box-sizing:border-box;}
   .card{border:1px solid var(--b);border-radius:12px;background:rgba(255,255,255,.03);overflow:hidden;min-height:0;display:flex;flex-direction:column;}
@@ -21,7 +21,6 @@
   .ok{color:#a7f3d0}
   .warn{color:#fde68a}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input{padding:8px 10px;border-radius:10px;border:1px solid var(--b);background:rgba(255,255,255,.06);color:var(--t);min-width:260px}
   @media (max-width: 980px){ .wrap{grid-template-columns:1fr;grid-template-rows:55vh 45vh;} }
 </style>
 </head>
@@ -32,14 +31,14 @@
     <div class="head">
       <div class="row">
         <b>App Under Test</b>
-        <span class="dim" id="appLabel"></span>
+        <span class="dim" id="appLabel">reducer.html</span>
       </div>
       <div class="row">
         <button id="reloadBtn">Reload</button>
       </div>
     </div>
     <div class="frameWrap">
-      <iframe id="frame"></iframe>
+      <iframe id="frame" src="reducer.html"></iframe>
     </div>
   </div>
 
@@ -50,7 +49,6 @@
         <span class="dim" id="status">idle</span>
       </div>
       <div class="row">
-        <input id="appPath" placeholder="app path (default: reducer_v3.html or ?app=...)" />
         <button id="runBtn">Run</button>
       </div>
     </div>
@@ -64,8 +62,6 @@
   const logEl = document.getElementById('log');
   const statusEl = document.getElementById('status');
   const frame = document.getElementById('frame');
-  const appInput = document.getElementById('appPath');
-  const appLabel = document.getElementById('appLabel');
 
   const vars = Object.create(null);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -107,7 +103,7 @@
     const c = rect(child);
     const p = rect(parent);
     if (c.left < p.left - pad || c.top < p.top - pad || c.right > p.right + pad || c.bottom > p.bottom + pad){
-      throw new Error(`Overflow: ${childSel} (${c.left.toFixed(1)},${c.top.toFixed(1)},${c.right.toFixed(1)},${c.bottom.toFixed(1)}) not within ${parentSel} (${p.left.toFixed(1)},${p.top.toFixed(1)},${p.right.toFixed(1)},${p.bottom.toFixed(1)})`);
+      throw new Error(`Overflow: ${childSel} not within ${parentSel}`);
     }
   }
 
@@ -148,7 +144,7 @@
       await sleep(16);
     }
     dispatchPointer("pointerup", b.x, b.y, {buttons:0});
-    await sleep(40);
+    await sleep(60);
   }
 
   async function stepExec(step){
@@ -165,7 +161,7 @@
         const a0 = args[0];
         const needle = String(args[1] ?? "");
         const hay = (typeof a0 === "string" && (a0.startsWith("#") || a0.startsWith(".") || a0.includes("[") ))
-          ? (q(a0).value != null && (q(a0).tagName==="TEXTAREA" || q(a0).tagName==="INPUT") ? q(a0).value : q(a0).textContent).trim()
+          ? (() => { const el=q(a0); return (el.value != null && (el.tagName==="TEXTAREA" || el.tagName==="INPUT") ? el.value : el.textContent).trim(); })()
           : String(a0);
         if (!String(hay).includes(needle)) throw new Error(`expectContains failed: "${needle}" not in "${String(hay)}"`);
         return;
@@ -211,10 +207,10 @@
   }
 
   function parseTests(src){
-    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+    const blocks = src.split(/\\n\\s*\\n/).map(b => b.trim()).filter(Boolean);
     const tests = [];
     for (const b of blocks){
-      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
+      const rawLines = b.split("\\n").map(l => l.replace(/\\r/g,""));
       const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
       if (!lines.length) continue;
       const nameLine = lines.shift();
@@ -224,18 +220,10 @@
       const steps = [];
       let buf = "";
       for (const line of lines){
-        buf = buf ? (buf + "\n" + line) : line;
-        try{
-          const step = JSON.parse(buf);
-          steps.push(step);
-          buf = "";
-        }catch(e){
-          // keep buffering
-        }
+        buf = buf ? (buf + "\\n" + line) : line;
+        try{ steps.push(JSON.parse(buf)); buf = ""; }catch(e){}
       }
-      if (buf.trim()){
-        throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
-      }
+      if (buf.trim()) throw new Error("Could not parse JSON step:\\n" + buf);
       tests.push({name, steps});
     }
     return tests;
@@ -247,18 +235,6 @@
     return await r.text();
   }
 
-  function getDefaultApp(){
-    const u = new URL(location.href);
-    return u.searchParams.get("app") || "reducer_v3.html";
-  }
-
-  function setApp(){
-    const app = appInput.value.trim() || getDefaultApp();
-    appInput.value = app;
-    frame.src = app;
-    appLabel.textContent = app;
-  }
-
   async function run(){
     logEl.innerHTML = "";
     for (const k of Object.keys(vars)) delete vars[k];
@@ -268,7 +244,7 @@
     try{
       testsText = await loadText("reducertests.txt");
       log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
-      log("--- preview ---\n" + testsText.split("\n").slice(0, 18).join("\n") + "\n--- end preview ---", "dim");
+      log("--- preview ---\\n" + testsText.split("\\n").slice(0, 18).join("\\n") + "\\n--- end preview ---", "dim");
     }catch(e){
       log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
       statusEl.textContent = "failed (tests not loaded)";
@@ -289,10 +265,10 @@
     let pass = 0;
 
     for (const t of tests){
-      log("\nTEST: " + t.name, "dim");
+      log("\\nTEST: " + t.name, "dim");
 
       frame.contentWindow.location.reload();
-      await sleep(400);
+      await sleep(700);
 
       try{
         for (const s of t.steps){
@@ -311,7 +287,7 @@
   }
 
   async function runWithFreshLoad(){
-    setApp();
+    frame.src = "reducer.html";
     await new Promise(r => frame.addEventListener("load", r, {once:true}));
     await run();
   }
@@ -319,15 +295,7 @@
   document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
   document.getElementById("reloadBtn").addEventListener("click", () => frame.contentWindow.location.reload());
 
-  appInput.value = getDefaultApp();
-  setApp();
-  log("Ready. Click Run. Default app is reducer_v3.html. Tests loaded from reducertests.txt.", "dim");
-
-  const u = new URL(location.href);
-  if (u.searchParams.get("autorun") === "1"){
-    log("autorun=1 detected — running immediately", "ok");
-    runWithFreshLoad();
-  }
+  log("Ready. Click Run. Runner always loads reducer.html and reducertests.txt.", "dim");
 })();
 </script>
 </body>
