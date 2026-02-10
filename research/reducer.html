@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Priyome</title>
+
+<style>
+:root{
+  --b:#dbe3f0;
+  --bg:#f6f7fb;
+  --panel:#fff;
+}
+body{
+  margin:0;
+  font-family:system-ui;
+  background:var(--bg);
+}
+.layout{
+  display:grid;
+  grid-template-columns: 2fr 1fr;
+  height:100vh;
+  gap:10px;
+  padding:10px;
+}
+.card{
+  background:var(--panel);
+  border:1px solid var(--b);
+  border-radius:12px;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.head{
+  padding:10px;
+  border-bottom:1px solid var(--b);
+  font-size:12px;
+  color:#475569;
+}
+#boardHost{
+  flex:1;
+  display:grid;
+  place-items:center;
+}
+.tabs{
+  display:flex;
+  gap:6px;
+  padding:10px;
+  border-bottom:1px solid var(--b);
+}
+.tab{
+  padding:6px 10px;
+  border:1px solid var(--b);
+  border-radius:10px;
+  font-size:12px;
+  cursor:pointer;
+}
+.tab.active{
+  background:#e0e7ff;
+}
+.pane{
+  display:none;
+  padding:10px;
+  overflow:auto;
+  flex:1;
+}
+.pane.active{ display:block; }
+
+.moves button{
+  display:block;
+  width:100%;
+  margin-bottom:4px;
+}
+.controls{
+  padding:10px;
+  border-top:1px solid var(--b);
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+}
+#setupStrip{
+  padding:8px;
+  border-top:1px solid var(--b);
+}
+</style>
+</head>
+
+<body>
+<div class="layout">
+
+  <!-- BOARD -->
+  <div class="card">
+    <div class="head">Board</div>
+    <div id="boardHost"></div>
+
+    <div id="setupStrip" hidden>
+      <button id="btnSetupInitial">Initial</button>
+      <button id="btnSetupClear">Clear</button>
+    </div>
+
+    <div class="controls">
+      <button id="btnPrev">◀</button>
+      <button id="btnNext">▶</button>
+      <button id="btnFlip">Flip</button>
+      <button id="btnReset">Reset</button>
+      <button id="btnSetup">Setup</button>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" data-tab="moves">Moves</div>
+      <div class="tab" data-tab="errors">Errors</div>
+    </div>
+
+    <div class="pane active" id="pane-moves">
+      <div id="moveList" class="moves"></div>
+    </div>
+
+    <div class="pane" id="pane-errors">
+      <div>Errors: <span id="errCount">0</span></div>
+    </div>
+
+    <div class="head">
+      FEN
+      <div id="fenBox" style="font-family:monospace;"></div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import { createGame, BoardView } from "./scratchchess.js";
+
+////////////////////////////////////////////////////////////////////////////////
+// ENGINE
+////////////////////////////////////////////////////////////////////////////////
+
+const game = createGame({Event:"Reducer"});
+const board = new BoardView(document.getElementById("boardHost"), game);
+
+////////////////////////////////////////////////////////////////////////////////
+// STATE
+////////////////////////////////////////////////////////////////////////////////
+
+let state = {
+  tab: "moves",
+  setup: false,
+  ply: 0,
+  errors: 0
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// REDUCER
+////////////////////////////////////////////////////////////////////////////////
+
+function reduce(s, a){
+  switch(a.type){
+    case "SET_TAB": return {...s, tab:a.tab};
+    case "TOGGLE_SETUP": return {...s, setup:!s.setup};
+    case "SET_PLY": return {...s, ply:a.ply};
+    case "ERROR": return {...s, errors:s.errors+1};
+    default: return s;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// EFFECTS
+////////////////////////////////////////////////////////////////////////////////
+
+function effects(a){
+  try{
+    switch(a.type){
+      case "NEXT": game.nextMove?.(); break;
+      case "PREV": game.prevMove?.(); break;
+      case "RESET": game.loadFEN?.("startpos"); break;
+      case "TOGGLE_SETUP": game.toggleSetup?.(); break;
+      case "FLIP": game.toggleFlip?.(); break;
+      case "SET_PLY":
+        while((game.getPly?.() ?? 0) > a.ply) game.prevMove?.();
+        while((game.getPly?.() ?? 0) < a.ply) game.nextMove?.();
+        break;
+    }
+  }catch(e){
+    dispatch({type:"ERROR"});
+    console.error(e);
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RENDER
+////////////////////////////////////////////////////////////////////////////////
+
+function render(){
+
+  // tabs
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.classList.toggle("active", t.dataset.tab === state.tab);
+  });
+  document.querySelectorAll(".pane").forEach(p=>{
+    p.classList.toggle("active", p.id === "pane-"+state.tab);
+  });
+
+  // setup strip
+  document.getElementById("setupStrip").hidden = !state.setup;
+
+  // fen
+  try{
+    document.getElementById("fenBox").textContent = game.exportFEN?.() || "";
+  }catch{}
+
+  // error count
+  document.getElementById("errCount").textContent = state.errors;
+
+  renderMoves();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// MOVES (projection only)
+////////////////////////////////////////////////////////////////////////////////
+
+function renderMoves(){
+  const list = document.getElementById("moveList");
+  list.innerHTML = "";
+
+  let node = game.root;
+  let i = 0;
+
+  while(node){
+    const next = node.children?.[0];
+    if(!next) break;
+    const btn = document.createElement("button");
+    btn.textContent = next.san || ("move "+(i+1));
+    btn.dataset.ply = i+1;
+    list.appendChild(btn);
+    node = next;
+    i++;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DISPATCH
+////////////////////////////////////////////////////////////////////////////////
+
+function dispatch(a){
+  state = reduce(state,a);
+  effects(a);
+  render();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// EVENT DELEGATION
+////////////////////////////////////////////////////////////////////////////////
+
+document.addEventListener("click", e=>{
+  const t = e.target;
+
+  if(t.dataset.tab) dispatch({type:"SET_TAB", tab:t.dataset.tab});
+  if(t.id==="btnNext") dispatch({type:"NEXT"});
+  if(t.id==="btnPrev") dispatch({type:"PREV"});
+  if(t.id==="btnReset") dispatch({type:"RESET"});
+  if(t.id==="btnFlip") dispatch({type:"FLIP"});
+  if(t.id==="btnSetup") dispatch({type:"TOGGLE_SETUP"});
+  if(t.id==="btnSetupClear") game.clearBoard?.();
+  if(t.id==="btnSetupInitial") game.loadFEN?.("startpos");
+
+  if(t.dataset.ply) dispatch({type:"SET_PLY", ply:Number(t.dataset.ply)});
+});
+
+////////////////////////////////////////////////////////////////////////////////
+// ENGINE → STATE SYNC
+////////////////////////////////////////////////////////////////////////////////
+
+game.onChange?.(()=>{
+  dispatch({type:"SET_PLY", ply:game.getPly?.() ?? 0});
+});
+
+render();
+</script>
+</body>
+</html>
