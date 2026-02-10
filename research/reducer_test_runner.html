@@ -148,6 +148,14 @@
     return x;
   }
 
+  // Strict selector check: only treat as selector if it *starts* like a selector.
+  function looksLikeSelector(s){
+    if (typeof s !== "string") return false;
+    const t = s.trim();
+    if (!t) return false;
+    return t.startsWith("#") || t.startsWith(".") || t.startsWith("["); // attribute selectors OK
+  }
+
   function q(sel) {
     const el = frame.contentDocument?.querySelector(sel);
     if (!el) throw new Error(`Missing element: ${sel}`);
@@ -213,7 +221,7 @@
       await sleep(16);
     }
     dispatchPointer("pointerup", b.x, b.y, {buttons:0});
-    await sleep(40);
+    await sleep(60);
   }
 
   async function stepExec(step){
@@ -223,7 +231,7 @@
     switch(op){
       case "sleep": await sleep(args[0]||0); return;
       case "waitFor": await waitFor(args[0], args[1] ?? 2000); return;
-      case "click": q(args[0]).dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view: frame.contentWindow})); await sleep(10); return;
+      case "click": q(args[0]).dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view: frame.contentWindow})); await sleep(12); return;
       case "expectVisible": await waitFor(args[0], 500); return;
 
       case "expectContains": {
@@ -234,9 +242,7 @@
           if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) return (el.value || "").trim();
           return (el.textContent || "").trim();
         };
-        const hay = (typeof a0 === "string" && (a0.startsWith("#") || a0.startsWith(".") || a0.includes("[")))
-          ? readSel(a0)
-          : String(a0);
+        const hay = looksLikeSelector(a0) ? readSel(a0) : String(a0);
         if (!String(hay).includes(needle)) throw new Error(`expectContains failed: "${needle}" not in "${String(hay)}"`);
         return;
       }
@@ -335,7 +341,6 @@
     try{
       testsText = await loadText("reducertests.txt");
       log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
-      log("--- preview ---\n" + testsText.split("\n").slice(0, 18).join("\n") + "\n--- end preview ---", "dim");
     }catch(e){
       log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
       statusEl.textContent = "failed (tests not loaded)";
@@ -359,7 +364,7 @@
       log("\nTEST: " + t.name, "dim");
 
       frame.contentWindow.location.reload();
-      await sleep(450);
+      await sleep(520);
 
       try{
         for (const s of t.steps){
