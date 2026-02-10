@@ -1,0 +1,57 @@
+# reducertests.txt — UI contract for reducer slice
+# Format: blank-line separated TEST blocks.
+# Each non-empty non-comment line is a JSON array: ["op", ...args]
+
+TEST Board stays contained in its panel (no overflow)
+["waitFor","#boardHost",2000]
+["expectContained","#boardHost",".card",6] 
+
+TEST Switch to Games tab shows list
+["click","[data-tab='games']"]
+["waitFor","#gameList",1000]
+["expectVisible","#gameList"]
+
+TEST Creating a new game adds another selectable card
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",1]
+["click","#btnNewGame"]
+["sleep",50]
+["countAtLeast","#gameList .gameCard",2]
+
+TEST Selecting a different game changes the displayed Game label
+["click","[data-tab='games']"]
+["storeText","#gameName","g0"]
+["click","#btnNewGame"]
+["sleep",50]
+["click","#gameList .gameCard:first-child"]
+["sleep",50]
+["storeText","#gameName","g1"]
+["expectNotEqual","$g0","$g1"]
+
+# This is the key behavioral contract you described:
+# If we mutate Game A to a different position, then selecting Game B should NOT show Game A's position.
+# If setup clear isn't wired yet, this test will fail early (which is still useful).
+TEST Selecting different games changes board state (FEN differs)
+["click","#btnReset"]
+["sleep",50]
+["storeText","#fenBox","fenA0"]
+["click","#btnSetup"]
+["sleep",50]
+["click","#btnSetupClear"]
+["sleep",50]
+["storeText","#fenBox","fenA1"]
+["expectNotEqual","$fenA0","$fenA1"]
+["click","[data-tab='games']"]
+["click","#btnNewGame"]
+["sleep",50]
+["click","#gameList .gameCard:first-child"]
+["sleep",50]
+["storeText","#fenBox","fenBackToA"]
+["expectContains","$fenBackToA","rnbqkbnr"]
+
+TEST Performance budget: tab switch + game select under 200ms
+["timeUnder",200,[
+  ["click","[data-tab='games']"],
+  ["click","#btnNewGame"],
+  ["click","#gameList .gameCard:first-child"]
+]]
