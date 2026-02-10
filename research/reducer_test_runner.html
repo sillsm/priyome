@@ -11,12 +11,14 @@
   .card{border:1px solid var(--b);border-radius:12px;background:rgba(255,255,255,.03);overflow:hidden;min-height:0;display:flex;flex-direction:column;}
   .head{padding:10px 12px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;gap:10px}
   iframe{width:100%;height:100%;border:0;background:white}
-  .log{padding:10px 12px;overflow:auto;flex:1;font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:13px;line-height:1.35;}
+  .log{padding:10px 12px;overflow:auto;flex:1;font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:13px;line-height:1.35;white-space:pre-wrap}
   button{padding:8px 10px;border-radius:10px;border:1px solid var(--b);background:rgba(255,255,255,.06);color:var(--t);cursor:pointer;}
   .pass{color:#a7f3d0}
   .fail{color:#fecaca}
   .skip{color:#fde68a}
   .dim{color:rgba(229,231,235,.7)}
+  .ok{color:#a7f3d0}
+  .warn{color:#fde68a}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   input{padding:8px 10px;border-radius:10px;border:1px solid var(--b);background:rgba(255,255,255,.06);color:var(--t);min-width:260px}
   @media (max-width: 980px){ .wrap{grid-template-columns:1fr;grid-template-rows:55vh 45vh;} }
@@ -45,8 +47,9 @@
         <span class="dim" id="status">idle</span>
       </div>
       <div class="row">
-        <input id="appPath" placeholder="app.html path (default from ?app=...)" />
+        <input id="appPath" placeholder="app path (default: reducer.html or ?app=...)" />
         <button id="runBtn">Run</button>
+        <button id="autoBtn" title="Auto-run on load">Auto</button>
       </div>
     </div>
     <div class="log" id="log"></div>
@@ -63,7 +66,6 @@
   const appLabel = document.getElementById('appLabel');
 
   const vars = Object.create(null);
-
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   function log(msg, cls="") {
@@ -151,6 +153,7 @@
       case "storeText": {
         const el = q(args[0]);
         vars[args[1]] = (el.value != null && el.tagName === "TEXTAREA") ? el.value : el.textContent.trim();
+        log(`stored $${args[1]} = ${JSON.stringify(vars[args[1]])}`, "dim");
         return;
       }
 
@@ -181,13 +184,13 @@
 
   function parseTests(src){
     const blocks = src
-      .split(/\\n\\s*\\n/)
+      .split(/\n\s*\n/)
       .map(b => b.trim())
       .filter(Boolean);
 
     const tests = [];
     for (const b of blocks){
-      const lines = b.split("\\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      const lines = b.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
       if (!lines.length) continue;
       const nameLine = lines.shift();
       if (!nameLine.startsWith("TEST ")) continue;
@@ -204,30 +207,56 @@
     return await r.text();
   }
 
+  function getDefaultApp(){
+    const u = new URL(location.href);
+    return u.searchParams.get("app") || "reducer.html";
+  }
+
+  function setApp(){
+    const app = appInput.value.trim() || getDefaultApp();
+    appInput.value = app;
+    frame.src = app;
+    appLabel.textContent = app;
+  }
+
   async function run(){
     logEl.innerHTML = "";
     for (const k of Object.keys(vars)) delete vars[k];
-    statusEl.textContent = "running";
 
-    const testsText = await loadText("./reducertests.txt");
+    statusEl.textContent = "loading tests…";
+    let testsText;
+    try{
+      testsText = await loadText("reducertests.txt");
+      log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
+      const preview = testsText.split("\n").slice(0, 12).join("\n");
+      log("--- preview ---\n" + preview + "\n--- end preview ---", "dim");
+    }catch(e){
+      log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
+      statusEl.textContent = "failed (tests not loaded)";
+      return;
+    }
+
     const tests = parseTests(testsText);
+    log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
 
+    statusEl.textContent = "running";
     let pass = 0;
+
     for (const t of tests){
-      log(`\\nTEST: ${t.name}`, "dim");
+      log("\nTEST: " + t.name, "dim");
 
       frame.contentWindow.location.reload();
-      await sleep(300);
+      await sleep(350);
 
       try{
         for (const s of t.steps){
           log("  " + JSON.stringify(s));
           await stepExec(s);
         }
-        log(`✔ PASS ${t.name}`, "pass");
+        log("✔ PASS " + t.name, "pass");
         pass++;
       }catch(e){
-        log(`✘ FAIL ${t.name}`, "fail");
+        log("✘ FAIL " + t.name, "fail");
         log(String(e && e.message ? e.message : e), "fail");
       }
     }
@@ -235,26 +264,36 @@
     statusEl.textContent = `done (${pass}/${tests.length})`;
   }
 
-  function setAppFromQueryOrInput(){
-    const u = new URL(location.href);
-    const qapp = u.searchParams.get("app");
-    const app = appInput.value.trim() || qapp || "staging_reducer_refactor.html";
-    appInput.value = app;
-    frame.src = app;
-    appLabel.textContent = app;
-  }
-
-  document.getElementById("runBtn").addEventListener("click", async () => {
-    setAppFromQueryOrInput();
+  async function runWithFreshLoad(){
+    setApp();
     await new Promise(r => frame.addEventListener("load", r, {once:true}));
     await run();
+  }
+
+  document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
+  document.getElementById("reloadBtn").addEventListener("click", () => frame.contentWindow.location.reload());
+
+  // Auto-run toggle (click once to run; click again to disable)
+  let auto = false;
+  document.getElementById("autoBtn").addEventListener("click", async () => {
+    auto = !auto;
+    log(`Auto-run: ${auto ? "ON" : "OFF"}`, auto ? "ok" : "warn");
+    if (auto) await runWithFreshLoad();
   });
 
-  document.getElementById("reloadBtn").addEventListener("click", () => {
-    frame.contentWindow.location.reload();
-  });
+  // Initial load (no run) — default app is reducer.html
+  appInput.value = getDefaultApp();
+  setApp();
 
-  setAppFromQueryOrInput();
+  // If ?autorun=1, run immediately and show confirmation
+  const u = new URL(location.href);
+  if (u.searchParams.get("autorun") === "1"){
+    log("autorun=1 detected — running immediately", "ok");
+    runWithFreshLoad();
+  } else {
+    log("Ready. Click Run. Runner will fetch reducertests.txt from the same folder.", "dim");
+    log("Default app: reducer.html (override with ?app=...)", "dim");
+  }
 })();
 </script>
 </body>
