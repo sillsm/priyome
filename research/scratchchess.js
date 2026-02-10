@@ -625,7 +625,7 @@ export class Game {
     return s;
   }
 
-  _moveToSAN(fromIdx, toIdx, moveInfo) {
+  _moveToSAN(fromIdx, toIdx, moveInfo, snapBeforeForDisambig) {
     const piece = this._pieceById(moveInfo.pieceId);
     const t = moveInfo.pieceType;
     const color = moveInfo.pieceColor;
@@ -647,7 +647,7 @@ export class Game {
       if (moveInfo.promo) san += "=" + moveInfo.promo.toUpperCase();
     } else {
       san += this._pieceSANLetter(t);
-      san += this._disambiguation(fromIdx, toIdx, piece);
+      san += this._disambiguationUsingSnapBefore(fromIdx, toIdx, snapBeforeForDisambig);
       if (cap) san += "x";
       san += sqName(toIdx);
     }
@@ -730,6 +730,25 @@ export class Game {
   promoteToBishop() { return this.resolvePendingPromotion("B"); }
   promoteToKnight() { return this.resolvePendingPromotion("N"); }
 
+  _disambiguationUsingSnapBefore(fromIdx, toIdx, snapBefore) {
+    // Disambiguation must be computed in the *pre-move* position, otherwise
+   // the moved piece can block the destination square and hide ambiguity.
+   if (!snapBefore) {
+     const p = this.state.board[fromIdx];
+     if (!p) return "";
+      return this._disambiguation(fromIdx, toIdx, p);
+   }
+
+   const post = snapshotFrom(this.state);
+   try {
+    restoreInto(this.state, snapBefore);
+      const p = this.state.board[fromIdx];
+      if (!p) return "";
+      return this._disambiguation(fromIdx, toIdx, p);
+    } finally {
+      restoreInto(this.state, post);
+    }
+  }
 
   _finalizeMove(fromIdx, toIdx, promoLetterOrNull) {
     const S = this.state;
@@ -737,7 +756,7 @@ export class Game {
     const uci = sqName(fromIdx) + sqName(toIdx) + (promoLetterOrNull ? promoLetterOrNull.toLowerCase() : "");
 
     const moveInfo = this._applyMoveRaw(fromIdx, toIdx, promoLetterOrNull);
-    const san = this._moveToSAN(fromIdx, toIdx, moveInfo);
+    const san = this._moveToSAN(fromIdx, toIdx, moveInfo, snapBefore);
 
     const parent = this.curNode;
     const node = makeNode(parent);
