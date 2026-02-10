@@ -49,7 +49,6 @@
       <div class="row">
         <input id="appPath" placeholder="app path (default: reducer.html or ?app=...)" />
         <button id="runBtn">Run</button>
-        <button id="autoBtn" title="Auto-run on load">Auto</button>
       </div>
     </div>
     <div class="log" id="log"></div>
@@ -182,6 +181,7 @@
     }
   }
 
+  // Robust parser: supports steps written across multiple lines by buffering until JSON parses.
   function parseTests(src){
     const blocks = src
       .split(/\n\s*\n/)
@@ -190,12 +190,36 @@
 
     const tests = [];
     for (const b of blocks){
-      const lines = b.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      const rawLines = b.split("\n");
+      const lines = rawLines
+        .map(l => l.replace(/\r/g,""))
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith("#"));
+
       if (!lines.length) continue;
       const nameLine = lines.shift();
       if (!nameLine.startsWith("TEST ")) continue;
       const name = nameLine.slice(5).trim();
-      const steps = lines.map(l => JSON.parse(l));
+
+      const steps = [];
+      let buf = "";
+      for (const line of lines){
+        // If line is a lone ']' or ']]' etc, still buffer it.
+        buf = buf ? (buf + "\n" + line) : line;
+        try{
+          const step = JSON.parse(buf);
+          steps.push(step);
+          buf = "";
+        }catch(e){
+          // Keep buffering. Only throw if this is not an "incomplete JSON" situation.
+          // We'll decide at end.
+        }
+      }
+      if (buf.trim()){
+        // Give a helpful error that points at the offending buffered chunk.
+        throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
+      }
+
       tests.push({name, steps});
     }
     return tests;
@@ -228,16 +252,22 @@
     try{
       testsText = await loadText("reducertests.txt");
       log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
-      const preview = testsText.split("\n").slice(0, 12).join("\n");
-      log("--- preview ---\n" + preview + "\n--- end preview ---", "dim");
+      log("--- preview ---\n" + testsText.split("\n").slice(0, 16).join("\n") + "\n--- end preview ---", "dim");
     }catch(e){
       log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
       statusEl.textContent = "failed (tests not loaded)";
       return;
     }
 
-    const tests = parseTests(testsText);
-    log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
+    let tests;
+    try{
+      tests = parseTests(testsText);
+      log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
+    }catch(e){
+      log(`✘ FAILED to parse tests: ${e.message || e}`, "fail");
+      statusEl.textContent = "failed (parse error)";
+      return;
+    }
 
     statusEl.textContent = "running";
     let pass = 0;
@@ -273,26 +303,16 @@
   document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
   document.getElementById("reloadBtn").addEventListener("click", () => frame.contentWindow.location.reload());
 
-  // Auto-run toggle (click once to run; click again to disable)
-  let auto = false;
-  document.getElementById("autoBtn").addEventListener("click", async () => {
-    auto = !auto;
-    log(`Auto-run: ${auto ? "ON" : "OFF"}`, auto ? "ok" : "warn");
-    if (auto) await runWithFreshLoad();
-  });
-
-  // Initial load (no run) — default app is reducer.html
+  // Initial load (no run)
   appInput.value = getDefaultApp();
   setApp();
+  log("Ready. Click Run. Default app is reducer.html. Tests loaded from reducertests.txt.", "dim");
 
-  // If ?autorun=1, run immediately and show confirmation
+  // If ?autorun=1, run immediately
   const u = new URL(location.href);
   if (u.searchParams.get("autorun") === "1"){
     log("autorun=1 detected — running immediately", "ok");
     runWithFreshLoad();
-  } else {
-    log("Ready. Click Run. Runner will fetch reducertests.txt from the same folder.", "dim");
-    log("Default app: reducer.html (override with ?app=...)", "dim");
   }
 })();
 </script>
