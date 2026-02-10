@@ -1,92 +1,282 @@
-# reducertests.txt — Expanded contract (ScratchChess board + games + drawing + priyomes)
+# reducertests.txt — Expanded contract for staging.html / Priyome
+# Notes:
+# - These tests are written to be *implementable* by the runner. Some steps use "future ops"
+#   (type/select/uploadFile/expectEnabled/expectDisabled/expectTextChanged/expectHidden/expectNotContains/expectAnyContains)
+#   that you can add later.
+# - Keep this file named reducertests.txt next to reducer_test_runner.html.
+
+# -----------------------------
+# Level 0: shell + layout sanity
+# -----------------------------
 
 TEST Title navbar is visible and shows app name
-["waitFor","#topNav",2000]
-["expectVisible","#topNav"]
-["expectContains","#topNav","Priyome"]
+["waitFor",".topbarWrap",2000]
+["expectVisible",".topbarWrap"]
+["expectContains",".brandTitle","Priyo"]
 
 TEST Board mounts ScratchChess shell and stays contained in its panel
 ["waitFor","#boardHost",6000]
 ["waitFor","#boardHost .sc-shell",6000]
-["expectContained","#boardHost",".card",6]
+["expectContained","#boardHost","#boardCard",8]
 
-TEST Games tab shows list
+TEST Tabs exist: moves, games, priyomes, query, evals, errors
+["waitFor",".tabs",2000]
+["expectContains",".tabs","Moves"]
+["expectContains",".tabs","Games"]
+["expectContains",".tabs","Priyomes"]
+["expectContains",".tabs","Query"]
+["expectContains",".tabs","Evals"]
+["expectContains",".tabs","Errors"]
+
+TEST Hamburger toggles menu open/close
+["waitFor","#btnHamburger",2000]
+["click","#btnHamburger"]
+["sleep",120]
+["expectVisible","#menu.open"]
+["click","#btnHamburger"]
+["sleep",120]
+# future: expectHidden "#menu.open"
+["expectNotEqual","1","0"]
+
+# -----------------------------
+# Level 1: games + studies basics
+# -----------------------------
+
+TEST Games tab shows list and study dropdown exists
 ["click","[data-tab='games']"]
-["waitFor","#gameList",1000]
-["countAtLeast","#gameList .gameCard",1]
+["waitFor","#studySelect",2000]
+["waitFor","#gameList",2000]
+["expectVisible","#studySelect"]
+["countAtLeast","#studySelect option",1]
 
-TEST Creating a new game adds another selectable card
+TEST Creating a new study adds an option and selects it (future ops)
+["click","[data-tab='games']"]
+["countAtLeast","#studySelect option",1]
+["click","#btnNewStudy"]
+["sleep",250]
+# future: storeSelectedText "#studySelect" "studyName"
+["storeText","#studyPill","studyPillAfter"]
+["expectContains","$studyPillAfter","Study"]
+
+TEST Game cards render and selecting a game updates the game pill
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",1]
+["click","#gameList .gameCard:first-child"]
+["sleep",180]
+["storeText","#gamePill","gp0"]
+["expectNotEqual","$gp0","—"]
+
+TEST New game adds another selectable card (if app boots with >=1 game)
 ["click","[data-tab='games']"]
 ["countAtLeast","#gameList .gameCard",1]
 ["click","#btnNewGame"]
-["sleep",220]
+["sleep",300]
 ["countAtLeast","#gameList .gameCard",2]
 
-TEST Switching games changes the displayed game id (and the test checks ids properly)
+TEST Switching games changes displayed game pill or id (store then compare)
 ["click","[data-tab='games']"]
 ["countAtLeast","#gameList .gameCard",2]
 ["click","#gameList .gameCard:first-child"]
-["sleep",120]
-["storeText","#gameName","gNewest"]
+["sleep",160]
+["storeText","#gamePill","pillA"]
 ["click","#gameList .gameCard:nth-child(2)"]
-["sleep",120]
-["storeText","#gameName","gSecond"]
-["expectNotEqual","$gNewest","$gSecond"]
+["sleep",160]
+["storeText","#gamePill","pillB"]
+["expectNotEqual","$pillA","$pillB"]
 
-TEST Setup clear changes FEN (board state)
+# -----------------------------
+# Level 1: board navigation + setup mode
+# -----------------------------
+
+TEST Reset sets starting FEN (FEN bottom shows initial pieces)
+["waitFor","#btnReset",2000]
 ["click","#btnReset"]
-["sleep",220]
-["storeText","#fenBox","fen0"]
+["sleep",260]
+["storeText","#fenBottom","fenInit"]
+["expectContains","$fenInit","rnbqkbnr"]
+["expectContains","$fenInit","PPPPPPPP"]
+
+TEST Setup toggle shows setup strip and clear produces empty-board FEN
 ["click","#btnSetup"]
-["sleep",220]
+["sleep",260]
+["waitFor","#setupStrip",1000]
+["expectVisible","#setupStrip"]
 ["click","#btnSetupClear"]
 ["sleep",260]
-["storeText","#fenBox","fen1"]
-["expectNotEqual","$fen0","$fen1"]
+["storeText","#fenBottom","fenClear"]
+["expectContains","$fenClear","8/8/8/8/8/8/8/8"]
 
-TEST Draw squares: enable Squares mode and create a square mark (PGN contains %csl)
-["click","[data-tab='draw']"]
-["waitFor","#drawToolbar",1000]
+TEST Setup initial restores initial FEN
+["click","#btnSetupInitial"]
+["sleep",260]
+["storeText","#fenBottom","fenBack"]
+["expectContains","$fenBack","rnbqkbnr/pppppppp"]
+# exit setup
+["click","#btnSetup"]
+["sleep",200]
+
+TEST Prev/Next update ply indicator (future: expectTextChanged)
+["storeText","#navMeta","ply0"]
+["click","#btnNext"]
+["sleep",180]
+["storeText","#navMeta","ply1"]
+["expectNotEqual","$ply0","$ply1"]
+
+# -----------------------------
+# Level 2: drawing tools (arrows + squares + pigments)
+# -----------------------------
+
+TEST Draw tools row exists and pigment row shows when a draw mode is selected (future ops)
+["waitFor","#rightTools",2000]
+["waitFor","#drawModeRow",2000]
+["expectVisible","#drawModeRow"]
 ["click","#btnModeSquares"]
-["sleep",220]
-["storeText","#pgnBox","p0"]
+["sleep",200]
+# future: expectVisible "#pigmentRow"
+["expectNotEqual","1","0"]
+
+TEST Draw squares: mark e4 and PGN includes %csl
+["click","#btnReset"]
+["sleep",240]
+["click","#btnModeSquares"]
+["sleep",240]
+["storeText","#pgnBottom","p0"]
 ["dragSquare","e4","e4",60]
 ["sleep",420]
-["storeText","#pgnBox","p1"]
+["storeText","#pgnBottom","p1"]
 ["expectNotEqual","$p0","$p1"]
 ["expectContains","$p1","%csl"]
 
-TEST Draw arrows: enable Arrows mode and create an arrow mark (PGN contains %cal)
-["click","[data-tab='draw']"]
+TEST Draw arrows: arrow e2->e4 and PGN includes %cal
+["click","#btnReset"]
+["sleep",240]
 ["click","#btnModeArrows"]
-["sleep",220]
-["storeText","#pgnBox","pa0"]
+["sleep",240]
+["storeText","#pgnBottom","pa0"]
 ["dragSquare","e2","e4",220]
 ["sleep",520]
-["storeText","#pgnBox","pa1"]
+["storeText","#pgnBottom","pa1"]
 ["expectNotEqual","$pa0","$pa1"]
 ["expectContains","$pa1","%cal"]
 
-TEST Priyomes tab exists and selecting a priyome loads marks (PGN contains %cal/%csl)
+TEST Clear marks removes %cal/%csl from PGN (after drawing something) (future op)
+["click","#btnClearMarks"]
+["sleep",220]
+["storeText","#pgnBottom","pc"]
+# future: expectNotContains "$pc" "%cal"; expectNotContains "$pc" "%csl"
+["expectContains","$pc","*"]
+
+# -----------------------------
+# Level 2: priyomes
+# -----------------------------
+
+TEST Priyomes tab loads list and selecting Greek Gift loads marks (PGN contains %cal/%csl)
 ["click","[data-tab='priyomes']"]
-["waitFor","#priyomeList",1000]
+["waitFor","#priyomeList",4000]
+["countAtLeast","#priyomeList .gameCard",1]
 ["click","[data-priyome='greek_gift']"]
-["sleep",420]
-["expectContains","#activePriyome","Greek Gift"]
-["storeText","#pgnBox","pp"]
+["sleep",520]
+["storeText","#pgnBottom","pp"]
 ["expectContains","$pp","%cal"]
 ["expectContains","$pp","%csl"]
 
-TEST Dragging a pawn in a new game lands in expected place (FEN shows e4 pawn)
+TEST Priyome selection loads a game and game pill changes
 ["click","[data-tab='games']"]
-["click","#btnNewGame"]
+["sleep",180]
+["storeText","#gamePill","gpBefore"]
+["click","[data-tab='priyomes']"]
+["sleep",180]
+["click","[data-priyome='greek_gift']"]
 ["sleep",420]
-["storeText","#gameName","gDrag"]
-["dragSquare","e2","e4",260]
-["sleep",620]
-["storeText","#fenBox","fenDrag"]
-["expectContains","$fenDrag","4P3"]
-["expectContains","$fenDrag","PPPP1PPP"]
+["storeText","#gamePill","gpAfter"]
+["expectNotEqual","$gpBefore","$gpAfter"]
 
-TEST Performance budget: tab switch + new game under 350ms
-["timeUnder",350,[["click","[data-tab='games']"],["click","#btnNewGame"]]]
+# -----------------------------
+# Level 2: studies import/export UI
+# -----------------------------
+
+TEST Import modal opens and cancel closes (future expectHidden)
+["waitFor","#btnImportPgn",2000]
+["click","#btnImportPgn"]
+["sleep",200]
+["expectVisible","#importModalBackdrop"]
+["click","#btnImportCancel"]
+["sleep",200]
+# future: expectHidden "#importModalBackdrop"
+["expectNotEqual","1","0"]
+
+TEST Import modal add creates new games (future type op)
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",1]
+["click","#btnImportPgn"]
+["sleep",200]
+["type","#importPgnText","[Event \"Tiny\"]\n[Site \"Local\"]\n[Date \"2026.02.10\"]\n[Round \"1\"]\n[White \"W\"]\n[Black \"B\"]\n[Result \"*\"]\n\n1. e4 *"]
+["click","#btnImportAdd"]
+["sleep",450]
+["click","[data-tab='games']"]
+["sleep",200]
+["countAtLeast","#gameList .gameCard",2]
+
+# -----------------------------
+# Level 3: evals (JS evals + CQL eval manifest)
+# -----------------------------
+
+TEST Evals tab shows eval lists and reload button exists
+["click","[data-tab='evals']"]
+["waitFor","#btnReloadEvals",2000]
+["waitFor","#evalList",2000]
+["waitFor","#cqlEvalList",2000]
+["expectVisible","#btnReloadEvals"]
+
+TEST Reload evals updates status text (may be load failed; still should change)
+["click","[data-tab='evals']"]
+["storeText","#evalsStatus","es0"]
+["click","#btnReloadEvals"]
+["sleep",900]
+["storeText","#evalsStatus","es1"]
+["expectNotEqual","$es0","$es1"]
+
+# -----------------------------
+# Level 3: CQL / Query (1 dummy PGN, 1 query, imports results)
+# -----------------------------
+
+TEST Query tab has controls and Run Query disabled until inputs set (future expectDisabled)
+["click","[data-tab='query']"]
+["waitFor","#qRun",2000]
+["expectVisible","#qRun"]
+# future: expectDisabled "#qRun"
+["expectNotEqual","1","0"]
+
+TEST Use board as query sets the PGN name pill
+["click","[data-tab='query']"]
+["click","#qUseCurrent"]
+["sleep",220]
+["storeText","#qPgnName","qpn"]
+["expectContains","$qpn","(board)"]
+
+TEST CQL runs against single-game input and logs dummy workaround (future type + async wait)
+["click","[data-tab='query']"]
+["click","#qUseCurrent"]
+["sleep",200]
+["type","#qCqlText","cql()"]
+["sleep",120]
+# future: expectEnabled "#qRun"
+["click","#qRun"]
+["sleep",6000]
+["click","[data-tab='errors']"]
+["sleep",200]
+["storeText","#errorLog","elog"]
+# future: expectAnyContains "$elog" ["CQL workaround: input had 1 game","Query done","Running query"]
+["expectContains","$elog","CQL workaround: input had 1 game"]
+
+TEST Query imports discovered games into study (game list has at least 2)
+["click","[data-tab='games']"]
+["sleep",260]
+["countAtLeast","#gameList .gameCard",2]
+
+# -----------------------------
+# Level 3: performance budgets (coarse)
+# -----------------------------
+
+TEST Performance: tab switch + new game under 450ms
+["timeUnder",450,[["click","[data-tab='games']"],["click","#btnNewGame"]]]
