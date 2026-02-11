@@ -3,460 +3,402 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Priyome Reducer Test Runner</title>
+<title>Reducer Test Runner</title>
 <style>
-  :root { --bg:#0b0d12; --b:rgba(255,255,255,.12); --t:#e5e7eb; }
-  *{ box-sizing:border-box; }
-  html,body{ height:100%; }
+  :root { --bg:#0b0d12; --panel:#111827; --b:rgba(255,255,255,.12); --t:#e5e7eb; --m:#93a4c8; }
   body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
-  .wrap{
-    display:grid;
-    grid-template-columns: 1.2fr .8fr;
-    gap:12px;
-    height:100vh;
-    padding:12px;
-  }
-  .card{
-    border:1px solid var(--b);
-    border-radius:12px;
-    background:rgba(255,255,255,.03);
-    overflow:hidden;
-    min-height:0;
-    display:flex;
-    flex-direction:column;
-  }
-  .head{
-    padding:10px 12px;
-    border-bottom:1px solid var(--b);
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px
-  }
-  .frameWrap{
-    flex:1;
-    min-height:0;
-    display:flex;
-    align-items:stretch;
-    justify-content:stretch;
-    padding:0;
-  }
-  iframe{
-    border:0;
-    background:white;
-    width:100%;
-    height:100%;
-    display:block;
-  }
-  .log{
-    padding:10px 12px;
-    overflow:auto;
-    flex:1;
-    min-height:0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size:13px;
-    line-height:1.35;
-    white-space:pre-wrap
-  }
-  button{
-    padding:8px 10px;
-    border-radius:10px;
-    border:1px solid var(--b);
-    background:rgba(255,255,255,.06);
-    color:var(--t);
-    cursor:pointer;
-  }
-  .pass{color:#a7f3d0}
-  .fail{color:#fecaca}
-  .skip{color:#fde68a}
-  .dim{color:rgba(229,231,235,.7)}
-  .ok{color:#a7f3d0}
-  .warn{color:#fde68a}
+  .wrap{display:grid;grid-template-columns: 1.2fr .8fr;gap:12px;height:100vh;padding:12px;box-sizing:border-box;}
+  .card{background:var(--panel);border:1px solid var(--b);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+  .head{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--b);}
+  .head .title{font-weight:700}
+  .head .sp{flex:1}
+  .btn{appearance:none;border:1px solid var(--b);background:rgba(255,255,255,.06);color:var(--t);
+       padding:8px 10px;border-radius:10px;cursor:pointer;font-weight:600}
+  .btn:hover{background:rgba(255,255,255,.10)}
+  .btn:active{transform:translateY(1px)}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input{
-    padding:8px 10px;
-    border-radius:10px;
-    border:1px solid var(--b);
-    background:rgba(255,255,255,.06);
-    color:var(--t);
-    min-width:260px
-  }
+  input[type="text"]{background:rgba(255,255,255,.06);border:1px solid var(--b);color:var(--t);
+                     padding:8px 10px;border-radius:10px;min-width:220px;flex:1}
+  iframe{width:100%;height:100%;border:0;background:#fff}
+  .body{padding:10px 12px;display:flex;flex-direction:column;gap:10px;min-height:0;height:100%}
+  pre{white-space:pre-wrap;word-break:break-word;margin:0;padding:10px;border-radius:12px;
+      background:rgba(0,0,0,.35);border:1px solid var(--b);min-height:0;overflow:auto;flex:1}
+  .hint{color:var(--m);font-size:13px;line-height:1.3}
+  .pill{display:inline-flex;align-items:center;gap:8px;color:var(--m);font-size:13px}
+  .ok{color:#7CFC9A}
+  .bad{color:#FF8B8B}
   @media (max-width: 980px){
-    .wrap{
-      grid-template-columns:1fr;
-      grid-template-rows:55vh 45vh;
-      height:100vh;
-    }
+    .wrap{grid-template-columns:1fr;grid-template-rows: 1.1fr .9fr;}
   }
 </style>
 </head>
 <body>
 <div class="wrap">
-
   <div class="card">
     <div class="head">
-      <div class="row">
-        <b>App Under Test</b>
-        <span class="dim" id="appLabel"></span>
-      </div>
-      <div class="row">
-        <button id="reloadBtn">Reload</button>
-      </div>
+      <div class="title">App Under Test</div>
+      <div class="sp"></div>
+      <button class="btn" id="btnReload">Reload</button>
     </div>
-    <div class="frameWrap">
-      <iframe id="frame" title="app-under-test"></iframe>
+    <div class="body" style="padding:0">
+      <iframe id="appFrame" src="reducer.html"></iframe>
     </div>
   </div>
 
   <div class="card">
     <div class="head">
-      <div class="row">
-        <b>Runner</b>
-        <span class="dim" id="status">idle</span>
-      </div>
-      <div class="row">
-        <input id="appPath" placeholder="app path (default: ?app=staging.html or reducer.html)" />
-        <button id="runBtn">Run</button>
-      </div>
+      <div class="title">Runner</div>
+      <div class="sp"></div>
+      <span class="pill" id="statusPill">idle</span>
+      <button class="btn" id="btnCopy" title="Copy results">📋</button>
+      <button class="btn" id="btnRun">Run</button>
     </div>
-    <div class="log" id="log"></div>
+    <div class="body">
+      <div class="row">
+        <input id="appUrl" type="text" value="reducer.html" />
+        <button class="btn" id="btnOpenApp">Open</button>
+        <button class="btn" id="btnLoadTests">Load tests</button>
+      </div>
+      <div class="hint">
+        Looks for <b>reducer.html</b> and <b>reducertests.txt</b> in the same folder.
+        Uses an iframe and runs steps against the iframe document.
+      </div>
+      <pre id="log"></pre>
+    </div>
   </div>
-
 </div>
 
 <script>
 (() => {
-  const logEl = document.getElementById('log');
-  const statusEl = document.getElementById('status');
-  const frame = document.getElementById('frame');
-  const appInput = document.getElementById('appPath');
-  const appLabel = document.getElementById('appLabel');
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const logEl = $("#log");
+  const statusPill = $("#statusPill");
+  const appFrame = $("#appFrame");
+  const appUrl = $("#appUrl");
 
-  const vars = Object.create(null);
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const state = { vars: {}, testsText: "" };
 
-  function log(msg, cls="") {
-    const d = document.createElement('div');
-    if (cls) d.className = cls;
-    d.textContent = msg;
-    logEl.appendChild(d);
+  function setStatus(text, ok=null){
+    statusPill.textContent = text;
+    statusPill.className = "pill " + (ok===true ? "ok" : ok===false ? "bad" : "");
+  }
+
+  function logLine(s=""){
+    logEl.textContent += s + "\n";
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  function resolveArg(x){
-    if (typeof x === "string" && x.startsWith("$")) return vars[x.slice(1)];
-    return x;
+  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+  function getIframeDoc(){
+    const doc = appFrame.contentDocument;
+    if (!doc) throw new Error("iframe doc not ready");
+    return doc;
   }
 
-  function looksLikeSelector(s){
-    if (typeof s !== "string") return false;
-    const t = s.trim();
-    if (!t) return false;
-    // Only treat as selector if it starts like one AND is a single-line string.
-    // This prevents stored PGN/FEN blobs (which often begin with '[') from being treated as selectors.
-    if (t.includes("\\n")) return false;
-    return t.startsWith("#") || t.startsWith(".") || t.startsWith("[");
-  }
-
-  function q(sel) {
-    const el = frame.contentDocument?.querySelector(sel);
-    if (!el) throw new Error(`Missing element: ${sel}`);
+  function q(sel){
+    const doc = getIframeDoc();
+    const el = doc.querySelector(sel);
+    if (!el) throw new Error("Missing element: " + sel);
     return el;
-  }
-
-  function isVisible(el){
-    if (!el) return false;
-    const cs = frame.contentWindow.getComputedStyle(el);
-    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0;
   }
 
   async function waitFor(sel, ms=2000){
     const t0 = performance.now();
     while (performance.now() - t0 < ms){
-      const el = frame.contentDocument?.querySelector(sel);
-      if (el) return el;
-      await sleep(25);
+      try { q(sel); return; } catch(e){}
+      await sleep(50);
     }
-    throw new Error(`Timeout waiting for ${sel}`);
+    throw new Error("Timeout waiting for " + sel);
   }
 
-  async function waitForVisible(sel, ms=2000){
-    const t0 = performance.now();
-    while (performance.now() - t0 < ms){
-      const el = frame.contentDocument?.querySelector(sel);
-      if (el && isVisible(el)) return el;
-      await sleep(25);
-    }
-    throw new Error(`Timeout waiting for visible ${sel}`);
+  function isVisible(el){
+    if (!el) return false;
+    const st = el.ownerDocument.defaultView.getComputedStyle(el);
+    if (st.display === "none" || st.visibility === "hidden" || +st.opacity === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
   }
 
-  function rect(el){ return el.getBoundingClientRect(); }
+  function resolveVal(v){
+    if (typeof v === "string" && v.startsWith("$")){
+      const key = v.slice(1);
+      return state.vars[key];
+    }
+    return v;
+  }
+
+  function elText(selOrDollar){
+    if (typeof selOrDollar === "string" && selOrDollar.startsWith("$")) return resolveVal(selOrDollar) ?? "";
+    const el = q(selOrDollar);
+    return (el.value ?? el.textContent ?? "").toString().trim();
+  }
+
+  function expectContains(a, b){
+    const hay = resolveVal(a);
+    const needle = resolveVal(b);
+    const hs = (hay ?? "").toString();
+    const ns = (needle ?? "").toString();
+    if (!hs.includes(ns)) throw new Error(`expectContains failed: "${ns}" not in "${hs}"`);
+  }
+
+  function expectNotContains(a, b){
+    const hay = resolveVal(a);
+    const needle = resolveVal(b);
+    const hs = (hay ?? "").toString();
+    const ns = (needle ?? "").toString();
+    if (hs.includes(ns)) throw new Error(`expectNotContains failed: "${ns}" WAS in "${hs}"`);
+  }
+
+  function expectEqual(a, b){
+    const av = resolveVal(a);
+    const bv = resolveVal(b);
+    if (String(av) !== String(bv)) throw new Error(`expectEqual failed: "${av}" != "${bv}"`);
+  }
+
+  function expectNotEqual(a, b){
+    const av = resolveVal(a);
+    const bv = resolveVal(b);
+    if (String(av) === String(bv)) throw new Error(`expectNotEqual failed: both "${av}"`);
+  }
+
+  function countAtLeast(sel, n){
+    const doc = getIframeDoc();
+    const els = doc.querySelectorAll(sel);
+    if (els.length < n) throw new Error(`countAtLeast failed: ${sel} had ${els.length}, need >= ${n}`);
+  }
+
+  function expectVisibleSel(sel){
+    const el = q(sel);
+    if (!isVisible(el)) throw new Error("expectVisible failed: " + sel);
+  }
 
   function expectContained(childSel, parentSel, pad=0){
-    const child = q(childSel);
-    const parent = q(parentSel);
-    const c = rect(child);
-    const p = rect(parent);
-    if (c.left < p.left - pad || c.top < p.top - pad || c.right > p.right + pad || c.bottom > p.bottom + pad){
-      throw new Error(`Overflow: ${childSel} (${c.left.toFixed(1)},${c.top.toFixed(1)},${c.right.toFixed(1)},${c.bottom.toFixed(1)}) not within ${parentSel} (${p.left.toFixed(1)},${p.top.toFixed(1)},${p.right.toFixed(1)},${p.bottom.toFixed(1)})`);
+    const doc = getIframeDoc();
+    const child = doc.querySelector(childSel);
+    const parent = doc.querySelector(parentSel);
+    if (!child) throw new Error("expectContained missing child: " + childSel);
+    if (!parent) throw new Error("expectContained missing parent: " + parentSel);
+    const cr = child.getBoundingClientRect();
+    const pr = parent.getBoundingClientRect();
+    const ok =
+      cr.left >= pr.left - pad &&
+      cr.top  >= pr.top  - pad &&
+      cr.right <= pr.right + pad &&
+      cr.bottom <= pr.bottom + pad;
+    if (!ok){
+      throw new Error(`expectContained failed: ${childSel} (${cr.left.toFixed(1)},${cr.top.toFixed(1)},${cr.right.toFixed(1)},${cr.bottom.toFixed(1)}) not within ${parentSel} (${pr.left.toFixed(1)},${pr.top.toFixed(1)},${pr.right.toFixed(1)},${pr.bottom.toFixed(1)}) pad=${pad}`);
     }
   }
-
-  function count(sel){ return frame.contentDocument?.querySelectorAll(sel).length ?? 0; }
 
   function clickSel(sel){
     const el = q(sel);
-    el.dispatchEvent(new MouseEvent("pointerdown", {bubbles:true, cancelable:true, view: frame.contentWindow}));
-    el.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, cancelable:true, view: frame.contentWindow}));
-    el.dispatchEvent(new MouseEvent("pointerup", {bubbles:true, cancelable:true, view: frame.contentWindow}));
-    el.dispatchEvent(new MouseEvent("mouseup", {bubbles:true, cancelable:true, view: frame.contentWindow}));
-    el.dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mousedown",{bubbles:true}));
+    el.dispatchEvent(new MouseEvent("mouseup",{bubbles:true}));
+    el.dispatchEvent(new MouseEvent("click",{bubbles:true}));
   }
 
-  function setValue(sel, value){
+  function typeSel(sel, text){
     const el = q(sel);
     el.focus();
-    if ("value" in el) el.value = value;
-    el.dispatchEvent(new Event("input", {bubbles:true}));
-    el.dispatchEvent(new Event("change", {bubbles:true}));
+    el.value = text;
+    el.dispatchEvent(new InputEvent("input",{bubbles:true}));
+    el.dispatchEvent(new Event("change",{bubbles:true}));
   }
 
-  function dispatchPointer(type, x, y, opts={}){
-    const doc = frame.contentDocument;
-    const win = frame.contentWindow;
-    const el = doc.elementFromPoint(x, y);
-    if (!el) throw new Error(`No element at point (${x.toFixed(1)},${y.toFixed(1)})`);
-    const ev = new PointerEvent(type, {
-      bubbles:true, cancelable:true, view: win,
-      clientX:x, clientY:y,
-      pointerId: opts.pointerId ?? 1,
-      pointerType: opts.pointerType ?? "mouse",
-      buttons: opts.buttons ?? (type === "pointerdown" ? 1 : 0),
-      pressure: opts.pressure ?? (type === "pointerdown" ? 0.5 : 0),
-      isPrimary: true
-    });
-    el.dispatchEvent(ev);
-  }
+  // Drag by algebraic square names using the board square hitboxes if present.
+  // Requires app to expose square elements with data-sq="e4" OR use SC helper window.__SC_SQUARE_CENTER(sq)
+  async function dragSquare(fromSq, toSq, holdMs=200){
+    const win = appFrame.contentWindow;
+    const doc = getIframeDoc();
 
-  function getSquareCenterFallback(sq){
-    const doc = frame.contentDocument;
-    const candidates = [
-      `[data-square="${sq}"]`,
-      `[data-sq="${sq}"]`,
-      `.sq-${sq}`,
-      `.square-${sq}`
-    ];
-    for (const sel of candidates){
-      const el = doc.querySelector(sel);
+    function centerForSq(sq){
+      // Preferred: app helper
+      if (win && typeof win.__SC_SQUARE_CENTER === "function"){
+        const p = win.__SC_SQUARE_CENTER(sq);
+        if (p && typeof p.x === "number" && typeof p.y === "number") return p;
+      }
+      // Fallback: query [data-sq="e4"]
+      const el = doc.querySelector(`[data-sq="${sq}"]`);
       if (el){
         const r = el.getBoundingClientRect();
         return { x: r.left + r.width/2, y: r.top + r.height/2 };
       }
+      throw new Error("dragSquare cannot find square center for " + sq);
     }
-    return null;
-  }
 
-  async function dragSquare(fromSq, toSq, durationMs=120){
-    const w = frame.contentWindow;
-    let a = null, b = null;
-    if (typeof w.__getSquareCenter === "function"){
-      a = w.__getSquareCenter(fromSq);
-      b = w.__getSquareCenter(toSq);
-    }
-    if (!a || !b){
-      a = a || getSquareCenterFallback(fromSq);
-      b = b || getSquareCenterFallback(toSq);
-    }
-    if (!a || !b) throw new Error(`dragSquare could not locate square centers for ${fromSq} or ${toSq}. Add __getSquareCenter(sq) to the app for reliability.`);
+    const a = centerForSq(fromSq);
+    const b = centerForSq(toSq);
 
-    const steps = Math.max(4, Math.floor(durationMs / 20));
-    dispatchPointer("pointerdown", a.x, a.y, {buttons:1});
+    const target = doc.elementFromPoint(a.x, a.y) || doc.body;
+    target.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,clientX:a.x,clientY:a.y,pointerId:1,pointerType:"mouse"}));
+    target.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,clientX:a.x,clientY:a.y}));
+    await sleep(holdMs);
+
+    doc.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,clientX:b.x,clientY:b.y,pointerId:1,pointerType:"mouse"}));
+    doc.dispatchEvent(new MouseEvent("mousemove",{bubbles:true,clientX:b.x,clientY:b.y}));
     await sleep(16);
-    for (let i=1;i<steps;i++){
-      const t = i/(steps-1);
-      dispatchPointer("pointermove", a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, {buttons:1});
-      await sleep(16);
-    }
-    dispatchPointer("pointerup", b.x, b.y, {buttons:0});
-    await sleep(80);
+
+    doc.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,clientX:b.x,clientY:b.y,pointerId:1,pointerType:"mouse"}));
+    doc.dispatchEvent(new MouseEvent("mouseup",{bubbles:true,clientX:b.x,clientY:b.y}));
   }
 
-  async function stepExec(step){
-    const [op, ...raw] = step;
-    const args = raw.map(resolveArg);
-
-    switch(op){
-      case "sleep": await sleep(args[0]||0); return;
-      case "waitFor": await waitFor(args[0], args[1] ?? 2000); return;
-      case "click": clickSel(args[0]); await sleep(12); return;
-      case "type": setValue(args[0], String(args[1] ?? "")); await sleep(20); return;
-
-      case "expectVisible": await waitForVisible(args[0], 2000); return;
-
-      case "expectContains": {
-        const a0 = args[0];
-        const needle = String(args[1] ?? "");
-        const readSel = (sel) => {
-          const el = q(sel);
-          if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) return (el.value || "").trim();
-          return (el.textContent || "").trim();
-        };
-        const hay = looksLikeSelector(a0) ? readSel(a0) : String(a0);
-        if (!String(hay).includes(needle)) throw new Error(`expectContains failed: "${needle}" not in "${String(hay)}"`);
-        return;
-      }
-
-      case "expectNotEqual": {
-        const left = String(args[0]);
-        const right = String(args[1]);
-        if (left === right) throw new Error(`expectNotEqual failed: both "${left}"`);
-        return;
-      }
-
-      case "storeText": {
-        const el = q(args[0]);
-        vars[args[1]] = (el.value != null && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) ? (el.value || "").trim() : (el.textContent || "").trim();
-        log(`stored $${args[1]} = ${JSON.stringify(vars[args[1]])}`, "dim");
-        return;
-      }
-
-      case "countAtLeast": {
-        const n = count(args[0]);
-        if (n < args[1]) throw new Error(`countAtLeast failed: ${args[0]} had ${n}, need >= ${args[1]}`);
-        return;
-      }
-
-      case "expectContained": expectContained(args[0], args[1], args[2] ?? 0); return;
-      case "dragSquare": await dragSquare(String(args[0]), String(args[1]), args[2] ?? 120); return;
-
-      case "timeUnder": {
-        const [budgetMs, steps] = args;
-        const t0 = performance.now();
-        for (const s of steps) await stepExec(s);
-        const dt = performance.now() - t0;
-        if (dt > budgetMs) throw new Error(`timeUnder failed: ${dt.toFixed(1)}ms > ${budgetMs}ms`);
-        return;
-      }
-
-      default:
-        log(`SKIP op ${op}`, "skip");
-        return;
+  async function timeUnder(ms, steps){
+    const t0 = performance.now();
+    for (const st of steps){
+      await stepExec(st);
     }
+    const dt = performance.now() - t0;
+    if (dt > ms) throw new Error(`timeUnder failed: ${dt.toFixed(1)}ms > ${ms}ms`);
   }
 
-  function parseTests(src){
-    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+  function parseTests(text){
+    const lines = text.split(/\r?\n/);
     const tests = [];
-    for (const b of blocks){
-      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
-      const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
-      if (!lines.length) continue;
-      const nameLine = lines.shift();
-      if (!nameLine.startsWith("TEST ")) continue;
-      const name = nameLine.slice(5).trim();
+    let cur = null;
 
-      const steps = [];
-      let buf = "";
-      for (const line of lines){
-        buf = buf ? (buf + "\n" + line) : line;
-        try{
-          const step = JSON.parse(buf);
-          steps.push(step);
-          buf = "";
-        }catch(e){
-          // keep buffering
-        }
+    function flush(){
+      if (cur){
+        tests.push(cur);
+        cur = null;
       }
-      if (buf.trim()) throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
-      tests.push({name, steps});
     }
+
+    for (let i=0;i<lines.length;i++){
+      const raw = lines[i];
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      if (line.startsWith("TEST ")){
+        flush();
+        cur = { name: line.slice(5).trim(), steps: [] };
+        continue;
+      }
+      if (!cur) continue;
+      // JSON array step
+      try{
+        const step = JSON.parse(line);
+        cur.steps.push(step);
+      } catch(e){
+        throw new Error(`Bad JSON on line ${i+1}: ${line}\n${e}`);
+      }
+    }
+    flush();
     return tests;
   }
 
-  async function loadText(path){
-    const r = await fetch(path, {cache:"no-store"});
-    if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${path}`);
-    return await r.text();
-  }
+  async function stepExec(step){
+    const op = step[0];
+    const a = step[1];
+    const b = step[2];
+    const c = step[3];
 
-  function getDefaultApp(){
-    const u = new URL(location.href);
-    const qp = u.searchParams.get("app");
-    if (qp) return qp;
-    return "staging.html";
-  }
-
-  function setApp(){
-    const app = appInput.value.trim() || getDefaultApp();
-    appInput.value = app;
-    frame.src = app;
-    appLabel.textContent = app;
-  }
-
-  async function run(){
-    logEl.innerHTML = "";
-    for (const k of Object.keys(vars)) delete vars[k];
-
-    statusEl.textContent = "loading tests…";
-    let testsText;
-    try{
-      testsText = await loadText("reducertests.txt");
-      log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
-    }catch(e){
-      log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
-      statusEl.textContent = "failed (tests not loaded)";
-      return;
+    switch(op){
+      case "sleep": return sleep(+a||0);
+      case "waitFor": return waitFor(a, +b||2000);
+      case "click": return clickSel(a);
+      case "type": return typeSel(a, b ?? "");
+      case "storeText": {
+        const key = b;
+        const val = elText(a);
+        state.vars[key] = val;
+        logLine(`stored $${key} = ${JSON.stringify(val)}`);
+        return;
+      }
+      case "expectVisible": return expectVisibleSel(a);
+      case "expectContains": return expectContains(a,b);
+      case "expectNotContains": return expectNotContains(a,b);
+      case "expectEqual": return expectEqual(a,b);
+      case "expectNotEqual": return expectNotEqual(a,b);
+      case "countAtLeast": return countAtLeast(a, +b);
+      case "expectContained": return expectContained(a,b, +c||0);
+      case "dragSquare": return dragSquare(a,b, +c||200);
+      case "timeUnder": return timeUnder(+a, b||[]);
+      default:
+        throw new Error("Unknown op: " + op);
     }
+  }
 
-    let tests;
-    try{
-      tests = parseTests(testsText);
-      log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
-    }catch(e){
-      log(`✘ FAILED to parse tests: ${e.message || e}`, "fail");
-      statusEl.textContent = "failed (parse error)";
-      return;
-    }
+  async function loadTests(){
+    const url = "reducertests.txt?ts=" + Date.now();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch reducertests.txt (" + res.status + ")");
+    const txt = await res.text();
+    state.testsText = txt;
+    logLine(`✔ Loaded reducertests.txt (${txt.length} bytes)`);
+    const tests = parseTests(txt);
+    logLine(`✔ Parsed ${tests.length} TEST blocks`);
+    return tests;
+  }
 
-    statusEl.textContent = "running";
+  async function openApp(){
+    const url = appUrl.value.trim() || "reducer.html";
+    appFrame.src = url + (url.includes("?") ? "&" : "?") + "ts=" + Date.now();
+    await new Promise((resolve) => {
+      appFrame.onload = () => resolve();
+    });
+  }
+
+  async function runAll(){
+    logEl.textContent = "";
+    setStatus("loading…");
+    await openApp();
+    const tests = await loadTests();
+
     let pass = 0;
+    let fail = 0;
 
     for (const t of tests){
-      log("\nTEST: " + t.name, "dim");
-
-      frame.contentWindow.location.reload();
-      await sleep(520);
-
+      logLine("");
+      logLine(`TEST: ${t.name}`);
+      for (const st of t.steps){
+        logLine("  " + JSON.stringify(st));
+      }
       try{
-        for (const s of t.steps){
-          log("  " + JSON.stringify(s));
-          await stepExec(s);
+        for (const st of t.steps){
+          await stepExec(st);
         }
-        log("✔ PASS " + t.name, "pass");
         pass++;
-      }catch(e){
-        log("✘ FAIL " + t.name, "fail");
-        log(String(e && e.message ? e.message : e), "fail");
+        logLine(`✔ PASS ${t.name}`);
+      } catch(e){
+        fail++;
+        logLine(`✘ FAIL ${t.name}`);
+        logLine(String(e && e.message ? e.message : e));
       }
     }
 
-    statusEl.textContent = `done (${pass}/${tests.length})`;
+    const total = pass + fail;
+    setStatus(fail ? `done (${pass}/${total})` : `done (${pass}/${total})`, fail ? false : true);
   }
 
-  async function runWithFreshLoad(){
-    setApp();
-    await new Promise(r => frame.addEventListener("load", r, {once:true}));
-    await run();
+  async function copyResults(){
+    try{
+      await navigator.clipboard.writeText(logEl.textContent);
+      const prev = statusPill.textContent;
+      setStatus("copied ✓", true);
+      setTimeout(() => setStatus(prev, null), 700);
+    } catch(e){
+      alert("Clipboard copy failed. Your browser may block clipboard access on file://.\nTry serving via localhost.\n\n" + e);
+    }
   }
 
-  document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
-  document.getElementById("reloadBtn").addEventListener("click", () => frame.contentWindow.location.reload());
+  $("#btnRun").addEventListener("click", () => runAll().catch(e => { setStatus("error", false); logLine(String(e)); }));
+  $("#btnLoadTests").addEventListener("click", () => loadTests().catch(e => { setStatus("error", false); logLine(String(e)); }));
+  $("#btnOpenApp").addEventListener("click", () => openApp().catch(e => { setStatus("error", false); logLine(String(e)); }));
+  $("#btnReload").addEventListener("click", () => openApp().catch(e => { setStatus("error", false); logLine(String(e)); }));
+  $("#btnCopy").addEventListener("click", () => copyResults());
 
-  appInput.value = getDefaultApp();
-  setApp();
-  log("Ready. Click Run. Default app is staging.html (or pass ?app=...). Tests loaded from reducertests.txt.", "dim");
+  // auto boot: open app + load tests preview
+  (async () => {
+    try{
+      setStatus("boot…");
+      await openApp();
+      await loadTests();
+      setStatus("idle");
+    } catch(e){
+      setStatus("error", false);
+      logLine(String(e));
+    }
+  })();
 })();
 </script>
 </body>
