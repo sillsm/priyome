@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Priyome Reducer Test Runner (Dual Viewport)</title>
+<style>
+  :root{
+    --bg:#0b0d12; --b:rgba(255,255,255,.12); --t:#e5e7eb; --m:rgba(229,231,235,.7);
+    --ok:#a7f3d0; --fail:#fecaca; --warn:#fde68a;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+
+  .wrap{display:grid;grid-template-columns:1fr 1fr .95fr;gap:12px;height:100vh;padding:12px;min-height:0;}
+  @media (max-width:1180px){ .wrap{grid-template-columns:1fr;grid-template-rows:48vh 48vh auto;height:auto;} }
+
+  .card{border:1px solid var(--b);border-radius:12px;background:rgba(255,255,255,.03);overflow:hidden;min-height:0;display:flex;flex-direction:column;}
+  .head{padding:10px 12px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .dim{color:var(--m)} .ok{color:var(--ok)} .warn{color:var(--warn)} .pass{color:var(--ok)} .fail{color:var(--fail)} .skip{color:var(--warn)}
+
+  button, select, input{padding:8px 10px;border-radius:10px;border:1px solid var(--b);background:rgba(255,255,255,.06);color:var(--t);cursor:pointer;}
+  input{min-width:260px;width:min(520px,100%);}
+
+  .viewportHost{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:10px;}
+  .vpFrame{position:relative;border:1px solid var(--b);border-radius:16px;overflow:hidden;background:#000;box-shadow:0 14px 44px rgba(0,0,0,.45);}
+  .vpInner{position:absolute;left:0;top:0;transform-origin:0 0;background:#000;}
+  iframe{border:0;width:100%;height:100%;display:block;background:white;}
+
+  .log{padding:10px 12px;overflow:auto;flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.35;white-space:pre-wrap;background:rgba(0,0,0,.18);}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--b);background:rgba(255,255,255,.04);font-size:12px;color:var(--m);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="head">
+      <div class="row">
+        <b>App Under Test — Desktop</b>
+        <span class="pill">virtual <b>1200×900</b></span>
+        <span class="dim" id="appLabelDesk"></span>
+      </div>
+      <div class="row"><span class="pill" id="deskScaleMeta">scale: —</span></div>
+    </div>
+    <div class="viewportHost" id="deskHost">
+      <div class="vpFrame" id="deskFrame">
+        <div class="vpInner" id="deskInner">
+          <iframe id="frameDesk" title="app-under-test-desktop"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <div class="row">
+        <b>App Under Test — Mobile</b>
+        <span class="pill">virtual <b>360×640</b></span>
+        <span class="dim" id="appLabelMob"></span>
+      </div>
+      <div class="row"><span class="pill" id="mobScaleMeta">scale: —</span></div>
+    </div>
+    <div class="viewportHost" id="mobHost">
+      <div class="vpFrame" id="mobFrame">
+        <div class="vpInner" id="mobInner">
+          <iframe id="frameMob" title="app-under-test-mobile"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <div class="row"><b>Runner</b> <span class="dim" id="status">idle</span></div>
+      <div class="row">
+        <select id="targetPick" title="Target iframe">
+          <option value="desktop">Run on Desktop iframe</option>
+          <option value="mobile">Run on Mobile iframe</option>
+        </select>
+        <input id="appPath" placeholder="app path (default: ?app=staging.html or reducer.html)" />
+        <button id="reloadBtn">Reload</button>
+        <button id="runBtn">Run</button>
+        <button id="copyBtn">📋 Copy results</button>
+      </div>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const DESK_W = 1200, DESK_H = 900;
+  const MOB_W  = 360,  MOB_H  = 640;
+
+  const logEl = document.getElementById('log');
+  const statusEl = document.getElementById('status');
+  const frameDesk = document.getElementById('frameDesk');
+  const frameMob  = document.getElementById('frameMob');
+  const appInput = document.getElementById('appPath');
+  const appLabelDesk = document.getElementById('appLabelDesk');
+  const appLabelMob  = document.getElementById('appLabelMob');
+  const targetPick = document.getElementById('targetPick');
+
+  const desk = {
+    host: document.getElementById('deskHost'),
+    frame: document.getElementById('deskFrame'),
+    inner: document.getElementById('deskInner'),
+    meta: document.getElementById('deskScaleMeta'),
+    w: DESK_W, h: DESK_H
+  };
+  const mob = {
+    host: document.getElementById('mobHost'),
+    frame: document.getElementById('mobFrame'),
+    inner: document.getElementById('mobInner'),
+    meta: document.getElementById('mobScaleMeta'),
+    w: MOB_W, h: MOB_H
+  };
+
+  function fitViewport(vp){
+    const r = vp.host.getBoundingClientRect();
+    const pad = 12;
+    const availW = Math.max(80, r.width  - pad*2);
+    const availH = Math.max(80, r.height - pad*2);
+    const scale = Math.max(0.1, Math.min(6, Math.min(availW / vp.w, availH / vp.h)));
+    const outW = Math.round(vp.w * scale);
+    const outH = Math.round(vp.h * scale);
+    vp.frame.style.width = outW + "px";
+    vp.frame.style.height = outH + "px";
+    vp.inner.style.width = vp.w + "px";
+    vp.inner.style.height = vp.h + "px";
+    vp.inner.style.transform = `scale(${scale})`;
+    vp.meta.textContent = `scale: ${scale.toFixed(3)} • box: ${outW}×${outH}`;
+  }
+  function fitAll(){ fitViewport(desk); fitViewport(mob); }
+  addEventListener("resize", fitAll);
+  setTimeout(fitAll, 0);
+
+  const vars = Object.create(null);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  function log(msg, cls="") {
+    const d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = msg;
+    logEl.appendChild(d);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function resolveArg(x){
+    if (typeof x === "string" && x.startsWith("$")) return vars[x.slice(1)];
+    return x;
+  }
+  function looksLikeSelector(s){
+    if (typeof s !== "string") return false;
+    const t = s.trim();
+    if (!t) return false;
+    if (t.includes("\\n")) return false;
+    return t.startsWith("#") || t.startsWith(".") || t.startsWith("[");
+  }
+
+  function getTargetFrameEl(){
+    return (targetPick.value === "mobile") ? frameMob : frameDesk;
+  }
+  function doc(){
+    const fr = getTargetFrameEl();
+    const d = fr.contentDocument;
+    if (!d) throw new Error("Iframe document not ready (same-origin?)");
+    return d;
+  }
+
+  function q(sel) {
+    const el = doc().querySelector(sel);
+    if (!el) throw new Error(`Missing element: ${sel}`);
+    return el;
+  }
+  function qMaybe(sel){ return doc().querySelector(sel); }
+
+  function isVisible(el){
+    if (!el) return false;
+    const fr = getTargetFrameEl();
+    const cs = fr.contentWindow.getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  async function waitFor(sel, ms=2000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const el = qMaybe(sel);
+      if (el) return el;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for ${sel}`);
+  }
+
+  async function waitForVisible(sel, ms=2000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const el = qMaybe(sel);
+      if (el && isVisible(el)) return el;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for visible ${sel}`);
+  }
+
+  async function waitForGone(sel, ms=2000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const el = qMaybe(sel);
+      if (!el) return;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for gone ${sel}`);
+  }
+
+  function getTextAny(selOrText){
+    if (!looksLikeSelector(selOrText)) return String(selOrText ?? "");
+    const el = q(selOrText);
+    if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) return (el.value || "").trim();
+    return (el.textContent || "").trim();
+  }
+
+  async function waitForTextNotEqual(sel, prev, ms=2000){
+    const prevVal = resolveArg(prev);
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const cur = getTextAny(sel);
+      if (String(cur) !== String(prevVal)) return;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for text change on ${sel}`);
+  }
+
+  async function waitForContains(selOrText, needle, ms=2000){
+    const want = String(resolveArg(needle) ?? "");
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const hay = getTextAny(selOrText);
+      if (String(hay).includes(want)) return;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for contains "${want}" in ${selOrText}`);
+  }
+
+  function count(sel){ return doc().querySelectorAll(sel).length; }
+
+  async function waitForCountAtLeast(sel, n, ms=2000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      if (count(sel) >= Number(n)) return;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for countAtLeast ${n} on ${sel} (got ${count(sel)})`);
+  }
+
+  function assert(cond, msg){ if (!cond) throw new Error(msg || "Assertion failed"); }
+
+  function expectVisible(sel){
+    const el = q(sel);
+    assert(isVisible(el), `Not visible: ${sel}`);
+  }
+
+  function expectContains(a0, sub){
+    const needle = String(resolveArg(sub) ?? "");
+    const hay = looksLikeSelector(a0) ? getTextAny(a0) : String(resolveArg(a0) ?? "");
+    assert(String(hay).includes(needle), `expectContains failed: "${needle}" not in "${String(hay)}"`);
+  }
+
+  function expectNotEqual(a, b){
+    const A = String(resolveArg(a));
+    const B = String(resolveArg(b));
+    assert(A !== B, `expectNotEqual failed: both "${A}"`);
+  }
+
+  function expectContained(childSel, parentSel, pad=0){
+    const child = q(childSel);
+    const parent = q(parentSel);
+    const c = child.getBoundingClientRect();
+    const p = parent.getBoundingClientRect();
+    const pd = Number(pad ?? 0);
+    if (c.left < p.left - pd || c.top < p.top - pd || c.right > p.right + pd || c.bottom > p.bottom + pd){
+      throw new Error(`Overflow: ${childSel} not within ${parentSel}`);
+    }
+  }
+
+  function clickSel(sel){
+    const fr = getTargetFrameEl();
+    const el = q(sel);
+    el.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+    el.dispatchEvent(new MouseEvent("pointerup",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mouseup",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+    el.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+  }
+
+  function setValue(sel, value){
+    const el = q(sel);
+    el.focus();
+    if ("value" in el) el.value = value;
+    el.dispatchEvent(new Event("input",{bubbles:true}));
+    el.dispatchEvent(new Event("change",{bubbles:true}));
+  }
+
+  function dispatchPointer(type, x, y, opts={}){
+    const fr = getTargetFrameEl();
+    const d = fr.contentDocument;
+    const w = fr.contentWindow;
+    const el = d.elementFromPoint(x, y);
+    if (!el) throw new Error(`No element at point (${x.toFixed(1)},${y.toFixed(1)})`);
+    const ev = new PointerEvent(type, {
+      bubbles:true, cancelable:true, view:w,
+      clientX:x, clientY:y,
+      pointerId: opts.pointerId ?? 1,
+      pointerType: opts.pointerType ?? "mouse",
+      buttons: opts.buttons ?? (type === "pointerdown" ? 1 : 0),
+      pressure: opts.pressure ?? (type === "pointerdown" ? 0.5 : 0),
+      isPrimary:true
+    });
+    el.dispatchEvent(ev);
+  }
+
+  function getSquareCenterFallback(sq){
+    const d = doc();
+    const candidates = [`[data-square="${sq}"]`,`[data-sq="${sq}"]`,`.sq-${sq}`,`.square-${sq}`];
+    for (const sel of candidates){
+      const el = d.querySelector(sel);
+      if (el){
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width/2, y: r.top + r.height/2 };
+      }
+    }
+    return null;
+  }
+
+  async function dragSquare(fromSq, toSq, durationMs=120){
+    const fr = getTargetFrameEl();
+    const w = fr.contentWindow;
+
+    let a = null, b = null;
+    if (typeof w.__getSquareCenter === "function"){
+      a = w.__getSquareCenter(fromSq);
+      b = w.__getSquareCenter(toSq);
+    }
+    if (!a || !b){
+      a = a || getSquareCenterFallback(fromSq);
+      b = b || getSquareCenterFallback(toSq);
+    }
+    if (!a || !b) throw new Error(`dragSquare could not locate square centers for ${fromSq} or ${toSq}`);
+
+    const steps = Math.max(4, Math.floor(durationMs / 20));
+    dispatchPointer("pointerdown", a.x, a.y, {buttons:1});
+    await sleep(16);
+    for (let i=1;i<steps;i++){
+      const t = i/(steps-1);
+      dispatchPointer("pointermove", a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, {buttons:1});
+      await sleep(16);
+    }
+    dispatchPointer("pointerup", b.x, b.y, {buttons:0});
+    await sleep(60);
+  }
+
+  async function stepExec(step){
+    const [op, ...raw] = step;
+    const args = raw.map(resolveArg);
+
+    switch(op){
+      case "sleep": await sleep(args[0]||0); return;
+      case "waitFor": await waitFor(args[0], args[1] ?? 2000); return;
+      case "waitForVisible": await waitForVisible(args[0], args[1] ?? 2000); return;
+      case "waitForGone": await waitForGone(args[0], args[1] ?? 2000); return;
+      case "waitForContains": await waitForContains(args[0], args[1], args[2] ?? 2000); return;
+      case "waitForTextNotEqual": await waitForTextNotEqual(args[0], args[1], args[2] ?? 2000); return;
+      case "waitForCountAtLeast": await waitForCountAtLeast(args[0], args[1], args[2] ?? 2000); return;
+
+      case "click": clickSel(args[0]); return;
+      case "type": setValue(args[0], String(args[1] ?? "")); return;
+
+      case "expectVisible": expectVisible(args[0]); return;
+      case "expectContains": expectContains(args[0], args[1]); return;
+      case "expectNotEqual": expectNotEqual(args[0], args[1]); return;
+
+      case "storeText": {
+        const val = getTextAny(args[0]);
+        vars[String(args[1])] = val;
+        return;
+      }
+
+      case "countAtLeast": {
+        const n = count(args[0]);
+        if (n < args[1]) throw new Error(`countAtLeast failed: ${args[0]} had ${n}, need >= ${args[1]}`);
+        return;
+      }
+
+      case "expectContained": expectContained(args[0], args[1], args[2] ?? 0); return;
+      case "dragSquare": await dragSquare(String(args[0]), String(args[1]), args[2] ?? 120); return;
+
+      case "timeUnder": {
+        const budgetMs = Number(args[0]);
+        const steps = args[1] || [];
+        const t0 = performance.now();
+        for (const s of steps) await stepExec(s);
+        const dt = performance.now() - t0;
+        if (dt > budgetMs) throw new Error(`timeUnder failed: ${dt.toFixed(1)}ms > ${budgetMs}ms`);
+        return;
+      }
+
+      default:
+        log(`SKIP op ${op}`, "skip");
+        return;
+    }
+  }
+
+  // Parse your existing format: blocks separated by blank lines; first line "TEST ..."
+  // Each step is JSON (buffered across lines if needed).
+  function parseTests(src){
+    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+    const tests = [];
+    for (const b of blocks){
+      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
+      const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      if (!lines.length) continue;
+      const nameLine = lines.shift();
+      if (!nameLine.startsWith("TEST ")) continue;
+      const name = nameLine.slice(5).trim();
+
+      const steps = [];
+      let buf = "";
+      for (const line of lines){
+        buf = buf ? (buf + "\n" + line) : line;
+        try{
+          const step = JSON.parse(buf);
+          steps.push(step);
+          buf = "";
+        }catch(e){
+          // keep buffering
+        }
+      }
+      if (buf.trim()) throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
+      tests.push({name, steps});
+    }
+    return tests;
+  }
+
+  async function loadText(path){
+    const r = await fetch(path, {cache:"no-store"});
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${path}`);
+    return await r.text();
+  }
+
+  function getDefaultApp(){
+    const u = new URL(location.href);
+    const qp = u.searchParams.get("app");
+    if (qp) return qp;
+    return "reducer.html";
+  }
+
+  function setApp(){
+    const app = appInput.value.trim() || getDefaultApp();
+    appInput.value = app;
+    frameDesk.src = app;
+    frameMob.src = app;
+    appLabelDesk.textContent = app;
+    appLabelMob.textContent = app;
+  }
+
+  async function run(){
+    logEl.innerHTML = "";
+    Object.keys(vars).forEach(k => delete vars[k]);
+
+    statusEl.textContent = "loading tests…";
+    let testsText;
+    try{
+      testsText = await loadText("reducertests.txt");
+      log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
+    }catch(e){
+      log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
+      statusEl.textContent = "failed (tests not loaded)";
+      return;
+    }
+
+    let tests;
+    try{
+      tests = parseTests(testsText);
+      log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
+      if (!tests.length){
+        log(`Hint: blocks must start with "TEST ..." and be separated by blank lines.`, "dim");
+        statusEl.textContent = "failed (0 tests parsed)";
+        return;
+      }
+    }catch(e){
+      log(`✘ FAILED to parse tests: ${e.message || e}`, "fail");
+      statusEl.textContent = "failed (parse error)";
+      return;
+    }
+
+    const targetName = (targetPick.value === "mobile") ? "mobile" : "desktop";
+    statusEl.textContent = `running (${targetName})`;
+
+    let pass = 0;
+
+    for (const t of tests){
+      log("\nTEST: " + t.name, "dim");
+
+      // Reload target between tests (keeps isolation like your original runner).
+      const fr = getTargetFrameEl();
+      try{ fr.contentWindow.location.reload(); }catch(e){
+        log(`✘ Could not reload target iframe (same-origin?)`, "fail");
+        log(String(e?.message || e), "fail");
+        statusEl.textContent = "failed (reload error)";
+        return;
+      }
+
+      // Wait for document ready + at least one stable anchor
+      await sleep(0);
+      try{
+        await waitFor("body", 8000);
+      }catch(e){
+        // body should exist; if not, bail
+        log(`✘ Iframe did not become ready`, "fail");
+        statusEl.textContent = "failed (iframe not ready)";
+        return;
+      }
+
+      try{
+        for (const s of t.steps){
+          log("  " + JSON.stringify(s));
+          await stepExec(s);
+        }
+        log("✔ PASS " + t.name, "pass");
+        pass++;
+      }catch(e){
+        log("✘ FAIL " + t.name, "fail");
+        log(String(e && e.stack ? e.stack : (e && e.message ? e.message : e)), "fail");
+      }
+    }
+
+    statusEl.textContent = `done (${pass}/${tests.length}) on ${targetName}`;
+  }
+
+  async function runWithFreshLoad(){
+    setApp();
+    await Promise.all([
+      new Promise(r => frameDesk.addEventListener("load", r, {once:true})),
+      new Promise(r => frameMob.addEventListener("load", r, {once:true}))
+    ]);
+    await run();
+  }
+
+  document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
+  document.getElementById("reloadBtn").addEventListener("click", () => getTargetFrameEl().contentWindow.location.reload());
+  document.getElementById("copyBtn").addEventListener("click", async () => {
+    const text = Array.from(logEl.querySelectorAll("div")).map(d => d.textContent).join("\n");
+    try{ await navigator.clipboard.writeText(text); log("✔ Copied results to clipboard", "ok"); }
+    catch(e){ log("✘ Clipboard copy failed (permission?)", "fail"); }
+  });
+
+  appInput.value = getDefaultApp();
+  setApp();
+  fitAll();
+  log("Ready. Pick target (desktop/mobile), click Run. Tests loaded from reducertests.txt.", "dim");
+})();
+</script>
+</body>
+</html>
