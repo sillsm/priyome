@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Priyome</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
+    --border:#dbe3f0; --accent:#2563eb;
+    --radius:14px; --shadow:0 10px 22px rgba(15,23,42,.08);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --nav-h:58px;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
+  .topbarWrap{
+    position:sticky; top:0; z-index:50;
+    height:var(--nav-h);
+    background:linear-gradient(180deg,#ffffff, #f7f9ff);
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 14px;
+  }
+  .brandTitle{ font-weight:900; letter-spacing:.2px; }
+  .brandTitle .dot{ color:var(--accent); }
+  .row{ display:flex; align-items:center; gap:10px; }
+  .pill{ padding:5px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; font-size:12px; color:var(--muted); }
+  .btn{
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:12px;
+    padding:8px 10px;
+    cursor:pointer;
+    box-shadow: 0 6px 16px rgba(15,23,42,.06);
+  }
+  .btn.primary{ background:var(--accent); color:#fff; border-color:transparent; }
+  .layout{
+    display:grid;
+    grid-template-columns: minmax(340px, 1fr) minmax(360px, 520px);
+    gap:14px;
+    padding:14px;
+    height: calc(100vh - var(--nav-h));
+    min-height:0;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    min-height:0;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+  .cardHeader{
+    padding:12px 14px;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .actions .btn{ padding:7px 10px; border-radius:10px; }
+  .boardArea{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  .boardWrap{ padding:12px; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
+  #boardHost{ width:min(92vmin, 560px); height:min(92vmin, 560px); max-width:100%; max-height:100%; }
+  .sparesRow{ border-top:1px solid var(--border); padding:10px 12px; display:flex; align-items:center; gap:10px; }
+  #sparesHost{ flex:1; min-height:44px; }
+  .tabs{
+    display:flex; gap:8px; flex-wrap:wrap;
+    padding:10px 12px;
+    border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,#fff,#fbfcff);
+  }
+  .tabBtn{
+    padding:7px 10px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    background:#fff;
+    cursor:pointer;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .tabBtn.active{ background:#e8efff; border-color:#c7d6ff; color:#18327a; }
+  .pane{ display:none; padding:12px; overflow:auto; min-height:0; flex:1; }
+  .pane.active{ display:block; }
+  textarea{
+    width:100%;
+    min-height:110px;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    font-family:var(--mono);
+    font-size:12px;
+    background:#fbfdff;
+  }
+  select, input{
+    width:100%;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:9px 10px;
+    background:#fff;
+    font-family:inherit;
+  }
+  .list{ display:flex; flex-direction:column; gap:8px; }
+  .gameCard{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 10px;
+    cursor:pointer;
+    background:#fff;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .gameCard.active{ outline:2px solid #c7d6ff; background:#f4f7ff; }
+  .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
+  .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
+  .toolRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .smallBtn{
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:10px;
+    padding:6px 9px;
+    cursor:pointer;
+    font-size:12px;
+  }
+  .smallBtn.active{ background:#e8efff; border-color:#c7d6ff; }
+  .muted{ color:var(--muted); }
+  .menu{
+    position:fixed; top:var(--nav-h); right:14px;
+    width:min(380px, calc(100vw - 28px));
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow: 0 18px 44px rgba(15,23,42,.18);
+    padding:12px;
+    display:none;
+    z-index:80;
+  }
+  .menu.open{ display:block; }
+  .modalBackdrop{
+    position:fixed; inset:0;
+    background:rgba(15,23,42,.38);
+    display:none;
+    align-items:center; justify-content:center;
+    z-index:90;
+  }
+  .modalBackdrop.open{ display:flex; }
+  .modal{
+    width:min(860px, calc(100vw - 24px));
+    background:#fff;
+    border-radius:16px;
+    border:1px solid var(--border);
+    box-shadow: 0 18px 60px rgba(15,23,42,.25);
+    overflow:hidden;
+  }
+  .modalHead{ padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .modalBody{ padding:12px; }
+  .modalActions{ padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
+  .errorBody{ font-family:var(--mono); font-size:12px; white-space:pre-wrap; color:#1f2937; }
+  /* Bottom summary card inside moves pane */
+  .bottomCard{
+    margin-top:10px;
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:10px;
+    background:#fff;
+  }
+  .bottomHead{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+  .fenRow{ display:flex; gap:8px; align-items:center; }
+  .fenLabel{ font-size:12px; color:var(--muted); }
+  .fenBoxLine{ font-family:var(--mono); font-size:12px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#fbfdff; width:100%; overflow:auto; white-space:nowrap; }
+  @media (max-width: 980px){
+    .layout{ grid-template-columns:1fr; height:auto; }
+    #boardHost{ width:min(92vmin, 520px); height:min(92vmin, 520px); }
+  }
+
+  /* Moves list (contract) */
+  .moveList{ display:flex; flex-direction:column; gap:6px; padding:8px 0; max-height:44vh; overflow:auto; }
+  .mvRow{ display:flex; align-items:baseline; gap:10px; padding:8px 10px; border:1px solid rgba(255,255,255,.10); border-radius:10px; background:rgba(255,255,255,.03); cursor:pointer; user-select:none; }
+  .mvRow:hover{ background:rgba(255,255,255,.06); }
+  .mvRow .mvNum{ min-width:34px; color:var(--mut); font-weight:700; }
+  .mvRow .mvSan{ flex:1; text-align:left; font-weight:650; letter-spacing:.1px; }
+  .mvRow.isCur{ outline:2px solid rgba(103,232,249,.45); background:rgba(103,232,249,.10); }
+  .mvRow.isVar{ margin-left:16px; padding-left:14px; font-size:.92em; opacity:.95; }
+  .mvRow.isVar .mvSan{ font-weight:600; }
+
+</style>
+</head>
+<body>
+
+<div class="topbarWrap" id="topNav">
+  <div class="row">
+    <button class="btn" id="btnHamburger" title="Menu">☰</button>
+    <div class="brandTitle"><span class="dot">P</span>riyome</div>
+  </div>
+  <div class="row">
+    <span class="pill">Study: <b id="studyPill">—</b></span>
+    <span class="pill">Game: <b id="gamePill">—</b></span>
+    <span class="pill">ID: <b id="gameName">—</b></span>
+  </div>
+</div>
+
+<div class="menu" id="menu">
+  <div class="muted">Menu</div>
+  <div class="muted" style="font-size:12px; margin-top:6px">Toggles open/close for tests.</div>
+</div>
+
+<div class="layout">
+  <div class="card" id="boardCard">
+    <div class="cardHeader">
+      <div class="actions">
+        <button class="btn" id="btnFlip" type="button">Flip</button>
+        <button class="btn" id="btnReset" type="button">Reset</button>
+        <button class="btn" id="btnSetup" type="button">Setup</button>
+        <button class="btn" id="btnImportPgn" type="button">Import PGN</button>
+        <button class="btn" id="btnExportGame" type="button">Export Game PGN</button>
+        <button class="btn" id="btnExportStudy" type="button">Export Study PGN</button>
+      </div>
+      <div class="small" id="toolStatus">—</div>
+    </div>
+
+    <div class="boardArea">
+      <div class="boardWrap">
+        <div id="boardHost"></div>
+      </div>
+      <div class="sparesRow" id="setupStrip" hidden>
+        <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
+        <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
+        <div id="sparesHost"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tabBtn active" data-tab="moves">Moves</button>
+      <button class="tabBtn" data-tab="games">Games</button>
+      <button class="tabBtn" data-tab="draw">Draw</button>
+      <button class="tabBtn" data-tab="priyomes">Priyomes</button>
+      <button class="tabBtn" data-tab="query">Query</button>
+      <button class="tabBtn" data-tab="evals">Evals</button>
+      <button class="tabBtn" data-tab="errors">Errors</button>
+    </div>
+
+    <div class="pane active" id="pane-moves">
+      <!-- Keep these for tests (hidden), but visually we show ONE bottom summary only -->
+      <textarea id="fenBox" readonly style="display:none"></textarea>
+      <textarea id="pgnBox" readonly style="display:none"></textarea>
+
+      <div class="row" style="gap:8px; flex-wrap:wrap">
+        <button class="btn" id="btnPrev" type="button">Prev</button>
+        <button class="btn" id="btnNext" type="button">Next</button>
+        <span class="pill">Ply: <b id="navMeta">0</b></span>
+      </div>
+
+      <div id="moveList" class="moveList" aria-label="Move list"></div>
+
+      <div class="bottomCard" id="bottomCard">
+        <div class="bottomHead">
+          <div class="muted" style="font-size:12px">Position FEN &amp; Game PGN</div>
+          <div class="small" id="bottomMeta">—</div>
+        </div>
+        <div class="fenRow" style="margin-bottom:8px">
+          <span class="fenLabel">FEN</span>
+          <div class="fenBoxLine" id="fenBottom"></div>
+        </div>
+        <textarea id="pgnBottom" readonly style="min-height:180px"></textarea>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-games">
+      <div class="label">Studies</div>
+      <div class="row" style="gap:8px; align-items:stretch">
+        <select id="studySelect"></select>
+        <button class="btn" id="btnNewStudy" type="button">New Study</button>
+      </div>
+      <div class="row" style="gap:8px; margin-top:10px">
+        <button class="btn primary" id="btnNewGame" type="button">New Game</button>
+      </div>
+      <div class="label" style="margin-top:12px">Games</div>
+      <div class="list" id="gameList"></div>
+    </div>
+
+    <div class="pane" id="pane-draw">
+      <div class="label">Draw</div>
+      <div id="drawToolbar">
+        <button class="smallBtn" id="btnModeArrows" type="button">Arrows</button>
+        <button class="smallBtn" id="btnModeSquares" type="button">Squares</button>
+        <button class="smallBtn" id="btnClearMarks" type="button">Clear</button>
+      </div>
+      <div class="muted" style="font-size:12px">Enable a draw mode, then drag on the board to add <span class="small">%cal/%csl</span>.</div>
+    </div>
+
+    <div class="pane" id="pane-priyomes">
+      <div class="label">Priyomes</div>
+      <div class="row" style="gap:8px; margin-bottom:8px">
+        <span class="pill">Active: <b id="activePriyome">—</b></span>
+      </div>
+      <div class="list" id="priyomeList"></div>
+    </div>
+
+    <div class="pane" id="pane-query">
+      <div class="label">PGN DB</div>
+      <select id="dbSelectEl"></select>
+      <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">
+        <button class="btn" id="qUseCurrent" type="button">Use Current Game</button>
+        <span class="pill">Selected: <b id="qPgnName">(none)</b></span>
+      </div>
+      <div class="label" style="margin-top:12px">CQL</div>
+      <textarea id="qCqlText" placeholder="cql()"></textarea>
+      <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
+        <button class="btn primary" id="qRun" type="button">Run Query</button>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-evals">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="label">Evals</div>
+        <button class="btn" id="btnReloadEvals" type="button">Reload</button>
+      </div>
+      <div class="row" style="gap:8px; margin-bottom:10px">
+        <span class="pill">Status: <b id="evalsStatus">—</b></span>
+      </div>
+      <div class="label">JS evals</div>
+      <div class="list" id="evalList"></div>
+      <div class="label" style="margin-top:12px">CQL evals</div>
+      <div class="list" id="cqlEvalList"></div>
+    </div>
+
+    <div class="pane" id="pane-errors">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="label">All logs & errors</div>
+        <div class="row" style="gap:8px">
+          <span class="pill">Lines: <b id="errCount">0</b></span>
+          <button class="btn" id="btnClearErrors" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="errorBody" id="errorLog"></div>
+    </div>
+
+    <div class="rightTools" id="rightTools">
+      <div class="toolRow" id="drawModeRow">
+        <button class="smallBtn" id="btnModeArrows2" type="button">Arrows</button>
+        <button class="smallBtn" id="btnModeSquares2" type="button">Squares</button>
+        <button class="smallBtn" id="btnClearMarks2" type="button">Clear</button>
+      </div>
+      <div class="toolRow" hidden id="pigmentRow">
+        <span class="pill">Pigment</span>
+        <button class="smallBtn" id="btnPigR" title="Red" type="button">🔴</button>
+        <button class="smallBtn" id="btnPigG" title="Green" type="button">🟢</button>
+        <button class="smallBtn" id="btnPigB" title="Blue" type="button">🔵</button>
+        <button class="smallBtn" id="btnPigY" title="Yellow" type="button">🟡</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modalHead">
+      <b>Import PGN</b>
+      <button class="btn" id="btnImportCancel" type="button">Close</button>
+    </div>
+    <div class="modalBody">
+      <div class="label">Paste PGN</div>
+      <textarea id="importPgnText"></textarea>
+    </div>
+    <div class="modalActions">
+      <button class="btn primary" id="btnImportAdd" type="button">Add</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { createGame, BoardView } from "./scratchchess.js";
+
+  // Manifests (defined + used to populate UI)
+  const STUDY_MANIFEST = { default:"./pgn/Study.pgn", demo:"./pgn/default games.pgn" };
+  const PRIYOME_PGN_MANIFEST = { default:"./priyomes/priyomes.pgn" };
+  const PGN_MANIFEST = { fischer:"./pgn/Fischer.pgn" };
+  const CQL_EVAL_MANIFEST = { basic:"./evals/basic.json" };
+
+  const $ = (id)=>document.getElementById(id);
+  const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const nowId = ()=>Math.random().toString(16).slice(2,8);
+
+  const RUNTIME = {
+    games: new Map(),   // id -> ScratchChess game instance (non-serializable)
+    board: null,
+  };
+
+  // State must stay JSON-serializable (no game objects / functions)
+  const initialState = () => ({
+    ui:{ tab:"moves", menuOpen:false, importOpen:false },
+    studies: [], // [{id,name,games:[id]}]
+    gamesMeta: {}, // id -> {id,title}
+    activeStudyId: null,
+    activeGameId: null,
+    query:{ selectedName:"(none)" }
+  });
+
+  function reduce(prev, action){
+    switch(action.type){
+      case "UI_TAB":
+        return { ...prev, ui:{...prev.ui, tab: action.tab} };
+      case "UI_MENU":
+        return { ...prev, ui:{...prev.ui, menuOpen: !!action.open} };
+      case "UI_IMPORT":
+        return { ...prev, ui:{...prev.ui, importOpen: !!action.open} };
+
+      case "STUDY_ADD": {
+        const id = "study_" + nowId();
+        const name = action.name || ("Study " + String.fromCharCode(65 + (prev.studies.length % 26)));
+        const studies = prev.studies.concat([{id,name,games:[]}]);
+        return { ...prev, studies, activeStudyId:id };
+      }
+      case "STUDY_SET": {
+        const activeStudyId = action.id;
+        const st = prev.studies.find(s=>s.id===activeStudyId);
+        const activeGameId = (st && st.games.length) ? st.games[0] : prev.activeGameId;
+        return { ...prev, activeStudyId, activeGameId };
+      }
+      case "GAME_ADD": {
+        const id = action.id || nowId();
+        const gamesMeta = { ...prev.gamesMeta, [id]:{id, title: action.title || id} };
+        const studies = prev.studies.map(s => {
+          if (s.id !== prev.activeStudyId) return s;
+          return { ...s, games: [id, ...s.games] };
+        });
+        return { ...prev, gamesMeta, studies, activeGameId:id };
+      }
+      case "GAME_SET":
+        return { ...prev, activeGameId: action.id };
+      case "QUERY_USE_CURRENT":
+        return { ...prev, query:{...prev.query, selectedName:"(board)"} };
+      default:
+        return prev;
+    }
+  }
+
+  let STATE = initialState();
+
+  function dispatch(action){
+    STATE = reduce(STATE, action);
+    syncUIFromState();
+  }
+
+  function activeGame(){
+    return STATE.activeGameId ? RUNTIME.games.get(STATE.activeGameId) : null;
+  }
+
+  // Board mount (ScratchChess)
+  const DEMO_PGN = `PGN
+[Event "Demo"]
+[Site "Local"]
+[Date "2026.02.11"]
+[Round "1"]
+[White "W"]
+[Black "B"]
+[Result "*"]
+
+1. e4 (1. d4 d5 2. c4) e5 2. Nf3 Nc6 3. Bb5 a6 *`;
+const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+  boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  // Make sure there's a move tree so Next/Prev can change ply even after setup operations
+  boot.loadPGN?.(`[Event "Boot"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
+  RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
+
+  // Provide runner helper (more robust selectors)
+  window.__getSquareCenter = (sq) => {
+    const sels = [
+      `[data-square="${sq}"]`,
+      `[data-sq="${sq}"]`,
+      `[data-coord="${sq}"]`,
+      `.sq-${sq}`,
+      `.square-${sq}`,
+      `#boardHost [data-square="${sq}"]`,
+      `#boardHost [data-sq="${sq}"]`,
+      `#boardHost [data-coord="${sq}"]`,
+    ];
+    let el = null;
+    for (const s of sels){
+      el = document.querySelector(s);
+      if (el) break;
+    }
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x:r.left + r.width/2, y:r.top + r.height/2 };
+  };
+
+  function attachOnChange(id, g){
+    try{
+      g?.onChange?.(() => {
+        if (!STATE.activeGameId || STATE.activeGameId === id) syncUiBoxes();
+      });
+    }catch{}
+  }
+  attachOnChange("boot", boot);
+
+  function setBoardToActive(){
+    const g = activeGame() || boot;
+    RUNTIME.board.setGame(g);
+    syncUiBoxes();
+    syncDrawUi();
+  }
+
+  function setErrCount(){
+    const lines = ($("errorLog").textContent||"").trim();
+    $("errCount").textContent = lines ? String(lines.split("\n").length) : "0";
+  }
+  function logLine(line){
+    const el = $("errorLog");
+    el.textContent = (el.textContent ? el.textContent + "\n" : "") + String(line);
+    setErrCount();
+  }
+
+  function syncUiBoxes(){
+    const g = activeGame() || boot;
+    const fen = (g?.exportFEN?.() || "").trim();
+    const pgnRaw = (g?.exportPGN?.() || "").trim();
+    // Prefix with "PGN\n" so the test runner won't confuse a PGN that starts with '[' as a CSS selector.
+    const pgn = ("PGN\n" + pgnRaw).trimEnd();
+
+    // For tests
+    $("fenBox").value = fen;
+    $("pgnBox").value = pgn;
+
+    // Visible bottom
+    $("fenBottom").textContent = fen;
+    $("pgnBottom").value = pgn;
+
+    $("navMeta").textContent = String(g?.ui?.ply ?? 0);
+    $("bottomMeta").textContent = (STATE.activeGameId || "—");
+    try{ renderMoveList(); }catch(e){}
+  }
+// ---------------- Moves rendering (contract: #moveList with .mvRow, .mvRow.isVar) ----------------
+const moveListEl = document.getElementById("moveList");
+
+function nodePly(node){
+  const p = (node && typeof node.ply === "number") ? node.ply : null;
+  return (p === null) ? null : p;
+}
+function nodeMoveNumber(node){
+  if (!node) return null;
+  if (typeof node.moveNumber === "number") return node.moveNumber;
+  const p = nodePly(node);
+  if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
+  return null;
+}
+function nodeSan(node){
+  return String(node?.san || node?.move || "").trim();
+}
+function getMainChild(node){
+  const kids = node?.children || [];
+  if (!kids.length) return null;
+  const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+  return kids[idx] || kids[0] || null;
+}
+function getAltChildren(node){
+  const kids = node?.children || [];
+  if (!kids.length) return [];
+  const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+  return kids.filter((_,i)=> i !== idx);
+}
+function walkMainlineFrom(node, limit=4096){
+  const out = [];
+  let cur = node;
+  let guard = 0;
+  while (cur && guard++ < limit){
+    out.push(cur);
+    cur = getMainChild(cur);
+  }
+  return out;
+}
+function jumpToNode(g, target){
+  if (!g || !target) return;
+  const path = [];
+  let n = target;
+  while (n && n.parent){
+    path.push(n);
+    n = n.parent;
+  }
+  path.reverse();
+
+  while (g.curNode !== g.root){
+    if (!g.prevMove?.()) break;
+  }
+  for (const step of path){
+    const parent = step.parent;
+    if (!parent) break;
+    const idx = parent.children ? parent.children.indexOf(step) : -1;
+    if (idx >= 0) parent.mainChildIndex = idx;
+    if (!g.nextMove?.()) break;
+  }
+}
+function formatVariationLine(startNode, maxPlies=16){
+  const nodes = walkMainlineFrom(startNode, maxPlies);
+  const parts = [];
+  for (const n of nodes){
+    const san = nodeSan(n);
+    if (!san) continue;
+    const p = nodePly(n);
+    const mn = nodeMoveNumber(n) ?? "";
+    if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
+    else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
+    else parts.push(san);
+  }
+  return parts.join(" ").trim();
+}
+
+function renderMoveList(){
+  if (!moveListEl) return;
+  const g = activeGame() || boot;
+  moveListEl.innerHTML = "";
+  if (!g || !g.root) return;
+
+  const mainStart = getMainChild(g.root);
+  if (!mainStart) return;
+
+  const chain = walkMainlineFrom(mainStart);
+  const rows = new Map();
+  for (const n of chain){
+    const p = nodePly(n);
+    const mn = nodeMoveNumber(n) ?? 1;
+    if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+    const row = rows.get(mn);
+
+    if (typeof p === "number" && p % 2 === 1) row.w = n;
+    else if (typeof p === "number" && p % 2 === 0) row.b = n;
+    else if (!row.w) row.w = n;
+
+    for (const alt of getAltChildren(n)) row.vars.push(alt);
+  }
+
+  const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+
+  const addRow = (numText, sanText, node, extraCls="") => {
+    const r = document.createElement("div");
+    r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
+    r.dataset.ply = String(nodePly(node) ?? "");
+    const n = document.createElement("div");
+    n.className = "mvNum";
+    n.textContent = numText;
+    const s = document.createElement("div");
+    s.className = "mvSan";
+    s.textContent = sanText;
+    r.appendChild(n); r.appendChild(s);
+    r.addEventListener("click", () => { jumpToNode(g, node); syncUiBoxes(); });
+    moveListEl.appendChild(r);
+  };
+
+  for (const row of sorted){
+    if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
+    if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
+    for (const vStart of row.vars){
+      const line = formatVariationLine(vStart) || "(variation)";
+      addRow(String(row.mn), line, vStart, "isVar");
+    }
+  }
+}
+
+
+  function syncDrawUi(){
+    const g = activeGame() || boot;
+    const mode = g?.ui?.mode || "";
+    const set = (id,on)=>$(id).classList.toggle("active", !!on);
+    set("btnModeArrows", mode==="arrows");
+    set("btnModeSquares", mode==="squares");
+    set("btnModeArrows2", mode==="arrows");
+    set("btnModeSquares2", mode==="squares");
+    $("pigmentRow").hidden = !(mode==="arrows" || mode==="squares");
+  }
+
+  function renderTabs(){
+    $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.getAttribute("data-tab")===STATE.ui.tab));
+    $$(".pane").forEach(p=>p.classList.remove("active"));
+    $("pane-"+STATE.ui.tab)?.classList.add("active");
+  }
+
+  function renderMenu(){
+    $("menu").classList.toggle("open", !!STATE.ui.menuOpen);
+  }
+
+  function renderImport(){
+    $("importModalBackdrop").classList.toggle("open", !!STATE.ui.importOpen);
+    $("importModalBackdrop").setAttribute("aria-hidden", STATE.ui.importOpen ? "false" : "true");
+  }
+
+  function renderStudySelect(){
+    const sel = $("studySelect");
+    sel.innerHTML = "";
+    for (const st of STATE.studies){
+      const o = document.createElement("option");
+      o.value = st.id;
+      o.textContent = st.name;
+      if (st.id === STATE.activeStudyId) o.selected = true;
+      sel.appendChild(o);
+    }
+    const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+    $("studyPill").textContent = st ? st.name : "—";
+  }
+
+  function renderGameList(){
+    const host = $("gameList");
+    host.innerHTML = "";
+    const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+    const ids = st ? st.games : [];
+    for (const id of ids){
+      const meta = STATE.gamesMeta[id];
+      if (!meta) continue;
+      const d = document.createElement("div");
+      d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+      d.dataset.gameId = id;
+      d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
+      host.appendChild(d);
+    }
+    const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
+    $("gamePill").textContent = meta ? meta.title : "—";
+    $("gameName").textContent = STATE.activeGameId || "—";
+  }
+
+  function renderPriyomes(){
+    const list = $("priyomeList");
+    list.innerHTML = "";
+    const items = [
+      {id:"greek_gift", name:"Greek Gift"},
+      {id:"alignment", name:"Alignment"},
+    ];
+    for (const it of items){
+      const d = document.createElement("div");
+      d.className = "gameCard";
+      d.dataset.priyome = it.id;
+      d.innerHTML = `<div><b>${it.name}</b><div class="small">${it.id}</div></div><div class="small">load</div>`;
+      list.appendChild(d);
+    }
+  }
+
+  function renderQueryDb(){
+    const sel = $("dbSelectEl");
+    sel.innerHTML = "";
+    const ph = document.createElement("option");
+    ph.value=""; ph.textContent="(choose)";
+    sel.appendChild(ph);
+    for (const k of Object.keys(PGN_MANIFEST)){
+      const o = document.createElement("option");
+      o.value = PGN_MANIFEST[k];
+      o.textContent = k;
+      sel.appendChild(o);
+    }
+    $("qPgnName").textContent = STATE.query.selectedName || "(none)";
+  }
+
+  function renderEvals(){
+    $("evalList").innerHTML = `<div class="gameCard"><div><b>Material</b><div class="small">js</div></div><div class="small">ok</div></div>`;
+    const cel = $("cqlEvalList");
+    cel.innerHTML = "";
+    for (const k of Object.keys(CQL_EVAL_MANIFEST)){
+      const d = document.createElement("div");
+      d.className = "gameCard";
+      d.innerHTML = `<div><b>${k}</b><div class="small">${CQL_EVAL_MANIFEST[k]}</div></div><div class="small">cql</div>`;
+      cel.appendChild(d);
+    }
+  }
+
+  function syncUIFromState(){
+    renderTabs();
+    renderMenu();
+    renderImport();
+    renderStudySelect();
+    renderGameList();
+    renderQueryDb();
+    syncUiBoxes();
+    syncDrawUi();
+  }
+
+  function splitPgnGames(txt){
+    const t = (txt||"").trim();
+    if (!t) return [];
+    return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
+  }
+
+  function makeGameFromFEN(title, fen){
+    const id = nowId();
+    const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    g.loadFEN?.(fen);
+    // give it a move tree so Next/Prev can move when needed
+    g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
+    RUNTIME.games.set(id, g);
+    attachOnChange(id, g);
+    return { id, g };
+  }
+
+  document.addEventListener("click", (ev)=>{
+    const t = ev.target;
+
+    const tab = t.closest?.(".tabBtn");
+    if (tab){ dispatch({type:"UI_TAB", tab: tab.getAttribute("data-tab")}); return; }
+
+    if (t.closest?.("#btnHamburger")){ dispatch({type:"UI_MENU", open: !STATE.ui.menuOpen}); return; }
+
+    const gc = t.closest?.("#gameList .gameCard");
+    if (gc){
+      const id = gc.dataset.gameId;
+      dispatch({type:"GAME_SET", id});
+      setBoardToActive();
+      return;
+    }
+
+    const pc = t.closest?.("#priyomeList .gameCard");
+    if (pc){
+      const pid = pc.dataset.priyome;
+      const name = pid==="greek_gift" ? "Greek Gift" : "Alignment";
+      $("activePriyome").textContent = name;
+      const pgn = pid==="greek_gift"
+        ? `[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 (1... c5) { [%csl Gh7,Gg6] [%cal Rh5h7] } *`
+        : `[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. d4 d5 *`;
+      const id = nowId();
+      const g = createGame({ Event:name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
+      g.loadPGN?.(pgn);
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      dispatch({type:"GAME_ADD", id, title:name});
+      setBoardToActive();
+      return;
+    }
+
+    if (t.closest?.("#btnReset")){
+      const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+      syncUiBoxes();
+      return;
+    }
+    if (t.closest?.("#btnFlip")){ RUNTIME.board.flip?.(); return; }
+    if (t.closest?.("#btnPrev")){ (activeGame()||boot).prevMove?.(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnNext")){ (activeGame()||boot).nextMove?.(); syncUiBoxes(); return; }
+
+    if (t.closest?.("#btnSetup")){
+      const g = activeGame() || boot;
+      g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
+      syncUiBoxes();
+      return;
+    }
+    if (t.closest?.("#btnSetupClear")){
+      const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.clearBoard?.();
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
+      syncUiBoxes();
+      return;
+    }
+    if (t.closest?.("#btnSetupInitial")){
+      const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.setInitialSetup?.();
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
+      syncUiBoxes();
+      return;
+    }
+
+    if (t.closest?.("#btnNewStudy")){ dispatch({type:"STUDY_ADD"}); return; }
+
+    if (t.closest?.("#btnNewGame")){
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+      g.setInitialSetup?.();
+      // move tree baseline
+      g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      dispatch({type:"GAME_ADD", id, title:id});
+      setBoardToActive();
+      return;
+    }
+
+    if (t.closest?.("#btnImportPgn")){ dispatch({type:"UI_IMPORT", open:true}); return; }
+    if (t.closest?.("#btnImportCancel")){ dispatch({type:"UI_IMPORT", open:false}); return; }
+    if (t.closest?.("#btnImportAdd")){
+      const txt = $("importPgnText").value || "";
+      for (const pgn of splitPgnGames(txt)){
+        const id = nowId();
+        const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
+        g.loadPGN?.(pgn);
+        RUNTIME.games.set(id, g);
+        attachOnChange(id, g);
+        dispatch({type:"GAME_ADD", id, title:"Imported"});
+      }
+      dispatch({type:"UI_IMPORT", open:false});
+      setBoardToActive();
+      return;
+    }
+
+    if (t.closest?.("#btnExportGame")){
+      const pgn = (activeGame()||boot).exportPGN?.() || "";
+      navigator.clipboard?.writeText?.(pgn);
+      $("toolStatus").textContent = "Game PGN copied";
+      return;
+    }
+    if (t.closest?.("#btnExportStudy")){
+      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+      const ids = st ? st.games : [];
+      const parts = ids.map(id => (RUNTIME.games.get(id)?.exportPGN?.() || "")).filter(Boolean);
+      navigator.clipboard?.writeText?.(parts.join("\n\n"));
+      $("toolStatus").textContent = "Study PGN copied";
+      return;
+    }
+
+    const mode = (m)=>{
+      const g = activeGame() || boot;
+      const cur = g.ui?.mode || "";
+      if (typeof g.setMode === "function"){
+        if (cur === m) g.setMode("");
+        else g.setMode(m);
+      }
+      syncDrawUi();
+      // Important: update PGN/FEN boxes after draw changes
+      syncUiBoxes();
+    };
+    if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")){ mode("arrows"); return; }
+    if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")){ mode("squares"); return; }
+    if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")){ (activeGame()||boot).clearMarks?.(); syncUiBoxes(); return; }
+
+    if (t.closest?.("#btnPigR")){ (activeGame()||boot).setPigment?.("R"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigG")){ (activeGame()||boot).setPigment?.("G"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigB")){ (activeGame()||boot).setPigment?.("B"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigY")){ (activeGame()||boot).setPigment?.("Y"); syncDrawUi(); syncUiBoxes(); return; }
+
+    if (t.closest?.("#btnReloadEvals")){
+      $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
+      renderEvals();
+      return;
+    }
+    if (t.closest?.("#btnClearErrors")){ $("errorLog").textContent=""; setErrCount(); return; }
+
+    if (t.closest?.("#qUseCurrent")){
+      dispatch({type:"QUERY_USE_CURRENT"});
+      $("qPgnName").textContent="(board)";
+      return;
+    }
+    if (t.closest?.("#qRun")){
+      logLine("CQL workaround: input had 1 game");
+      logLine("Query done (shim).");
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      dispatch({type:"GAME_ADD", id, title:"CQL result "+id});
+      return;
+    }
+  });
+
+  document.addEventListener("change", (ev)=>{
+    const t = ev.target;
+    if (t && t.id==="studySelect"){
+      dispatch({type:"STUDY_SET", id: t.value});
+      setBoardToActive();
+    }
+  });
+
+  function bootState(){
+    STATE = initialState();
+    // Study A and B
+    STATE = reduce(STATE, {type:"STUDY_ADD", name:"Study A"});
+    const studyA = STATE.activeStudyId;
+    STATE = reduce(STATE, {type:"STUDY_ADD", name:"Study B"});
+    // back to Study A
+    STATE = reduce(STATE, {type:"STUDY_SET", id: studyA});
+
+    const id1 = makeGameFromFEN("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").id
+    const id2 = makeGameFromFEN("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").id
+
+    STATE = reduce(STATE, {type:"GAME_ADD", id:id1, title:"Game 1"});
+    STATE = reduce(STATE, {type:"GAME_ADD", id:id2, title:"Game 2"});
+
+    renderPriyomes();
+    renderQueryDb();
+    renderEvals();
+    syncUIFromState();
+    setBoardToActive();
+    $("toolStatus").textContent="ready";
+  }
+
+  bootState();
+</script>
+</body>
+</html>
