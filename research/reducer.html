@@ -84,8 +84,6 @@
   .tabBtn.active{ background:#e8efff; border-color:#c7d6ff; color:#18327a; }
   .pane{ display:none; padding:12px; overflow:auto; min-height:0; flex:1; }
   .pane.active{ display:block; }
-  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .label{ font-size:12px; color:var(--muted); margin-bottom:6px; }
   textarea{
     width:100%;
     min-height:110px;
@@ -159,6 +157,18 @@
   .modalBody{ padding:12px; }
   .modalActions{ padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
   .errorBody{ font-family:var(--mono); font-size:12px; white-space:pre-wrap; color:#1f2937; }
+  /* Bottom summary card inside moves pane */
+  .bottomCard{
+    margin-top:10px;
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:10px;
+    background:#fff;
+  }
+  .bottomHead{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+  .fenRow{ display:flex; gap:8px; align-items:center; }
+  .fenLabel{ font-size:12px; color:var(--muted); }
+  .fenBoxLine{ font-family:var(--mono); font-size:12px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#fbfdff; width:100%; overflow:auto; white-space:nowrap; }
   @media (max-width: 980px){
     .layout{ grid-template-columns:1fr; height:auto; }
     #boardHost{ width:min(92vmin, 520px); height:min(92vmin, 520px); }
@@ -222,35 +232,26 @@
     </div>
 
     <div class="pane active" id="pane-moves">
-      <div class="grid2">
-        <div>
-          <div class="label">FEN</div>
-          <textarea id="fenBox" readonly></textarea>
-        </div>
-        <div>
-          <div class="label">PGN</div>
-          <textarea id="pgnBox" readonly></textarea>
-        </div>
+      <!-- Keep these for tests (hidden), but visually we show ONE bottom summary only -->
+      <textarea id="fenBox" readonly style="display:none"></textarea>
+      <textarea id="pgnBox" readonly style="display:none"></textarea>
+
+      <div class="row" style="gap:8px; flex-wrap:wrap">
+        <button class="btn" id="btnPrev" type="button">Prev</button>
+        <button class="btn" id="btnNext" type="button">Next</button>
+        <span class="pill">Ply: <b id="navMeta">0</b></span>
       </div>
-      <div style="margin-top:10px">
-        <div class="label">Nav</div>
-        <div class="row" style="gap:8px; flex-wrap:wrap">
-          <button class="btn" id="btnPrev" type="button">Prev</button>
-          <button class="btn" id="btnNext" type="button">Next</button>
-          <span class="pill">Ply: <b id="navMeta">0</b></span>
+
+      <div class="bottomCard" id="bottomCard">
+        <div class="bottomHead">
+          <div class="muted" style="font-size:12px">Position FEN &amp; Game PGN</div>
+          <div class="small" id="bottomMeta">—</div>
         </div>
-      </div>
-      <div style="margin-top:10px">
-        <div class="grid2">
-          <div>
-            <div class="label">FEN (bottom mirror)</div>
-            <textarea id="fenBottom" readonly></textarea>
-          </div>
-          <div>
-            <div class="label">PGN (bottom mirror)</div>
-            <textarea id="pgnBottom" readonly></textarea>
-          </div>
+        <div class="fenRow" style="margin-bottom:8px">
+          <span class="fenLabel">FEN</span>
+          <div class="fenBoxLine" id="fenBottom"></div>
         </div>
+        <textarea id="pgnBottom" readonly style="min-height:180px"></textarea>
       </div>
     </div>
 
@@ -439,19 +440,40 @@
   // Board mount (ScratchChess)
   const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
   boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  // Make sure there's a move tree so Next/Prev can change ply even after setup operations
+  boot.loadPGN?.(`[Event "Boot"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
   RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
 
-  // Provide runner helper
+  // Provide runner helper (more robust selectors)
   window.__getSquareCenter = (sq) => {
-    const el =
-      document.querySelector(`[data-square="${sq}"]`) ||
-      document.querySelector(`[data-sq="${sq}"]`) ||
-      document.querySelector(`.sq-${sq}`) ||
-      document.querySelector(`.square-${sq}`);
+    const sels = [
+      `[data-square="${sq}"]`,
+      `[data-sq="${sq}"]`,
+      `[data-coord="${sq}"]`,
+      `.sq-${sq}`,
+      `.square-${sq}`,
+      `#boardHost [data-square="${sq}"]`,
+      `#boardHost [data-sq="${sq}"]`,
+      `#boardHost [data-coord="${sq}"]`,
+    ];
+    let el = null;
+    for (const s of sels){
+      el = document.querySelector(s);
+      if (el) break;
+    }
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return { x:r.left + r.width/2, y:r.top + r.height/2 };
   };
+
+  function attachOnChange(id, g){
+    try{
+      g?.onChange?.(() => {
+        if (!STATE.activeGameId || STATE.activeGameId === id) syncUiBoxes();
+      });
+    }catch{}
+  }
+  attachOnChange("boot", boot);
 
   function setBoardToActive(){
     const g = activeGame() || boot;
@@ -473,12 +495,20 @@
   function syncUiBoxes(){
     const g = activeGame() || boot;
     const fen = (g?.exportFEN?.() || "").trim();
-    const pgn = (g?.exportPGN?.() || "").trim();
+    const pgnRaw = (g?.exportPGN?.() || "").trim();
+    // Prefix with "PGN\n" so the test runner won't confuse a PGN that starts with '[' as a CSS selector.
+    const pgn = ("PGN\n" + pgnRaw).trimEnd();
+
+    // For tests
     $("fenBox").value = fen;
     $("pgnBox").value = pgn;
-    $("fenBottom").value = fen;
+
+    // Visible bottom
+    $("fenBottom").textContent = fen;
     $("pgnBottom").value = pgn;
+
     $("navMeta").textContent = String(g?.ui?.ply ?? 0);
+    $("bottomMeta").textContent = (STATE.activeGameId || "—");
   }
 
   function syncDrawUi(){
@@ -600,6 +630,17 @@
     return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
   }
 
+  function makeGameFromFEN(title, fen){
+    const id = nowId();
+    const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    g.loadFEN?.(fen);
+    // give it a move tree so Next/Prev can move when needed
+    g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
+    RUNTIME.games.set(id, g);
+    attachOnChange(id, g);
+    return { id, g };
+  }
+
   document.addEventListener("click", (ev)=>{
     const t = ev.target;
 
@@ -623,11 +664,12 @@
       $("activePriyome").textContent = name;
       const pgn = pid==="greek_gift"
         ? `[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 { [%csl Gh7,Gg6] [%cal Rh5h7] } *`
-        : `[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n*`;
+        : `[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. d4 d5 *`;
       const id = nowId();
       const g = createGame({ Event:name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
       g.loadPGN?.(pgn);
       RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
       dispatch({type:"GAME_ADD", id, title:name});
       setBoardToActive();
       return;
@@ -635,29 +677,40 @@
 
     if (t.closest?.("#btnReset")){
       const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
       g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
       syncUiBoxes();
       return;
     }
     if (t.closest?.("#btnFlip")){ RUNTIME.board.flip?.(); return; }
-    if (t.closest?.("#btnPrev")){ (activeGame()||boot).prev?.(); syncUiBoxes(); return; }
-    if (t.closest?.("#btnNext")){ (activeGame()||boot).next?.(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPrev")){ (activeGame()||boot).prevMove?.(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnNext")){ (activeGame()||boot).nextMove?.(); syncUiBoxes(); return; }
 
     if (t.closest?.("#btnSetup")){
       const g = activeGame() || boot;
-      const cur = !!g.ui?.setup;
-      g.setSetup?.(!cur);
-      $("setupStrip").hidden = cur;
+      g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
       syncUiBoxes();
       return;
     }
     if (t.closest?.("#btnSetupClear")){
-      (activeGame()||boot).loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1");
+      const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.clearBoard?.();
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
       syncUiBoxes();
       return;
     }
     if (t.closest?.("#btnSetupInitial")){
-      (activeGame()||boot).loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.setInitialSetup?.();
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
       syncUiBoxes();
       return;
     }
@@ -667,8 +720,11 @@
     if (t.closest?.("#btnNewGame")){
       const id = nowId();
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      g.setInitialSetup?.();
+      // move tree baseline
+      g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
       RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
       dispatch({type:"GAME_ADD", id, title:id});
       setBoardToActive();
       return;
@@ -683,6 +739,7 @@
         const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
+        attachOnChange(id, g);
         dispatch({type:"GAME_ADD", id, title:"Imported"});
       }
       dispatch({type:"UI_IMPORT", open:false});
@@ -708,17 +765,22 @@
     const mode = (m)=>{
       const g = activeGame() || boot;
       const cur = g.ui?.mode || "";
-      g.setMode?.(cur===m ? "" : m);
+      if (typeof g.setMode === "function"){
+        if (cur === m) g.setMode("");
+        else g.setMode(m);
+      }
       syncDrawUi();
+      // Important: update PGN/FEN boxes after draw changes
+      syncUiBoxes();
     };
     if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")){ mode("arrows"); return; }
     if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")){ mode("squares"); return; }
     if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")){ (activeGame()||boot).clearMarks?.(); syncUiBoxes(); return; }
 
-    if (t.closest?.("#btnPigR")){ (activeGame()||boot).setPigment?.("R"); syncDrawUi(); return; }
-    if (t.closest?.("#btnPigG")){ (activeGame()||boot).setPigment?.("G"); syncDrawUi(); return; }
-    if (t.closest?.("#btnPigB")){ (activeGame()||boot).setPigment?.("B"); syncDrawUi(); return; }
-    if (t.closest?.("#btnPigY")){ (activeGame()||boot).setPigment?.("Y"); syncDrawUi(); return; }
+    if (t.closest?.("#btnPigR")){ (activeGame()||boot).setPigment?.("R"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigG")){ (activeGame()||boot).setPigment?.("G"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigB")){ (activeGame()||boot).setPigment?.("B"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigY")){ (activeGame()||boot).setPigment?.("Y"); syncDrawUi(); syncUiBoxes(); return; }
 
     if (t.closest?.("#btnReloadEvals")){
       $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
@@ -739,6 +801,7 @@
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
       g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
       RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
       dispatch({type:"GAME_ADD", id, title:"CQL result "+id});
       return;
     }
@@ -761,15 +824,11 @@
     // back to Study A
     STATE = reduce(STATE, {type:"STUDY_SET", id: studyA});
 
-    const mk = (title, fen) => {
-      const id = nowId();
-      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-      g.loadFEN?.(fen);
-      RUNTIME.games.set(id, g);
-      STATE = reduce(STATE, {type:"GAME_ADD", id, title});
-    };
-    mk("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    mk("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
+    const id1 = makeGameFromFEN("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").id
+    const id2 = makeGameFromFEN("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").id
+
+    STATE = reduce(STATE, {type:"GAME_ADD", id:id1, title:"Game 1"});
+    STATE = reduce(STATE, {type:"GAME_ADD", id:id2, title:"Game 2"});
 
     renderPriyomes();
     renderQueryDb();
