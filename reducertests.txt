@@ -49,6 +49,7 @@ TEST Switching games changes the displayed game id (and the test checks ids prop
 ["expectNotEqual","$gNewest","$gSecond"]
 
 TEST Setup clear changes FEN (board state)
+["click","[data-tab='moves']"]
 ["click","#btnReset"]
 ["waitFor","#fenBox",2000]
 ["storeText","#fenBox","fen0"]
@@ -60,8 +61,8 @@ TEST Setup clear changes FEN (board state)
 ["expectNotEqual","$fen0","$fen1"]
 
 TEST Draw squares: enable Squares mode and create a square mark (PGN contains %csl)
-["click","[data-tab='draw']"]
-["waitFor","#drawToolbar",2000]
+["click","[data-tab='moves']"]
+["waitFor","#drawModeRow",2000]
 ["click","#btnModeSquares"]
 ["waitFor","#pgnBox",2000]
 ["storeText","#pgnBox","p0"]
@@ -72,8 +73,8 @@ TEST Draw squares: enable Squares mode and create a square mark (PGN contains %c
 ["expectContains","$p1","%csl"]
 
 TEST Draw arrows: enable Arrows mode and create an arrow mark (PGN contains %cal)
-["click","[data-tab='draw']"]
-["waitFor","#drawToolbar",2000]
+["click","[data-tab='moves']"]
+["waitFor","#drawModeRow",2000]
 ["click","#btnModeArrows"]
 ["waitFor","#pgnBox",2000]
 ["storeText","#pgnBox","pa0"]
@@ -179,6 +180,7 @@ TEST Manifests load: studies dropdown, priyomes list, query DB list, CQL evals l
 # -----------------------------
 
 TEST Reset sets starting FEN (FEN bottom shows initial pieces)
+["click","[data-tab='moves']"]
 ["waitFor","#btnReset",2000]
 ["click","#btnReset"]
 ["waitFor","#fenBottom",3000]
@@ -188,6 +190,7 @@ TEST Reset sets starting FEN (FEN bottom shows initial pieces)
 ["expectContains","$fenInit","PPPPPPPP"]
 
 TEST Setup toggle shows setup strip and clear produces empty-board FEN
+["click","[data-tab='moves']"]
 ["click","#btnSetup"]
 ["waitForVisible","#setupStrip",2000]
 ["expectVisible","#setupStrip"]
@@ -197,6 +200,7 @@ TEST Setup toggle shows setup strip and clear produces empty-board FEN
 ["expectContains","$fenClear","8/8/8/8/8/8/8/8"]
 
 TEST Setup initial restores initial FEN
+["click","[data-tab='moves']"]
 ["click","#btnSetupInitial"]
 ["waitForContains","#fenBottom","rnbqkbnr/pppppppp",4000]
 ["storeText","#fenBottom","fenBack"]
@@ -206,6 +210,7 @@ TEST Setup initial restores initial FEN
 ["waitForGone","#setupStrip",2000]
 
 TEST Prev/Next update ply indicator (future: expectTextChanged)
+["click","[data-tab='moves']"]
 ["waitFor","#navMeta",2000]
 ["storeText","#navMeta","ply0"]
 ["click","#btnNext"]
@@ -218,6 +223,7 @@ TEST Prev/Next update ply indicator (future: expectTextChanged)
 # -----------------------------
 
 TEST Draw tools row exists and pigment row shows when a draw mode is selected (future ops)
+["click","[data-tab='moves']"]
 ["waitFor","#rightTools",4000]
 ["waitFor","#drawModeRow",4000]
 ["expectVisible","#drawModeRow"]
@@ -228,6 +234,7 @@ TEST Draw tools row exists and pigment row shows when a draw mode is selected (f
 ["expectNotEqual","1","0"]
 
 TEST Draw squares: mark e4 and PGN includes %csl
+["click","[data-tab='moves']"]
 ["click","#btnReset"]
 ["waitFor","#pgnBottom",2000]
 ["click","#btnModeSquares"]
@@ -239,6 +246,7 @@ TEST Draw squares: mark e4 and PGN includes %csl
 ["expectContains","$p1","%csl"]
 
 TEST Draw arrows: arrow e2->e4 and PGN includes %cal
+["click","[data-tab='moves']"]
 ["click","#btnReset"]
 ["waitFor","#pgnBottom",2000]
 ["click","#btnModeArrows"]
@@ -250,6 +258,7 @@ TEST Draw arrows: arrow e2->e4 and PGN includes %cal
 ["expectContains","$pa1","%cal"]
 
 TEST Clear marks removes %cal/%csl from PGN (after drawing something) (future op)
+["click","[data-tab='moves']"]
 ["click","#btnClearMarks"]
 ["waitFor","#pgnBottom",2000]
 ["storeText","#pgnBottom","pc"]
@@ -287,6 +296,7 @@ TEST Priyome selection loads a game and game pill changes
 # -----------------------------
 
 TEST Import modal opens and cancel closes (future expectHidden)
+["click","[data-tab='moves']"]
 ["waitFor","#btnImportPgn",2000]
 ["click","#btnImportPgn"]
 ["waitForVisible","#importModalBackdrop",2000]
@@ -294,6 +304,7 @@ TEST Import modal opens and cancel closes (future expectHidden)
 ["waitForGone","#importModalBackdrop",2000]
 
 TEST Import modal add creates new games (future type op)
+["click","[data-tab='moves']"]
 ["click","[data-tab='games']"]
 ["countAtLeast","#gameList .gameCard",1]
 ["click","#btnImportPgn"]
@@ -372,7 +383,12 @@ TEST Performance: tab switch + new game under 450ms
 ["timeUnder",450,[["click","[data-tab='games']"],["click","#btnNewGame"]]]
 
 # reducertests_moves_variations_spec.txt — Moves + Variations Contract (staging parity)
-# moves pane and board is a square
+# Requirements:
+# - Desktop: columnar list ONLY (movesWide visible; movesMobile hidden)
+#   Each move row renders 3 elements: move-number, white-move button, black-move button.
+#   Variations render as indented rows with same 3-element structure.
+# - Mobile: horizontal inline tokens ONLY (movesMobile visible; movesWide hidden)
+#   Format is token-flow like: "1. e4 c5 2. d4 …" and variations show as "(2. d3 …)" etc.
 
 # -----------------------------
 # Shell sanity
@@ -400,13 +416,20 @@ TEST Moves pane has desktop + mobile containers
 # Desktop layout contract
 # -----------------------------
 
-TEST[Desktop] Moves render in rows
+TEST [Desktop] Desktop shows columnar list only
+["click","[data-tab='moves']"]
+["waitFor","#movesWide",800]
+["expectVisible","#movesWide"]
+["expectNotVisible","#movesMobile"]
+
+TEST [Desktop] Moves render in rows
 ["click","[data-tab='moves']"]
 ["waitFor","#movesWide .mlRow",1200]
 ["countAtLeast","#movesWide .mlRow",1]
 
-TEST[Desktop] Each row has move number and buttons
+TEST [Desktop] Each row has 3 visible elements (num, white, black)
 ["waitFor","#movesWide .mlRow",800]
+["countAtLeast","#movesWide .mlRow:first-child > *",3]
 ["expectVisible","#movesWide .mlNum"]
 ["expectVisible","#movesWide .mlCellBtn"]
 
@@ -414,13 +437,20 @@ TEST[Desktop] Each row has move number and buttons
 # Mobile flow contract
 # -----------------------------
 
-TEST[Mobile] Moves render in horizontal flowing tokens
+TEST [Mobile] Mobile shows horizontal flow only
+["click","[data-tab='moves']"]
+["waitFor","#movesMobile",800]
+["expectVisible","#movesMobile"]
+["expectNotVisible","#movesWide"]
+
+TEST [Mobile] Moves render in horizontal flowing tokens
 ["click","[data-tab='moves']"]
 ["waitFor","#movesMobile .mlMobileFlow",1200]
 ["countAtLeast","#movesMobile .mlTokBtn",2]
 
-TEST[Mobile] Move numbers appear inline
+TEST [Mobile] Move numbers appear inline and flow includes "1."
 ["expectVisible","#movesMobile .mlTokNum"]
+["waitForContains","#movesMobile .mlMobileFlow","1.",2000]
 
 # -----------------------------
 # Click → jump contract
@@ -452,6 +482,7 @@ TEST Variations appear for Greek Gift
 ["click","[data-tab='moves']"]
 ["waitFor","#movesWide .mlVarRow",2000]
 ["countAtLeast","#movesWide .mlVarRow",1]
+["countAtLeast","#movesWide .mlVarRow:first-child > *",3]
 
 TEST Variation numbering keeps parent index
 ["expectVisible","#movesWide .mlVarNum"]
