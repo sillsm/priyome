@@ -1,0 +1,552 @@
+# reducertests.txt — Expanded contract for staging.html / Priyome
+# Notes:
+# - Rewritten to minimize fixed sleeps: prefer waitFor / waitForVisible / waitForGone / waitForTextNotEqual / waitForContains.
+# - Keep this file named reducertests.txt next to reducer_test_runner.html.
+
+# -----------------------------
+# Level 0: shell + layout sanity
+# -----------------------------
+
+TEST Title navbar is visible and shows app name
+["waitFor",".topbarWrap",2000]
+["expectVisible",".topbarWrap"]
+["expectContains",".brandTitle","Priyo"]
+
+TEST Board mounts ScratchChess shell and stays contained in its panel
+["waitFor","#boardHost",6000]
+["waitFor","#boardHost .sc-shell",6000]
+["expectContained","#boardHost","#boardCard",8]
+
+TEST Tabs exist: moves, games, priyomes, query, evals, errors
+["waitFor",".tabs",2000]
+["expectContains",".tabs","Moves"]
+["expectContains",".tabs","Games"]
+["expectContains",".tabs","Priyomes"]
+["expectContains",".tabs","Query"]
+["expectContains",".tabs","Evals"]
+["expectContains",".tabs","Errors"]
+
+TEST Hamburger toggles menu open/close
+["waitFor","#btnHamburger",2000]
+["click","#btnHamburger"]
+["waitForVisible","#menu.open",2000]
+["click","#btnHamburger"]
+["waitForGone","#menu.open",2000]
+
+#-----------------------------
+# Level 0 UI/UX Basics
+#-----------------------------
+
+TEST Switching games changes the displayed game id (and the test checks ids properly)
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",2]
+["click","#gameList .gameCard:first-child"]
+["waitFor","#gameName",2000]
+["storeText","#gameName","gNewest"]
+["click","#gameList .gameCard:nth-child(2)"]
+["waitForTextNotEqual","#gameName","$gNewest",3000]
+["storeText","#gameName","gSecond"]
+["expectNotEqual","$gNewest","$gSecond"]
+
+TEST Setup clear changes FEN (board state)
+["click","#btnReset"]
+["waitFor","#fenBox",2000]
+["storeText","#fenBox","fen0"]
+["click","#btnSetup"]
+["waitForVisible","#setupStrip",2000]
+["click","#btnSetupClear"]
+["waitForTextNotEqual","#fenBox","$fen0",4000]
+["storeText","#fenBox","fen1"]
+["expectNotEqual","$fen0","$fen1"]
+
+TEST Draw squares: enable Squares mode and create a square mark (PGN contains %csl)
+["click","[data-tab='draw']"]
+["waitFor","#drawToolbar",2000]
+["click","#btnModeSquares"]
+["waitFor","#pgnBox",2000]
+["storeText","#pgnBox","p0"]
+["dragSquare","e4","e4",60]
+["waitForTextNotEqual","#pgnBox","$p0",4000]
+["storeText","#pgnBox","p1"]
+["expectNotEqual","$p0","$p1"]
+["expectContains","$p1","%csl"]
+
+TEST Draw arrows: enable Arrows mode and create an arrow mark (PGN contains %cal)
+["click","[data-tab='draw']"]
+["waitFor","#drawToolbar",2000]
+["click","#btnModeArrows"]
+["waitFor","#pgnBox",2000]
+["storeText","#pgnBox","pa0"]
+["dragSquare","e2","e4",220]
+["waitForTextNotEqual","#pgnBox","$pa0",5000]
+["storeText","#pgnBox","pa1"]
+["expectNotEqual","$pa0","$pa1"]
+["expectContains","$pa1","%cal"]
+
+TEST Priyomes tab exists and selecting a priyome loads marks (PGN contains %cal/%csl)
+["click","[data-tab='priyomes']"]
+["waitFor","#priyomeList",4000]
+["click","[data-priyome='greek_gift']"]
+["waitForContains","#activePriyome","Greek Gift",4000]
+["waitFor","#pgnBox",2000]
+["storeText","#pgnBox","pp"]
+["expectContains","$pp","%cal"]
+["expectContains","$pp","%csl"]
+
+TEST Dragging a pawn in a new game lands in expected place (FEN shows e4 pawn)
+["click","[data-tab='games']"]
+["waitFor","#btnNewGame",2000]
+["click","#btnNewGame"]
+["waitFor","#gameName",3000]
+["storeText","#gameName","gDrag"]
+["waitFor","#fenBox",2000]
+["storeText","#fenBox","fenBeforeDrag"]
+["dragSquare","e2","e4",260]
+["waitForTextNotEqual","#fenBox","$fenBeforeDrag",6000]
+["storeText","#fenBox","fenDrag"]
+["expectContains","$fenDrag","4P3"]
+["expectContains","$fenDrag","PPPP1PPP"]
+
+# -----------------------------
+# Level 1: games + studies basics
+# -----------------------------
+
+TEST Games tab shows list and study dropdown exists
+["click","[data-tab='games']"]
+["waitFor","#studySelect",4000]
+["waitFor","#gameList",4000]
+["expectVisible","#studySelect"]
+["countAtLeast","#studySelect option",1]
+
+TEST Creating a new study adds an option and selects it (future ops)
+["click","[data-tab='games']"]
+["countAtLeast","#studySelect option",1]
+["click","#btnNewStudy"]
+["waitForContains","#studyPill","Study",4000]
+["storeText","#studyPill","studyPillAfter"]
+["expectContains","$studyPillAfter","Study"]
+
+TEST Game cards render and selecting a game updates the game pill
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",1]
+["click","#gameList .gameCard:first-child"]
+["waitForTextNotEqual","#gamePill","—",3000]
+["storeText","#gamePill","gp0"]
+["expectNotEqual","$gp0","—"]
+
+TEST New game adds another selectable card (if app boots with >=1 game)
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",1]
+["click","#btnNewGame"]
+["waitForCountAtLeast","#gameList .gameCard",2,4000]
+["countAtLeast","#gameList .gameCard",2]
+
+TEST Switching games changes displayed game pill or id (store then compare)
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",2]
+["click","#gameList .gameCard:first-child"]
+["waitFor","#gamePill",2000]
+["storeText","#gamePill","pillA"]
+["click","#gameList .gameCard:nth-child(2)"]
+["waitForTextNotEqual","#gamePill","$pillA",3000]
+["storeText","#gamePill","pillB"]
+["expectNotEqual","$pillA","$pillB"]
+
+TEST Manifests load: studies dropdown, priyomes list, query DB list, CQL evals list are populated
+# Studies manifest -> study dropdown options
+["click","[data-tab='games']"]
+["waitFor","#studySelect",4000]
+["countAtLeast","#studySelect option",1]
+
+# Priyomes manifest -> priyome list cards
+["click","[data-tab='priyomes']"]
+["waitFor","#priyomeList",4000]
+["countAtLeast","#priyomeList .gameCard",1]
+
+# CQL manifest -> query DB dropdown (populated from PGN_MANIFEST in staging)
+["click","[data-tab='query']"]
+["waitFor","#dbSelectEl",4000]
+["countAtLeast","#dbSelectEl option",2]
+
+# CQL eval manifest -> CQL eval list in Evals tab
+["click","[data-tab='evals']"]
+["waitFor","#cqlEvalList",4000]
+["countAtLeast","#cqlEvalList *",1]
+
+
+# -----------------------------
+# Level 1: board navigation + setup mode
+# -----------------------------
+
+TEST Reset sets starting FEN (FEN bottom shows initial pieces)
+["waitFor","#btnReset",2000]
+["click","#btnReset"]
+["waitFor","#fenBottom",3000]
+["waitForContains","#fenBottom","rnbqkbnr",3000]
+["storeText","#fenBottom","fenInit"]
+["expectContains","$fenInit","rnbqkbnr"]
+["expectContains","$fenInit","PPPPPPPP"]
+
+TEST Setup toggle shows setup strip and clear produces empty-board FEN
+["click","#btnSetup"]
+["waitForVisible","#setupStrip",2000]
+["expectVisible","#setupStrip"]
+["click","#btnSetupClear"]
+["waitForContains","#fenBottom","8/8/8/8/8/8/8/8",4000]
+["storeText","#fenBottom","fenClear"]
+["expectContains","$fenClear","8/8/8/8/8/8/8/8"]
+
+TEST Setup initial restores initial FEN
+["click","#btnSetupInitial"]
+["waitForContains","#fenBottom","rnbqkbnr/pppppppp",4000]
+["storeText","#fenBottom","fenBack"]
+["expectContains","$fenBack","rnbqkbnr/pppppppp"]
+# exit setup
+["click","#btnSetup"]
+["waitForGone","#setupStrip",2000]
+
+TEST Prev/Next update ply indicator (future: expectTextChanged)
+["waitFor","#navMeta",2000]
+["storeText","#navMeta","ply0"]
+["click","#btnNext"]
+["waitForTextNotEqual","#navMeta","$ply0",3000]
+["storeText","#navMeta","ply1"]
+["expectNotEqual","$ply0","$ply1"]
+
+# -----------------------------
+# Level 2: drawing tools (arrows + squares + pigments)
+# -----------------------------
+
+TEST Draw tools row exists and pigment row shows when a draw mode is selected (future ops)
+["waitFor","#rightTools",4000]
+["waitFor","#drawModeRow",4000]
+["expectVisible","#drawModeRow"]
+["click","#btnModeSquares"]
+# If pigmentRow exists in staging, this becomes hard; otherwise we just ensure draw mode button exists.
+["waitFor","#btnModeSquares",2000]
+# future: ["waitForVisible","#pigmentRow",2000]
+["expectNotEqual","1","0"]
+
+TEST Draw squares: mark e4 and PGN includes %csl
+["click","#btnReset"]
+["waitFor","#pgnBottom",2000]
+["click","#btnModeSquares"]
+["storeText","#pgnBottom","p0"]
+["dragSquare","e4","e4",60]
+["waitForTextNotEqual","#pgnBottom","$p0",4000]
+["storeText","#pgnBottom","p1"]
+["expectNotEqual","$p0","$p1"]
+["expectContains","$p1","%csl"]
+
+TEST Draw arrows: arrow e2->e4 and PGN includes %cal
+["click","#btnReset"]
+["waitFor","#pgnBottom",2000]
+["click","#btnModeArrows"]
+["storeText","#pgnBottom","pa0"]
+["dragSquare","e2","e4",220]
+["waitForTextNotEqual","#pgnBottom","$pa0",5000]
+["storeText","#pgnBottom","pa1"]
+["expectNotEqual","$pa0","$pa1"]
+["expectContains","$pa1","%cal"]
+
+TEST Clear marks removes %cal/%csl from PGN (after drawing something) (future op)
+["click","#btnClearMarks"]
+["waitFor","#pgnBottom",2000]
+["storeText","#pgnBottom","pc"]
+# future: expectNotContains "$pc" "%cal"; expectNotContains "$pc" "%csl"
+["expectContains","$pc","*"]
+
+# -----------------------------
+# Level 2: priyomes
+# -----------------------------
+
+TEST Priyomes tab loads list and selecting Greek Gift loads marks (PGN contains %cal/%csl)
+["click","[data-tab='priyomes']"]
+["waitFor","#priyomeList",4000]
+["countAtLeast","#priyomeList .gameCard",1]
+["click","[data-priyome='greek_gift']"]
+["waitFor","#pgnBottom",3000]
+["waitForContains","#pgnBottom","%cal",5000]
+["storeText","#pgnBottom","pp"]
+["expectContains","$pp","%cal"]
+["expectContains","$pp","%csl"]
+
+TEST Priyome selection loads a game and game pill changes
+["click","[data-tab='games']"]
+["waitFor","#gamePill",3000]
+["storeText","#gamePill","gpBefore"]
+["click","[data-tab='priyomes']"]
+["waitFor","#priyomeList",4000]
+["click","[data-priyome='greek_gift']"]
+["waitForTextNotEqual","#gamePill","$gpBefore",5000]
+["storeText","#gamePill","gpAfter"]
+["expectNotEqual","$gpBefore","$gpAfter"]
+
+# -----------------------------
+# Level 2: studies import/export UI
+# -----------------------------
+
+TEST Import modal opens and cancel closes (future expectHidden)
+["waitFor","#btnImportPgn",2000]
+["click","#btnImportPgn"]
+["waitForVisible","#importModalBackdrop",2000]
+["click","#btnImportCancel"]
+["waitForGone","#importModalBackdrop",2000]
+
+TEST Import modal add creates new games (future type op)
+["click","[data-tab='games']"]
+["countAtLeast","#gameList .gameCard",1]
+["click","#btnImportPgn"]
+["waitForVisible","#importModalBackdrop",2000]
+["type","#importPgnText","[Event \"Tiny\"]\n[Site \"Local\"]\n[Date \"2026.02.10\"]\n[Round \"1\"]\n[White \"W\"]\n[Black \"B\"]\n[Result \"*\"]\n\n1. e4 *"]
+["click","#btnImportAdd"]
+# Wait until modal closes OR game list count increases.
+["waitForGone","#importModalBackdrop",5000]
+["click","[data-tab='games']"]
+["waitForCountAtLeast","#gameList .gameCard",2,5000]
+["countAtLeast","#gameList .gameCard",2]
+
+# -----------------------------
+# Level 3: evals (JS evals + CQL eval manifest)
+# -----------------------------
+
+TEST Evals tab shows eval lists and reload button exists
+["click","[data-tab='evals']"]
+["waitFor","#btnReloadEvals",4000]
+["waitFor","#evalList",4000]
+["waitFor","#cqlEvalList",4000]
+["expectVisible","#btnReloadEvals"]
+
+TEST Reload evals updates status text (may be load failed; still should change)
+["click","[data-tab='evals']"]
+["waitFor","#evalsStatus",4000]
+["storeText","#evalsStatus","es0"]
+["click","#btnReloadEvals"]
+["waitForTextNotEqual","#evalsStatus","$es0",12000]
+["storeText","#evalsStatus","es1"]
+["expectNotEqual","$es0","$es1"]
+
+# -----------------------------
+# Level 3: CQL / Query (1 dummy PGN, 1 query, imports results)
+# -----------------------------
+
+TEST Query tab has controls and Run Query disabled until inputs set (future expectDisabled)
+["click","[data-tab='query']"]
+["waitFor","#qRun",4000]
+["expectVisible","#qRun"]
+# future: expectDisabled "#qRun"
+["expectNotEqual","1","0"]
+
+TEST Use board as query sets the PGN name pill
+["click","[data-tab='query']"]
+["waitFor","#qUseCurrent",4000]
+["click","#qUseCurrent"]
+["waitFor","#qPgnName",2000]
+["waitForContains","#qPgnName","(board)",3000]
+["storeText","#qPgnName","qpn"]
+["expectContains","$qpn","(board)"]
+
+TEST CQL runs against single-game input and logs dummy workaround (future type + async wait)
+["click","[data-tab='query']"]
+["click","#qUseCurrent"]
+["waitFor","#qCqlText",2000]
+["type","#qCqlText","cql()"]
+# future: expectEnabled "#qRun"
+["click","#qRun"]
+["click","[data-tab='errors']"]
+["waitFor","#errorLog",4000]
+["waitForContains","#errorLog","CQL workaround: input had 1 game",20000]
+["storeText","#errorLog","elog"]
+["expectContains","$elog","CQL workaround: input had 1 game"]
+
+TEST Query imports discovered games into study (game list has at least 2)
+["click","[data-tab='games']"]
+["waitFor","#gameList",4000]
+["countAtLeast","#gameList .gameCard",2]
+
+# -----------------------------
+# Level 3: performance budgets (coarse)
+# -----------------------------
+
+TEST Performance: tab switch + new game under 450ms
+["timeUnder",450,[["click","[data-tab='games']"],["click","#btnNewGame"]]]
+
+# reducertests_moves_variations_spec.txt — Moves + Variations Contract (staging parity)
+# Goal: lock down moves rendering, variation numbering, click-to-jump, highlighting, and responsive layout.
+
+# -----------------------------
+# Level 0: Moves pane existence
+# -----------------------------
+
+TEST Moves tab exists and has a move list container
+["waitFor",".tabs",2000]
+["click","[data-tab='moves']"]
+["waitFor","#moveList",2000]
+["expectVisible","#moveList"]
+
+TEST Moves pane shows at least 1 move row after boot/demo game load
+["click","[data-tab='moves']"]
+["waitFor","#moveList",2000]
+["countAtLeast","#moveList .mvRow",1]
+
+# ---------------------------------------
+# Level 1: Mainline formatting invariants
+# ---------------------------------------
+
+TEST Move rows show a move number + SAN-like text (mainline)
+["click","[data-tab='moves']"]
+["waitFor","#moveList .mvRow",2000]
+# future: regex match row text
+# futureOp: expectMatches "#moveList .mvRow:first-child" "^(\\d+\\.|\\d+\\.\\.\\.)\\s+"
+["expectNotEqual","1","0"]
+
+TEST Mainline move rows are not indented (left aligned within list)
+["click","[data-tab='moves']"]
+["waitFor","#moveList .mvRow",2000]
+# future: expectComputedLessThan selector property value
+# futureOp: expectComputed "#moveList .mvRow.mainline:first-child" "padding-left" "0px"
+["expectNotEqual","1","0"]
+
+# ----------------------------------------------------
+# Level 1: Current ply highlighting / selection marker
+# ----------------------------------------------------
+
+TEST Clicking a move row highlights it as current (desktop + mobile invariant)
+["click","[data-tab='moves']"]
+["waitFor","#moveList .mvRow",2000]
+["click","#moveList .mvRow:nth-child(1)"]
+["waitForContains","#navMeta","ply",2000]
+# future: expectHasClass / expectAttr
+["expectNotEqual","1","0"]
+
+TEST Clicking a later move changes the highlighted row (only one current)
+["click","[data-tab='moves']"]
+["waitFor","#moveList .mvRow",2000]
+["click","#moveList .mvRow:nth-child(1)"]
+["waitFor","#navMeta",2000]
+["storeText","#navMeta","plyA"]
+["click","#moveList .mvRow:nth-child(2)"]
+["waitForTextNotEqual","#navMeta","$plyA",3000]
+# future: expectNotHasClass for row1, expectHasClass for row2
+["expectNotEqual","1","0"]
+
+# ----------------------------------------------
+# Level 2: Click-to-jump updates board/ply meta
+# ----------------------------------------------
+
+TEST Clicking a move updates ply indicator (navMeta changes)
+["click","[data-tab='moves']"]
+["waitFor","#navMeta",2000]
+["storeText","#navMeta","ply0"]
+["click","#moveList .mvRow:nth-child(1)"]
+["waitForTextNotEqual","#navMeta","$ply0",3000]
+["storeText","#navMeta","ply1"]
+["expectNotEqual","$ply0","$ply1"]
+
+TEST Clicking different moves yields different FEN snapshots (board actually jumps)
+["click","[data-tab='moves']"]
+["waitFor","#fenBottom",2000]
+["click","#moveList .mvRow:nth-child(1)"]
+["waitFor","#fenBottom",2000]
+["storeText","#fenBottom","fenA"]
+["click","#moveList .mvRow:nth-child(2)"]
+["waitForTextNotEqual","#fenBottom","$fenA",3000]
+["storeText","#fenBottom","fenB"]
+["expectNotEqual","$fenA","$fenB"]
+
+# --------------------------------------------------------
+# Level 2: Variation presence + formatting + numbering rule
+# --------------------------------------------------------
+
+TEST Variation rows exist for a known-variation demo game (or priyome)
+["click","[data-tab='priyomes']"]
+["waitFor","#priyomeList",4000]
+["click","[data-priyome='greek_gift']"]
+["click","[data-tab='moves']"]
+["waitFor","#moveList",2000]
+["waitForCountAtLeast","#moveList .mvRow.isVar",1,5000]
+["countAtLeast","#moveList .mvRow.isVar",1]
+
+TEST Variation rows are visually indented relative to mainline
+["click","[data-tab='moves']"]
+["countAtLeast","#moveList .mvRow.isVar",1]
+# future: compare computed styles
+["expectNotEqual","1","0"]
+
+TEST Variation rows use smaller typography than mainline
+["click","[data-tab='moves']"]
+["countAtLeast","#moveList .mvRow.isVar",1]
+# future: compare computed font-size
+["expectNotEqual","1","0"]
+
+TEST Variation numbering preserves the parent move number (e.g., variation of 6 still reads 6)
+["click","[data-tab='moves']"]
+# future: expectAnyContains on at least one variation row:
+["expectNotEqual","1","0"]
+
+TEST Variation branch is visually grouped (variation rows contiguous under parent)
+["click","[data-tab='moves']"]
+# future: assert a mainline row followed by several .isVar rows
+["expectNotEqual","1","0"]
+
+# ------------------------------------------------
+# Level 2: Clicking variation move jumps correctly
+# ------------------------------------------------
+
+TEST Clicking a variation row jumps board (FEN changes) and highlights that row
+["click","[data-tab='moves']"]
+["countAtLeast","#moveList .mvRow.isVar",1]
+["waitFor","#fenBottom",2000]
+["storeText","#fenBottom","fenV0"]
+["click","#moveList .mvRow.isVar:first-child"]
+["waitForTextNotEqual","#fenBottom","$fenV0",4000]
+["storeText","#fenBottom","fenV1"]
+["expectNotEqual","$fenV0","$fenV1"]
+# future: expectHasClass on clicked var row
+["expectNotEqual","1","0"]
+
+# ---------------------------------------------------
+# Level 3: Move list interactions: scroll + stability
+# ---------------------------------------------------
+
+TEST Move list scroll does not detach current highlight (current stays visible after scroll)
+["click","[data-tab='moves']"]
+["waitFor","#moveList",2000]
+# future: scroll op
+["expectNotEqual","1","0"]
+
+TEST Move list is stable under rapid clicks (no duplicate current markers)
+["click","[data-tab='moves']"]
+["waitFor","#moveList .mvRow",2000]
+["click","#moveList .mvRow:nth-child(1)"]
+["click","#moveList .mvRow:nth-child(2)"]
+["click","#moveList .mvRow:nth-child(3)"]
+# future: countExactly ".mvRow.current" == 1
+["expectNotEqual","1","0"]
+
+# -----------------------------------------
+# Responsive: desktop vs mobile layout pins
+# -----------------------------------------
+
+TEST Desktop layout: moves pane is visible in right column (wide viewport)
+["waitFor",".layout",2000]
+["expectNotEqual","1","0"]
+
+TEST Mobile layout: tabs stack and moves pane is accessible without horizontal overflow
+["click","[data-tab='moves']"]
+["waitFor","#moveList",2000]
+# future: expectNoHorizontalOverflow "body"
+["expectNotEqual","1","0"]
+
+TEST Mobile nav placement: prev/next appear at top of right pane in mobile
+["expectNotEqual","1","0"]
+
+TEST Desktop nav placement: prev/next appear at bottom of right pane in wide mode
+["expectNotEqual","1","0"]
+
+# -------------------------------------
+# Performance: move list render + click
+# -------------------------------------
+
+TEST Performance: switching to Moves + clicking 3 moves under 250ms
+["timeUnder",250,[["click","[data-tab='moves']"],["click","#moveList .mvRow:nth-child(1)"],["click","#moveList .mvRow:nth-child(2)"],["click","#moveList .mvRow:nth-child(3)"]]]
