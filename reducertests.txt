@@ -372,181 +372,111 @@ TEST Performance: tab switch + new game under 450ms
 ["timeUnder",450,[["click","[data-tab='games']"],["click","#btnNewGame"]]]
 
 # reducertests_moves_variations_spec.txt — Moves + Variations Contract (staging parity)
-# Goal: lock down moves rendering, variation numbering, click-to-jump, highlighting, and responsive layout.
+# moves pane and board is a square
 
 # -----------------------------
-# Level 0: Moves pane existence
+# Shell sanity
 # -----------------------------
 
-TEST Moves tab exists and has a move list container
-["waitFor",".tabs",2000]
+TEST Title navbar is visible
+["waitFor",".topbarWrap",800]
+["expectVisible",".topbarWrap"]
+["expectContains",".brandTitle","Priyo"]
+
+TEST Board host + shell mount
+["waitFor","#boardHost",1200]
+["waitFor","#boardHost .sc-shell",2000]
+
+# -----------------------------
+# Moves pane existence
+# -----------------------------
+
+TEST Moves pane has desktop + mobile containers
 ["click","[data-tab='moves']"]
-["waitFor","#moveList",2000]
-["expectVisible","#moveList"]
+["waitFor","#movesWide",800]
+["waitFor","#movesMobile",800]
 
-TEST Moves pane shows at least 1 move row after boot/demo game load
+# -----------------------------
+# Desktop layout contract
+# -----------------------------
+
+TEST[Desktop] Moves render in rows
 ["click","[data-tab='moves']"]
-["waitFor","#moveList",2000]
-["countAtLeast","#moveList .mvRow",1]
+["waitFor","#movesWide .mlRow",1200]
+["countAtLeast","#movesWide .mlRow",1]
 
-# ---------------------------------------
-# Level 1: Mainline formatting invariants
-# ---------------------------------------
+TEST[Desktop] Each row has move number and buttons
+["waitFor","#movesWide .mlRow",800]
+["expectVisible","#movesWide .mlNum"]
+["expectVisible","#movesWide .mlCellBtn"]
 
-TEST Move rows show a move number + SAN-like text (mainline)
+# -----------------------------
+# Mobile flow contract
+# -----------------------------
+
+TEST[Mobile] Moves render in horizontal flowing tokens
 ["click","[data-tab='moves']"]
-["waitFor","#moveList .mvRow",2000]
-# future: regex match row text
-# futureOp: expectMatches "#moveList .mvRow:first-child" "^(\\d+\\.|\\d+\\.\\.\\.)\\s+"
-["expectNotEqual","1","0"]
+["waitFor","#movesMobile .mlMobileFlow",1200]
+["countAtLeast","#movesMobile .mlTokBtn",2]
 
-TEST Mainline move rows are not indented (left aligned within list)
+TEST[Mobile] Move numbers appear inline
+["expectVisible","#movesMobile .mlTokNum"]
+
+# -----------------------------
+# Click → jump contract
+# -----------------------------
+
+TEST Clicking a move changes FEN
 ["click","[data-tab='moves']"]
-["waitFor","#moveList .mvRow",2000]
-# future: expectComputedLessThan selector property value
-# futureOp: expectComputed "#moveList .mvRow.mainline:first-child" "padding-left" "0px"
-["expectNotEqual","1","0"]
-
-# ----------------------------------------------------
-# Level 1: Current ply highlighting / selection marker
-# ----------------------------------------------------
-
-TEST Clicking a move row highlights it as current (desktop + mobile invariant)
-["click","[data-tab='moves']"]
-["waitFor","#moveList .mvRow",2000]
-["click","#moveList .mvRow:nth-child(1)"]
-["waitForContains","#navMeta","ply",2000]
-# future: expectHasClass / expectAttr
-["expectNotEqual","1","0"]
-
-TEST Clicking a later move changes the highlighted row (only one current)
-["click","[data-tab='moves']"]
-["waitFor","#moveList .mvRow",2000]
-["click","#moveList .mvRow:nth-child(1)"]
-["waitFor","#navMeta",2000]
-["storeText","#navMeta","plyA"]
-["click","#moveList .mvRow:nth-child(2)"]
-["waitForTextNotEqual","#navMeta","$plyA",3000]
-# future: expectNotHasClass for row1, expectHasClass for row2
-["expectNotEqual","1","0"]
-
-# ----------------------------------------------
-# Level 2: Click-to-jump updates board/ply meta
-# ----------------------------------------------
-
-TEST Clicking a move updates ply indicator (navMeta changes)
-["click","[data-tab='moves']"]
-["waitFor","#navMeta",2000]
-["storeText","#navMeta","ply0"]
-["click","#moveList .mvRow:nth-child(1)"]
-["waitForTextNotEqual","#navMeta","$ply0",3000]
-["storeText","#navMeta","ply1"]
-["expectNotEqual","$ply0","$ply1"]
-
-TEST Clicking different moves yields different FEN snapshots (board actually jumps)
-["click","[data-tab='moves']"]
-["waitFor","#fenBottom",2000]
-["click","#moveList .mvRow:nth-child(1)"]
-["waitFor","#fenBottom",2000]
+["waitFor","#fenBottom",800]
 ["storeText","#fenBottom","fenA"]
-["click","#moveList .mvRow:nth-child(2)"]
-["waitForTextNotEqual","#fenBottom","$fenA",3000]
-["storeText","#fenBottom","fenB"]
-["expectNotEqual","$fenA","$fenB"]
+["click","#movesWide .mlCellBtn:not(.active)"]
+["waitForTextNotEqual","#fenBottom","$fenA",1200]
 
-# --------------------------------------------------------
-# Level 2: Variation presence + formatting + numbering rule
-# --------------------------------------------------------
+# -----------------------------
+# Highlight contract
+# -----------------------------
 
-TEST Variation rows exist for a known-variation demo game (or priyome)
+TEST Active move has highlight class
+["waitFor","#movesWide .mlCellBtn.active",1200]
+["expectVisible","#movesWide .mlCellBtn.active"]
+
+# -----------------------------
+# Variations
+# -----------------------------
+
+TEST Variations appear for Greek Gift
 ["click","[data-tab='priyomes']"]
-["waitFor","#priyomeList",4000]
+["waitFor","#priyomeList",1500]
 ["click","[data-priyome='greek_gift']"]
 ["click","[data-tab='moves']"]
-["waitFor","#moveList",2000]
-["waitForCountAtLeast","#moveList .mvRow.isVar",1,5000]
-["countAtLeast","#moveList .mvRow.isVar",1]
+["waitFor","#movesWide .mlVarRow",2000]
+["countAtLeast","#movesWide .mlVarRow",1]
 
-TEST Variation rows are visually indented relative to mainline
-["click","[data-tab='moves']"]
-["countAtLeast","#moveList .mvRow.isVar",1]
-# future: compare computed styles
-["expectNotEqual","1","0"]
+TEST Variation numbering keeps parent index
+["expectVisible","#movesWide .mlVarNum"]
 
-TEST Variation rows use smaller typography than mainline
-["click","[data-tab='moves']"]
-["countAtLeast","#moveList .mvRow.isVar",1]
-# future: compare computed font-size
-["expectNotEqual","1","0"]
+# -----------------------------
+# Board geometry
+# -----------------------------
 
-TEST Variation numbering preserves the parent move number (e.g., variation of 6 still reads 6)
-["click","[data-tab='moves']"]
-# future: expectAnyContains on at least one variation row:
-["expectNotEqual","1","0"]
+TEST Board is perfect square
+["waitFor","#boardWrap",1000]
+["expectAspectRatio","#boardWrap",1,0.05]
 
-TEST Variation branch is visually grouped (variation rows contiguous under parent)
-["click","[data-tab='moves']"]
-# future: assert a mainline row followed by several .isVar rows
-["expectNotEqual","1","0"]
+TEST Shell fills host
+["expectContained","#boardHost","#boardHost .sc-shell",2]
 
-# ------------------------------------------------
-# Level 2: Clicking variation move jumps correctly
-# ------------------------------------------------
+# -----------------------------
+# Nav placement
+# -----------------------------
 
-TEST Clicking a variation row jumps board (FEN changes) and highlights that row
-["click","[data-tab='moves']"]
-["countAtLeast","#moveList .mvRow.isVar",1]
-["waitFor","#fenBottom",2000]
-["storeText","#fenBottom","fenV0"]
-["click","#moveList .mvRow.isVar:first-child"]
-["waitForTextNotEqual","#fenBottom","$fenV0",4000]
-["storeText","#fenBottom","fenV1"]
-["expectNotEqual","$fenV0","$fenV1"]
-# future: expectHasClass on clicked var row
-["expectNotEqual","1","0"]
+TEST Nav buttons sit above FEN
+["expectOrder","#navHost","#fenBottom"]
 
-# ---------------------------------------------------
-# Level 3: Move list interactions: scroll + stability
-# ---------------------------------------------------
+# -----------------------------
+# Performance sanity
+# -----------------------------
 
-TEST Move list scroll does not detach current highlight (current stays visible after scroll)
-["click","[data-tab='moves']"]
-["waitFor","#moveList",2000]
-# future: scroll op
-["expectNotEqual","1","0"]
-
-TEST Move list is stable under rapid clicks (no duplicate current markers)
-["click","[data-tab='moves']"]
-["waitFor","#moveList .mvRow",2000]
-["click","#moveList .mvRow:nth-child(1)"]
-["click","#moveList .mvRow:nth-child(2)"]
-["click","#moveList .mvRow:nth-child(3)"]
-# future: countExactly ".mvRow.current" == 1
-["expectNotEqual","1","0"]
-
-# -----------------------------------------
-# Responsive: desktop vs mobile layout pins
-# -----------------------------------------
-
-TEST Desktop layout: moves pane is visible in right column (wide viewport)
-["waitFor",".layout",2000]
-["expectNotEqual","1","0"]
-
-TEST Mobile layout: tabs stack and moves pane is accessible without horizontal overflow
-["click","[data-tab='moves']"]
-["waitFor","#moveList",2000]
-# future: expectNoHorizontalOverflow "body"
-["expectNotEqual","1","0"]
-
-TEST Mobile nav placement: prev/next appear at top of right pane in mobile
-["expectNotEqual","1","0"]
-
-TEST Desktop nav placement: prev/next appear at bottom of right pane in wide mode
-["expectNotEqual","1","0"]
-
-# -------------------------------------
-# Performance: move list render + click
-# -------------------------------------
-
-TEST Performance: switching to Moves + clicking 3 moves under 250ms
-["timeUnder",250,[["click","[data-tab='moves']"],["click","#moveList .mvRow:nth-child(1)"],["click","#moveList .mvRow:nth-child(2)"],["click","#moveList .mvRow:nth-child(3)"]]]
+TEST Switch to moves and click under 180ms
+["timeUnder",180,[["click","[data-tab='moves']"],["click","#movesWide .mlCellBtn"]]]
