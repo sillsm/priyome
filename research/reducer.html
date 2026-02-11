@@ -173,6 +173,17 @@
     .layout{ grid-template-columns:1fr; height:auto; }
     #boardHost{ width:min(92vmin, 520px); height:min(92vmin, 520px); }
   }
+
+  /* Moves list (contract) */
+  .moveList{ display:flex; flex-direction:column; gap:6px; padding:8px 0; max-height:44vh; overflow:auto; }
+  .mvRow{ display:flex; align-items:baseline; gap:10px; padding:8px 10px; border:1px solid rgba(255,255,255,.10); border-radius:10px; background:rgba(255,255,255,.03); cursor:pointer; user-select:none; }
+  .mvRow:hover{ background:rgba(255,255,255,.06); }
+  .mvRow .mvNum{ min-width:34px; color:var(--mut); font-weight:700; }
+  .mvRow .mvSan{ flex:1; text-align:left; font-weight:650; letter-spacing:.1px; }
+  .mvRow.isCur{ outline:2px solid rgba(103,232,249,.45); background:rgba(103,232,249,.10); }
+  .mvRow.isVar{ margin-left:16px; padding-left:14px; font-size:.92em; opacity:.95; }
+  .mvRow.isVar .mvSan{ font-weight:600; }
+
 </style>
 </head>
 <body>
@@ -241,6 +252,8 @@
         <button class="btn" id="btnNext" type="button">Next</button>
         <span class="pill">Ply: <b id="navMeta">0</b></span>
       </div>
+
+      <div id="moveList" class="moveList" aria-label="Move list"></div>
 
       <div class="bottomCard" id="bottomCard">
         <div class="bottomHead">
@@ -438,7 +451,17 @@
   }
 
   // Board mount (ScratchChess)
-  const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+  const DEMO_PGN = `PGN
+[Event "Demo"]
+[Site "Local"]
+[Date "2026.02.11"]
+[Round "1"]
+[White "W"]
+[Black "B"]
+[Result "*"]
+
+1. e4 (1. d4 d5 2. c4) e5 2. Nf3 Nc6 3. Bb5 a6 *`;
+const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
   boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
   // Make sure there's a move tree so Next/Prev can change ply even after setup operations
   boot.loadPGN?.(`[Event "Boot"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
@@ -509,7 +532,134 @@
 
     $("navMeta").textContent = String(g?.ui?.ply ?? 0);
     $("bottomMeta").textContent = (STATE.activeGameId || "—");
+    try{ renderMoveList(); }catch(e){}
   }
+// ---------------- Moves rendering (contract: #moveList with .mvRow, .mvRow.isVar) ----------------
+const moveListEl = document.getElementById("moveList");
+
+function nodePly(node){
+  const p = (node && typeof node.ply === "number") ? node.ply : null;
+  return (p === null) ? null : p;
+}
+function nodeMoveNumber(node){
+  if (!node) return null;
+  if (typeof node.moveNumber === "number") return node.moveNumber;
+  const p = nodePly(node);
+  if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
+  return null;
+}
+function nodeSan(node){
+  return String(node?.san || node?.move || "").trim();
+}
+function getMainChild(node){
+  const kids = node?.children || [];
+  if (!kids.length) return null;
+  const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+  return kids[idx] || kids[0] || null;
+}
+function getAltChildren(node){
+  const kids = node?.children || [];
+  if (!kids.length) return [];
+  const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+  return kids.filter((_,i)=> i !== idx);
+}
+function walkMainlineFrom(node, limit=4096){
+  const out = [];
+  let cur = node;
+  let guard = 0;
+  while (cur && guard++ < limit){
+    out.push(cur);
+    cur = getMainChild(cur);
+  }
+  return out;
+}
+function jumpToNode(g, target){
+  if (!g || !target) return;
+  const path = [];
+  let n = target;
+  while (n && n.parent){
+    path.push(n);
+    n = n.parent;
+  }
+  path.reverse();
+
+  while (g.curNode !== g.root){
+    if (!g.prevMove?.()) break;
+  }
+  for (const step of path){
+    const parent = step.parent;
+    if (!parent) break;
+    const idx = parent.children ? parent.children.indexOf(step) : -1;
+    if (idx >= 0) parent.mainChildIndex = idx;
+    if (!g.nextMove?.()) break;
+  }
+}
+function formatVariationLine(startNode, maxPlies=16){
+  const nodes = walkMainlineFrom(startNode, maxPlies);
+  const parts = [];
+  for (const n of nodes){
+    const san = nodeSan(n);
+    if (!san) continue;
+    const p = nodePly(n);
+    const mn = nodeMoveNumber(n) ?? "";
+    if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
+    else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
+    else parts.push(san);
+  }
+  return parts.join(" ").trim();
+}
+
+function renderMoveList(){
+  if (!moveListEl) return;
+  const g = activeGame() || boot;
+  moveListEl.innerHTML = "";
+  if (!g || !g.root) return;
+
+  const mainStart = getMainChild(g.root);
+  if (!mainStart) return;
+
+  const chain = walkMainlineFrom(mainStart);
+  const rows = new Map();
+  for (const n of chain){
+    const p = nodePly(n);
+    const mn = nodeMoveNumber(n) ?? 1;
+    if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+    const row = rows.get(mn);
+
+    if (typeof p === "number" && p % 2 === 1) row.w = n;
+    else if (typeof p === "number" && p % 2 === 0) row.b = n;
+    else if (!row.w) row.w = n;
+
+    for (const alt of getAltChildren(n)) row.vars.push(alt);
+  }
+
+  const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+
+  const addRow = (numText, sanText, node, extraCls="") => {
+    const r = document.createElement("div");
+    r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
+    r.dataset.ply = String(nodePly(node) ?? "");
+    const n = document.createElement("div");
+    n.className = "mvNum";
+    n.textContent = numText;
+    const s = document.createElement("div");
+    s.className = "mvSan";
+    s.textContent = sanText;
+    r.appendChild(n); r.appendChild(s);
+    r.addEventListener("click", () => { jumpToNode(g, node); syncUiBoxes(); });
+    moveListEl.appendChild(r);
+  };
+
+  for (const row of sorted){
+    if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
+    if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
+    for (const vStart of row.vars){
+      const line = formatVariationLine(vStart) || "(variation)";
+      addRow(String(row.mn), line, vStart, "isVar");
+    }
+  }
+}
+
 
   function syncDrawUi(){
     const g = activeGame() || boot;
@@ -663,7 +813,7 @@
       const name = pid==="greek_gift" ? "Greek Gift" : "Alignment";
       $("activePriyome").textContent = name;
       const pgn = pid==="greek_gift"
-        ? `[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 { [%csl Gh7,Gg6] [%cal Rh5h7] } *`
+        ? `[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 (1... c5) { [%csl Gh7,Gg6] [%cal Rh5h7] } *`
         : `[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. d4 d5 *`;
       const id = nowId();
       const g = createGame({ Event:name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
