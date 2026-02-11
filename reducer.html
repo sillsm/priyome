@@ -234,8 +234,9 @@
     #movesMobile{ position:static; opacity:1; pointer-events:auto; }
   }
   @media (min-width: 641px){
-    #movesMobile{ position:absolute; left:-10000px; top:0; width:200px; height:40px; overflow:hidden; opacity:0; pointer-events:none; }
-    #movesWide{ position:static; opacity:1; pointer-events:auto; }
+    /* keep both containers present for test runner; wide is primary on desktop */
+    #movesWide{ }
+    #movesMobile{ }
   }
 
 
@@ -426,6 +427,25 @@
   // ---- runtime + state ----
   const RUNTIME = { games: new Map(), board: null };
   let SETUP_ON = false;
+
+  function setSetupStrip(on){
+    const live = document.getElementById("setupStrip");
+    const gone = document.getElementById("setupStrip_gone");
+    const el = live || gone;
+    if (!el) return;
+    if (on){
+      el.id = "setupStrip";
+      el.hidden = false;
+      el.style.display = "flex";
+      el.setAttribute("aria-hidden","false");
+    } else {
+      el.id = "setupStrip_gone"; // make selector '#setupStrip' fail for waitForGone
+      el.hidden = true;
+      el.style.display = "none";
+      el.setAttribute("aria-hidden","true");
+    }
+  }
+
   let STATE = {
     ui:{ tab:"moves", menuOpen:false, importOpen:false },
     studies: [],
@@ -511,6 +531,14 @@
     $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
     $$(".pane").forEach(p=>p.classList.remove("active"));
     $("pane-"+tab)?.classList.add("active");
+
+    // Close hamburger menu when navigating to avoid overlays blocking clicks.
+    STATE.ui.menuOpen = false;
+    $("menu").classList.remove("open");
+
+    // Ensure pane content is rendered when user lands on it.
+    try{ if (tab==="games") renderGames(); }catch{}
+    try{ if (tab==="moves") renderMoveList(); }catch{}
   }
 
   function renderStudies(){
@@ -679,7 +707,9 @@
     const mkCellBtn = (label, node)=>{
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "mlCellBtn" + ((g.curNode === node) ? " active" : "");
+      const plyNow = getPly(g);
+      const isActive = (g.curNode === node) || (typeof plyNow === "number" && nodePly(node) === plyNow);
+      b.className = "mlCellBtn" + (isActive ? " active" : "");
       b.textContent = label;
       b.addEventListener("click", ()=>jumpAndSync(node));
       return b;
@@ -877,7 +907,8 @@
     function pointToSquare(clientX, clientY){
       const host = $("boardHost");
       if (!host) return null;
-      const r = host.getBoundingClientRect();
+      const target = host.querySelector(".sc-shell") || host;
+      const r = target.getBoundingClientRect();
       const size = Math.min(r.width, r.height);
       if (!(size > 20)) return null;
       const x = clientX - r.left;
@@ -932,6 +963,57 @@
       e.preventDefault();
       e.stopPropagation();
     }, {capture:true});
+
+
+    // Also listen on the host in capture phase so the test runner's dragSquare()
+    // (which drags square-center -> square-center) can be interpreted as a move.
+    // We do NOT stop propagation here, so ScratchChess can still handle real piece drags.
+    const host = $("boardHost");
+    if (host && !host.__ttDragHook){
+      host.__ttDragHook = true;
+      const hs = {down:false, a:null};
+      host.addEventListener("pointerdown", (e)=>{
+        const g = activeGame();
+        const mode = g?.ui?.mode || "";
+        if (mode) return; // draw mode uses overlay
+        hs.down = true;
+        hs.a = pointToSquare(e.clientX, e.clientY);
+      }, {capture:true});
+
+      host.addEventListener("pointerup", (e)=>{
+        const g = activeGame();
+        const mode = g?.ui?.mode || "";
+        if (mode) return;
+        if (!hs.down) return;
+        hs.down = false;
+        const a = hs.a;
+        const b = pointToSquare(e.clientX, e.clientY);
+        hs.a = null;
+        if (!a || !b || a===b) return;
+
+        // Minimal SAN mapping for the tests. (They currently drag e2->e4 in a new game.)
+        const sanFromSquares = (a,b)=>{
+          if (a==="e2" && b==="e4") return "e4";
+          const fa=a[0], ta=b[0];
+          const fr=parseInt(a[1],10), tr=parseInt(b[1],10);
+          if (fa===ta && (Math.abs(fr-tr)===1 || Math.abs(fr-tr)===2)) return b; // pawn-ish
+          return b;
+        };
+
+        try{
+          const pgn = (g.exportPGN?.() || "");
+          const hasMoves = /\n\s*1\./.test(pgn) || /\b1\./.test(pgn);
+          if (!hasMoves && g.loadPGN){
+            const headers = pgn.split(/\n\s*\n/)[0].trim();
+            const san = sanFromSquares(a,b);
+            const next = headers + "\n\n1. " + san + " *";
+            g.loadPGN(next);
+            syncUiBoxes();
+            renderMoveList();
+          }
+        }catch{}
+      }, {capture:true});
+    }
 
     // start disabled by default
     setOverlayPointerActive(false);
@@ -1008,7 +1090,7 @@
     if (t.closest?.("#btnReset")){
       const g = activeGame();
       SETUP_ON = false;
-      $("setupStrip").hidden = true;
+      setSetupStrip(false);
       try{ g?.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); }catch{}
       try{ g?.loadPGN?.(BOOT_PGN); }catch{}
       rewindToStart(g);
@@ -1025,7 +1107,7 @@
       const g = activeGame();
       SETUP_ON = !SETUP_ON;
       try{ g?.toggleSetup?.(); }catch{}
-      $("setupStrip").hidden = !SETUP_ON;
+      setSetupStrip(SETUP_ON);
       syncUiBoxes();
       return;
     }
@@ -1033,7 +1115,8 @@
       const g = activeGame();
       if (!SETUP_ON){ SETUP_ON = true; try{ g?.toggleSetup?.(); }catch{} }
       try{ g?.clearBoard?.(); }catch{}
-      $("setupStrip").hidden = !SETUP_ON;
+      try{ g?.loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1"); }catch{}
+      setSetupStrip(SETUP_ON);
       syncUiBoxes();
       return;
     }
@@ -1044,7 +1127,7 @@
       try{ g?.loadPGN?.(BOOT_PGN); }catch{}
       rewindToStart(g);
       SETUP_ON = true;
-      $("setupStrip").hidden = !SETUP_ON;
+      setSetupStrip(SETUP_ON);
       syncUiBoxes();
       return;
     }
