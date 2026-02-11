@@ -1,405 +1,548 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Reducer Test Runner</title>
-<style>
-  :root { --bg:#0b0d12; --panel:#111827; --b:rgba(255,255,255,.12); --t:#e5e7eb; --m:#93a4c8; }
-  body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
-  .wrap{display:grid;grid-template-columns: 1.2fr .8fr;gap:12px;height:100vh;padding:12px;box-sizing:border-box;}
-  .card{background:var(--panel);border:1px solid var(--b);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
-  .head{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--b);}
-  .head .title{font-weight:700}
-  .head .sp{flex:1}
-  .btn{appearance:none;border:1px solid var(--b);background:rgba(255,255,255,.06);color:var(--t);
-       padding:8px 10px;border-radius:10px;cursor:pointer;font-weight:600}
-  .btn:hover{background:rgba(255,255,255,.10)}
-  .btn:active{transform:translateY(1px)}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input[type="text"]{background:rgba(255,255,255,.06);border:1px solid var(--b);color:var(--t);
-                     padding:8px 10px;border-radius:10px;min-width:220px;flex:1}
-  iframe{width:100%;height:100%;border:0;background:#fff}
-  .body{padding:10px 12px;display:flex;flex-direction:column;gap:10px;min-height:0;height:100%}
-  pre{white-space:pre-wrap;word-break:break-word;margin:0;padding:10px;border-radius:12px;
-      background:rgba(0,0,0,.35);border:1px solid var(--b);min-height:0;overflow:auto;flex:1}
-  .hint{color:var(--m);font-size:13px;line-height:1.3}
-  .pill{display:inline-flex;align-items:center;gap:8px;color:var(--m);font-size:13px}
-  .ok{color:#7CFC9A}
-  .bad{color:#FF8B8B}
-  @media (max-width: 980px){
-    .wrap{grid-template-columns:1fr;grid-template-rows: 1.1fr .9fr;}
-  }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dual-Viewport Test Runner</title>
+  <style>
+    :root{
+      --bg:#0b0d12; --panel:#0f172a; --card:#111827; --b:rgba(255,255,255,.14);
+      --t:#e5e7eb; --m:#93a4c8; --ok:#22c55e; --bad:#ef4444; --mono: ui-monospace, Menlo, Consolas, monospace;
+      --r:14px;
+    }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{ margin:0; background:var(--bg); color:var(--t); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
+    .top{
+      position:sticky; top:0; z-index:10;
+      background:linear-gradient(180deg,#0b0d12,#0b0d12cc);
+      border-bottom:1px solid var(--b);
+      padding:12px 14px;
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    }
+    .title{ font-weight:900; letter-spacing:.2px; }
+    .pill{ padding:5px 10px; border:1px solid var(--b); border-radius:999px; color:var(--m); font-size:12px; }
+    .btn{
+      border:1px solid var(--b); background:rgba(255,255,255,.06); color:var(--t);
+      border-radius:12px; padding:8px 10px; cursor:pointer;
+    }
+    .btn.primary{ background:rgba(37,99,235,.22); border-color:rgba(37,99,235,.55); }
+    select, input{
+      border:1px solid var(--b); background:rgba(255,255,255,.06); color:var(--t);
+      border-radius:12px; padding:8px 10px;
+    }
+    input{ width: min(520px, 100%); }
+    .grid{
+      display:grid;
+      grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr) minmax(420px, 520px);
+      gap:12px;
+      padding:12px;
+      height: calc(100vh - 64px);
+      min-height:0;
+    }
+    @media (max-width: 1180px){
+      .grid{ grid-template-columns: 1fr; height:auto; }
+    }
+    .card{
+      border:1px solid var(--b);
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border-radius:var(--r);
+      overflow:hidden;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+    }
+    .cardHead{
+      padding:10px 12px;
+      border-bottom:1px solid var(--b);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background:rgba(255,255,255,.03);
+    }
+    .cardHead .meta{ font-size:12px; color:var(--m); font-family:var(--mono); }
+    .viewportHost{
+      flex:1; min-height:0;
+      display:flex; align-items:center; justify-content:center;
+      padding:12px;
+      background:rgba(0,0,0,.18);
+    }
+    .vpFrame{
+      position:relative;
+      border:1px solid var(--b);
+      border-radius:16px;
+      background:#000;
+      overflow:hidden;
+      box-shadow: 0 18px 50px rgba(0,0,0,.45);
+    }
+    .vpInner{
+      position:absolute; left:0; top:0;
+      transform-origin: 0 0;
+      background:#000;
+    }
+    iframe{
+      border:0;
+      width:100%;
+      height:100%;
+      display:block;
+      background:#000;
+    }
+
+    /* runner */
+    .runner{
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+    }
+    .runnerHead{
+      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+      padding:10px 12px;
+      border-bottom:1px solid var(--b);
+      background:rgba(255,255,255,.03);
+    }
+    .log{
+      flex:1; min-height:0;
+      overflow:auto;
+      padding:10px 12px;
+      font-family:var(--mono);
+      font-size:12px;
+      white-space:pre-wrap;
+      background:rgba(0,0,0,.25);
+    }
+    .ok{ color:var(--ok); }
+    .bad{ color:var(--bad); }
+    .muted{ color:var(--m); }
+    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .sep{ width:1px; height:26px; background:var(--b); margin:0 4px; }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="card">
-    <div class="head">
-      <div class="title">App Under Test</div>
-      <div class="sp"></div>
-      <button class="btn" id="btnReload">Reload</button>
+  <div class="top">
+    <div class="title">Dual-Viewport Test Runner</div>
+    <span class="pill">Desktop sim: <b>1200×900</b></span>
+    <span class="pill">Mobile sim: <b>360×640</b></span>
+    <span class="pill">Pick target → run tests</span>
+  </div>
+
+  <div class="grid">
+    <!-- Desktop viewport -->
+    <div class="card">
+      <div class="cardHead">
+        <div>
+          <b>Desktop iframe</b>
+          <span class="meta">fixed 1200×900 (scaled)</span>
+        </div>
+        <div class="meta" id="deskScaleMeta">scale: —</div>
+      </div>
+      <div class="viewportHost" id="deskHost">
+        <div class="vpFrame" id="deskFrame">
+          <div class="vpInner" id="deskInner">
+            <iframe id="deskIframe" title="desktop iframe"></iframe>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="body" style="padding:0">
-      <iframe id="appFrame" src="reducer.html"></iframe>
+
+    <!-- Mobile viewport -->
+    <div class="card">
+      <div class="cardHead">
+        <div>
+          <b>Mobile iframe</b>
+          <span class="meta">fixed 360×640 (scaled)</span>
+        </div>
+        <div class="meta" id="mobScaleMeta">scale: —</div>
+      </div>
+      <div class="viewportHost" id="mobHost">
+        <div class="vpFrame" id="mobFrame">
+          <div class="vpInner" id="mobInner">
+            <iframe id="mobIframe" title="mobile iframe"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Runner -->
+    <div class="card runner">
+      <div class="runnerHead">
+        <div class="row">
+          <label class="muted" for="appUrl">App URL</label>
+          <input id="appUrl" value="./reducer.html" />
+          <button class="btn" id="btnLoad">Load</button>
+        </div>
+        <div class="row">
+          <div class="sep"></div>
+          <label class="muted" for="targetPick">Target</label>
+          <select id="targetPick">
+            <option value="desktop">Desktop iframe (1200×900)</option>
+            <option value="mobile">Mobile iframe (360×640)</option>
+          </select>
+          <button class="btn primary" id="btnRun">Run</button>
+          <button class="btn" id="btnRunAll">Run All</button>
+          <button class="btn" id="btnCopy">📋 Copy results</button>
+          <button class="btn" id="btnClear">Clear</button>
+        </div>
+        <div class="row">
+          <span class="pill">Loaded: <b id="testsMeta">—</b></span>
+          <span class="pill">Done: <b id="doneMeta">0/0</b></span>
+        </div>
+      </div>
+      <div class="log" id="log"></div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="head">
-      <div class="title">Runner</div>
-      <div class="sp"></div>
-      <span class="pill" id="statusPill">idle</span>
-      <button class="btn" id="btnCopy" title="Copy results">📋</button>
-      <button class="btn" id="btnRun">Run</button>
-    </div>
-    <div class="body">
-      <div class="row">
-        <input id="appUrl" type="text" value="reducer.html" />
-        <button class="btn" id="btnOpenApp">Open</button>
-        <button class="btn" id="btnLoadTests">Load tests</button>
-      </div>
-      <div class="hint">
-        Looks for <b>reducer.html</b> and <b>reducertests.txt</b> in the same folder.
-        Uses an iframe and runs steps against the iframe document.
-      </div>
-      <pre id="log"></pre>
-    </div>
-  </div>
-</div>
+<script type="module">
+/**
+ * Dual iframe sizing:
+ * - Each iframe content stays at a fixed "virtual" viewport (DESK_W×DESK_H or MOB_W×MOB_H).
+ * - We scale the iframe container via transform so it fits in the host area.
+ */
+const DESK_W = 1200, DESK_H = 900;
+const MOB_W  = 360,  MOB_H  = 640;
 
-<script>
-(() => {
-  const $ = (sel, root=document) => root.querySelector(sel);
-  const logEl = $("#log");
-  const statusPill = $("#statusPill");
-  const appFrame = $("#appFrame");
-  const appUrl = $("#appUrl");
+const $ = (id)=>document.getElementById(id);
 
-  const state = { vars: {}, testsText: "" };
+const desk = {
+  host: $("deskHost"), frame: $("deskFrame"), inner: $("deskInner"), iframe: $("deskIframe"), meta: $("deskScaleMeta"),
+  w: DESK_W, h: DESK_H
+};
+const mob = {
+  host: $("mobHost"), frame: $("mobFrame"), inner: $("mobInner"), iframe: $("mobIframe"), meta: $("mobScaleMeta"),
+  w: MOB_W, h: MOB_H
+};
 
-  function setStatus(text, ok=null){
-    statusPill.textContent = text;
-    statusPill.className = "pill " + (ok===true ? "ok" : ok===false ? "bad" : "");
-  }
+function fitViewport(vp){
+  const r = vp.host.getBoundingClientRect();
+  const pad = 14; // safe padding inside host
+  const availW = Math.max(80, r.width  - pad*2);
+  const availH = Math.max(80, r.height - pad*2);
 
-  function logLine(s=""){
-    logEl.textContent += s + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
-  }
+  const s = Math.min(availW / vp.w, availH / vp.h);
+  const scale = Math.max(0.1, Math.min(4, s));
 
-  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+  // Size outer frame to scaled size (so layout uses real pixels)
+  const outW = Math.round(vp.w * scale);
+  const outH = Math.round(vp.h * scale);
 
-  function getIframeDoc(){
-    const doc = appFrame.contentDocument;
-    if (!doc) throw new Error("iframe doc not ready");
-    return doc;
-  }
+  vp.frame.style.width = outW + "px";
+  vp.frame.style.height = outH + "px";
 
-  function q(sel){
-    const doc = getIframeDoc();
-    const el = doc.querySelector(sel);
-    if (!el) throw new Error("Missing element: " + sel);
-    return el;
-  }
+  // Inner stays at fixed virtual size, scaled down/up
+  vp.inner.style.width = vp.w + "px";
+  vp.inner.style.height = vp.h + "px";
+  vp.inner.style.transform = `scale(${scale})`;
 
-  async function waitFor(sel, ms=2000){
-    const t0 = performance.now();
-    while (performance.now() - t0 < ms){
-      try { q(sel); return; } catch(e){}
-      await sleep(50);
+  vp.meta.textContent = `scale: ${scale.toFixed(3)} • box: ${outW}×${outH}`;
+}
+
+function fitAll(){
+  fitViewport(desk);
+  fitViewport(mob);
+}
+addEventListener("resize", ()=>fitAll());
+setTimeout(fitAll, 0);
+
+/** Load both iframes to same app url */
+function loadApp(){
+  const url = $("appUrl").value.trim() || "./reducer.html";
+  desk.iframe.src = url;
+  mob.iframe.src = url;
+  logLine(`✔ Loading app into both iframes: ${url}`);
+}
+$("btnLoad").addEventListener("click", loadApp);
+
+// --------------------------------------
+// Test runner (simple table-driven DSL)
+// --------------------------------------
+//
+// This runner expects a local file "reducertests.txt" with blocks like:
+//
+// TEST: Title navbar is visible and shows app name
+//   ["waitFor",".topbarWrap",2000]
+//   ["expectVisible",".topbarWrap"]
+//   ["expectContains",".brandTitle","Priyo"]
+//
+// (Same style you’ve been using.)
+
+let TESTS = [];
+let doneCount = 0;
+
+function logLine(s, cls=""){
+  const el = $("log");
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = s;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog(){ $("log").innerHTML = ""; }
+function setDone(){
+  $("doneMeta").textContent = `${doneCount}/${TESTS.length}`;
+}
+
+async function fetchText(url){
+  const r = await fetch(url, { cache:"no-store" });
+  if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${url}`);
+  return await r.text();
+}
+
+function parseTests(txt){
+  const lines = (txt||"").split(/\r?\n/);
+  const out = [];
+  let cur = null;
+
+  const push = ()=>{
+    if (cur && cur.steps.length) out.push(cur);
+    cur = null;
+  };
+
+  for (const raw of lines){
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("TEST:")){
+      push();
+      cur = { title: line.slice(5).trim(), steps: [] };
+      continue;
     }
-    throw new Error("Timeout waiting for " + sel);
-  }
-
-  function isVisible(el){
-    if (!el) return false;
-    const st = el.ownerDocument.defaultView.getComputedStyle(el);
-    if (st.display === "none" || st.visibility === "hidden" || +st.opacity === 0) return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0;
-  }
-
-  function resolveVal(v){
-    if (typeof v === "string" && v.startsWith("$")){
-      const key = v.slice(1);
-      return state.vars[key];
-    }
-    return v;
-  }
-
-  function elText(selOrDollar){
-    if (typeof selOrDollar === "string" && selOrDollar.startsWith("$")) return resolveVal(selOrDollar) ?? "";
-    const el = q(selOrDollar);
-    return (el.value ?? el.textContent ?? "").toString().trim();
-  }
-
-  function expectContains(a, b){
-    const hay = resolveVal(a);
-    const needle = resolveVal(b);
-    const hs = (hay ?? "").toString();
-    const ns = (needle ?? "").toString();
-    if (!hs.includes(ns)) throw new Error(`expectContains failed: "${ns}" not in "${hs}"`);
-  }
-
-  function expectNotContains(a, b){
-    const hay = resolveVal(a);
-    const needle = resolveVal(b);
-    const hs = (hay ?? "").toString();
-    const ns = (needle ?? "").toString();
-    if (hs.includes(ns)) throw new Error(`expectNotContains failed: "${ns}" WAS in "${hs}"`);
-  }
-
-  function expectEqual(a, b){
-    const av = resolveVal(a);
-    const bv = resolveVal(b);
-    if (String(av) !== String(bv)) throw new Error(`expectEqual failed: "${av}" != "${bv}"`);
-  }
-
-  function expectNotEqual(a, b){
-    const av = resolveVal(a);
-    const bv = resolveVal(b);
-    if (String(av) === String(bv)) throw new Error(`expectNotEqual failed: both "${av}"`);
-  }
-
-  function countAtLeast(sel, n){
-    const doc = getIframeDoc();
-    const els = doc.querySelectorAll(sel);
-    if (els.length < n) throw new Error(`countAtLeast failed: ${sel} had ${els.length}, need >= ${n}`);
-  }
-
-  function expectVisibleSel(sel){
-    const el = q(sel);
-    if (!isVisible(el)) throw new Error("expectVisible failed: " + sel);
-  }
-
-  function expectContained(childSel, parentSel, pad=0){
-    const doc = getIframeDoc();
-    const child = doc.querySelector(childSel);
-    const parent = doc.querySelector(parentSel);
-    if (!child) throw new Error("expectContained missing child: " + childSel);
-    if (!parent) throw new Error("expectContained missing parent: " + parentSel);
-    const cr = child.getBoundingClientRect();
-    const pr = parent.getBoundingClientRect();
-    const ok =
-      cr.left >= pr.left - pad &&
-      cr.top  >= pr.top  - pad &&
-      cr.right <= pr.right + pad &&
-      cr.bottom <= pr.bottom + pad;
-    if (!ok){
-      throw new Error(`expectContained failed: ${childSel} (${cr.left.toFixed(1)},${cr.top.toFixed(1)},${cr.right.toFixed(1)},${cr.bottom.toFixed(1)}) not within ${parentSel} (${pr.left.toFixed(1)},${pr.top.toFixed(1)},${pr.right.toFixed(1)},${pr.bottom.toFixed(1)}) pad=${pad}`);
-    }
-  }
-
-  function clickSel(sel){
-    const el = q(sel);
-    el.dispatchEvent(new MouseEvent("mousedown",{bubbles:true}));
-    el.dispatchEvent(new MouseEvent("mouseup",{bubbles:true}));
-    el.dispatchEvent(new MouseEvent("click",{bubbles:true}));
-  }
-
-  function typeSel(sel, text){
-    const el = q(sel);
-    el.focus();
-    el.value = text;
-    el.dispatchEvent(new InputEvent("input",{bubbles:true}));
-    el.dispatchEvent(new Event("change",{bubbles:true}));
-  }
-
-  // Drag by algebraic square names using the board square hitboxes if present.
-  // Requires app to expose square elements with data-sq="e4" OR use SC helper window.__SC_SQUARE_CENTER(sq)
-  async function dragSquare(fromSq, toSq, holdMs=200){
-    const win = appFrame.contentWindow;
-    const doc = getIframeDoc();
-
-    function centerForSq(sq){
-      // Preferred: app helper
-      if (win && typeof win.__SC_SQUARE_CENTER === "function"){
-        const p = win.__SC_SQUARE_CENTER(sq);
-        if (p && typeof p.x === "number" && typeof p.y === "number") return p;
-      }
-      // Fallback: query [data-sq="e4"]
-      const el = doc.querySelector(`[data-sq="${sq}"]`);
-      if (el){
-        const r = el.getBoundingClientRect();
-        return { x: r.left + r.width/2, y: r.top + r.height/2 };
-      }
-      throw new Error("dragSquare cannot find square center for " + sq);
-    }
-
-    const a = centerForSq(fromSq);
-    const b = centerForSq(toSq);
-
-    const target = doc.elementFromPoint(a.x, a.y) || doc.body;
-    target.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,clientX:a.x,clientY:a.y,pointerId:1,pointerType:"mouse"}));
-    target.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,clientX:a.x,clientY:a.y}));
-    await sleep(holdMs);
-
-    doc.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,clientX:b.x,clientY:b.y,pointerId:1,pointerType:"mouse"}));
-    doc.dispatchEvent(new MouseEvent("mousemove",{bubbles:true,clientX:b.x,clientY:b.y}));
-    await sleep(16);
-
-    doc.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,clientX:b.x,clientY:b.y,pointerId:1,pointerType:"mouse"}));
-    doc.dispatchEvent(new MouseEvent("mouseup",{bubbles:true,clientX:b.x,clientY:b.y}));
-  }
-
-  async function timeUnder(ms, steps){
-    const t0 = performance.now();
-    for (const st of steps){
-      await stepExec(st);
-    }
-    const dt = performance.now() - t0;
-    if (dt > ms) throw new Error(`timeUnder failed: ${dt.toFixed(1)}ms > ${ms}ms`);
-  }
-
-  function parseTests(text){
-    const lines = text.split(/\r?\n/);
-    const tests = [];
-    let cur = null;
-
-    function flush(){
-      if (cur){
-        tests.push(cur);
-        cur = null;
-      }
-    }
-
-    for (let i=0;i<lines.length;i++){
-      const raw = lines[i];
-      const line = raw.trim();
-      if (!line || line.startsWith("#")) continue;
-      if (line.startsWith("TEST ")){
-        flush();
-        cur = { name: line.slice(5).trim(), steps: [] };
-        continue;
-      }
-      if (!cur) continue;
-      // JSON array step
-      try{
-        const step = JSON.parse(line);
-        cur.steps.push(step);
-      } catch(e){
-        throw new Error(`Bad JSON on line ${i+1}: ${line}\n${e}`);
-      }
-    }
-    flush();
-    return tests;
-  }
-
-  async function stepExec(step){
-    const op = step[0];
-    const a = step[1];
-    const b = step[2];
-    const c = step[3];
-
-    switch(op){
-      case "sleep": return sleep(+a||0);
-      case "waitFor": return waitFor(a, +b||2000);
-      case "click": return clickSel(a);
-      case "type": return typeSel(a, b ?? "");
-      case "storeText": {
-        const key = b;
-        const val = elText(a);
-        state.vars[key] = val;
-        logLine(`stored $${key} = ${JSON.stringify(val)}`);
-        return;
-      }
-      case "expectVisible": return expectVisibleSel(a);
-      case "expectContains": return expectContains(a,b);
-      case "expectNotContains": return expectNotContains(a,b);
-      case "expectEqual": return expectEqual(a,b);
-      case "expectNotEqual": return expectNotEqual(a,b);
-      case "countAtLeast": return countAtLeast(a, +b);
-      case "expectContained": return expectContained(a,b, +c||0);
-      case "dragSquare": return dragSquare(a,b, +c||200);
-      case "timeUnder": return timeUnder(+a, b||[]);
-      default:
-        throw new Error("Unknown op: " + op);
-    }
-  }
-
-  async function loadTests(){
-    const url = "reducertests.txt?ts=" + Date.now();
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Failed to fetch reducertests.txt (" + res.status + ")");
-    const txt = await res.text();
-    state.testsText = txt;
-    logLine(`✔ Loaded reducertests.txt (${txt.length} bytes)`);
-    const tests = parseTests(txt);
-    logLine(`✔ Parsed ${tests.length} TEST blocks`);
-    return tests;
-  }
-
-  async function openApp(){
-    const url = appUrl.value.trim() || "reducer.html";
-    appFrame.src = url + (url.includes("?") ? "&" : "?") + "ts=" + Date.now();
-    await new Promise((resolve) => {
-      appFrame.onload = () => resolve();
-    });
-  }
-
-  async function runAll(){
-    logEl.textContent = "";
-    setStatus("loading…");
-    await openApp();
-    const tests = await loadTests();
-
-    let pass = 0;
-    let fail = 0;
-
-    for (const t of tests){
-      logLine("");
-      logLine(`TEST: ${t.name}`);
-      for (const st of t.steps){
-        logLine("  " + JSON.stringify(st));
-      }
-      try{
-        for (const st of t.steps){
-          await stepExec(st);
-        }
-        pass++;
-        logLine(`✔ PASS ${t.name}`);
-      } catch(e){
-        fail++;
-        logLine(`✘ FAIL ${t.name}`);
-        logLine(String(e && e.message ? e.message : e));
-      }
-    }
-
-    const total = pass + fail;
-    setStatus(fail ? `done (${pass}/${total})` : `done (${pass}/${total})`, fail ? false : true);
-  }
-
-  async function copyResults(){
+    if (!cur) continue;
+    // step line: ["cmd", ...]
+    const m = line.match(/^\s*\[(.*)\]\s*$/);
+    if (!m) continue;
     try{
-      await navigator.clipboard.writeText(logEl.textContent);
-      const prev = statusPill.textContent;
-      setStatus("copied ✓", true);
-      setTimeout(() => setStatus(prev, null), 700);
-    } catch(e){
-      alert("Clipboard copy failed. Your browser may block clipboard access on file://.\nTry serving via localhost.\n\n" + e);
+      const arr = JSON.parse("[" + m[1] + "]");
+      cur.steps.push(arr);
+    }catch(e){
+      // ignore parse noise
     }
   }
+  push();
+  return out;
+}
 
-  $("#btnRun").addEventListener("click", () => runAll().catch(e => { setStatus("error", false); logLine(String(e)); }));
-  $("#btnLoadTests").addEventListener("click", () => loadTests().catch(e => { setStatus("error", false); logLine(String(e)); }));
-  $("#btnOpenApp").addEventListener("click", () => openApp().catch(e => { setStatus("error", false); logLine(String(e)); }));
-  $("#btnReload").addEventListener("click", () => openApp().catch(e => { setStatus("error", false); logLine(String(e)); }));
-  $("#btnCopy").addEventListener("click", () => copyResults());
+// ---------- helpers: target iframe selection ----------
+function getTarget(){
+  const pick = $("targetPick").value;
+  return pick === "mobile" ? mob.iframe : desk.iframe;
+}
+function getDoc(){
+  const fr = getTarget();
+  const w = fr.contentWindow;
+  const d = fr.contentDocument || w?.document;
+  if (!w || !d) throw new Error("Target iframe not ready.");
+  return { win:w, doc:d, frame:fr };
+}
 
-  // auto boot: open app + load tests preview
-  (async () => {
+function q(sel, root){
+  const { doc } = getDoc();
+  const r = root || doc;
+  return r.querySelector(sel);
+}
+function qa(sel, root){
+  const { doc } = getDoc();
+  const r = root || doc;
+  return Array.from(r.querySelectorAll(sel));
+}
+function assert(cond, msg){
+  if (!cond) throw new Error(msg || "Assertion failed");
+}
+function sleep(ms){ return new Promise(res=>setTimeout(res, ms)); }
+
+async function waitFor(sel, timeout=2000){
+  const t0 = performance.now();
+  while (performance.now() - t0 < timeout){
+    if (q(sel)) return;
+    await sleep(30);
+  }
+  throw new Error(`Missing element: ${sel}`);
+}
+
+function isVisible(el){
+  if (!el) return false;
+  const st = el.ownerDocument.defaultView.getComputedStyle(el);
+  if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0;
+}
+
+function fireMouse(el, type){
+  const r = el.getBoundingClientRect();
+  const x = r.left + Math.min(10, r.width/2);
+  const y = r.top + Math.min(10, r.height/2);
+  el.dispatchEvent(new MouseEvent(type, { bubbles:true, cancelable:true, clientX:x, clientY:y }));
+}
+
+async function stepExec(step){
+  const [cmd, ...args] = step;
+
+  if (cmd === "waitFor"){
+    const [sel, ms] = args;
+    await waitFor(sel, ms ?? 2000);
+    return;
+  }
+
+  if (cmd === "click"){
+    const [sel] = args;
+    await waitFor(sel, 2000);
+    const el = q(sel);
+    assert(el, `Missing element: ${sel}`);
+    fireMouse(el, "mousedown");
+    fireMouse(el, "mouseup");
+    fireMouse(el, "click");
+    return;
+  }
+
+  if (cmd === "type"){
+    const [sel, text] = args;
+    await waitFor(sel, 2000);
+    const el = q(sel);
+    assert(el, `Missing element: ${sel}`);
+    el.focus?.();
+    // set value like a user
+    const val = String(text ?? "");
+    if ("value" in el) el.value = val;
+    el.dispatchEvent(new Event("input", { bubbles:true }));
+    el.dispatchEvent(new Event("change", { bubbles:true }));
+    return;
+  }
+
+  if (cmd === "expectVisible"){
+    const [sel] = args;
+    const el = q(sel);
+    assert(el, `Missing element: ${sel}`);
+    assert(isVisible(el), `Not visible: ${sel}`);
+    return;
+  }
+
+  if (cmd === "expectContains"){
+    const [sel, sub] = args;
+    const el = q(sel);
+    assert(el, `Missing element: ${sel}`);
+    const txt = (el.textContent || "");
+    assert(txt.includes(String(sub)), `Expected ${sel} to contain "${sub}"`);
+    return;
+  }
+
+  if (cmd === "expectText"){
+    const [sel, exact] = args;
+    const el = q(sel);
+    assert(el, `Missing element: ${sel}`);
+    const txt = (el.textContent || "").trim();
+    assert(txt === String(exact), `Expected ${sel} text == "${exact}" but got "${txt}"`);
+    return;
+  }
+
+  // expectContained(childSel, parentSel, padPx)
+  if (cmd === "expectContained"){
+    const [childSel, parentSel, padPx] = args;
+    const child = q(childSel);
+    const parent = q(parentSel);
+    assert(child, `Missing element: ${childSel}`);
+    assert(parent, `Missing element: ${parentSel}`);
+    const c = child.getBoundingClientRect();
+    const p = parent.getBoundingClientRect();
+    const pad = Number(padPx ?? 0);
+    assert(c.left   >= p.left   - pad, `Not contained (left): ${childSel} in ${parentSel}`);
+    assert(c.top    >= p.top    - pad, `Not contained (top): ${childSel} in ${parentSel}`);
+    assert(c.right  <= p.right  + pad, `Not contained (right): ${childSel} in ${parentSel}`);
+    assert(c.bottom <= p.bottom + pad, `Not contained (bottom): ${childSel} in ${parentSel}`);
+    return;
+  }
+
+  throw new Error(`Unknown command: ${cmd}`);
+}
+
+async function runTest(test){
+  logLine(`\nTEST: ${test.title}`);
+  for (const step of test.steps){
+    logLine(`  - ${JSON.stringify(step)}`, "muted");
+    await stepExec(step);
+  }
+}
+
+async function ensureTestsLoaded(){
+  if (TESTS.length) return;
+  const txt = await fetchText("./reducertests.txt");
+  TESTS = parseTests(txt);
+  $("testsMeta").textContent = `${TESTS.length} tests`;
+  logLine(`✔ Loaded reducertests.txt (${txt.length} bytes)`);
+  logLine(`✔ Parsed ${TESTS.length} TEST blocks`);
+}
+
+async function waitForIframeReady(fr){
+  // best-effort: wait for DOMContentLoaded + at least body exists
+  const t0 = performance.now();
+  while (performance.now() - t0 < 8000){
     try{
-      setStatus("boot…");
-      await openApp();
-      await loadTests();
-      setStatus("idle");
-    } catch(e){
-      setStatus("error", false);
-      logLine(String(e));
+      const w = fr.contentWindow;
+      const d = fr.contentDocument || w?.document;
+      if (d && d.readyState === "complete" && d.body) return;
+    }catch(e){
+      // cross-origin would land here; must be same-origin
+      throw new Error("Iframe is not same-origin. Serve runner + app from the same server/origin.");
     }
-  })();
-})();
+    await sleep(50);
+  }
+  throw new Error("Timed out waiting for iframe to finish loading.");
+}
+
+async function runOne(){
+  doneCount = 0;
+  setDone();
+  await ensureTestsLoaded();
+
+  const fr = getTarget();
+  await waitForIframeReady(fr);
+
+  const idx = Math.max(0, Math.min(TESTS.length-1, 0));
+  const t = TESTS[idx];
+  try{
+    await runTest(t);
+    logLine(`✔ PASS ${t.title}`, "ok");
+    doneCount++;
+  }catch(e){
+    logLine(`✘ FAIL ${t.title}`, "bad");
+    logLine(String(e?.stack || e?.message || e), "bad");
+  }
+  setDone();
+}
+
+async function runAll(){
+  doneCount = 0;
+  setDone();
+  await ensureTestsLoaded();
+
+  const fr = getTarget();
+  await waitForIframeReady(fr);
+
+  for (const t of TESTS){
+    try{
+      await runTest(t);
+      logLine(`✔ PASS ${t.title}`, "ok");
+      doneCount++;
+    }catch(e){
+      logLine(`✘ FAIL ${t.title}`, "bad");
+      logLine(String(e?.stack || e?.message || e), "bad");
+    }
+    setDone();
+    // tiny yield so UI stays snappy
+    await sleep(0);
+  }
+}
+
+// Buttons
+$("btnRun").addEventListener("click", runOne);
+$("btnRunAll").addEventListener("click", runAll);
+$("btnClear").addEventListener("click", ()=>{ clearLog(); doneCount=0; setDone(); });
+$("btnCopy").addEventListener("click", async ()=>{
+  const text = Array.from($("log").querySelectorAll("div")).map(d=>d.textContent).join("\n");
+  try{
+    await navigator.clipboard.writeText(text);
+    logLine("✔ Copied results to clipboard");
+  }catch(e){
+    logLine("✘ Clipboard copy failed (browser permission?)", "bad");
+  }
+});
+
+// Auto-load
+loadApp();
+fitAll();
 </script>
 </body>
 </html>
