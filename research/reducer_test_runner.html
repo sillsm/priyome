@@ -1,548 +1,651 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Dual-Viewport Test Runner</title>
-  <style>
-    :root{
-      --bg:#0b0d12; --panel:#0f172a; --card:#111827; --b:rgba(255,255,255,.14);
-      --t:#e5e7eb; --m:#93a4c8; --ok:#22c55e; --bad:#ef4444; --mono: ui-monospace, Menlo, Consolas, monospace;
-      --r:14px;
-    }
-    *{ box-sizing:border-box; }
-    html,body{ height:100%; }
-    body{ margin:0; background:var(--bg); color:var(--t); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
-    .top{
-      position:sticky; top:0; z-index:10;
-      background:linear-gradient(180deg,#0b0d12,#0b0d12cc);
-      border-bottom:1px solid var(--b);
-      padding:12px 14px;
-      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    }
-    .title{ font-weight:900; letter-spacing:.2px; }
-    .pill{ padding:5px 10px; border:1px solid var(--b); border-radius:999px; color:var(--m); font-size:12px; }
-    .btn{
-      border:1px solid var(--b); background:rgba(255,255,255,.06); color:var(--t);
-      border-radius:12px; padding:8px 10px; cursor:pointer;
-    }
-    .btn.primary{ background:rgba(37,99,235,.22); border-color:rgba(37,99,235,.55); }
-    select, input{
-      border:1px solid var(--b); background:rgba(255,255,255,.06); color:var(--t);
-      border-radius:12px; padding:8px 10px;
-    }
-    input{ width: min(520px, 100%); }
-    .grid{
-      display:grid;
-      grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr) minmax(420px, 520px);
-      gap:12px;
-      padding:12px;
-      height: calc(100vh - 64px);
-      min-height:0;
-    }
-    @media (max-width: 1180px){
-      .grid{ grid-template-columns: 1fr; height:auto; }
-    }
-    .card{
-      border:1px solid var(--b);
-      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border-radius:var(--r);
-      overflow:hidden;
-      min-height:0;
-      display:flex;
-      flex-direction:column;
-    }
-    .cardHead{
-      padding:10px 12px;
-      border-bottom:1px solid var(--b);
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      background:rgba(255,255,255,.03);
-    }
-    .cardHead .meta{ font-size:12px; color:var(--m); font-family:var(--mono); }
-    .viewportHost{
-      flex:1; min-height:0;
-      display:flex; align-items:center; justify-content:center;
-      padding:12px;
-      background:rgba(0,0,0,.18);
-    }
-    .vpFrame{
-      position:relative;
-      border:1px solid var(--b);
-      border-radius:16px;
-      background:#000;
-      overflow:hidden;
-      box-shadow: 0 18px 50px rgba(0,0,0,.45);
-    }
-    .vpInner{
-      position:absolute; left:0; top:0;
-      transform-origin: 0 0;
-      background:#000;
-    }
-    iframe{
-      border:0;
-      width:100%;
-      height:100%;
-      display:block;
-      background:#000;
-    }
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Priyome Reducer Test Runner (Dual Viewport)</title>
+<style>
+  :root{
+    --bg:#0b0d12;
+    --b:rgba(255,255,255,.12);
+    --t:#e5e7eb;
+    --m:rgba(229,231,235,.7);
+    --ok:#a7f3d0;
+    --fail:#fecaca;
+    --warn:#fde68a;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
 
-    /* runner */
-    .runner{
-      display:flex;
-      flex-direction:column;
-      min-height:0;
+  /* Layout: 3 columns on wide: Desktop | Mobile | Runner */
+  .wrap{
+    display:grid;
+    grid-template-columns: 1fr 1fr .95fr;
+    gap:12px;
+    height:100vh;
+    padding:12px;
+    min-height:0;
+  }
+  @media (max-width: 1180px){
+    .wrap{
+      grid-template-columns:1fr;
+      grid-template-rows: 48vh 48vh auto;
+      height:auto;
     }
-    .runnerHead{
-      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-      padding:10px 12px;
-      border-bottom:1px solid var(--b);
-      background:rgba(255,255,255,.03);
-    }
-    .log{
-      flex:1; min-height:0;
-      overflow:auto;
-      padding:10px 12px;
-      font-family:var(--mono);
-      font-size:12px;
-      white-space:pre-wrap;
-      background:rgba(0,0,0,.25);
-    }
-    .ok{ color:var(--ok); }
-    .bad{ color:var(--bad); }
-    .muted{ color:var(--m); }
-    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .sep{ width:1px; height:26px; background:var(--b); margin:0 4px; }
-  </style>
+  }
+
+  .card{
+    border:1px solid var(--b);
+    border-radius:12px;
+    background:rgba(255,255,255,.03);
+    overflow:hidden;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .head{
+    padding:10px 12px;
+    border-bottom:1px solid var(--b);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .dim{color:var(--m)}
+  .ok{color:var(--ok)}
+  .warn{color:var(--warn)}
+  .pass{color:var(--ok)}
+  .fail{color:var(--fail)}
+  .skip{color:var(--warn)}
+
+  button, select, input{
+    padding:8px 10px;
+    border-radius:10px;
+    border:1px solid var(--b);
+    background:rgba(255,255,255,.06);
+    color:var(--t);
+    cursor:pointer;
+  }
+  input{
+    min-width:260px;
+    width:min(520px, 100%);
+  }
+
+  /* Viewport simulator */
+  .viewportHost{
+    flex:1;
+    min-height:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:10px;
+  }
+  .vpFrame{
+    position:relative;
+    border:1px solid var(--b);
+    border-radius:16px;
+    overflow:hidden;
+    background:#000;
+    box-shadow: 0 14px 44px rgba(0,0,0,.45);
+  }
+  .vpInner{
+    position:absolute;
+    left:0; top:0;
+    transform-origin:0 0;
+    background:#000;
+  }
+  iframe{
+    border:0;
+    width:100%;
+    height:100%;
+    display:block;
+    background:white;
+  }
+
+  .log{
+    padding:10px 12px;
+    overflow:auto;
+    flex:1;
+    min-height:0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size:13px;
+    line-height:1.35;
+    white-space:pre-wrap;
+    background:rgba(0,0,0,.18);
+  }
+
+  .pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:4px 8px;
+    border-radius:999px;
+    border:1px solid var(--b);
+    background:rgba(255,255,255,.04);
+    font-size:12px;
+    color:var(--m);
+  }
+</style>
 </head>
 <body>
-  <div class="top">
-    <div class="title">Dual-Viewport Test Runner</div>
-    <span class="pill">Desktop sim: <b>1200×900</b></span>
-    <span class="pill">Mobile sim: <b>360×640</b></span>
-    <span class="pill">Pick target → run tests</span>
-  </div>
+<div class="wrap">
 
-  <div class="grid">
-    <!-- Desktop viewport -->
-    <div class="card">
-      <div class="cardHead">
-        <div>
-          <b>Desktop iframe</b>
-          <span class="meta">fixed 1200×900 (scaled)</span>
-        </div>
-        <div class="meta" id="deskScaleMeta">scale: —</div>
+  <!-- Desktop simulated viewport -->
+  <div class="card">
+    <div class="head">
+      <div class="row">
+        <b>App Under Test — Desktop</b>
+        <span class="pill">virtual <b>1200×900</b></span>
+        <span class="dim" id="appLabelDesk"></span>
       </div>
-      <div class="viewportHost" id="deskHost">
-        <div class="vpFrame" id="deskFrame">
-          <div class="vpInner" id="deskInner">
-            <iframe id="deskIframe" title="desktop iframe"></iframe>
-          </div>
-        </div>
+      <div class="row">
+        <span class="pill" id="deskScaleMeta">scale: —</span>
       </div>
     </div>
-
-    <!-- Mobile viewport -->
-    <div class="card">
-      <div class="cardHead">
-        <div>
-          <b>Mobile iframe</b>
-          <span class="meta">fixed 360×640 (scaled)</span>
-        </div>
-        <div class="meta" id="mobScaleMeta">scale: —</div>
-      </div>
-      <div class="viewportHost" id="mobHost">
-        <div class="vpFrame" id="mobFrame">
-          <div class="vpInner" id="mobInner">
-            <iframe id="mobIframe" title="mobile iframe"></iframe>
-          </div>
+    <div class="viewportHost" id="deskHost">
+      <div class="vpFrame" id="deskFrame">
+        <div class="vpInner" id="deskInner">
+          <iframe id="frameDesk" title="app-under-test-desktop"></iframe>
         </div>
       </div>
-    </div>
-
-    <!-- Runner -->
-    <div class="card runner">
-      <div class="runnerHead">
-        <div class="row">
-          <label class="muted" for="appUrl">App URL</label>
-          <input id="appUrl" value="./reducer.html" />
-          <button class="btn" id="btnLoad">Load</button>
-        </div>
-        <div class="row">
-          <div class="sep"></div>
-          <label class="muted" for="targetPick">Target</label>
-          <select id="targetPick">
-            <option value="desktop">Desktop iframe (1200×900)</option>
-            <option value="mobile">Mobile iframe (360×640)</option>
-          </select>
-          <button class="btn primary" id="btnRun">Run</button>
-          <button class="btn" id="btnRunAll">Run All</button>
-          <button class="btn" id="btnCopy">📋 Copy results</button>
-          <button class="btn" id="btnClear">Clear</button>
-        </div>
-        <div class="row">
-          <span class="pill">Loaded: <b id="testsMeta">—</b></span>
-          <span class="pill">Done: <b id="doneMeta">0/0</b></span>
-        </div>
-      </div>
-      <div class="log" id="log"></div>
     </div>
   </div>
 
-<script type="module">
-/**
- * Dual iframe sizing:
- * - Each iframe content stays at a fixed "virtual" viewport (DESK_W×DESK_H or MOB_W×MOB_H).
- * - We scale the iframe container via transform so it fits in the host area.
- */
-const DESK_W = 1200, DESK_H = 900;
-const MOB_W  = 360,  MOB_H  = 640;
+  <!-- Mobile simulated viewport -->
+  <div class="card">
+    <div class="head">
+      <div class="row">
+        <b>App Under Test — Mobile</b>
+        <span class="pill">virtual <b>360×640</b></span>
+        <span class="dim" id="appLabelMob"></span>
+      </div>
+      <div class="row">
+        <span class="pill" id="mobScaleMeta">scale: —</span>
+      </div>
+    </div>
+    <div class="viewportHost" id="mobHost">
+      <div class="vpFrame" id="mobFrame">
+        <div class="vpInner" id="mobInner">
+          <iframe id="frameMob" title="app-under-test-mobile"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
 
-const $ = (id)=>document.getElementById(id);
+  <!-- Runner -->
+  <div class="card">
+    <div class="head">
+      <div class="row">
+        <b>Runner</b>
+        <span class="dim" id="status">idle</span>
+      </div>
+      <div class="row">
+        <select id="targetPick" title="Target iframe">
+          <option value="desktop">Run on Desktop iframe</option>
+          <option value="mobile">Run on Mobile iframe</option>
+        </select>
+        <input id="appPath" placeholder="app path (default: ?app=staging.html or reducer.html)" />
+        <button id="reloadBtn">Reload</button>
+        <button id="runBtn">Run</button>
+        <button id="copyBtn">📋 Copy results</button>
+      </div>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
 
-const desk = {
-  host: $("deskHost"), frame: $("deskFrame"), inner: $("deskInner"), iframe: $("deskIframe"), meta: $("deskScaleMeta"),
-  w: DESK_W, h: DESK_H
-};
-const mob = {
-  host: $("mobHost"), frame: $("mobFrame"), inner: $("mobInner"), iframe: $("mobIframe"), meta: $("mobScaleMeta"),
-  w: MOB_W, h: MOB_H
-};
+</div>
 
-function fitViewport(vp){
-  const r = vp.host.getBoundingClientRect();
-  const pad = 14; // safe padding inside host
-  const availW = Math.max(80, r.width  - pad*2);
-  const availH = Math.max(80, r.height - pad*2);
+<script>
+(() => {
+  // --------- Virtual viewport config ----------
+  const DESK_W = 1200, DESK_H = 900;
+  const MOB_W  = 360,  MOB_H  = 640;
 
-  const s = Math.min(availW / vp.w, availH / vp.h);
-  const scale = Math.max(0.1, Math.min(4, s));
+  const logEl = document.getElementById('log');
+  const statusEl = document.getElementById('status');
 
-  // Size outer frame to scaled size (so layout uses real pixels)
-  const outW = Math.round(vp.w * scale);
-  const outH = Math.round(vp.h * scale);
+  const frameDesk = document.getElementById('frameDesk');
+  const frameMob  = document.getElementById('frameMob');
 
-  vp.frame.style.width = outW + "px";
-  vp.frame.style.height = outH + "px";
+  const appInput = document.getElementById('appPath');
+  const appLabelDesk = document.getElementById('appLabelDesk');
+  const appLabelMob  = document.getElementById('appLabelMob');
 
-  // Inner stays at fixed virtual size, scaled down/up
-  vp.inner.style.width = vp.w + "px";
-  vp.inner.style.height = vp.h + "px";
-  vp.inner.style.transform = `scale(${scale})`;
+  const targetPick = document.getElementById('targetPick');
 
-  vp.meta.textContent = `scale: ${scale.toFixed(3)} • box: ${outW}×${outH}`;
-}
-
-function fitAll(){
-  fitViewport(desk);
-  fitViewport(mob);
-}
-addEventListener("resize", ()=>fitAll());
-setTimeout(fitAll, 0);
-
-/** Load both iframes to same app url */
-function loadApp(){
-  const url = $("appUrl").value.trim() || "./reducer.html";
-  desk.iframe.src = url;
-  mob.iframe.src = url;
-  logLine(`✔ Loading app into both iframes: ${url}`);
-}
-$("btnLoad").addEventListener("click", loadApp);
-
-// --------------------------------------
-// Test runner (simple table-driven DSL)
-// --------------------------------------
-//
-// This runner expects a local file "reducertests.txt" with blocks like:
-//
-// TEST: Title navbar is visible and shows app name
-//   ["waitFor",".topbarWrap",2000]
-//   ["expectVisible",".topbarWrap"]
-//   ["expectContains",".brandTitle","Priyo"]
-//
-// (Same style you’ve been using.)
-
-let TESTS = [];
-let doneCount = 0;
-
-function logLine(s, cls=""){
-  const el = $("log");
-  const line = document.createElement("div");
-  if (cls) line.className = cls;
-  line.textContent = s;
-  el.appendChild(line);
-  el.scrollTop = el.scrollHeight;
-}
-function clearLog(){ $("log").innerHTML = ""; }
-function setDone(){
-  $("doneMeta").textContent = `${doneCount}/${TESTS.length}`;
-}
-
-async function fetchText(url){
-  const r = await fetch(url, { cache:"no-store" });
-  if (!r.ok) throw new Error(`HTTP ${r.status} fetching ${url}`);
-  return await r.text();
-}
-
-function parseTests(txt){
-  const lines = (txt||"").split(/\r?\n/);
-  const out = [];
-  let cur = null;
-
-  const push = ()=>{
-    if (cur && cur.steps.length) out.push(cur);
-    cur = null;
+  const desk = {
+    host: document.getElementById('deskHost'),
+    frame: document.getElementById('deskFrame'),
+    inner: document.getElementById('deskInner'),
+    iframe: frameDesk,
+    meta: document.getElementById('deskScaleMeta'),
+    w: DESK_W, h: DESK_H
+  };
+  const mob = {
+    host: document.getElementById('mobHost'),
+    frame: document.getElementById('mobFrame'),
+    inner: document.getElementById('mobInner'),
+    iframe: frameMob,
+    meta: document.getElementById('mobScaleMeta'),
+    w: MOB_W, h: MOB_H
   };
 
-  for (const raw of lines){
-    const line = raw.trim();
-    if (!line) continue;
-    if (line.startsWith("TEST:")){
-      push();
-      cur = { title: line.slice(5).trim(), steps: [] };
-      continue;
+  function fitViewport(vp){
+    const r = vp.host.getBoundingClientRect();
+    const pad = 12;
+    const availW = Math.max(80, r.width  - pad*2);
+    const availH = Math.max(80, r.height - pad*2);
+
+    const scale = Math.max(0.1, Math.min(6, Math.min(availW / vp.w, availH / vp.h)));
+    const outW = Math.round(vp.w * scale);
+    const outH = Math.round(vp.h * scale);
+
+    vp.frame.style.width = outW + "px";
+    vp.frame.style.height = outH + "px";
+
+    vp.inner.style.width = vp.w + "px";
+    vp.inner.style.height = vp.h + "px";
+    vp.inner.style.transform = `scale(${scale})`;
+
+    vp.meta.textContent = `scale: ${scale.toFixed(3)} • box: ${outW}×${outH}`;
+  }
+  function fitAll(){ fitViewport(desk); fitViewport(mob); }
+  addEventListener("resize", fitAll);
+  setTimeout(fitAll, 0);
+
+  // --------- Runner utilities (ported from your working runner) ----------
+  const vars = Object.create(null);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  function log(msg, cls="") {
+    const d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = msg;
+    logEl.appendChild(d);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function resolveArg(x){
+    if (typeof x === "string" && x.startsWith("$")) return vars[x.slice(1)];
+    return x;
+  }
+
+  function looksLikeSelector(s){
+    if (typeof s !== "string") return false;
+    const t = s.trim();
+    if (!t) return false;
+    if (t.includes("\\n")) return false;
+    return t.startsWith("#") || t.startsWith(".") || t.startsWith("[");
+  }
+
+  function getTargetFrameEl(){
+    return (targetPick.value === "mobile") ? frameMob : frameDesk;
+  }
+
+  function q(sel) {
+    const frame = getTargetFrameEl();
+    const el = frame.contentDocument?.querySelector(sel);
+    if (!el) throw new Error(`Missing element: ${sel}`);
+    return el;
+  }
+
+  function isVisible(el){
+    if (!el) return false;
+    const frame = getTargetFrameEl();
+    const cs = frame.contentWindow.getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  async function waitFor(sel, ms=2000){
+    const frame = getTargetFrameEl();
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const el = frame.contentDocument?.querySelector(sel);
+      if (el) return el;
+      await sleep(25);
     }
-    if (!cur) continue;
-    // step line: ["cmd", ...]
-    const m = line.match(/^\s*\[(.*)\]\s*$/);
-    if (!m) continue;
-    try{
-      const arr = JSON.parse("[" + m[1] + "]");
-      cur.steps.push(arr);
-    }catch(e){
-      // ignore parse noise
+    throw new Error(`Timeout waiting for ${sel}`);
+  }
+
+  async function waitForVisible(sel, ms=2000){
+    const frame = getTargetFrameEl();
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const el = frame.contentDocument?.querySelector(sel);
+      if (el && isVisible(el)) return el;
+      await sleep(25);
     }
-  }
-  push();
-  return out;
-}
-
-// ---------- helpers: target iframe selection ----------
-function getTarget(){
-  const pick = $("targetPick").value;
-  return pick === "mobile" ? mob.iframe : desk.iframe;
-}
-function getDoc(){
-  const fr = getTarget();
-  const w = fr.contentWindow;
-  const d = fr.contentDocument || w?.document;
-  if (!w || !d) throw new Error("Target iframe not ready.");
-  return { win:w, doc:d, frame:fr };
-}
-
-function q(sel, root){
-  const { doc } = getDoc();
-  const r = root || doc;
-  return r.querySelector(sel);
-}
-function qa(sel, root){
-  const { doc } = getDoc();
-  const r = root || doc;
-  return Array.from(r.querySelectorAll(sel));
-}
-function assert(cond, msg){
-  if (!cond) throw new Error(msg || "Assertion failed");
-}
-function sleep(ms){ return new Promise(res=>setTimeout(res, ms)); }
-
-async function waitFor(sel, timeout=2000){
-  const t0 = performance.now();
-  while (performance.now() - t0 < timeout){
-    if (q(sel)) return;
-    await sleep(30);
-  }
-  throw new Error(`Missing element: ${sel}`);
-}
-
-function isVisible(el){
-  if (!el) return false;
-  const st = el.ownerDocument.defaultView.getComputedStyle(el);
-  if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
-  const r = el.getBoundingClientRect();
-  return r.width > 0 && r.height > 0;
-}
-
-function fireMouse(el, type){
-  const r = el.getBoundingClientRect();
-  const x = r.left + Math.min(10, r.width/2);
-  const y = r.top + Math.min(10, r.height/2);
-  el.dispatchEvent(new MouseEvent(type, { bubbles:true, cancelable:true, clientX:x, clientY:y }));
-}
-
-async function stepExec(step){
-  const [cmd, ...args] = step;
-
-  if (cmd === "waitFor"){
-    const [sel, ms] = args;
-    await waitFor(sel, ms ?? 2000);
-    return;
+    throw new Error(`Timeout waiting for visible ${sel}`);
   }
 
-  if (cmd === "click"){
-    const [sel] = args;
-    await waitFor(sel, 2000);
-    const el = q(sel);
-    assert(el, `Missing element: ${sel}`);
-    fireMouse(el, "mousedown");
-    fireMouse(el, "mouseup");
-    fireMouse(el, "click");
-    return;
-  }
+  function rect(el){ return el.getBoundingClientRect(); }
 
-  if (cmd === "type"){
-    const [sel, text] = args;
-    await waitFor(sel, 2000);
-    const el = q(sel);
-    assert(el, `Missing element: ${sel}`);
-    el.focus?.();
-    // set value like a user
-    const val = String(text ?? "");
-    if ("value" in el) el.value = val;
-    el.dispatchEvent(new Event("input", { bubbles:true }));
-    el.dispatchEvent(new Event("change", { bubbles:true }));
-    return;
-  }
-
-  if (cmd === "expectVisible"){
-    const [sel] = args;
-    const el = q(sel);
-    assert(el, `Missing element: ${sel}`);
-    assert(isVisible(el), `Not visible: ${sel}`);
-    return;
-  }
-
-  if (cmd === "expectContains"){
-    const [sel, sub] = args;
-    const el = q(sel);
-    assert(el, `Missing element: ${sel}`);
-    const txt = (el.textContent || "");
-    assert(txt.includes(String(sub)), `Expected ${sel} to contain "${sub}"`);
-    return;
-  }
-
-  if (cmd === "expectText"){
-    const [sel, exact] = args;
-    const el = q(sel);
-    assert(el, `Missing element: ${sel}`);
-    const txt = (el.textContent || "").trim();
-    assert(txt === String(exact), `Expected ${sel} text == "${exact}" but got "${txt}"`);
-    return;
-  }
-
-  // expectContained(childSel, parentSel, padPx)
-  if (cmd === "expectContained"){
-    const [childSel, parentSel, padPx] = args;
+  function expectContained(childSel, parentSel, pad=0){
     const child = q(childSel);
     const parent = q(parentSel);
-    assert(child, `Missing element: ${childSel}`);
-    assert(parent, `Missing element: ${parentSel}`);
-    const c = child.getBoundingClientRect();
-    const p = parent.getBoundingClientRect();
-    const pad = Number(padPx ?? 0);
-    assert(c.left   >= p.left   - pad, `Not contained (left): ${childSel} in ${parentSel}`);
-    assert(c.top    >= p.top    - pad, `Not contained (top): ${childSel} in ${parentSel}`);
-    assert(c.right  <= p.right  + pad, `Not contained (right): ${childSel} in ${parentSel}`);
-    assert(c.bottom <= p.bottom + pad, `Not contained (bottom): ${childSel} in ${parentSel}`);
-    return;
-  }
-
-  throw new Error(`Unknown command: ${cmd}`);
-}
-
-async function runTest(test){
-  logLine(`\nTEST: ${test.title}`);
-  for (const step of test.steps){
-    logLine(`  - ${JSON.stringify(step)}`, "muted");
-    await stepExec(step);
-  }
-}
-
-async function ensureTestsLoaded(){
-  if (TESTS.length) return;
-  const txt = await fetchText("./reducertests.txt");
-  TESTS = parseTests(txt);
-  $("testsMeta").textContent = `${TESTS.length} tests`;
-  logLine(`✔ Loaded reducertests.txt (${txt.length} bytes)`);
-  logLine(`✔ Parsed ${TESTS.length} TEST blocks`);
-}
-
-async function waitForIframeReady(fr){
-  // best-effort: wait for DOMContentLoaded + at least body exists
-  const t0 = performance.now();
-  while (performance.now() - t0 < 8000){
-    try{
-      const w = fr.contentWindow;
-      const d = fr.contentDocument || w?.document;
-      if (d && d.readyState === "complete" && d.body) return;
-    }catch(e){
-      // cross-origin would land here; must be same-origin
-      throw new Error("Iframe is not same-origin. Serve runner + app from the same server/origin.");
+    const c = rect(child);
+    const p = rect(parent);
+    if (c.left < p.left - pad || c.top < p.top - pad || c.right > p.right + pad || c.bottom > p.bottom + pad){
+      throw new Error(
+        `Overflow: ${childSel} (${c.left.toFixed(1)},${c.top.toFixed(1)},${c.right.toFixed(1)},${c.bottom.toFixed(1)}) ` +
+        `not within ${parentSel} (${p.left.toFixed(1)},${p.top.toFixed(1)},${p.right.toFixed(1)},${p.bottom.toFixed(1)})`
+      );
     }
-    await sleep(50);
   }
-  throw new Error("Timed out waiting for iframe to finish loading.");
-}
 
-async function runOne(){
-  doneCount = 0;
-  setDone();
-  await ensureTestsLoaded();
-
-  const fr = getTarget();
-  await waitForIframeReady(fr);
-
-  const idx = Math.max(0, Math.min(TESTS.length-1, 0));
-  const t = TESTS[idx];
-  try{
-    await runTest(t);
-    logLine(`✔ PASS ${t.title}`, "ok");
-    doneCount++;
-  }catch(e){
-    logLine(`✘ FAIL ${t.title}`, "bad");
-    logLine(String(e?.stack || e?.message || e), "bad");
+  function count(sel){
+    const frame = getTargetFrameEl();
+    return frame.contentDocument?.querySelectorAll(sel).length ?? 0;
   }
-  setDone();
-}
 
-async function runAll(){
-  doneCount = 0;
-  setDone();
-  await ensureTestsLoaded();
+  function clickSel(sel){
+    const frame = getTargetFrameEl();
+    const el = q(sel);
+    el.dispatchEvent(new MouseEvent("pointerdown", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("pointerup", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mouseup", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+    el.dispatchEvent(new MouseEvent("click", {bubbles:true, cancelable:true, view: frame.contentWindow}));
+  }
 
-  const fr = getTarget();
-  await waitForIframeReady(fr);
+  function setValue(sel, value){
+    const el = q(sel);
+    el.focus();
+    if ("value" in el) el.value = value;
+    el.dispatchEvent(new Event("input", {bubbles:true}));
+    el.dispatchEvent(new Event("change", {bubbles:true}));
+  }
 
-  for (const t of TESTS){
-    try{
-      await runTest(t);
-      logLine(`✔ PASS ${t.title}`, "ok");
-      doneCount++;
-    }catch(e){
-      logLine(`✘ FAIL ${t.title}`, "bad");
-      logLine(String(e?.stack || e?.message || e), "bad");
+  function dispatchPointer(type, x, y, opts={}){
+    const frame = getTargetFrameEl();
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+    const el = doc.elementFromPoint(x, y);
+    if (!el) throw new Error(`No element at point (${x.toFixed(1)},${y.toFixed(1)})`);
+    const ev = new PointerEvent(type, {
+      bubbles:true, cancelable:true, view: win,
+      clientX:x, clientY:y,
+      pointerId: opts.pointerId ?? 1,
+      pointerType: opts.pointerType ?? "mouse",
+      buttons: opts.buttons ?? (type === "pointerdown" ? 1 : 0),
+      pressure: opts.pressure ?? (type === "pointerdown" ? 0.5 : 0),
+      isPrimary: true
+    });
+    el.dispatchEvent(ev);
+  }
+
+  function getSquareCenterFallback(sq){
+    const frame = getTargetFrameEl();
+    const doc = frame.contentDocument;
+    const candidates = [
+      `[data-square="${sq}"]`,
+      `[data-sq="${sq}"]`,
+      `.sq-${sq}`,
+      `.square-${sq}`
+    ];
+    for (const sel of candidates){
+      const el = doc.querySelector(sel);
+      if (el){
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width/2, y: r.top + r.height/2 };
+      }
     }
-    setDone();
-    // tiny yield so UI stays snappy
-    await sleep(0);
+    return null;
   }
-}
 
-// Buttons
-$("btnRun").addEventListener("click", runOne);
-$("btnRunAll").addEventListener("click", runAll);
-$("btnClear").addEventListener("click", ()=>{ clearLog(); doneCount=0; setDone(); });
-$("btnCopy").addEventListener("click", async ()=>{
-  const text = Array.from($("log").querySelectorAll("div")).map(d=>d.textContent).join("\n");
-  try{
-    await navigator.clipboard.writeText(text);
-    logLine("✔ Copied results to clipboard");
-  }catch(e){
-    logLine("✘ Clipboard copy failed (browser permission?)", "bad");
+  async function dragSquare(fromSq, toSq, durationMs=120){
+    const frame = getTargetFrameEl();
+    const w = frame.contentWindow;
+
+    let a = null, b = null;
+    if (typeof w.__getSquareCenter === "function"){
+      a = w.__getSquareCenter(fromSq);
+      b = w.__getSquareCenter(toSq);
+    }
+    if (!a || !b){
+      a = a || getSquareCenterFallback(fromSq);
+      b = b || getSquareCenterFallback(toSq);
+    }
+    if (!a || !b) throw new Error(`dragSquare could not locate square centers for ${fromSq} or ${toSq}. Add __getSquareCenter(sq) to the app for reliability.`);
+
+    const steps = Math.max(4, Math.floor(durationMs / 20));
+    dispatchPointer("pointerdown", a.x, a.y, {buttons:1});
+    await sleep(16);
+    for (let i=1;i<steps;i++){
+      const t = i/(steps-1);
+      dispatchPointer("pointermove", a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, {buttons:1});
+      await sleep(16);
+    }
+    dispatchPointer("pointerup", b.x, b.y, {buttons:0});
+    await sleep(80);
   }
-});
 
-// Auto-load
-loadApp();
-fitAll();
+  async function stepExec(step){
+    const [op, ...raw] = step;
+    const args = raw.map(resolveArg);
+
+    switch(op){
+      case "sleep": await sleep(args[0]||0); return;
+      case "waitFor": await waitFor(args[0], args[1] ?? 2000); return;
+      case "click": clickSel(args[0]); await sleep(12); return;
+      case "type": setValue(args[0], String(args[1] ?? "")); await sleep(20); return;
+
+      case "expectVisible": await waitForVisible(args[0], 2000); return;
+
+      case "expectContains": {
+        const a0 = args[0];
+        const needle = String(args[1] ?? "");
+        const readSel = (sel) => {
+          const el = q(sel);
+          if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) return (el.value || "").trim();
+          return (el.textContent || "").trim();
+        };
+        const hay = looksLikeSelector(a0) ? readSel(a0) : String(a0);
+        if (!String(hay).includes(needle)) throw new Error(`expectContains failed: "${needle}" not in "${String(hay)}"`);
+        return;
+      }
+
+      case "expectNotEqual": {
+        const left = String(args[0]);
+        const right = String(args[1]);
+        if (left === right) throw new Error(`expectNotEqual failed: both "${left}"`);
+        return;
+      }
+
+      case "storeText": {
+        const el = q(args[0]);
+        vars[args[1]] = (el.value != null && (el.tagName === "TEXTAREA" || el.tagName === "INPUT"))
+          ? (el.value || "").trim()
+          : (el.textContent || "").trim();
+        log(`stored $${args[1]} = ${JSON.stringify(vars[args[1]])}`, "dim");
+        return;
+      }
+
+      case "countAtLeast": {
+        const n = count(args[0]);
+        if (n < args[1]) throw new Error(`countAtLeast failed: ${args[0]} had ${n}, need >= ${args[1]}`);
+        return;
+      }
+
+      case "expectContained": expectContained(args[0], args[1], args[2] ?? 0); return;
+      case "dragSquare": await dragSquare(String(args[0]), String(args[1]), args[2] ?? 120); return;
+
+      case "timeUnder": {
+        const [budgetMs, steps] = args;
+        const t0 = performance.now();
+        for (const s of steps) await stepExec(s);
+        const dt = performance.now() - t0;
+        if (dt > budgetMs) throw new Error(`timeUnder failed: ${dt.toFixed(1)}ms > ${budgetMs}ms`);
+        return;
+      }
+
+      default:
+        log(`SKIP op ${op}`, "skip");
+        return;
+    }
+  }
+
+  // IMPORTANT: This is your working parser format:
+  // blocks separated by blank lines; first line "TEST <name>"; each step is JSON (possibly multi-line).
+  function parseTests(src){
+    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+    const tests = [];
+    for (const b of blocks){
+      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
+      const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      if (!lines.length) continue;
+      const nameLine = lines.shift();
+      if (!nameLine.startsWith("TEST ")) continue;
+      const name = nameLine.slice(5).trim();
+
+      const steps = [];
+      let buf = "";
+      for (const line of lines){
+        buf = buf ? (buf + "\n" + line) : line;
+        try{
+          const step = JSON.parse(buf);
+          steps.push(step);
+          buf = "";
+        }catch(e){
+          // keep buffering
+        }
+      }
+      if (buf.trim()) throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
+      tests.push({name, steps});
+    }
+    return tests;
+  }
+
+  async function loadText(path){
+    const r = await fetch(path, {cache:"no-store"});
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${path}`);
+    return await r.text();
+  }
+
+  function getDefaultApp(){
+    const u = new URL(location.href);
+    const qp = u.searchParams.get("app");
+    if (qp) return qp;
+    return "staging.html";
+  }
+
+  function setApp(){
+    const app = appInput.value.trim() || getDefaultApp();
+    appInput.value = app;
+
+    frameDesk.src = app;
+    frameMob.src = app;
+
+    appLabelDesk.textContent = app;
+    appLabelMob.textContent = app;
+  }
+
+  async function run(){
+    logEl.innerHTML = "";
+    for (const k of Object.keys(vars)) delete vars[k];
+
+    statusEl.textContent = "loading tests…";
+    let testsText;
+    try{
+      testsText = await loadText("reducertests.txt");
+      log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
+    }catch(e){
+      log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
+      statusEl.textContent = "failed (tests not loaded)";
+      return;
+    }
+
+    let tests;
+    try{
+      tests = parseTests(testsText);
+      log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
+      if (!tests.length){
+        log(`Hint: your tests file must have blocks starting with "TEST <name>" (not "TEST:"), separated by blank lines.`, "dim");
+        statusEl.textContent = "failed (0 tests parsed)";
+        return;
+      }
+    }catch(e){
+      log(`✘ FAILED to parse tests: ${e.message || e}`, "fail");
+      statusEl.textContent = "failed (parse error)";
+      return;
+    }
+
+    const targetName = (targetPick.value === "mobile") ? "mobile" : "desktop";
+    statusEl.textContent = `running (${targetName})`;
+
+    let pass = 0;
+
+    for (const t of tests){
+      log("\nTEST: " + t.name, "dim");
+
+      // Reload ONLY the target iframe between tests (matches intent of original runner).
+      const fr = getTargetFrameEl();
+      try{
+        fr.contentWindow.location.reload();
+      }catch(e){
+        log(`✘ Could not reload target iframe (same-origin?)`, "fail");
+        log(String(e?.message || e), "fail");
+        statusEl.textContent = "failed (reload error)";
+        return;
+      }
+      await sleep(520);
+
+      try{
+        for (const s of t.steps){
+          log("  " + JSON.stringify(s));
+          await stepExec(s);
+        }
+        log("✔ PASS " + t.name, "pass");
+        pass++;
+      }catch(e){
+        log("✘ FAIL " + t.name, "fail");
+        log(String(e && e.message ? e.message : e), "fail");
+      }
+    }
+
+    statusEl.textContent = `done (${pass}/${tests.length}) on ${targetName}`;
+  }
+
+  async function runWithFreshLoad(){
+    setApp();
+    // Wait for both iframes to load once (best-effort)
+    await Promise.all([
+      new Promise(r => frameDesk.addEventListener("load", r, {once:true})),
+      new Promise(r => frameMob.addEventListener("load", r, {once:true}))
+    ]);
+    await run();
+  }
+
+  document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
+
+  document.getElementById("reloadBtn").addEventListener("click", () => {
+    const fr = getTargetFrameEl();
+    fr.contentWindow.location.reload();
+  });
+
+  document.getElementById("copyBtn").addEventListener("click", async () => {
+    const text = Array.from(logEl.querySelectorAll("div")).map(d => d.textContent).join("\n");
+    try{
+      await navigator.clipboard.writeText(text);
+      log("✔ Copied results to clipboard", "ok");
+    }catch(e){
+      log("✘ Clipboard copy failed (permission?)", "fail");
+    }
+  });
+
+  // init
+  appInput.value = getDefaultApp();
+  setApp();
+  fitAll();
+  log("Ready. Pick target (desktop/mobile), click Run. Default app is staging.html (or pass ?app=...). Tests loaded from reducertests.txt.", "dim");
+})();
 </script>
 </body>
 </html>
