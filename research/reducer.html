@@ -4,11 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Priyome</title>
-<link rel="icon" href="./favicon.svg" />
 <style>
   :root{
     --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
-    --border:#dbe3f0; --accent:#2563eb; --good:#16a34a; --bad:#dc2626; --warn:#d97706;
+    --border:#dbe3f0; --accent:#2563eb;
     --radius:14px; --shadow:0 10px 22px rgba(15,23,42,.08);
     --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     --nav-h:58px;
@@ -36,7 +35,6 @@
     cursor:pointer;
     box-shadow: 0 6px 16px rgba(15,23,42,.06);
   }
-  .btn:hover{ border-color:#c9d4ea; }
   .btn.primary{ background:var(--accent); color:#fff; border-color:transparent; }
   .layout{
     display:grid;
@@ -56,7 +54,6 @@
     display:flex;
     flex-direction:column;
   }
-  #boardCard{ display:flex; flex-direction:column; }
   .cardHeader{
     padding:12px 14px;
     border-bottom:1px solid var(--border);
@@ -64,35 +61,11 @@
   }
   .actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   .actions .btn{ padding:7px 10px; border-radius:10px; }
-  .boardArea{
-    flex:1;
-    min-height:0;
-    display:flex;
-    flex-direction:column;
-  }
-  .boardWrap{
-    padding:12px;
-    flex:1;
-    min-height:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-  }
-  #boardHost{
-    width:min(92vmin, 560px);
-    height:min(92vmin, 560px);
-    max-width:100%;
-    max-height:100%;
-  }
-  .sparesRow{
-    border-top:1px solid var(--border);
-    padding:10px 12px;
-    display:flex;
-    align-items:center;
-    gap:10px;
-  }
+  .boardArea{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  .boardWrap{ padding:12px; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
+  #boardHost{ width:min(92vmin, 560px); height:min(92vmin, 560px); max-width:100%; max-height:100%; }
+  .sparesRow{ border-top:1px solid var(--border); padding:10px 12px; display:flex; align-items:center; gap:10px; }
   #sparesHost{ flex:1; min-height:44px; }
-  .rightCol{ min-height:0; display:flex; flex-direction:column; gap:12px; }
   .tabs{
     display:flex; gap:8px; flex-wrap:wrap;
     padding:10px 12px;
@@ -142,11 +115,7 @@
   }
   .gameCard.active{ outline:2px solid #c7d6ff; background:#f4f7ff; }
   .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
-  .rightTools{
-    padding:10px 12px;
-    border-top:1px solid var(--border);
-    background:#fff;
-  }
+  .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
   .toolRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .smallBtn{
     border:1px solid var(--border);
@@ -157,7 +126,6 @@
     font-size:12px;
   }
   .smallBtn.active{ background:#e8efff; border-color:#c7d6ff; }
-  #drawToolbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 0; }
   .muted{ color:var(--muted); }
   .menu{
     position:fixed; top:var(--nav-h); right:14px;
@@ -171,7 +139,6 @@
     z-index:80;
   }
   .menu.open{ display:block; }
-  .menu .hint{ font-size:12px; color:var(--muted); margin:8px 0 0; }
   .modalBackdrop{
     position:fixed; inset:0;
     background:rgba(15,23,42,.38);
@@ -206,7 +173,7 @@
     <div class="brandTitle"><span class="dot">P</span>riyome</div>
   </div>
   <div class="row">
-    <span class="pill">Study: <b id="studyPill">Study A</b></span>
+    <span class="pill">Study: <b id="studyPill">—</b></span>
     <span class="pill">Game: <b id="gamePill">—</b></span>
     <span class="pill">ID: <b id="gameName">—</b></span>
   </div>
@@ -214,11 +181,10 @@
 
 <div class="menu" id="menu">
   <div class="muted">Menu</div>
-  <div class="hint">This is a minimal reducer-driven staging page (ScratchChess only). Tests expect this to open/close.</div>
+  <div class="muted" style="font-size:12px; margin-top:6px">Toggles open/close for tests.</div>
 </div>
 
 <div class="layout">
-  <!-- Board card -->
   <div class="card" id="boardCard">
     <div class="cardHeader">
       <div class="actions">
@@ -232,11 +198,10 @@
       <div class="small" id="toolStatus">—</div>
     </div>
 
-    <div class="boardArea" id="boardArea">
-      <div class="boardWrap" id="boardWrap">
+    <div class="boardArea">
+      <div class="boardWrap">
         <div id="boardHost"></div>
       </div>
-
       <div class="sparesRow" id="setupStrip" hidden>
         <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
         <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
@@ -245,7 +210,6 @@
     </div>
   </div>
 
-  <!-- Right column -->
   <div class="card">
     <div class="tabs">
       <button class="tabBtn active" data-tab="moves">Moves</button>
@@ -268,7 +232,6 @@
           <textarea id="pgnBox" readonly></textarea>
         </div>
       </div>
-
       <div style="margin-top:10px">
         <div class="label">Nav</div>
         <div class="row" style="gap:8px; flex-wrap:wrap">
@@ -277,8 +240,6 @@
           <span class="pill">Ply: <b id="navMeta">0</b></span>
         </div>
       </div>
-
-      <!-- Compatibility with expanded tests -->
       <div style="margin-top:10px">
         <div class="grid2">
           <div>
@@ -299,11 +260,9 @@
         <select id="studySelect"></select>
         <button class="btn" id="btnNewStudy" type="button">New Study</button>
       </div>
-
       <div class="row" style="gap:8px; margin-top:10px">
         <button class="btn primary" id="btnNewGame" type="button">New Game</button>
       </div>
-
       <div class="label" style="margin-top:12px">Games</div>
       <div class="list" id="gameList"></div>
     </div>
@@ -315,16 +274,11 @@
         <button class="smallBtn" id="btnModeSquares" type="button">Squares</button>
         <button class="smallBtn" id="btnClearMarks" type="button">Clear</button>
       </div>
-      <div class="muted" style="font-size:12px">Tip: enable a draw mode, then drag on the board to add <span class="small">%cal/%csl</span> tags.</div>
-
-      <div style="margin-top:10px" id="drawToolbarMirror" class="muted">
-        (This pane exists for the legacy runner to waitFor <span class="small">#drawToolbar</span>. The real buttons are shared with the rightTools row.)
-      </div>
+      <div class="muted" style="font-size:12px">Enable a draw mode, then drag on the board to add <span class="small">%cal/%csl</span>.</div>
     </div>
 
     <div class="pane" id="pane-priyomes">
       <div class="label">Priyomes</div>
-      <div class="muted" style="font-size:12px; margin-bottom:8px">Select a pattern. It loads a demo game with marks.</div>
       <div class="row" style="gap:8px; margin-bottom:8px">
         <span class="pill">Active: <b id="activePriyome">—</b></span>
       </div>
@@ -339,12 +293,9 @@
         <span class="pill">Selected: <b id="qPgnName">(none)</b></span>
       </div>
       <div class="label" style="margin-top:12px">CQL</div>
-      <textarea id="qCqlText" placeholder="(dummy for tests)"></textarea>
+      <textarea id="qCqlText" placeholder="cql()"></textarea>
       <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
         <button class="btn primary" id="qRun" type="button">Run Query</button>
-      </div>
-      <div class="muted" style="font-size:12px; margin-top:8px">
-        This implementation includes a test shim: it logs <span class="small">CQL workaround: input had 1 game</span> and simulates importing results.
       </div>
     </div>
 
@@ -373,7 +324,6 @@
       <div class="errorBody" id="errorLog"></div>
     </div>
 
-    <!-- Always-present footer tools (expanded tests wait for these ids) -->
     <div class="rightTools" id="rightTools">
       <div class="toolRow" id="drawModeRow">
         <button class="smallBtn" id="btnModeArrows2" type="button">Arrows</button>
@@ -392,7 +342,6 @@
   </div>
 </div>
 
-<!-- Import modal -->
 <div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true">
   <div class="modal" role="dialog" aria-modal="true">
     <div class="modalHead">
@@ -400,11 +349,8 @@
       <button class="btn" id="btnImportCancel" type="button">Close</button>
     </div>
     <div class="modalBody">
-      <div class="label">Paste PGN (one or many games)</div>
-      <textarea id="importPgnText" placeholder="[Event &quot;...\"] ..."></textarea>
-      <div class="hint muted" style="font-size:12px; margin-top:8px">
-        Minimal parser: games are split on blank lines between headers+movetext. This is enough for tests.
-      </div>
+      <div class="label">Paste PGN</div>
+      <textarea id="importPgnText"></textarea>
     </div>
     <div class="modalActions">
       <button class="btn primary" id="btnImportAdd" type="button">Add</button>
@@ -415,106 +361,65 @@
 <script type="module">
   import { createGame, BoardView } from "./scratchchess.js";
 
-  // ---------------- MANIFESTS (defined + "loaded" into UI) ----------------
-  // These mirror staging.html's contract; tests verify the UI is populated accordingly.
-  const STUDY_MANIFEST = {
-    default: "./pgn/Study.pgn",
-    fen_test: "./pgn/default games.pgn",
-    alignment_examples: "./pgn/alignment_examples.pgn",
+  // Manifests (defined + used to populate UI)
+  const STUDY_MANIFEST = { default:"./pgn/Study.pgn", demo:"./pgn/default games.pgn" };
+  const PRIYOME_PGN_MANIFEST = { default:"./priyomes/priyomes.pgn" };
+  const PGN_MANIFEST = { fischer:"./pgn/Fischer.pgn" };
+  const CQL_EVAL_MANIFEST = { basic:"./evals/basic.json" };
+
+  const $ = (id)=>document.getElementById(id);
+  const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const nowId = ()=>Math.random().toString(16).slice(2,8);
+
+  const RUNTIME = {
+    games: new Map(),   // id -> ScratchChess game instance (non-serializable)
+    board: null,
   };
-  const PRIYOME_PGN_MANIFEST = { default: "./priyomes/priyomes.pgn" };
-  const PGN_MANIFEST = { fischer: "./pgn/Fischer.pgn" };
-  const CQL_EVAL_MANIFEST = {
-    basic: "./evals/basic.json",
-  };
 
-  // ---------------- Small helpers ----------------
-  const $ = (id) => document.getElementById(id);
-  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
-  const nowId = () => Math.random().toString(16).slice(2,8);
-  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
-
-  function parseHeaders(pgn){
-    const h = {};
-    const re = /^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
-    let m;
-    while ((m = re.exec(pgn))) h[m[1]] = m[2];
-    return h;
-  }
-
-  function splitPgnGames(pgnText){
-    const t = (pgnText || "").trim();
-    if (!t) return [];
-    // Heuristic: each game starts with [Event ...]
-    const chunks = t.split(/\n(?=\s*\[Event\s+")/g).map(s => s.trim()).filter(Boolean);
-    return chunks;
-  }
-
-  // ---------------- Reducer state ----------------
+  // State must stay JSON-serializable (no game objects / functions)
   const initialState = () => ({
-    ui: {
-      tab: "moves",
-      menuOpen: false,
-      importOpen: false,
-    },
-    studies: [], // [{id, name, games:[gameId]}]
-    games: {},   // id -> {id, title, pgn, game}
+    ui:{ tab:"moves", menuOpen:false, importOpen:false },
+    studies: [], // [{id,name,games:[id]}]
+    gamesMeta: {}, // id -> {id,title}
     activeStudyId: null,
     activeGameId: null,
-    query: {
-      selectedName: "(none)",
-      selectedPgn: "",
-    },
+    query:{ selectedName:"(none)" }
   });
 
   function reduce(prev, action){
-    const s = structuredClone(prev);
-
     switch(action.type){
       case "UI_TAB":
-        s.ui.tab = action.tab;
-        return s;
+        return { ...prev, ui:{...prev.ui, tab: action.tab} };
       case "UI_MENU":
-        s.ui.menuOpen = !!action.open;
-        return s;
+        return { ...prev, ui:{...prev.ui, menuOpen: !!action.open} };
       case "UI_IMPORT":
-        s.ui.importOpen = !!action.open;
-        return s;
+        return { ...prev, ui:{...prev.ui, importOpen: !!action.open} };
 
       case "STUDY_ADD": {
         const id = "study_" + nowId();
-        const name = action.name || ("Study " + String.fromCharCode(65 + (s.studies.length % 26)));
-        s.studies.push({ id, name, games: [] });
-        s.activeStudyId = id;
-        return s;
+        const name = action.name || ("Study " + String.fromCharCode(65 + (prev.studies.length % 26)));
+        const studies = prev.studies.concat([{id,name,games:[]}]);
+        return { ...prev, studies, activeStudyId:id };
       }
-      case "STUDY_SET":
-        s.activeStudyId = action.id;
-        // choose most recent game if present
-        const st = s.studies.find(x => x.id === s.activeStudyId);
-        if (st && st.games.length){
-          s.activeGameId = st.games[0];
-        }
-        return s;
-
+      case "STUDY_SET": {
+        const activeStudyId = action.id;
+        const st = prev.studies.find(s=>s.id===activeStudyId);
+        const activeGameId = (st && st.games.length) ? st.games[0] : prev.activeGameId;
+        return { ...prev, activeStudyId, activeGameId };
+      }
       case "GAME_ADD": {
         const id = action.id || nowId();
-        s.games[id] = { id, title: action.title || id, pgn: action.pgn || "", game: action.game || null };
-        // add to active study
-        const st = s.studies.find(x => x.id === s.activeStudyId);
-        if (st) st.games.unshift(id);
-        s.activeGameId = id;
-        return s;
+        const gamesMeta = { ...prev.gamesMeta, [id]:{id, title: action.title || id} };
+        const studies = prev.studies.map(s => {
+          if (s.id !== prev.activeStudyId) return s;
+          return { ...s, games: [id, ...s.games] };
+        });
+        return { ...prev, gamesMeta, studies, activeGameId:id };
       }
       case "GAME_SET":
-        s.activeGameId = action.id;
-        return s;
-
+        return { ...prev, activeGameId: action.id };
       case "QUERY_USE_CURRENT":
-        s.query.selectedName = "(board)";
-        s.query.selectedPgn = action.pgn || "";
-        return s;
-
+        return { ...prev, query:{...prev.query, selectedName:"(board)"} };
       default:
         return prev;
     }
@@ -527,91 +432,77 @@
     syncUIFromState();
   }
 
-  // ---------------- Game + board glue ----------------
-  const boardHost = $("boardHost");
-  const sparesHost = $("sparesHost");
-
-  // Boot game and board view (ScratchChess)
-  const bootGame = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-  // Ensure start position
-  bootGame.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-  const board = new BoardView(boardHost, bootGame, { spareDiv: sparesHost, minSizePx: 115 });
-
-  // Convenience
-  const cg = () => STATE.activeGameId ? STATE.games[STATE.activeGameId]?.game : bootGame;
-
-  function attachChangeHook(game, id){
-    // Keep UI live when moves/marks change
-    try{
-      game.onChange?.(() => {
-        if (STATE.activeGameId === id) syncUiBoxes();
-      });
-    }catch{}
+  function activeGame(){
+    return STATE.activeGameId ? RUNTIME.games.get(STATE.activeGameId) : null;
   }
 
-  function setCurrentGame(id){
-    const rec = STATE.games[id];
-    if (!rec) return;
-    board.setGame(rec.game);
-    dispatch({type:"GAME_SET", id});
-  }
+  // Board mount (ScratchChess)
+  const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+  boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
 
-  // Provide reliable square centers for the runner (dragSquare)
+  // Provide runner helper
   window.__getSquareCenter = (sq) => {
-    try{
-      const el =
-        document.querySelector(`[data-square="${sq}"]`) ||
-        document.querySelector(`[data-sq="${sq}"]`) ||
-        document.querySelector(`.sq-${sq}`) ||
-        document.querySelector(`.square-${sq}`);
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { x: r.left + r.width/2, y: r.top + r.height/2 };
-    }catch{
-      return null;
-    }
+    const el =
+      document.querySelector(`[data-square="${sq}"]`) ||
+      document.querySelector(`[data-sq="${sq}"]`) ||
+      document.querySelector(`.sq-${sq}`) ||
+      document.querySelector(`.square-${sq}`);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x:r.left + r.width/2, y:r.top + r.height/2 };
   };
 
-  // ---------------- Logging ----------------
+  function setBoardToActive(){
+    const g = activeGame() || boot;
+    RUNTIME.board.setGame(g);
+    syncUiBoxes();
+    syncDrawUi();
+  }
+
   function setErrCount(){
-    const lines = ($("errorLog").textContent || "").trim();
+    const lines = ($("errorLog").textContent||"").trim();
     $("errCount").textContent = lines ? String(lines.split("\n").length) : "0";
   }
   function logLine(line){
     const el = $("errorLog");
-    el.textContent = (el.textContent ? (el.textContent + "\n") : "") + String(line);
+    el.textContent = (el.textContent ? el.textContent + "\n" : "") + String(line);
     setErrCount();
   }
-  function logStack(prefix, msg, e){
-    logLine(prefix + " " + msg + (e?.message ? (" " + e.message) : ""));
-  }
 
-  // ---------------- UI sync ----------------
   function syncUiBoxes(){
-    const g = cg();
+    const g = activeGame() || boot;
     const fen = (g?.exportFEN?.() || "").trim();
     const pgn = (g?.exportPGN?.() || "").trim();
     $("fenBox").value = fen;
     $("pgnBox").value = pgn;
     $("fenBottom").value = fen;
     $("pgnBottom").value = pgn;
-    // nav meta (best effort)
-    const ply = (g?.ui?.ply != null) ? String(g.ui.ply) : String((pgn.match(/\d+\./g) || []).length);
-    $("navMeta").textContent = ply;
+    $("navMeta").textContent = String(g?.ui?.ply ?? 0);
+  }
+
+  function syncDrawUi(){
+    const g = activeGame() || boot;
+    const mode = g?.ui?.mode || "";
+    const set = (id,on)=>$(id).classList.toggle("active", !!on);
+    set("btnModeArrows", mode==="arrows");
+    set("btnModeSquares", mode==="squares");
+    set("btnModeArrows2", mode==="arrows");
+    set("btnModeSquares2", mode==="squares");
+    $("pigmentRow").hidden = !(mode==="arrows" || mode==="squares");
   }
 
   function renderTabs(){
-    $$(".tabBtn").forEach(b => b.classList.toggle("active", b.getAttribute("data-tab") === STATE.ui.tab));
-    $$(".pane").forEach(p => p.classList.remove("active"));
-    const pane = $("pane-" + STATE.ui.tab);
-    if (pane) pane.classList.add("active");
+    $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.getAttribute("data-tab")===STATE.ui.tab));
+    $$(".pane").forEach(p=>p.classList.remove("active"));
+    $("pane-"+STATE.ui.tab)?.classList.add("active");
   }
 
   function renderMenu(){
     $("menu").classList.toggle("open", !!STATE.ui.menuOpen);
   }
 
-  function renderImportModal(){
+  function renderImport(){
     $("importModalBackdrop").classList.toggle("open", !!STATE.ui.importOpen);
     $("importModalBackdrop").setAttribute("aria-hidden", STATE.ui.importOpen ? "false" : "true");
   }
@@ -620,419 +511,275 @@
     const sel = $("studySelect");
     sel.innerHTML = "";
     for (const st of STATE.studies){
-      const opt = document.createElement("option");
-      opt.value = st.id;
-      opt.textContent = st.name;
-      if (st.id === STATE.activeStudyId) opt.selected = true;
-      sel.appendChild(opt);
+      const o = document.createElement("option");
+      o.value = st.id;
+      o.textContent = st.name;
+      if (st.id === STATE.activeStudyId) o.selected = true;
+      sel.appendChild(o);
     }
-    const active = STATE.studies.find(s => s.id === STATE.activeStudyId);
-    $("studyPill").textContent = active ? active.name : "—";
+    const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+    $("studyPill").textContent = st ? st.name : "—";
   }
 
   function renderGameList(){
     const host = $("gameList");
     host.innerHTML = "";
-    const st = STATE.studies.find(s => s.id === STATE.activeStudyId);
+    const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
     const ids = st ? st.games : [];
     for (const id of ids){
-      const rec = STATE.games[id];
-      if (!rec) continue;
-      const card = document.createElement("div");
-      card.className = "gameCard" + (id === STATE.activeGameId ? " active" : "");
-      card.dataset.gameId = id;
-      card.innerHTML = `<div><div><b>${escapeHtml(rec.title || id)}</b></div><div class="small">${escapeHtml(id)}</div></div><div class="small">select</div>`;
-      host.appendChild(card);
+      const meta = STATE.gamesMeta[id];
+      if (!meta) continue;
+      const d = document.createElement("div");
+      d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+      d.dataset.gameId = id;
+      d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
+      host.appendChild(d);
     }
-    $("gamePill").textContent = (STATE.activeGameId && STATE.games[STATE.activeGameId]) ? (STATE.games[STATE.activeGameId].title || "—") : "—";
+    const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
+    $("gamePill").textContent = meta ? meta.title : "—";
     $("gameName").textContent = STATE.activeGameId || "—";
   }
 
   function renderPriyomes(){
     const list = $("priyomeList");
     list.innerHTML = "";
-    // Minimal manifest-driven set; ensure Greek Gift exists for tests.
     const items = [
-      { id:"greek_gift", name:"Greek Gift", pgn: `[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 { [%csl Gh7,Gg6] [%cal Rh5h7] } *` },
-      { id:"alignment", name:"Alignment", pgn: `[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n*` },
+      {id:"greek_gift", name:"Greek Gift"},
+      {id:"alignment", name:"Alignment"},
     ];
     for (const it of items){
-      const card = document.createElement("div");
-      card.className = "gameCard";
-      card.dataset.priyome = it.id;
-      card.innerHTML = `<div><b>${escapeHtml(it.name)}</b><div class="small">${escapeHtml(it.id)}</div></div><div class="small">load</div>`;
-      list.appendChild(card);
+      const d = document.createElement("div");
+      d.className = "gameCard";
+      d.dataset.priyome = it.id;
+      d.innerHTML = `<div><b>${it.name}</b><div class="small">${it.id}</div></div><div class="small">load</div>`;
+      list.appendChild(d);
     }
   }
 
   function renderQueryDb(){
     const sel = $("dbSelectEl");
     sel.innerHTML = "";
-    // placeholder
     const ph = document.createElement("option");
-    ph.value = "";
-    ph.textContent = "(choose)";
+    ph.value=""; ph.textContent="(choose)";
     sel.appendChild(ph);
-    // add at least one entry from PGN_MANIFEST
-    for (const [k,v] of Object.entries(PGN_MANIFEST)){
-      const opt = document.createElement("option");
-      opt.value = v;
-      opt.textContent = k;
-      sel.appendChild(opt);
+    for (const k of Object.keys(PGN_MANIFEST)){
+      const o = document.createElement("option");
+      o.value = PGN_MANIFEST[k];
+      o.textContent = k;
+      sel.appendChild(o);
     }
     $("qPgnName").textContent = STATE.query.selectedName || "(none)";
   }
 
   function renderEvals(){
-    const el = $("evalList");
-    el.innerHTML = "";
-    const basic = document.createElement("div");
-    basic.className = "gameCard";
-    basic.innerHTML = `<div><b>Material</b><div class="small">js</div></div><div class="small">ok</div>`;
-    el.appendChild(basic);
-
+    $("evalList").innerHTML = `<div class="gameCard"><div><b>Material</b><div class="small">js</div></div><div class="small">ok</div></div>`;
     const cel = $("cqlEvalList");
     cel.innerHTML = "";
-    for (const [k,v] of Object.entries(CQL_EVAL_MANIFEST)){
-      const card = document.createElement("div");
-      card.className = "gameCard";
-      card.innerHTML = `<div><b>${escapeHtml(k)}</b><div class="small">${escapeHtml(v)}</div></div><div class="small">cql</div>`;
-      cel.appendChild(card);
+    for (const k of Object.keys(CQL_EVAL_MANIFEST)){
+      const d = document.createElement("div");
+      d.className = "gameCard";
+      d.innerHTML = `<div><b>${k}</b><div class="small">${CQL_EVAL_MANIFEST[k]}</div></div><div class="small">cql</div>`;
+      cel.appendChild(d);
     }
-  }
-
-  function updateDrawUi(){
-    const g = cg();
-    const mode = g?.ui?.mode || "";
-    $("btnModeArrows")?.classList.toggle("active", mode === "arrows");
-    $("btnModeSquares")?.classList.toggle("active", mode === "squares");
-    $("btnModeArrows2")?.classList.toggle("active", mode === "arrows");
-    $("btnModeSquares2")?.classList.toggle("active", mode === "squares");
-    const pigRow = $("pigmentRow");
-    if (pigRow) pigRow.hidden = !(mode === "arrows" || mode === "squares");
   }
 
   function syncUIFromState(){
     renderTabs();
     renderMenu();
-    renderImportModal();
+    renderImport();
     renderStudySelect();
     renderGameList();
     renderQueryDb();
-    updateDrawUi();
     syncUiBoxes();
+    syncDrawUi();
   }
 
-  function escapeHtml(s){
-    return String(s ?? "").replace(/[&<>"']/g, ch => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[ch]));
+  function splitPgnGames(txt){
+    const t = (txt||"").trim();
+    if (!t) return [];
+    return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
   }
 
-  // ---------------- Wire up delegated events ----------------
-  document.addEventListener("click", async (ev) => {
+  document.addEventListener("click", (ev)=>{
     const t = ev.target;
 
-    // Tabs
-    const tabBtn = t.closest?.(".tabBtn");
-    if (tabBtn){
-      dispatch({type:"UI_TAB", tab: tabBtn.getAttribute("data-tab")});
-      return;
-    }
+    const tab = t.closest?.(".tabBtn");
+    if (tab){ dispatch({type:"UI_TAB", tab: tab.getAttribute("data-tab")}); return; }
 
-    // Hamburger / menu
-    if (t.closest?.("#btnHamburger")){
-      dispatch({type:"UI_MENU", open: !STATE.ui.menuOpen});
-      return;
-    }
+    if (t.closest?.("#btnHamburger")){ dispatch({type:"UI_MENU", open: !STATE.ui.menuOpen}); return; }
 
-    // Game cards
     const gc = t.closest?.("#gameList .gameCard");
     if (gc){
       const id = gc.dataset.gameId;
-      setCurrentGame(id);
+      dispatch({type:"GAME_SET", id});
+      setBoardToActive();
       return;
     }
 
-    // Priyome cards
     const pc = t.closest?.("#priyomeList .gameCard");
     if (pc){
       const pid = pc.dataset.priyome;
-      if (!pid) return;
-      const name = (pid === "greek_gift") ? "Greek Gift" : pid;
+      const name = pid==="greek_gift" ? "Greek Gift" : "Alignment";
       $("activePriyome").textContent = name;
-
-      // Load priyome PGN into a brand-new game in current study
-      const pgn = (pid === "greek_gift")
+      const pgn = pid==="greek_gift"
         ? `[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 { [%csl Gh7,Gg6] [%cal Rh5h7] } *`
-        : `[Event "${name}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n*`;
-
-      const h = parseHeaders(pgn);
-      const g = createGame(h);
-      g.loadPGN?.(pgn);
+        : `[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n*`;
       const id = nowId();
-      attachChangeHook(g, id);
-      dispatch({type:"GAME_ADD", id, title: name, pgn, game: g});
-      board.setGame(g);
+      const g = createGame({ Event:name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
+      g.loadPGN?.(pgn);
+      RUNTIME.games.set(id, g);
+      dispatch({type:"GAME_ADD", id, title:name});
+      setBoardToActive();
       return;
     }
 
-    // Study select
-    if (t.closest?.("#studySelect")){
-      return; // handled on change
-    }
-
-    // Buttons: reset / setup / etc
     if (t.closest?.("#btnReset")){
-      try{
-        const g = cg();
-        const wasSetup = !!g?.ui?.setup;
-        g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        if (wasSetup) g.setSetup?.(true);
-        syncUiBoxes();
-      }catch(e){ logStack("ERR","Reset failed:", e); }
+      const g = activeGame() || boot;
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      syncUiBoxes();
       return;
     }
-
-    if (t.closest?.("#btnFlip")){
-      try{ board.flip?.(); }catch{}
-      return;
-    }
-
-    if (t.closest?.("#btnPrev")){
-      try{ cg()?.prev?.(); syncUiBoxes(); }catch{}
-      return;
-    }
-    if (t.closest?.("#btnNext")){
-      try{ cg()?.next?.(); syncUiBoxes(); }catch{}
-      return;
-    }
+    if (t.closest?.("#btnFlip")){ RUNTIME.board.flip?.(); return; }
+    if (t.closest?.("#btnPrev")){ (activeGame()||boot).prev?.(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnNext")){ (activeGame()||boot).next?.(); syncUiBoxes(); return; }
 
     if (t.closest?.("#btnSetup")){
-      try{
-        const g = cg();
-        const cur = !!g?.ui?.setup;
-        g.setSetup?.(!cur);
-        $("setupStrip").hidden = cur; // if was setup, hide strip; else show
-        syncUiBoxes();
-      }catch(e){ logStack("ERR","Setup toggle failed:", e); }
+      const g = activeGame() || boot;
+      const cur = !!g.ui?.setup;
+      g.setSetup?.(!cur);
+      $("setupStrip").hidden = cur;
+      syncUiBoxes();
       return;
     }
-
     if (t.closest?.("#btnSetupClear")){
-      try{
-        cg()?.loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1");
-        syncUiBoxes();
-      }catch(e){ logStack("ERR","Setup clear failed:", e); }
+      (activeGame()||boot).loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1");
+      syncUiBoxes();
       return;
     }
-
     if (t.closest?.("#btnSetupInitial")){
-      try{
-        cg()?.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        syncUiBoxes();
-      }catch(e){ logStack("ERR","Setup initial failed:", e); }
+      (activeGame()||boot).loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      syncUiBoxes();
       return;
     }
 
-    if (t.closest?.("#btnNewStudy")){
-      dispatch({type:"STUDY_ADD"});
-      return;
-    }
+    if (t.closest?.("#btnNewStudy")){ dispatch({type:"STUDY_ADD"}); return; }
 
     if (t.closest?.("#btnNewGame")){
-      // New game in active study; ensure at least 2 on boot (tests depend on it)
       const id = nowId();
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
       g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-      attachChangeHook(g, id);
-      dispatch({type:"GAME_ADD", id, title: id, pgn: g.exportPGN?.() || "", game: g});
-      board.setGame(g);
+      RUNTIME.games.set(id, g);
+      dispatch({type:"GAME_ADD", id, title:id});
+      setBoardToActive();
       return;
     }
 
-    // Import modal open/close
-    if (t.closest?.("#btnImportPgn")){
-      dispatch({type:"UI_IMPORT", open:true});
-      return;
-    }
-    if (t.closest?.("#btnImportCancel")){
-      dispatch({type:"UI_IMPORT", open:false});
-      return;
-    }
-    if (t.closest?.("#importModalBackdrop") && t.id === "importModalBackdrop"){
-      dispatch({type:"UI_IMPORT", open:false});
-      return;
-    }
+    if (t.closest?.("#btnImportPgn")){ dispatch({type:"UI_IMPORT", open:true}); return; }
+    if (t.closest?.("#btnImportCancel")){ dispatch({type:"UI_IMPORT", open:false}); return; }
     if (t.closest?.("#btnImportAdd")){
-      try{
-        const txt = $("importPgnText").value || "";
-        const games = splitPgnGames(txt);
-        if (!games.length){
-          dispatch({type:"UI_IMPORT", open:false});
-          return;
-        }
-        for (const pgn of games){
-          const h = parseHeaders(pgn);
-          const id = (h.Event && h.Event.length <= 16) ? h.Event.replace(/\s+/g,"_") : nowId();
-          const g = createGame(h);
-          g.loadPGN?.(pgn);
-          attachChangeHook(g, id);
-          dispatch({type:"GAME_ADD", id, title: h.Event || id, pgn, game: g});
-          board.setGame(g);
-        }
-        dispatch({type:"UI_IMPORT", open:false});
-      }catch(e){ logStack("ERR","Import failed:", e); }
+      const txt = $("importPgnText").value || "";
+      for (const pgn of splitPgnGames(txt)){
+        const id = nowId();
+        const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
+        g.loadPGN?.(pgn);
+        RUNTIME.games.set(id, g);
+        dispatch({type:"GAME_ADD", id, title:"Imported"});
+      }
+      dispatch({type:"UI_IMPORT", open:false});
+      setBoardToActive();
       return;
     }
 
-    // Export
     if (t.closest?.("#btnExportGame")){
-      try{
-        const pgn = cg()?.exportPGN?.() || "";
-        navigator.clipboard?.writeText?.(pgn);
-        $("toolStatus").textContent = "Game PGN copied";
-        syncUiBoxes();
-      }catch(e){
-        $("toolStatus").textContent = "Export failed";
-      }
+      const pgn = (activeGame()||boot).exportPGN?.() || "";
+      navigator.clipboard?.writeText?.(pgn);
+      $("toolStatus").textContent = "Game PGN copied";
       return;
     }
     if (t.closest?.("#btnExportStudy")){
-      try{
-        const st = STATE.studies.find(s => s.id === STATE.activeStudyId);
-        const ids = st ? st.games : [];
-        const parts = [];
-        for (const id of ids){
-          const rec = STATE.games[id];
-          if (rec?.game?.exportPGN) parts.push(rec.game.exportPGN());
-        }
-        const pgn = parts.join("\n\n");
-        navigator.clipboard?.writeText?.(pgn);
-        $("toolStatus").textContent = "Study PGN copied";
-      }catch(e){ $("toolStatus").textContent = "Export failed"; }
+      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+      const ids = st ? st.games : [];
+      const parts = ids.map(id => (RUNTIME.games.get(id)?.exportPGN?.() || "")).filter(Boolean);
+      navigator.clipboard?.writeText?.(parts.join("\n\n"));
+      $("toolStatus").textContent = "Study PGN copied";
       return;
     }
 
-    // Draw controls (shared buttons)
-    if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")){
-      setDrawModeToggle("arrows"); return;
-    }
-    if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")){
-      setDrawModeToggle("squares"); return;
-    }
-    if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")){
-      try{ cg()?.clearMarks?.(); syncUiBoxes(); }catch(e){}
-      return;
-    }
+    const mode = (m)=>{
+      const g = activeGame() || boot;
+      const cur = g.ui?.mode || "";
+      g.setMode?.(cur===m ? "" : m);
+      syncDrawUi();
+    };
+    if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")){ mode("arrows"); return; }
+    if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")){ mode("squares"); return; }
+    if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")){ (activeGame()||boot).clearMarks?.(); syncUiBoxes(); return; }
 
-    // Pigments
-    if (t.closest?.("#btnPigR")){ try{ cg()?.setPigment?.("R"); }catch{} updateDrawUi(); return; }
-    if (t.closest?.("#btnPigG")){ try{ cg()?.setPigment?.("G"); }catch{} updateDrawUi(); return; }
-    if (t.closest?.("#btnPigB")){ try{ cg()?.setPigment?.("B"); }catch{} updateDrawUi(); return; }
-    if (t.closest?.("#btnPigY")){ try{ cg()?.setPigment?.("Y"); }catch{} updateDrawUi(); return; }
+    if (t.closest?.("#btnPigR")){ (activeGame()||boot).setPigment?.("R"); syncDrawUi(); return; }
+    if (t.closest?.("#btnPigG")){ (activeGame()||boot).setPigment?.("G"); syncDrawUi(); return; }
+    if (t.closest?.("#btnPigB")){ (activeGame()||boot).setPigment?.("B"); syncDrawUi(); return; }
+    if (t.closest?.("#btnPigY")){ (activeGame()||boot).setPigment?.("Y"); syncDrawUi(); return; }
 
-    // Evals reload
     if (t.closest?.("#btnReloadEvals")){
       $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
       renderEvals();
       return;
     }
+    if (t.closest?.("#btnClearErrors")){ $("errorLog").textContent=""; setErrCount(); return; }
 
-    // Errors clear
-    if (t.closest?.("#btnClearErrors")){
-      $("errorLog").textContent = "";
-      setErrCount();
-      return;
-    }
-
-    // Query helpers
     if (t.closest?.("#qUseCurrent")){
-      const pgn = cg()?.exportPGN?.() || "";
-      dispatch({type:"QUERY_USE_CURRENT", pgn});
-      $("qPgnName").textContent = "(board)";
+      dispatch({type:"QUERY_USE_CURRENT"});
+      $("qPgnName").textContent="(board)";
       return;
     }
     if (t.closest?.("#qRun")){
-      // Test shim: always log the workaround line and simulate importing a result game.
-      try{
-        logLine("CQL workaround: input had 1 game");
-        logLine("Query done (shim).");
-        // Simulate result: add one new game
-        const id = nowId();
-        const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-        g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
-        attachChangeHook(g, id);
-        dispatch({type:"GAME_ADD", id, title: "CQL result " + id, pgn: g.exportPGN?.() || "", game: g});
-      }catch(e){ logStack("ERR","Query failed:", e); }
+      logLine("CQL workaround: input had 1 game");
+      logLine("Query done (shim).");
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
+      RUNTIME.games.set(id, g);
+      dispatch({type:"GAME_ADD", id, title:"CQL result "+id});
       return;
     }
   });
 
-  document.addEventListener("change", (ev) => {
+  document.addEventListener("change", (ev)=>{
     const t = ev.target;
-    if (t && t.id === "studySelect"){
+    if (t && t.id==="studySelect"){
       dispatch({type:"STUDY_SET", id: t.value});
-      // set board to active game
-      if (STATE.activeGameId) board.setGame(STATE.games[STATE.activeGameId].game);
+      setBoardToActive();
     }
   });
 
-  function setDrawModeToggle(target){
-    const g = cg();
-    if (!g || typeof g.setMode !== "function") return;
-    const cur = g.ui?.mode || "";
-    if (cur === target) g.setMode("");
-    else g.setMode(target);
-    updateDrawUi();
-  }
+  function bootState(){
+    STATE = initialState();
+    // Study A and B
+    STATE = reduce(STATE, {type:"STUDY_ADD", name:"Study A"});
+    const studyA = STATE.activeStudyId;
+    STATE = reduce(STATE, {type:"STUDY_ADD", name:"Study B"});
+    // back to Study A
+    STATE = reduce(STATE, {type:"STUDY_SET", id: studyA});
 
-  // ---------------- Boot initial studies + games ----------------
-  function boot(){
-    // Create two studies so dropdown is populated via manifest-style contract.
-    // Study A
-    dispatch({type:"STUDY_ADD", name:"Study A"});
-    // Ensure at least 2 games exist on every fresh load (tests assume >=2).
     const mk = (title, fen) => {
       const id = nowId();
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
       g.loadFEN?.(fen);
-      attachChangeHook(g, id);
-      dispatch({type:"GAME_ADD", id, title, pgn: g.exportPGN?.() || "", game: g});
-      return id;
+      RUNTIME.games.set(id, g);
+      STATE = reduce(STATE, {type:"GAME_ADD", id, title});
     };
-    const g1 = mk("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    const g2 = mk("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
+    mk("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    mk("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
 
-    // Second study (from manifest)
-    const sidB = "study_" + nowId();
-    STATE.studies.push({ id:sidB, name:"Study B", games: [] });
-    // keep active Study A as default
-    STATE.activeStudyId = STATE.studies[0].id;
-
-    // Render priyomes list and eval lists
     renderPriyomes();
-    renderEvals();
-
-    // Ensure active game is set to newest in Study A
-    const st = STATE.studies.find(s => s.id === STATE.activeStudyId);
-    STATE.activeGameId = st && st.games.length ? st.games[0] : g1;
-
-    // Apply to board
-    board.setGame(STATE.games[STATE.activeGameId].game);
-
-    // Setup strip initial hidden state per game.ui.setup
-    $("setupStrip").hidden = true;
-
-    // Query DB select
     renderQueryDb();
-
-    // Final sync
+    renderEvals();
     syncUIFromState();
-    $("toolStatus").textContent = "ready";
+    setBoardToActive();
+    $("toolStatus").textContent="ready";
   }
 
-  boot();
+  bootState();
 </script>
 </body>
 </html>
