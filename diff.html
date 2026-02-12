@@ -446,106 +446,127 @@
     return navigator.clipboard.writeText(text);
   }
 
-  // ---------- Line-based diff (Myers) ----------
-  // Returns array of ops: {type:'equal'|'insert'|'delete', line:string}
-  function myersDiff(aLines, bLines){
-    const N = aLines.length;
-    const M = bLines.length;
-    const max = N + M;
+ // ---------- Line-based diff (Myers, correct) ----------
+// Returns array of ops: {type:'equal'|'insert'|'delete', line:string}
+function myersDiff(aLines, bLines){
+  const N = aLines.length;
+  const M = bLines.length;
+  const max = N + M;
+  const offset = max;
 
-    // V maps diagonal k to farthest x
-    const V = new Map();
-    V.set(1, 0);
+  // V[k] = farthest x on diagonal k (stored at index k+offset)
+  let V = new Array(2 * max + 1).fill(0);
+  const trace = [];
 
-    const trace = [];
+  for (let d = 0; d <= max; d++){
+    const Vprev = V;
+    const Vnext = Vprev.slice();
 
-    for (let d = 0; d <= max; d++){
-      const Vd = new Map(V); // snapshot *before* updating? We'll store after updates per d via a fresh map
-      const Vnext = new Map();
+    for (let k = -d; k <= d; k += 2){
+      const kIdx = k + offset;
 
-      for (let k = -d; k <= d; k += 2){
-        let x;
-        if (k === -d){
-          x = V.get(k + 1) ?? 0; // down
-        } else if (k === d){
-          x = (V.get(k - 1) ?? 0) + 1; // right
-        } else {
-          const xDown = V.get(k + 1) ?? 0;
-          const xRight = (V.get(k - 1) ?? 0) + 1;
-          x = xRight > xDown ? xRight : xDown;
-        }
-
-        let y = x - k;
-
-        while (x < N && y < M && aLines[x] === bLines[y]){
-          x++; y++;
-        }
-        Vnext.set(k, x);
-
-        if (x >= N && y >= M){
-          trace.push(Vnext);
-          return backtrack(trace, aLines, bLines);
-        }
+      // Choose move: down (k+1) or right (k-1)
+      let x;
+      if (k === -d){
+        // must come from down
+        x = Vprev[kIdx + 1];
+      } else if (k === d){
+        // must come from right
+        x = Vprev[kIdx - 1] + 1;
+      } else {
+        const xDown  = Vprev[kIdx + 1];      // from k+1
+        const xRight = Vprev[kIdx - 1] + 1;  // from k-1
+        x = (xDown > xRight) ? xDown : xRight;
       }
 
-      trace.push(Vnext);
-      V.clear();
-      for (const [k, x] of Vnext.entries()) V.set(k, x);
+      let y = x - k;
+
+      // Follow "snake" (diagonal matches)
+      while (x < N && y < M && aLines[x] === bLines[y]){
+        x++; y++;
+      }
+
+      Vnext[kIdx] = x;
+
+      // Found a path to end
+      if (x >= N && y >= M){
+        trace.push(Vnext);
+        return backtrack(trace, aLines, bLines, offset);
+      }
     }
 
-    // fallback
-    return [
-      ...aLines.map(line => ({type:"delete", line})),
-      ...bLines.map(line => ({type:"insert", line})),
-    ];
+    trace.push(Vnext);
+    V = Vnext;
   }
 
-  function backtrack(trace, aLines, bLines){
-    let x = aLines.length;
-    let y = bLines.length;
-    const ops = [];
+  // Fallback (shouldn't normally happen)
+  return [
+    ...aLines.map(line => ({ type: "delete", line })),
+    ...bLines.map(line => ({ type: "insert", line })),
+  ];
+}
 
-    for (let d = trace.length - 1; d >= 0; d--){
-      const V = trace[d];
-      const k = x - y;
+function backtrack(trace, aLines, bLines, offset){
+  let x = aLines.length;
+  let y = bLines.length;
+  const ops = [];
 
-      let prevK;
-      if (k === -d){
-        prevK = k + 1;
-      } else if (k === d){
-        prevK = k - 1;
-      } else {
-        const xDown = V.get(k + 1) ?? 0;
-        const xRight = V.get(k - 1) ?? 0;
-        // NOTE: In classic Myers, compare Vprev; here we use current snapshot-based backtrack heuristic.
-        // Works well for typical review diffs.
-        prevK = (xRight + 1) >= xDown ? (k - 1) : (k + 1);
-      }
+  for (let d = trace.length - 1; d >= 0; d--){
+    const V = trace[d];
+    const k = x - y;
 
-      const prevX = V.get(prevK) ?? 0;
-      const prevY = prevX - prevK;
-
-      while (x > prevX && y > prevY){
-        ops.push({type:"equal", line: aLines[x - 1]});
+    if (d === 0){
+      // consume any remaining snake at origin
+      while (x > 0 && y > 0){
+        ops.push({ type: "equal", line: aLines[x - 1] });
         x--; y--;
       }
-
-      if (d === 0) break;
-
-      if (x === prevX){
-        // came from down => insertion in a to reach b
-        ops.push({type:"insert", line: bLines[y - 1]});
-        y--;
-      } else {
-        // came from right => deletion
-        ops.push({type:"delete", line: aLines[x - 1]});
+      while (x > 0){
+        ops.push({ type: "delete", line: aLines[x - 1] });
         x--;
       }
+      while (y > 0){
+        ops.push({ type: "insert", line: bLines[y - 1] });
+        y--;
+      }
+      break;
     }
 
-    ops.reverse();
-    return ops;
+    const Vprev = trace[d - 1];
+    const kIdx = k + offset;
+
+    // Determine whether we came from k+1 (down => insert) or k-1 (right => delete)
+    let prevK;
+    if (k === -d || (k !== d && Vprev[kIdx - 1] < Vprev[kIdx + 1])){
+      prevK = k + 1; // came from down
+    } else {
+      prevK = k - 1; // came from right
+    }
+
+    const prevX = Vprev[prevK + offset];
+    const prevY = prevX - prevK;
+
+    // Walk back through the snake (matching lines)
+    while (x > prevX && y > prevY){
+      ops.push({ type: "equal", line: aLines[x - 1] });
+      x--; y--;
+    }
+
+    // Now one edit step
+    if (x === prevX){
+      // insertion (came from down)
+      ops.push({ type: "insert", line: bLines[y - 1] });
+      y--;
+    } else {
+      // deletion (came from right)
+      ops.push({ type: "delete", line: aLines[x - 1] });
+      x--;
+    }
   }
+
+  ops.reverse();
+  return ops;
+}
 
   // ---------- Unified diff formatting ----------
   function opsToUnifiedDiff(ops, aLabel, bLabel, context=3){
