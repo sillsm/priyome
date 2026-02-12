@@ -446,38 +446,67 @@
   // - first non-comment line of each block MUST be "TEST ..."
   // - only comments may start with "#"
   // - each step is JSON; we still allow multi-line JSON by buffering until it parses
-  function parseTests(src){
-    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
-    const tests = [];
-    for (const b of blocks){
-      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
-      const nonComment = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
-      if (!nonComment.length) continue;
+function parseTests(src){
+  const lines = src.split("\n").map(l => l.replace(/\r/g,""));
 
-      const nameLine = nonComment.shift();
-      if (!nameLine.startsWith("TEST ")){
-        throw new Error(`Every block must start with "TEST ". Bad block starts with:\n${nameLine}`);
-      }
-      const name = nameLine.slice(5).trim();
-      if (!name) throw new Error(`TEST line missing name: "${nameLine}"`);
+  const tests = [];
+  let cur = null;          // { name, steps }
+  let buf = "";            // JSON step buffer (allows multiline JSON strings)
 
-      const steps = [];
-      let buf = "";
-      for (const line of nonComment){
-        buf = buf ? (buf + "\n" + line) : line;
-        try{
-          const step = JSON.parse(buf);
-          steps.push(step);
-          buf = "";
-        }catch(e){
-          // keep buffering
-        }
-      }
-      if (buf.trim()) throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
-      tests.push({name, steps});
-    }
-    return tests;
+  function flushBufOrFail(){
+    if (!buf.trim()) return;
+    throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
   }
+
+  function pushStepFromBufOrKeep(line){
+    buf = buf ? (buf + "\n" + line) : line;
+    try{
+      const step = JSON.parse(buf);
+      cur.steps.push(step);
+      buf = "";
+      return true;
+    }catch(e){
+      return false; // keep buffering
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++){
+    const raw = lines[i];
+    const t = raw.trim();
+
+    if (!t) continue;                 // blank ok
+    if (t.startsWith("#")) continue;  // comment ok
+
+    if (t.startsWith("TEST ")){
+      // starting a new test
+      if (cur){
+        flushBufOrFail(); // any leftover step buffer is a parse error
+        tests.push(cur);
+      }
+      const name = t.slice(5).trim();
+      if (!name) throw new Error(`TEST line missing name at line ${i+1}`);
+      cur = { name, steps: [] };
+      continue;
+    }
+
+    // any non-comment line that isn't TEST must be a JSON step
+    if (!cur){
+      throw new Error(`Every block must start with "TEST ". Bad line ${i+1} starts with:\n${t}`);
+    }
+
+    // buffer JSON steps until they parse
+    pushStepFromBufOrKeep(t);
+  }
+
+  if (cur){
+    flushBufOrFail();
+    tests.push(cur);
+  }
+
+  if (!tests.length) throw new Error("No TEST blocks found.");
+  return tests;
+}
+
 
   async function loadText(path){
     const r = await fetch(path, {cache:"no-store"});
