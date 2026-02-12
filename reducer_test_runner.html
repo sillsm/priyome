@@ -362,16 +362,6 @@
     await sleep(60);
   }
 
-  // --- NEW: raw HTML fetch for contains/not-contains steps ---
-  async function fetchTargetHTML(){
-    const fr = getTargetFrameEl();
-    const href = fr?.contentWindow?.location?.href;
-    if (!href) throw new Error("Cannot read target iframe location (not loaded? cross-origin?)");
-    const res = await fetch(href, { cache: "no-store" });
-    if (!res.ok) throw new Error(`fetchTargetHTML failed: ${res.status} ${res.statusText}`);
-    return await res.text();
-  }
-
   async function stepExec(step){
     const [op, ...raw] = step;
     const args = raw.map(resolveArg);
@@ -392,7 +382,21 @@
       case "expectContains": expectContains(args[0], args[1]); return;
       case "expectNotEqual": expectNotEqual(args[0], args[1]); return;
 
-      case "storeText": {
+      case "htmlContains": {
+        const html = await getAppHtml();
+        const sub = String(args[0] ?? "");
+        if (!html.includes(sub)) throw new Error(`htmlContains failed: missing substring:\n${sub}`);
+        return;
+      }
+
+      case "htmlNotContains": {
+        const html = await getAppHtml();
+        const sub = String(args[0] ?? "");
+        if (html.includes(sub)) throw new Error(`htmlNotContains failed: found substring:\n${sub}`);
+        return;
+      }
+
+      case "storeText":: {
         const val = getTextAny(args[0]);
         vars[String(args[1])] = val;
         return;
@@ -417,48 +421,27 @@
         return;
       }
 
-      // --- NEW OPS ---
-      case "htmlContains": {
-        const needle = String(args[0] ?? "");
-        const html = await fetchTargetHTML();
-        if (!html.includes(needle)){
-          throw new Error(`htmlContains failed: missing substring:\n${needle}`);
-        }
-        return;
-      }
-      case "htmlNotContains": {
-        const needle = String(args[0] ?? "");
-        const html = await fetchTargetHTML();
-        if (html.includes(needle)){
-          throw new Error(`htmlNotContains failed: found forbidden substring:\n${needle}`);
-        }
-        return;
-      }
-
       default:
         log(`SKIP op ${op}`, "skip");
         return;
     }
   }
 
-  // Strict format:
-  // - blocks separated by blank lines
-  // - first non-comment line of each block MUST be "TEST ..."
-  // - only comments may start with "#"
-  // - each step is JSON; we still allow multi-line JSON by buffering until it parses
-function parseTests(src){
+  // Parse your existing format: blocks separated by blank lines; first line "TEST ..."
+  // Each step is JSON (buffered across lines if needed).
+  function parseTests(src){
   const lines = src.split("\n").map(l => l.replace(/\r/g,""));
 
   const tests = [];
-  let cur = null;          // { name, steps }
-  let buf = "";            // JSON step buffer (allows multiline JSON strings)
+  let cur = null;  // {name, steps}
+  let buf = "";    // JSON step buffer (supports multiline JSON strings)
 
   function flushBufOrFail(){
     if (!buf.trim()) return;
     throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
   }
 
-  function pushStepFromBufOrKeep(line){
+  function tryPushJSON(line){
     buf = buf ? (buf + "\n" + line) : line;
     try{
       const step = JSON.parse(buf);
@@ -470,17 +453,16 @@ function parseTests(src){
     }
   }
 
-  for (let i = 0; i < lines.length; i++){
+  for (let i=0;i<lines.length;i++){
     const raw = lines[i];
     const t = raw.trim();
 
     if (!t) continue;                 // blank ok
-    if (t.startsWith("#")) continue;  // comment ok
+    if (t.startsWith("#")) continue;  // comment-only lines
 
     if (t.startsWith("TEST ")){
-      // starting a new test
       if (cur){
-        flushBufOrFail(); // any leftover step buffer is a parse error
+        flushBufOrFail();
         tests.push(cur);
       }
       const name = t.slice(5).trim();
@@ -489,29 +471,39 @@ function parseTests(src){
       continue;
     }
 
-    // any non-comment line that isn't TEST must be a JSON step
+    // Any other non-comment line must be a JSON step, and must belong to a TEST.
     if (!cur){
       throw new Error(`Every block must start with "TEST ". Bad line ${i+1} starts with:\n${t}`);
     }
 
-    // buffer JSON steps until they parse
-    pushStepFromBufOrKeep(t);
+    tryPushJSON(t);
   }
 
   if (cur){
     flushBufOrFail();
     tests.push(cur);
   }
-
   if (!tests.length) throw new Error("No TEST blocks found.");
   return tests;
 }
-
 
   async function loadText(path){
     const r = await fetch(path, {cache:"no-store"});
     if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${path}`);
     return await r.text();
+  }
+
+  // Cached raw HTML fetch for the currently selected app iframe (used by htmlContains/htmlNotContains).
+  async function getAppHtml(){
+    if (window.__appHtmlCache != null) return window.__appHtmlCache;
+    const fr = getTargetFrameEl();
+    const src = fr.getAttribute("src") || fr.src || "";
+    const url = new URL(src, location.href).href;
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`htmlFetch failed: ${r.status} ${r.statusText} for ${url}`);
+    const html = await r.text();
+    window.__appHtmlCache = html;
+    return html;
   }
 
   function getDefaultApp(){
@@ -528,6 +520,18 @@ function parseTests(src){
     frameMob.src = app;
     appLabelDesk.textContent = app;
     appLabelMob.textContent = app;
+  }
+
+  function isSoftOp(op){
+    // Soft ops are assertions/predicates; if they fail, we still continue to run remaining steps
+    // in the same TEST so each predicate's failure is logged.
+    return (
+      op === "htmlContains" ||
+      op === "htmlNotContains" ||
+      op === "countAtLeast" ||
+      op === "timeUnder" ||
+      (typeof op === "string" && op.startsWith("expect"))
+    );
   }
 
   async function run(){
@@ -550,7 +554,7 @@ function parseTests(src){
       tests = parseTests(testsText);
       log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
       if (!tests.length){
-        log(`Hint: each block must start with "TEST ..." and blocks must be separated by blank lines.`, "dim");
+        log(`Hint: blocks must start with "TEST ..." and be separated by blank lines.`, "dim");
         statusEl.textContent = "failed (0 tests parsed)";
         return;
       }
@@ -568,6 +572,7 @@ function parseTests(src){
     for (const t of tests){
       log("\nTEST: " + t.name, "dim");
 
+      // Reload target between tests (keeps isolation like your original runner).
       const fr = getTargetFrameEl();
       try{ fr.contentWindow.location.reload(); }catch(e){
         log(`✘ Could not reload target iframe (same-origin?)`, "fail");
@@ -576,25 +581,42 @@ function parseTests(src){
         return;
       }
 
+      // Wait for document ready + at least one stable anchor
       await sleep(0);
       try{
         await waitFor("body", 8000);
       }catch(e){
+        // body should exist; if not, bail
         log(`✘ Iframe did not become ready`, "fail");
         statusEl.textContent = "failed (iframe not ready)";
         return;
       }
 
-      try{
-        for (const s of t.steps){
-          log("  " + JSON.stringify(s));
+      // reset per-test HTML cache
+      window.__appHtmlCache = null;
+
+      let failed = false;
+      for (const s of t.steps){
+        const op = s && s[0];
+        log("  " + JSON.stringify(s));
+        try{
           await stepExec(s);
+        }catch(e){
+          failed = true;
+          const msg = String(e && e.stack ? e.stack : (e && e.message ? e.message : e));
+          log("✘ STEP FAIL [" + op + "] " + t.name, "fail");
+          log(msg, "fail");
+          if (!isSoftOp(op)) break; // stop early on non-assertion failures
         }
+      }
+
+      if (!failed){
         log("✔ PASS " + t.name, "pass");
         pass++;
-      }catch(e){
+      }else{
         log("✘ FAIL " + t.name, "fail");
-        log(String(e && e.stack ? e.stack : (e && e.message ? e.message : e)), "fail");
+      }
+
       }
     }
 
