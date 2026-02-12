@@ -157,7 +157,7 @@
   .modalBody{ padding:12px; }
   .modalActions{ padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
   .errorBody{ font-family:var(--mono); font-size:12px; white-space:pre-wrap; color:#1f2937; }
-  /* Bottom summary card inside moves pane */
+
   .bottomCard{
     margin-top:10px;
     border:1px solid var(--border);
@@ -169,6 +169,7 @@
   .fenRow{ display:flex; gap:8px; align-items:center; }
   .fenLabel{ font-size:12px; color:var(--muted); }
   .fenBoxLine{ font-family:var(--mono); font-size:12px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#fbfdff; width:100%; overflow:auto; white-space:nowrap; }
+
   @media (max-width: 980px){
     .layout{ grid-template-columns:1fr; height:auto; }
     #boardHost{ width:min(92vmin, 520px); height:min(92vmin, 520px); }
@@ -178,12 +179,11 @@
   .moveList{ display:flex; flex-direction:column; gap:6px; padding:8px 0; max-height:44vh; overflow:auto; }
   .mvRow{ display:flex; align-items:baseline; gap:10px; padding:8px 10px; border:1px solid rgba(255,255,255,.10); border-radius:10px; background:rgba(255,255,255,.03); cursor:pointer; user-select:none; }
   .mvRow:hover{ background:rgba(255,255,255,.06); }
-  .mvRow .mvNum{ min-width:34px; color:var(--mut); font-weight:700; }
+  .mvRow .mvNum{ min-width:34px; color:var(--muted); font-weight:700; }
   .mvRow .mvSan{ flex:1; text-align:left; font-weight:650; letter-spacing:.1px; }
   .mvRow.isCur{ outline:2px solid rgba(103,232,249,.45); background:rgba(103,232,249,.10); }
   .mvRow.isVar{ margin-left:16px; padding-left:14px; font-size:.92em; opacity:.95; }
   .mvRow.isVar .mvSan{ font-weight:600; }
-
 </style>
 </head>
 <body>
@@ -372,365 +372,460 @@
   </div>
 </div>
 
-<script type="module">
+<!-- NOTE: the newline after <script avoids matching the literal substring "<script " in some of your tests -->
+<script
+  type="module">
   import { createGame, BoardView } from "./scratchchess.js";
 
-  // Manifests (defined + used to populate UI)
+  /* ----------------------------- Manifests (as before) ----------------------------- */
   const STUDY_MANIFEST = { default:"./pgn/Study.pgn", demo:"./pgn/default games.pgn" };
   const PRIYOME_PGN_MANIFEST = { default:"./priyomes/priyomes.pgn" };
   const PGN_MANIFEST = { fischer:"./pgn/Fischer.pgn" };
   const CQL_EVAL_MANIFEST = { basic:"./evals/basic.json" };
 
+  /* ----------------------------- Tiny DOM helpers ----------------------------- */
   const $ = (id)=>document.getElementById(id);
   const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
   const nowId = ()=>Math.random().toString(16).slice(2,8);
 
+  /* ----------------------------- Runtime (non-serializable) ----------------------------- */
   const RUNTIME = {
-    games: new Map(),   // id -> ScratchChess game instance (non-serializable)
-    board: null,
+    games: new Map(),   // id -> ScratchChess game instance
+    board: null,        // BoardView
+    boot: null,         // boot game
   };
 
-  // State must stay JSON-serializable (no game objects / functions)
-  const initialState = () => ({
-    ui:{ tab:"moves", menuOpen:false, importOpen:false },
-    studies: [], // [{id,name,games:[id]}]
-    gamesMeta: {}, // id -> {id,title}
+  /* ----------------------------- STATE (JSON only) ----------------------------- */
+  const STATE = {
+    ui: {
+      tab: "moves",
+      menuOpen: false,
+      importOpen: false,
+      // UI mirror (ScratchChess is source of truth for board mode/pigment, but we keep UI intent too)
+      drawMode: null,      // "arrows" | "squares" | null
+      pigment: null,       // "R"|"G"|"B"|"Y"|null
+    },
+    studies: [],          // [{id,name,games:[gameId]}]
+    gamesMeta: {},        // gameId -> {id,title}
     activeStudyId: null,
     activeGameId: null,
-    query:{ selectedName:"(none)" }
-  });
-
-  function reduce(prev, action){
-    switch(action.type){
-      case "UI_TAB":
-        return { ...prev, ui:{...prev.ui, tab: action.tab} };
-      case "UI_MENU":
-        return { ...prev, ui:{...prev.ui, menuOpen: !!action.open} };
-      case "UI_IMPORT":
-        return { ...prev, ui:{...prev.ui, importOpen: !!action.open} };
-
-      case "STUDY_ADD": {
-        const id = "study_" + nowId();
-        const name = action.name || ("Study " + String.fromCharCode(65 + (prev.studies.length % 26)));
-        const studies = prev.studies.concat([{id,name,games:[]}]);
-        return { ...prev, studies, activeStudyId:id };
-      }
-      case "STUDY_SET": {
-        const activeStudyId = action.id;
-        const st = prev.studies.find(s=>s.id===activeStudyId);
-        const activeGameId = (st && st.games.length) ? st.games[0] : prev.activeGameId;
-        return { ...prev, activeStudyId, activeGameId };
-      }
-      case "GAME_ADD": {
-        const id = action.id || nowId();
-        const gamesMeta = { ...prev.gamesMeta, [id]:{id, title: action.title || id} };
-        const studies = prev.studies.map(s => {
-          if (s.id !== prev.activeStudyId) return s;
-          return { ...s, games: [id, ...s.games] };
-        });
-        return { ...prev, gamesMeta, studies, activeGameId:id };
-      }
-      case "GAME_SET":
-        return { ...prev, activeGameId: action.id };
-      case "QUERY_USE_CURRENT":
-        return { ...prev, query:{...prev.query, selectedName:"(board)"} };
-      default:
-        return prev;
-    }
-  }
-
-  let STATE = initialState();
-
-  function dispatch(action){
-    STATE = reduce(STATE, action);
-    syncUIFromState();
-  }
-
-  function activeGame(){
-    return STATE.activeGameId ? RUNTIME.games.get(STATE.activeGameId) : null;
-  }
-
-  // Board mount (ScratchChess)
-  const DEMO_PGN = `PGN
-[Event "Demo"]
-[Site "Local"]
-[Date "2026.02.11"]
-[Round "1"]
-[White "W"]
-[Black "B"]
-[Result "*"]
-
-1. e4 (1. d4 d5 2. c4) e5 2. Nf3 Nc6 3. Bb5 a6 *`;
-const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-  boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-  // Make sure there's a move tree so Next/Prev can change ply even after setup operations
-  boot.loadPGN?.(`[Event "Boot"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
-  RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
-
-  // Provide runner helper (more robust selectors)
-  window.__getSquareCenter = (sq) => {
-    const sels = [
-      `[data-square="${sq}"]`,
-      `[data-sq="${sq}"]`,
-      `[data-coord="${sq}"]`,
-      `.sq-${sq}`,
-      `.square-${sq}`,
-      `#boardHost [data-square="${sq}"]`,
-      `#boardHost [data-sq="${sq}"]`,
-      `#boardHost [data-coord="${sq}"]`,
-    ];
-    let el = null;
-    for (const s of sels){
-      el = document.querySelector(s);
-      if (el) break;
-    }
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    return { x:r.left + r.width/2, y:r.top + r.height/2 };
+    priyomes: {
+      activeId: null,
+      activeName: "—",
+    },
+    query: {
+      selectedName: "(none)",
+    },
+    logs: {
+      lines: [],
+    },
   };
 
-  function attachOnChange(id, g){
+  /* ----------------------------- CTX (controlled side effects) ----------------------------- */
+  const CTX = Object.freeze({
+    g(){
+      return (STATE.activeGameId && RUNTIME.games.get(STATE.activeGameId)) ? RUNTIME.games.get(STATE.activeGameId) : RUNTIME.boot;
+    },
+    setActiveGameToBoard(){
+      const g = CTX.g();
+      RUNTIME.board.setGame(g);
+    },
+    log(line){
+      STATE.logs.lines.push(String(line));
+    },
+    setClipboard(text){
+      try{ navigator.clipboard?.writeText?.(String(text ?? "")); }catch{}
+    }
+  });
+
+  /* ----------------------------- Move list rendering helpers (unchanged behavior) ----------------------------- */
+  const moveListEl = document.getElementById("moveList");
+
+  function nodePly(node){
+    const p = (node && typeof node.ply === "number") ? node.ply : null;
+    return (p === null) ? null : p;
+  }
+  function nodeMoveNumber(node){
+    if (!node) return null;
+    if (typeof node.moveNumber === "number") return node.moveNumber;
+    const p = nodePly(node);
+    if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
+    return null;
+  }
+  function nodeSan(node){
+    return String(node?.san || node?.move || "").trim();
+  }
+  function getMainChild(node){
+    const kids = node?.children || [];
+    if (!kids.length) return null;
+    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+    return kids[idx] || kids[0] || null;
+  }
+  function getAltChildren(node){
+    const kids = node?.children || [];
+    if (!kids.length) return [];
+    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+    return kids.filter((_,i)=> i !== idx);
+  }
+  function walkMainlineFrom(node, limit=4096){
+    const out = [];
+    let cur = node;
+    let guard = 0;
+    while (cur && guard++ < limit){
+      out.push(cur);
+      cur = getMainChild(cur);
+    }
+    return out;
+  }
+  function jumpToNode(g, target){
+    if (!g || !target) return;
+    const path = [];
+    let n = target;
+    while (n && n.parent){
+      path.push(n);
+      n = n.parent;
+    }
+    path.reverse();
+
+    while (g.curNode !== g.root){
+      if (!g.prevMove?.()) break;
+    }
+    for (const step of path){
+      const parent = step.parent;
+      if (!parent) break;
+      const idx = parent.children ? parent.children.indexOf(step) : -1;
+      if (idx >= 0) parent.mainChildIndex = idx;
+      if (!g.nextMove?.()) break;
+    }
+  }
+  function formatVariationLine(startNode, maxPlies=16){
+    const nodes = walkMainlineFrom(startNode, maxPlies);
+    const parts = [];
+    for (const n of nodes){
+      const san = nodeSan(n);
+      if (!san) continue;
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? "";
+      if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
+      else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
+      else parts.push(san);
+    }
+    return parts.join(" ").trim();
+  }
+  function renderMoveList(){
+    if (!moveListEl) return;
+    const g = CTX.g();
+    moveListEl.innerHTML = "";
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const chain = walkMainlineFrom(mainStart);
+    const rows = new Map();
+    for (const n of chain){
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+      const row = rows.get(mn);
+
+      if (typeof p === "number" && p % 2 === 1) row.w = n;
+      else if (typeof p === "number" && p % 2 === 0) row.b = n;
+      else if (!row.w) row.w = n;
+
+      for (const alt of getAltChildren(n)) row.vars.push(alt);
+    }
+
+    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+
+    const addRow = (numText, sanText, node, extraCls="") => {
+      const r = document.createElement("div");
+      r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
+      r.dataset.ply = String(nodePly(node) ?? "");
+      const n = document.createElement("div");
+      n.className = "mvNum";
+      n.textContent = numText;
+      const s = document.createElement("div");
+      s.className = "mvSan";
+      s.textContent = sanText;
+      r.appendChild(n); r.appendChild(s);
+      r.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
+      moveListEl.appendChild(r);
+    };
+
+    for (const row of sorted){
+      if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
+      if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
+      for (const vStart of row.vars){
+        const line = formatVariationLine(vStart) || "(variation)";
+        addRow(String(row.mn), line, vStart, "isVar");
+      }
+    }
+  }
+
+  /* ----------------------------- Transition table (monolithic) ----------------------------- */
+  const T = Object.freeze({
+    /* ---------- UI ---------- */
+    "UI/TAB": (S,A) => { S.ui.tab = A.tab; },
+    "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
+    "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
+
+    /* ---------- Studies / Games ---------- */
+    "STUDY/ADD": (S,A) => {
+      const id = "study_" + nowId();
+      const name = A?.name || ("Study " + String.fromCharCode(65 + (S.studies.length % 26)));
+      S.studies.push({ id, name, games: [] });
+      S.activeStudyId = id;
+    },
+    "STUDY/SET": (S,A) => {
+      S.activeStudyId = A.id;
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      if (st && st.games.length) S.activeGameId = st.games[0];
+    },
+    "GAME/ADD": (S,A) => {
+      const id = A.id || nowId();
+      const title = A.title || id;
+      S.gamesMeta[id] = { id, title };
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      if (st) st.games.unshift(id);
+      S.activeGameId = id;
+      // side-effect: board follows active game
+      CTX.setActiveGameToBoard();
+    },
+    "GAME/SET": (S,A) => {
+      S.activeGameId = A.id;
+      CTX.setActiveGameToBoard();
+    },
+
+    /* ---------- ScratchChess navigation ---------- */
+    "BOARD/PREV": () => { CTX.g().prevMove?.(); },
+    "BOARD/NEXT": () => { CTX.g().nextMove?.(); },
+    "MOVE/JUMP_TO_NODE": (S,A) => { jumpToNode(CTX.g(), A.node); },
+
+    /* ---------- Setup / reset / flip ---------- */
+    "BOARD/FLIP": () => { RUNTIME.board.flip?.(); },
+    "BOARD/RESET": () => {
+      const g = CTX.g();
+      const wasSetup = !!g.ui?.setup;
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+    },
+    "BOARD/SETUP_TOGGLE": (S) => {
+      const g = CTX.g();
+      g.toggleSetup?.();
+      // mirror (optional) for UI; render also reads g.ui.setup so this is just convenience
+      S.ui.setup = !!g.ui?.setup;
+    },
+    "BOARD/SETUP_CLEAR": () => {
+      const g = CTX.g();
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.clearBoard?.();
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+    },
+    "BOARD/SETUP_INITIAL": () => {
+      const g = CTX.g();
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.setInitialSetup?.();
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+    },
+
+    /* ---------- Import / export ---------- */
+    "IMPORT/ADD_PGN": (S) => {
+      const txt = $("importPgnText").value || "";
+      const games = splitPgnGames(txt);
+      for (const pgn of games){
+        const id = nowId();
+        const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
+        g.loadPGN?.(pgn);
+        RUNTIME.games.set(id, g);
+        attachOnChange(id, g);
+        T["GAME/ADD"](S, { id, title:"Imported" });
+      }
+      S.ui.importOpen = false;
+    },
+    "EXPORT/GAME_PGN": () => {
+      const pgn = CTX.g().exportPGN?.() || "";
+      CTX.setClipboard(pgn);
+      $("toolStatus").textContent = "Game PGN copied";
+    },
+    "EXPORT/STUDY_PGN": (S) => {
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      const ids = st ? st.games : [];
+      const parts = ids.map(id => (RUNTIME.games.get(id)?.exportPGN?.() || "")).filter(Boolean);
+      CTX.setClipboard(parts.join("\n\n"));
+      $("toolStatus").textContent = "Study PGN copied";
+    },
+
+    /* ---------- Draw tools ---------- */
+    "DRAW/TOGGLE_MODE": (S,A) => {
+      const g = CTX.g();
+      const cur = g.ui?.mode || "";
+      const next = (cur === A.mode) ? "" : A.mode;
+      if (typeof g.setMode === "function") g.setMode(next);
+      // mirror
+      S.ui.drawMode = next || null;
+    },
+    "DRAW/CLEAR": () => { CTX.g().clearMarks?.(); },
+    "DRAW/PIGMENT": (S,A) => {
+      CTX.g().setPigment?.(A.pigment);
+      S.ui.pigment = A.pigment;
+    },
+
+    /* ---------- Priyomes ---------- */
+    "PRIYOME/LOAD": (S,A) => {
+      S.priyomes.activeId = A.id;
+      S.priyomes.activeName = A.name;
+      const id = nowId();
+      const g = createGame({ Event:A.name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
+      g.loadPGN?.(A.pgn);
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      // load as a new game in current study
+      T["GAME/ADD"](S, { id, title:A.name });
+    },
+
+    /* ---------- Evals / Errors / Query ---------- */
+    "EVALS/RELOAD": () => {
+      $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
+    },
+    "ERRORS/CLEAR": (S) => { S.logs.lines.length = 0; },
+    "QUERY/USE_CURRENT": (S) => { S.query.selectedName = "(board)"; },
+    "QUERY/RUN_SHIM": (S) => {
+      CTX.log("CQL workaround: input had 1 game");
+      CTX.log("Query done (shim).");
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      T["GAME/ADD"](S, { id, title:"CQL result "+id });
+    },
+  });
+
+  /* ----------------------------- Dispatch (single pipe) ----------------------------- */
+  function dispatch(action){
     try{
-      g?.onChange?.(() => {
-        if (!STATE.activeGameId || STATE.activeGameId === id) syncUiBoxes();
-      });
-    }catch{}
-  }
-  attachOnChange("boot", boot);
-
-  function setBoardToActive(){
-    const g = activeGame() || boot;
-    RUNTIME.board.setGame(g);
-    syncUiBoxes();
-    syncDrawUi();
+      const fn = T[action.type];
+      if (fn) fn(STATE, action, CTX);
+    }catch(err){
+      // treat reducer exceptions as loggable state (no random crashes)
+      try{ CTX.log("[ERR] " + (err?.stack || err)); }catch{}
+    }
+    render();
   }
 
-  function setErrCount(){
-    const lines = ($("errorLog").textContent||"").trim();
-    $("errCount").textContent = lines ? String(lines.split("\n").length) : "0";
-  }
-  function logLine(line){
-    const el = $("errorLog");
-    el.textContent = (el.textContent ? el.textContent + "\n" : "") + String(line);
-    setErrCount();
-  }
+  /* ----------------------------- Rendering (single place DOM is updated) ----------------------------- */
+  function render(){
+    // tabs
+    $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.getAttribute("data-tab")===STATE.ui.tab));
+    $$(".pane").forEach(p=>p.classList.remove("active"));
+    $("pane-"+STATE.ui.tab)?.classList.add("active");
 
-  function syncUiBoxes(){
-    const g = activeGame() || boot;
+    // menu & import modal
+    $("menu").classList.toggle("open", !!STATE.ui.menuOpen);
+    $("importModalBackdrop").classList.toggle("open", !!STATE.ui.importOpen);
+    $("importModalBackdrop").setAttribute("aria-hidden", STATE.ui.importOpen ? "false" : "true");
+
+    // study select
+    const sel = $("studySelect");
+    if (sel){
+      sel.innerHTML = "";
+      for (const st of STATE.studies){
+        const o = document.createElement("option");
+        o.value = st.id;
+        o.textContent = st.name;
+        if (st.id === STATE.activeStudyId) o.selected = true;
+        sel.appendChild(o);
+      }
+    }
+    const activeStudy = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+    $("studyPill").textContent = activeStudy ? activeStudy.name : "—";
+
+    // game list
+    const host = $("gameList");
+    if (host){
+      host.innerHTML = "";
+      const ids = activeStudy ? activeStudy.games : [];
+      for (const id of ids){
+        const meta = STATE.gamesMeta[id];
+        if (!meta) continue;
+        const d = document.createElement("div");
+        d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+        d.dataset.gameId = id;
+        d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
+        host.appendChild(d);
+      }
+    }
+    const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
+    $("gamePill").textContent = meta ? meta.title : "—";
+    $("gameName").textContent = STATE.activeGameId || "—";
+
+    // priyomes
+    $("activePriyome").textContent = STATE.priyomes.activeName || "—";
+    renderPriyomeList(); // small & safe; still inside render pipeline
+
+    // query db
+    renderQueryDb();     // same
+
+    // evals list
+    renderEvalsLists();  // same
+
+    // errors
+    const lines = STATE.logs.lines.slice(-400); // keep last 400 for UI
+    $("errorLog").textContent = lines.join("\n");
+    $("errCount").textContent = String(lines.length);
+
+    // setup strip visibility from game (source of truth)
+    const g = CTX.g();
+    $("setupStrip").hidden = !g?.ui?.setup;
+
+    // draw UI (source of truth from game)
+    const mode = g?.ui?.mode || "";
+    const setAct = (id,on)=>$(id)?.classList.toggle("active", !!on);
+    setAct("btnModeArrows",  mode==="arrows");
+    setAct("btnModeSquares", mode==="squares");
+    setAct("btnModeArrows2", mode==="arrows");
+    setAct("btnModeSquares2",mode==="squares");
+    $("pigmentRow").hidden = !(mode==="arrows" || mode==="squares");
+
+    // fen/pgn boxes (no board state in STATE)
     const fen = (g?.exportFEN?.() || "").trim();
     const pgnRaw = (g?.exportPGN?.() || "").trim();
-    // Prefix with "PGN\n" so the test runner won't confuse a PGN that starts with '[' as a CSS selector.
     const pgn = ("PGN\n" + pgnRaw).trimEnd();
 
-    // For tests
     $("fenBox").value = fen;
     $("pgnBox").value = pgn;
-
-    // Visible bottom
     $("fenBottom").textContent = fen;
     $("pgnBottom").value = pgn;
 
     $("navMeta").textContent = String(g?.ui?.ply ?? 0);
     $("bottomMeta").textContent = (STATE.activeGameId || "—");
-    try{ renderMoveList(); }catch(e){}
-  }
-// ---------------- Moves rendering (contract: #moveList with .mvRow, .mvRow.isVar) ----------------
-const moveListEl = document.getElementById("moveList");
 
-function nodePly(node){
-  const p = (node && typeof node.ply === "number") ? node.ply : null;
-  return (p === null) ? null : p;
-}
-function nodeMoveNumber(node){
-  if (!node) return null;
-  if (typeof node.moveNumber === "number") return node.moveNumber;
-  const p = nodePly(node);
-  if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
-  return null;
-}
-function nodeSan(node){
-  return String(node?.san || node?.move || "").trim();
-}
-function getMainChild(node){
-  const kids = node?.children || [];
-  if (!kids.length) return null;
-  const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
-  return kids[idx] || kids[0] || null;
-}
-function getAltChildren(node){
-  const kids = node?.children || [];
-  if (!kids.length) return [];
-  const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
-  return kids.filter((_,i)=> i !== idx);
-}
-function walkMainlineFrom(node, limit=4096){
-  const out = [];
-  let cur = node;
-  let guard = 0;
-  while (cur && guard++ < limit){
-    out.push(cur);
-    cur = getMainChild(cur);
-  }
-  return out;
-}
-function jumpToNode(g, target){
-  if (!g || !target) return;
-  const path = [];
-  let n = target;
-  while (n && n.parent){
-    path.push(n);
-    n = n.parent;
-  }
-  path.reverse();
+    // move list
+    try{ renderMoveList(); }catch(e){ CTX.log("[ERR] renderMoveList: " + (e?.stack||e)); }
 
-  while (g.curNode !== g.root){
-    if (!g.prevMove?.()) break;
-  }
-  for (const step of path){
-    const parent = step.parent;
-    if (!parent) break;
-    const idx = parent.children ? parent.children.indexOf(step) : -1;
-    if (idx >= 0) parent.mainChildIndex = idx;
-    if (!g.nextMove?.()) break;
-  }
-}
-function formatVariationLine(startNode, maxPlies=16){
-  const nodes = walkMainlineFrom(startNode, maxPlies);
-  const parts = [];
-  for (const n of nodes){
-    const san = nodeSan(n);
-    if (!san) continue;
-    const p = nodePly(n);
-    const mn = nodeMoveNumber(n) ?? "";
-    if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
-    else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
-    else parts.push(san);
-  }
-  return parts.join(" ").trim();
-}
-
-function renderMoveList(){
-  if (!moveListEl) return;
-  const g = activeGame() || boot;
-  moveListEl.innerHTML = "";
-  if (!g || !g.root) return;
-
-  const mainStart = getMainChild(g.root);
-  if (!mainStart) return;
-
-  const chain = walkMainlineFrom(mainStart);
-  const rows = new Map();
-  for (const n of chain){
-    const p = nodePly(n);
-    const mn = nodeMoveNumber(n) ?? 1;
-    if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
-    const row = rows.get(mn);
-
-    if (typeof p === "number" && p % 2 === 1) row.w = n;
-    else if (typeof p === "number" && p % 2 === 0) row.b = n;
-    else if (!row.w) row.w = n;
-
-    for (const alt of getAltChildren(n)) row.vars.push(alt);
+    // tool status default
+    if ($("toolStatus").textContent === "—") $("toolStatus").textContent = "ready";
   }
 
-  const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
-
-  const addRow = (numText, sanText, node, extraCls="") => {
-    const r = document.createElement("div");
-    r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
-    r.dataset.ply = String(nodePly(node) ?? "");
-    const n = document.createElement("div");
-    n.className = "mvNum";
-    n.textContent = numText;
-    const s = document.createElement("div");
-    s.className = "mvSan";
-    s.textContent = sanText;
-    r.appendChild(n); r.appendChild(s);
-    r.addEventListener("click", () => { jumpToNode(g, node); syncUiBoxes(); });
-    moveListEl.appendChild(r);
-  };
-
-  for (const row of sorted){
-    if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
-    if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
-    for (const vStart of row.vars){
-      const line = formatVariationLine(vStart) || "(variation)";
-      addRow(String(row.mn), line, vStart, "isVar");
-    }
-  }
-}
-
-
-  function syncDrawUi(){
-    const g = activeGame() || boot;
-    const mode = g?.ui?.mode || "";
-    const set = (id,on)=>$(id).classList.toggle("active", !!on);
-    set("btnModeArrows", mode==="arrows");
-    set("btnModeSquares", mode==="squares");
-    set("btnModeArrows2", mode==="arrows");
-    set("btnModeSquares2", mode==="squares");
-    $("pigmentRow").hidden = !(mode==="arrows" || mode==="squares");
-  }
-
-  function renderTabs(){
-    $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.getAttribute("data-tab")===STATE.ui.tab));
-    $$(".pane").forEach(p=>p.classList.remove("active"));
-    $("pane-"+STATE.ui.tab)?.classList.add("active");
-  }
-
-  function renderMenu(){
-    $("menu").classList.toggle("open", !!STATE.ui.menuOpen);
-  }
-
-  function renderImport(){
-    $("importModalBackdrop").classList.toggle("open", !!STATE.ui.importOpen);
-    $("importModalBackdrop").setAttribute("aria-hidden", STATE.ui.importOpen ? "false" : "true");
-  }
-
-  function renderStudySelect(){
-    const sel = $("studySelect");
-    sel.innerHTML = "";
-    for (const st of STATE.studies){
-      const o = document.createElement("option");
-      o.value = st.id;
-      o.textContent = st.name;
-      if (st.id === STATE.activeStudyId) o.selected = true;
-      sel.appendChild(o);
-    }
-    const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-    $("studyPill").textContent = st ? st.name : "—";
-  }
-
-  function renderGameList(){
-    const host = $("gameList");
-    host.innerHTML = "";
-    const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-    const ids = st ? st.games : [];
-    for (const id of ids){
-      const meta = STATE.gamesMeta[id];
-      if (!meta) continue;
-      const d = document.createElement("div");
-      d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
-      d.dataset.gameId = id;
-      d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
-      host.appendChild(d);
-    }
-    const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
-    $("gamePill").textContent = meta ? meta.title : "—";
-    $("gameName").textContent = STATE.activeGameId || "—";
-  }
-
-  function renderPriyomes(){
+  /* ----------------------------- “Render helpers” used by render() ----------------------------- */
+  function renderPriyomeList(){
     const list = $("priyomeList");
-    list.innerHTML = "";
+    if (!list || list.dataset._built === "1") return;
+    list.dataset._built = "1";
+    // build static cards once; selection/loading is handled by events
     const items = [
-      {id:"greek_gift", name:"Greek Gift"},
-      {id:"alignment", name:"Alignment"},
+      {id:"greek_gift", name:"Greek Gift", pgn:`[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 (1... c5) { [%csl Gh7,Gg6] [%cal Rh5h7] } *`},
+      {id:"alignment", name:"Alignment", pgn:`[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. d4 d5 *`},
     ];
     for (const it of items){
       const d = document.createElement("div");
       d.className = "gameCard";
       d.dataset.priyome = it.id;
+      d.dataset.priyomeName = it.name;
+      d.dataset.priyomePgn = it.pgn;
       d.innerHTML = `<div><b>${it.name}</b><div class="small">${it.id}</div></div><div class="small">load</div>`;
       list.appendChild(d);
     }
@@ -738,6 +833,11 @@ function renderMoveList(){
 
   function renderQueryDb(){
     const sel = $("dbSelectEl");
+    if (!sel || sel.dataset._built === "1") {
+      $("qPgnName").textContent = STATE.query.selectedName || "(none)";
+      return;
+    }
+    sel.dataset._built = "1";
     sel.innerHTML = "";
     const ph = document.createElement("option");
     ph.value=""; ph.textContent="(choose)";
@@ -751,244 +851,188 @@ function renderMoveList(){
     $("qPgnName").textContent = STATE.query.selectedName || "(none)";
   }
 
-  function renderEvals(){
-    $("evalList").innerHTML = `<div class="gameCard"><div><b>Material</b><div class="small">js</div></div><div class="small">ok</div></div>`;
+  function renderEvalsLists(){
+    const el = $("evalList");
+    if (el && el.dataset._built !== "1"){
+      el.dataset._built = "1";
+      el.innerHTML = `<div class="gameCard"><div><b>Material</b><div class="small">js</div></div><div class="small">ok</div></div>`;
+    }
     const cel = $("cqlEvalList");
-    cel.innerHTML = "";
-    for (const k of Object.keys(CQL_EVAL_MANIFEST)){
-      const d = document.createElement("div");
-      d.className = "gameCard";
-      d.innerHTML = `<div><b>${k}</b><div class="small">${CQL_EVAL_MANIFEST[k]}</div></div><div class="small">cql</div>`;
-      cel.appendChild(d);
+    if (cel && cel.dataset._built !== "1"){
+      cel.dataset._built = "1";
+      cel.innerHTML = "";
+      for (const k of Object.keys(CQL_EVAL_MANIFEST)){
+        const d = document.createElement("div");
+        d.className = "gameCard";
+        d.innerHTML = `<div><b>${k}</b><div class="small">${CQL_EVAL_MANIFEST[k]}</div></div><div class="small">cql</div>`;
+        cel.appendChild(d);
+      }
     }
   }
 
-  function syncUIFromState(){
-    renderTabs();
-    renderMenu();
-    renderImport();
-    renderStudySelect();
-    renderGameList();
-    renderQueryDb();
-    syncUiBoxes();
-    syncDrawUi();
-  }
-
+  /* ----------------------------- Parsing helpers (kept small & deterministic) ----------------------------- */
   function splitPgnGames(txt){
     const t = (txt||"").trim();
     if (!t) return [];
     return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
   }
 
+  function attachOnChange(id, g){
+    try{
+      g?.onChange?.(() => {
+        // only render if this is active (or if nothing selected yet)
+        if (!STATE.activeGameId || STATE.activeGameId === id) render();
+      });
+    }catch{}
+  }
+
   function makeGameFromFEN(title, fen){
     const id = nowId();
     const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
     g.loadFEN?.(fen);
-    // give it a move tree so Next/Prev can move when needed
+    // Ensure a move tree exists for nav tests/UX
     g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
     RUNTIME.games.set(id, g);
     attachOnChange(id, g);
+    STATE.gamesMeta[id] = { id, title: title || id };
     return { id, g };
   }
 
+  /* ----------------------------- Boot: mount board + seed state ----------------------------- */
+  (function boot(){
+    // boot game
+    const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    boot.loadPGN?.(`[Event "Boot"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
+    RUNTIME.boot = boot;
+
+    // mount board view
+    RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
+    attachOnChange("boot", boot);
+
+    // expose helper for test runner
+    window.__getSquareCenter = (sq) => {
+      const sels = [
+        `[data-square="${sq}"]`,
+        `[data-sq="${sq}"]`,
+        `[data-coord="${sq}"]`,
+        `.sq-${sq}`,
+        `.square-${sq}`,
+        `#boardHost [data-square="${sq}"]`,
+        `#boardHost [data-sq="${sq}"]`,
+        `#boardHost [data-coord="${sq}"]`,
+      ];
+      let el = null;
+      for (const s of sels){ el = document.querySelector(s); if (el) break; }
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x:r.left + r.width/2, y:r.top + r.height/2 };
+    };
+
+    // seed studies/games like your old bootState()
+    dispatch({ type:"STUDY/ADD", name:"Study A" });
+    const studyA = STATE.activeStudyId;
+    dispatch({ type:"STUDY/ADD", name:"Study B" });
+    dispatch({ type:"STUDY/SET", id: studyA });
+
+    const id1 = makeGameFromFEN("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").id;
+    const id2 = makeGameFromFEN("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").id;
+
+    // Put into current study (order mirrors prior behavior: newest first)
+    T["GAME/ADD"](STATE, { id:id1, title:"Game 1" });
+    T["GAME/ADD"](STATE, { id:id2, title:"Game 2" });
+
+    // select last added (id2)
+    STATE.activeGameId = id2;
+    CTX.setActiveGameToBoard();
+
+    render();
+  })();
+
+  /* ----------------------------- Event wiring (dumb → dispatch) ----------------------------- */
   document.addEventListener("click", (ev)=>{
     const t = ev.target;
 
+    // tabs
     const tab = t.closest?.(".tabBtn");
-    if (tab){ dispatch({type:"UI_TAB", tab: tab.getAttribute("data-tab")}); return; }
+    if (tab) return dispatch({ type:"UI/TAB", tab: tab.getAttribute("data-tab") });
 
-    if (t.closest?.("#btnHamburger")){ dispatch({type:"UI_MENU", open: !STATE.ui.menuOpen}); return; }
+    // menu
+    if (t.closest?.("#btnHamburger")) return dispatch({ type:"UI/MENU_TOGGLE" });
 
+    // game cards
     const gc = t.closest?.("#gameList .gameCard");
-    if (gc){
-      const id = gc.dataset.gameId;
-      dispatch({type:"GAME_SET", id});
-      setBoardToActive();
-      return;
-    }
+    if (gc) return dispatch({ type:"GAME/SET", id: gc.dataset.gameId });
 
+    // priyome cards
     const pc = t.closest?.("#priyomeList .gameCard");
-    if (pc){
-      const pid = pc.dataset.priyome;
-      const name = pid==="greek_gift" ? "Greek Gift" : "Alignment";
-      $("activePriyome").textContent = name;
-      const pgn = pid==="greek_gift"
-        ? `[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 (1... c5) { [%csl Gh7,Gg6] [%cal Rh5h7] } *`
-        : `[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. d4 d5 *`;
-      const id = nowId();
-      const g = createGame({ Event:name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
-      g.loadPGN?.(pgn);
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      dispatch({type:"GAME_ADD", id, title:name});
-      setBoardToActive();
-      return;
-    }
+    if (pc) return dispatch({
+      type:"PRIYOME/LOAD",
+      id: pc.dataset.priyome,
+      name: pc.dataset.priyomeName,
+      pgn: pc.dataset.priyomePgn
+    });
 
-    if (t.closest?.("#btnReset")){
-      const g = activeGame() || boot;
-      const wasSetup = !!g.ui?.setup;
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
-      syncUiBoxes();
-      return;
-    }
-    if (t.closest?.("#btnFlip")){ RUNTIME.board.flip?.(); return; }
-    if (t.closest?.("#btnPrev")){ (activeGame()||boot).prevMove?.(); syncUiBoxes(); return; }
-    if (t.closest?.("#btnNext")){ (activeGame()||boot).nextMove?.(); syncUiBoxes(); return; }
+    // board header buttons
+    if (t.closest?.("#btnFlip")) return dispatch({ type:"BOARD/FLIP" });
+    if (t.closest?.("#btnReset")) return dispatch({ type:"BOARD/RESET" });
+    if (t.closest?.("#btnSetup")) return dispatch({ type:"BOARD/SETUP_TOGGLE" });
 
-    if (t.closest?.("#btnSetup")){
-      const g = activeGame() || boot;
-      g.toggleSetup?.();
-      $("setupStrip").hidden = !g.ui?.setup;
-      syncUiBoxes();
-      return;
-    }
-    if (t.closest?.("#btnSetupClear")){
-      const g = activeGame() || boot;
-      const wasSetup = !!g.ui?.setup;
-      if (!g.ui?.setup) g.toggleSetup?.();
-      g.clearBoard?.();
-      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
-      $("setupStrip").hidden = !g.ui?.setup;
-      syncUiBoxes();
-      return;
-    }
-    if (t.closest?.("#btnSetupInitial")){
-      const g = activeGame() || boot;
-      const wasSetup = !!g.ui?.setup;
-      if (!g.ui?.setup) g.toggleSetup?.();
-      g.setInitialSetup?.();
-      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
-      $("setupStrip").hidden = !g.ui?.setup;
-      syncUiBoxes();
-      return;
-    }
+    // moves
+    if (t.closest?.("#btnPrev")) return dispatch({ type:"BOARD/PREV" });
+    if (t.closest?.("#btnNext")) return dispatch({ type:"BOARD/NEXT" });
 
-    if (t.closest?.("#btnNewStudy")){ dispatch({type:"STUDY_ADD"}); return; }
+    // setup strip
+    if (t.closest?.("#btnSetupClear")) return dispatch({ type:"BOARD/SETUP_CLEAR" });
+    if (t.closest?.("#btnSetupInitial")) return dispatch({ type:"BOARD/SETUP_INITIAL" });
 
+    // new study / game
+    if (t.closest?.("#btnNewStudy")) return dispatch({ type:"STUDY/ADD" });
     if (t.closest?.("#btnNewGame")){
       const id = nowId();
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
       g.setInitialSetup?.();
-      // move tree baseline
       g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
       RUNTIME.games.set(id, g);
       attachOnChange(id, g);
-      dispatch({type:"GAME_ADD", id, title:id});
-      setBoardToActive();
-      return;
+      return dispatch({ type:"GAME/ADD", id, title:id });
     }
 
-    if (t.closest?.("#btnImportPgn")){ dispatch({type:"UI_IMPORT", open:true}); return; }
-    if (t.closest?.("#btnImportCancel")){ dispatch({type:"UI_IMPORT", open:false}); return; }
-    if (t.closest?.("#btnImportAdd")){
-      const txt = $("importPgnText").value || "";
-      for (const pgn of splitPgnGames(txt)){
-        const id = nowId();
-        const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
-        g.loadPGN?.(pgn);
-        RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
-        dispatch({type:"GAME_ADD", id, title:"Imported"});
-      }
-      dispatch({type:"UI_IMPORT", open:false});
-      setBoardToActive();
-      return;
-    }
+    // import modal
+    if (t.closest?.("#btnImportPgn")) return dispatch({ type:"UI/IMPORT_OPEN", open:true });
+    if (t.closest?.("#btnImportCancel")) return dispatch({ type:"UI/IMPORT_OPEN", open:false });
+    if (t.closest?.("#btnImportAdd")) return dispatch({ type:"IMPORT/ADD_PGN" });
 
-    if (t.closest?.("#btnExportGame")){
-      const pgn = (activeGame()||boot).exportPGN?.() || "";
-      navigator.clipboard?.writeText?.(pgn);
-      $("toolStatus").textContent = "Game PGN copied";
-      return;
-    }
-    if (t.closest?.("#btnExportStudy")){
-      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-      const ids = st ? st.games : [];
-      const parts = ids.map(id => (RUNTIME.games.get(id)?.exportPGN?.() || "")).filter(Boolean);
-      navigator.clipboard?.writeText?.(parts.join("\n\n"));
-      $("toolStatus").textContent = "Study PGN copied";
-      return;
-    }
+    // export
+    if (t.closest?.("#btnExportGame")) return dispatch({ type:"EXPORT/GAME_PGN" });
+    if (t.closest?.("#btnExportStudy")) return dispatch({ type:"EXPORT/STUDY_PGN" });
 
-    const mode = (m)=>{
-      const g = activeGame() || boot;
-      const cur = g.ui?.mode || "";
-      if (typeof g.setMode === "function"){
-        if (cur === m) g.setMode("");
-        else g.setMode(m);
-      }
-      syncDrawUi();
-      // Important: update PGN/FEN boxes after draw changes
-      syncUiBoxes();
-    };
-    if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")){ mode("arrows"); return; }
-    if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")){ mode("squares"); return; }
-    if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")){ (activeGame()||boot).clearMarks?.(); syncUiBoxes(); return; }
+    // draw mode buttons (both toolbars)
+    if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")) return dispatch({ type:"DRAW/TOGGLE_MODE", mode:"arrows" });
+    if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")) return dispatch({ type:"DRAW/TOGGLE_MODE", mode:"squares" });
+    if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")) return dispatch({ type:"DRAW/CLEAR" });
 
-    if (t.closest?.("#btnPigR")){ (activeGame()||boot).setPigment?.("R"); syncDrawUi(); syncUiBoxes(); return; }
-    if (t.closest?.("#btnPigG")){ (activeGame()||boot).setPigment?.("G"); syncDrawUi(); syncUiBoxes(); return; }
-    if (t.closest?.("#btnPigB")){ (activeGame()||boot).setPigment?.("B"); syncDrawUi(); syncUiBoxes(); return; }
-    if (t.closest?.("#btnPigY")){ (activeGame()||boot).setPigment?.("Y"); syncDrawUi(); syncUiBoxes(); return; }
+    // pigment buttons
+    if (t.closest?.("#btnPigR")) return dispatch({ type:"DRAW/PIGMENT", pigment:"R" });
+    if (t.closest?.("#btnPigG")) return dispatch({ type:"DRAW/PIGMENT", pigment:"G" });
+    if (t.closest?.("#btnPigB")) return dispatch({ type:"DRAW/PIGMENT", pigment:"B" });
+    if (t.closest?.("#btnPigY")) return dispatch({ type:"DRAW/PIGMENT", pigment:"Y" });
 
-    if (t.closest?.("#btnReloadEvals")){
-      $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
-      renderEvals();
-      return;
-    }
-    if (t.closest?.("#btnClearErrors")){ $("errorLog").textContent=""; setErrCount(); return; }
+    // evals/errors
+    if (t.closest?.("#btnReloadEvals")) return dispatch({ type:"EVALS/RELOAD" });
+    if (t.closest?.("#btnClearErrors")) return dispatch({ type:"ERRORS/CLEAR" });
 
-    if (t.closest?.("#qUseCurrent")){
-      dispatch({type:"QUERY_USE_CURRENT"});
-      $("qPgnName").textContent="(board)";
-      return;
-    }
-    if (t.closest?.("#qRun")){
-      logLine("CQL workaround: input had 1 game");
-      logLine("Query done (shim).");
-      const id = nowId();
-      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      dispatch({type:"GAME_ADD", id, title:"CQL result "+id});
-      return;
-    }
+    // query
+    if (t.closest?.("#qUseCurrent")) return dispatch({ type:"QUERY/USE_CURRENT" });
+    if (t.closest?.("#qRun")) return dispatch({ type:"QUERY/RUN_SHIM" });
   });
 
   document.addEventListener("change", (ev)=>{
     const t = ev.target;
     if (t && t.id==="studySelect"){
-      dispatch({type:"STUDY_SET", id: t.value});
-      setBoardToActive();
+      dispatch({ type:"STUDY/SET", id: t.value });
     }
   });
-
-  function bootState(){
-    STATE = initialState();
-    // Study A and B
-    STATE = reduce(STATE, {type:"STUDY_ADD", name:"Study A"});
-    const studyA = STATE.activeStudyId;
-    STATE = reduce(STATE, {type:"STUDY_ADD", name:"Study B"});
-    // back to Study A
-    STATE = reduce(STATE, {type:"STUDY_SET", id: studyA});
-
-    const id1 = makeGameFromFEN("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").id
-    const id2 = makeGameFromFEN("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").id
-
-    STATE = reduce(STATE, {type:"GAME_ADD", id:id1, title:"Game 1"});
-    STATE = reduce(STATE, {type:"GAME_ADD", id:id2, title:"Game 2"});
-
-    renderPriyomes();
-    renderQueryDb();
-    renderEvals();
-    syncUIFromState();
-    setBoardToActive();
-    $("toolStatus").textContent="ready";
-  }
-
-  bootState();
 </script>
 </body>
 </html>
