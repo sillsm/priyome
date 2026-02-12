@@ -362,6 +362,16 @@
     await sleep(60);
   }
 
+  // --- NEW: raw HTML fetch for contains/not-contains steps ---
+  async function fetchTargetHTML(){
+    const fr = getTargetFrameEl();
+    const href = fr?.contentWindow?.location?.href;
+    if (!href) throw new Error("Cannot read target iframe location (not loaded? cross-origin?)");
+    const res = await fetch(href, { cache: "no-store" });
+    if (!res.ok) throw new Error(`fetchTargetHTML failed: ${res.status} ${res.statusText}`);
+    return await res.text();
+  }
+
   async function stepExec(step){
     const [op, ...raw] = step;
     const args = raw.map(resolveArg);
@@ -407,28 +417,53 @@
         return;
       }
 
+      // --- NEW OPS ---
+      case "htmlContains": {
+        const needle = String(args[0] ?? "");
+        const html = await fetchTargetHTML();
+        if (!html.includes(needle)){
+          throw new Error(`htmlContains failed: missing substring:\n${needle}`);
+        }
+        return;
+      }
+      case "htmlNotContains": {
+        const needle = String(args[0] ?? "");
+        const html = await fetchTargetHTML();
+        if (html.includes(needle)){
+          throw new Error(`htmlNotContains failed: found forbidden substring:\n${needle}`);
+        }
+        return;
+      }
+
       default:
         log(`SKIP op ${op}`, "skip");
         return;
     }
   }
 
-  // Parse your existing format: blocks separated by blank lines; first line "TEST ..."
-  // Each step is JSON (buffered across lines if needed).
+  // Strict format:
+  // - blocks separated by blank lines
+  // - first non-comment line of each block MUST be "TEST ..."
+  // - only comments may start with "#"
+  // - each step is JSON; we still allow multi-line JSON by buffering until it parses
   function parseTests(src){
     const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
     const tests = [];
     for (const b of blocks){
       const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
-      const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
-      if (!lines.length) continue;
-      const nameLine = lines.shift();
-      if (!nameLine.startsWith("TEST ")) continue;
+      const nonComment = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      if (!nonComment.length) continue;
+
+      const nameLine = nonComment.shift();
+      if (!nameLine.startsWith("TEST ")){
+        throw new Error(`Every block must start with "TEST ". Bad block starts with:\n${nameLine}`);
+      }
       const name = nameLine.slice(5).trim();
+      if (!name) throw new Error(`TEST line missing name: "${nameLine}"`);
 
       const steps = [];
       let buf = "";
-      for (const line of lines){
+      for (const line of nonComment){
         buf = buf ? (buf + "\n" + line) : line;
         try{
           const step = JSON.parse(buf);
@@ -486,7 +521,7 @@
       tests = parseTests(testsText);
       log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
       if (!tests.length){
-        log(`Hint: blocks must start with "TEST ..." and be separated by blank lines.`, "dim");
+        log(`Hint: each block must start with "TEST ..." and blocks must be separated by blank lines.`, "dim");
         statusEl.textContent = "failed (0 tests parsed)";
         return;
       }
@@ -504,7 +539,6 @@
     for (const t of tests){
       log("\nTEST: " + t.name, "dim");
 
-      // Reload target between tests (keeps isolation like your original runner).
       const fr = getTargetFrameEl();
       try{ fr.contentWindow.location.reload(); }catch(e){
         log(`✘ Could not reload target iframe (same-origin?)`, "fail");
@@ -513,12 +547,10 @@
         return;
       }
 
-      // Wait for document ready + at least one stable anchor
       await sleep(0);
       try{
         await waitFor("body", 8000);
       }catch(e){
-        // body should exist; if not, bail
         log(`✘ Iframe did not become ready`, "fail");
         statusEl.textContent = "failed (iframe not ready)";
         return;
