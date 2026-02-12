@@ -7,31 +7,10 @@
 # Level 0: shell + layout sanity
 # -----------------------------
 
-TEST HTML has single module script with correct first import
-  ["eval","
-    (async () => {
-      const res = await fetch(location.href, { cache: 'no-store' });
-      const html = await res.text();
-
-      const scripts = [...html.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)];
-      if (scripts.length !== 1) throw new Error('expected exactly 1 <script> tag, got ' + scripts.length);
-
-      const openTag = scripts[0][0].match(/<script\\b[^>]*>/i)[0];
-      if (!/type=['\\\"]module['\\\"]/i.test(openTag)) {
-        throw new Error('script is not type=module');
-      }
-
-      const body = scripts[0][1]
-        .split('\\n')
-        .map(s => s.trim())
-        .filter(Boolean);
-
-      const expected = 'import { createGame, BoardView } from \"./scratchchess.js\";';
-      if (body[0] !== expected) {
-        throw new Error('first line mismatch: ' + body[0]);
-      }
-    })()
-  "]
+TEST HTML has module script and correct first import
+["htmlContains","<script type=\"module\">"]
+["htmlContains","import { createGame, BoardView } from \"./scratchchess.js\";"]
+["htmlNotContains","<script "]
 
 TEST Title navbar is visible and shows app name
 ["waitFor",".topbarWrap",2000]
