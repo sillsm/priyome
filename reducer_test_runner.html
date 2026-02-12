@@ -382,41 +382,6 @@
       case "expectContains": expectContains(args[0], args[1]); return;
       case "expectNotEqual": expectNotEqual(args[0], args[1]); return;
 
-case "htmlContains": {
-  const html = await getAppHtml();
-  const sub = String(args[0] ?? "");
-
-  const okRaw = html.includes(sub);
-  const okNorm = normWS(html).includes(normWS(sub));
-
-  if (!okRaw && !okNorm){
-    throw new Error(
-      `htmlContains failed.\n` +
-      `--- wanted ---\n${sub}\n` +
-      `--- note ---\n(raw + normalized match both failed)`
-    );
-  }
-  return;
-}
-
-case "htmlNotContains": {
-  const html = await getAppHtml();
-  const sub = String(args[0] ?? "");
-
-  const hitRaw = html.includes(sub);
-  const hitNorm = normWS(html).includes(normWS(sub));
-
-  if (hitRaw || hitNorm){
-    throw new Error(
-      `htmlNotContains failed.\n` +
-      `--- forbidden ---\n${sub}\n` +
-      `--- note ---\n(found in ${hitRaw ? "raw" : "normalized"} html)`
-    );
-  }
-  return;
-}
-
-
       case "storeText": {
         const val = getTextAny(args[0]);
         vars[String(args[1])] = val;
@@ -451,90 +416,39 @@ case "htmlNotContains": {
   // Parse your existing format: blocks separated by blank lines; first line "TEST ..."
   // Each step is JSON (buffered across lines if needed).
   function parseTests(src){
-  const lines = src.split("\n").map(l => l.replace(/\r/g,""));
+    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+    const tests = [];
+    for (const b of blocks){
+      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
+      const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      if (!lines.length) continue;
+      const nameLine = lines.shift();
+      if (!nameLine.startsWith("TEST ")) continue;
+      const name = nameLine.slice(5).trim();
 
-  const tests = [];
-  let cur = null;  // {name, steps}
-  let buf = "";    // JSON step buffer (supports multiline JSON strings)
-
-  function flushBufOrFail(){
-    if (!buf.trim()) return;
-    throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
-  }
-
-  function tryPushJSON(line){
-    buf = buf ? (buf + "\n" + line) : line;
-    try{
-      const step = JSON.parse(buf);
-      cur.steps.push(step);
-      buf = "";
-      return true;
-    }catch(e){
-      return false; // keep buffering
-    }
-  }
-
-  for (let i=0;i<lines.length;i++){
-    const raw = lines[i];
-    const t = raw.trim();
-
-    if (!t) continue;                 // blank ok
-    if (t.startsWith("#")) continue;  // comment-only lines
-
-    if (t.startsWith("TEST ")){
-      if (cur){
-        flushBufOrFail();
-        tests.push(cur);
+      const steps = [];
+      let buf = "";
+      for (const line of lines){
+        buf = buf ? (buf + "\n" + line) : line;
+        try{
+          const step = JSON.parse(buf);
+          steps.push(step);
+          buf = "";
+        }catch(e){
+          // keep buffering
+        }
       }
-      const name = t.slice(5).trim();
-      if (!name) throw new Error(`TEST line missing name at line ${i+1}`);
-      cur = { name, steps: [] };
-      continue;
+      if (buf.trim()) throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
+      tests.push({name, steps});
     }
-
-    // Any other non-comment line must be a JSON step, and must belong to a TEST.
-    if (!cur){
-      throw new Error(`Every block must start with "TEST ". Bad line ${i+1} starts with:\n${t}`);
-    }
-
-    tryPushJSON(t);
+    return tests;
   }
-
-  if (cur){
-    flushBufOrFail();
-    tests.push(cur);
-  }
-  if (!tests.length) throw new Error("No TEST blocks found.");
-  return tests;
-}
 
   async function loadText(path){
     const r = await fetch(path, {cache:"no-store"});
     if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${path}`);
     return await r.text();
   }
-
-  // Cached raw HTML fetch for the currently selected app iframe (used by htmlContains/htmlNotContains).
-  async function getAppHtml(){
-    if (window.__appHtmlCache != null) return window.__appHtmlCache;
-    const fr = getTargetFrameEl();
-    const src = fr.getAttribute("src") || fr.src || "";
-    const url = new URL(src, location.href).href;
-    const r = await fetch(url, { cache: "no-store" });
-    if (!r.ok) throw new Error(`htmlFetch failed: ${r.status} ${r.statusText} for ${url}`);
-    const html = await r.text();
-    window.__appHtmlCache = html;
-    return html;
-  }
-
-  function normWS(s){
-  return String(s ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n+/g, "\n")
-    .trim();
-}
-
 
   function getDefaultApp(){
     const u = new URL(location.href);
@@ -550,18 +464,6 @@ case "htmlNotContains": {
     frameMob.src = app;
     appLabelDesk.textContent = app;
     appLabelMob.textContent = app;
-  }
-
-  function isSoftOp(op){
-    // Soft ops are assertions/predicates; if they fail, we still continue to run remaining steps
-    // in the same TEST so each predicate's failure is logged.
-    return (
-      op === "htmlContains" ||
-      op === "htmlNotContains" ||
-      op === "countAtLeast" ||
-      op === "timeUnder" ||
-      (typeof op === "string" && op.startsWith("expect"))
-    );
   }
 
   async function run(){
@@ -622,36 +524,21 @@ case "htmlNotContains": {
         return;
       }
 
-      // reset per-test HTML cache
-      window.__appHtmlCache = null;
-
-      let failed = false;
-for (const s of t.steps){
-  const op = s && s[0];
-  log("  " + JSON.stringify(s));
-  try{
-    await stepExec(s);
-    if (isSoftOp(op)) log("  ✔ OK [" + op + "]", "ok");
-  }catch(e){
-    failed = true;
-    const msg = String(e && e.stack ? e.stack : (e && e.message ? e.message : e));
-    log("✘ STEP FAIL [" + op + "] " + t.name, "fail");
-    log(msg, "fail");
-    if (!isSoftOp(op)) break;
-  }
-}
-
-
-      if (!failed){
+      try{
+        for (const s of t.steps){
+          log("  " + JSON.stringify(s));
+          await stepExec(s);
+        }
         log("✔ PASS " + t.name, "pass");
         pass++;
-      }else{
+      }catch(e){
         log("✘ FAIL " + t.name, "fail");
+        log(String(e && e.stack ? e.stack : (e && e.message ? e.message : e)), "fail");
       }
-
-      }
-        statusEl.textContent = `done (${pass}/${tests.length}) on ${targetName}`;
     }
+
+    statusEl.textContent = `done (${pass}/${tests.length}) on ${targetName}`;
+  }
 
   async function runWithFreshLoad(){
     setApp();
