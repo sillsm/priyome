@@ -1,131 +1,166 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Reducer Test Runner</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Priyome Reducer Test Runner (Desktop + Mobile)</title>
 <style>
   :root{
-    --bg:#0b0d12; --panel:#111827; --b:rgba(255,255,255,.12);
-    --t:#e5e7eb; --m:#93a4c8; --mono:ui-monospace,Menlo,Consolas,monospace;
-    --ok:#22c55e; --bad:#ef4444; --skip:#f59e0b;
+    --bg:#0b0d12; --panel:rgba(255,255,255,.03); --b:rgba(255,255,255,.12);
+    --t:#e5e7eb; --m:rgba(229,231,235,.7); --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b;
   }
-  body{ margin:0; background:var(--bg); color:var(--t); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
-  .wrap{ display:grid; grid-template-columns: 420px 1fr; gap:12px; padding:12px; height:100vh; box-sizing:border-box; }
-  .panel{ background:var(--panel); border:1px solid var(--b); border-radius:12px; padding:12px; box-sizing:border-box; overflow:auto; }
-  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  button{ background:#0f172a; color:var(--t); border:1px solid var(--b); border-radius:10px; padding:8px 10px; cursor:pointer; }
-  button:hover{ filter:brightness(1.08); }
-  input[type="text"]{ width:100%; padding:8px 10px; border-radius:10px; border:1px solid var(--b); background:#0f172a; color:var(--t); font-family:var(--mono); box-sizing:border-box;}
-  .hint{ color:var(--m); font-size:12px; line-height:1.35; margin-top:8px; }
-  pre{ margin:10px 0 0; padding:10px; border-radius:10px; background:#0f172a; border:1px solid var(--b); overflow:auto; font-family:var(--mono); font-size:12px; white-space:pre-wrap; }
-  .logline{ margin:0; padding:2px 0; }
-  .ok{ color:var(--ok); }
-  .bad{ color:var(--bad); }
-  .skip{ color:var(--skip); }
-  iframe{ width:100%; height:100%; border:1px solid var(--b); border-radius:12px; background:#000; }
-  .tiny{ font-size:12px; color:var(--m); }
-  .spacer{ flex:1; }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+  .wrap{display:grid;grid-template-columns:1fr 1fr .95fr;gap:12px;height:100vh;padding:12px;min-height:0;}
+  @media (max-width:1180px){.wrap{grid-template-columns:1fr;grid-template-rows:48vh 48vh auto;height:auto;}}
+  .card{border:1px solid var(--b);border-radius:12px;background:var(--panel);overflow:hidden;min-height:0;display:flex;flex-direction:column;}
+  .head{padding:10px 12px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--b);background:rgba(255,255,255,.04);font-size:12px;color:var(--m);}
+  .dim{color:var(--m)}
+  .ok{color:var(--ok)}
+  .bad{color:var(--bad)}
+  .warn{color:var(--warn)}
+  button, input{
+    padding:8px 10px;border-radius:10px;border:1px solid var(--b);
+    background:rgba(255,255,255,.06);color:var(--t);cursor:pointer;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  }
+  input{min-width:260px;width:min(560px,100%);font-family:var(--mono)}
+  pre{margin:0;padding:10px;background:rgba(0,0,0,.35);border-top:1px solid var(--b);overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:1.35;flex:1;min-height:0;}
+  .viewportHost{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:10px;}
+  .frameShell{border:1px solid var(--b);border-radius:12px;background:#000;overflow:hidden;}
+  .scaleWrap{transform-origin:0 0;}
+  iframe{border:0;display:block;background:#000;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="panel">
-    <div class="row">
-      <button id="btnRunAll">Run</button>
-      <button id="btnRunFresh">Reload + Run</button>
-      <div class="spacer"></div>
-      <div class="tiny" id="status">idle</div>
-    </div>
-
-    <div style="height:10px"></div>
-    <div class="row">
-      <div style="flex:1">
-        <input id="testsUrl" type="text" value="reducertests.txt" />
-        <div class="hint">Test file URL (relative to this runner).</div>
+  <div class="card" id="desktopCard">
+    <div class="head">
+      <div class="row">
+        <div class="pill">Desktop</div>
+        <div class="pill dim">1200×900</div>
       </div>
+      <div class="pill" id="deskStatus">ready</div>
     </div>
-
-    <pre id="log"></pre>
-
-    <div class="hint">
-      Ops supported: sleep, waitFor, waitForVisible, waitForGone, waitForContains, waitForTextNotEqual,
-      waitForCountAtLeast, click, type, expectVisible, expectContains, expectNotEqual, storeText,
-      countAtLeast, expectContained, dragSquare, timeUnder, eval. Unknown ops are logged as SKIP.
+    <div class="viewportHost">
+      <div class="frameShell">
+        <div class="scaleWrap" id="deskScale">
+          <iframe id="deskFrame" width="1200" height="900" src="reducer.html"></iframe>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="panel" style="padding:0">
-    <iframe id="app" src="reducer.html"></iframe>
+  <div class="card" id="mobileCard">
+    <div class="head">
+      <div class="row">
+        <div class="pill">Mobile</div>
+        <div class="pill dim">360×640</div>
+      </div>
+      <div class="pill" id="mobStatus">ready</div>
+    </div>
+    <div class="viewportHost">
+      <div class="frameShell">
+        <div class="scaleWrap" id="mobScale">
+          <iframe id="mobFrame" width="360" height="640" src="reducer.html"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <div class="row">
+        <button id="btnRun">Run</button>
+        <button id="btnRunFresh">Reload + Run</button>
+        <input id="testsUrl" value="reducertests.txt" />
+      </div>
+      <div class="pill" id="runnerStatus">idle</div>
+    </div>
+    <pre id="log"></pre>
   </div>
 </div>
 
 <script>
-  // Runner state
-  const $ = (sel, root=document) => root.querySelector(sel);
+(() => {
+  const $ = (s, r=document) => r.querySelector(s);
   const logEl = $("#log");
-  const statusEl = $("#status");
-  const iframe = $("#app");
+  const statusEl = $("#runnerStatus");
+  const deskFrame = $("#deskFrame"), mobFrame = $("#mobFrame");
+  const deskStatus = $("#deskStatus"), mobStatus = $("#mobStatus");
   const vars = Object.create(null);
 
+  const DESK_W=1200, DESK_H=900;
+  const MOB_W=360, MOB_H=640;
+
+  function setStatus(txt, cls=""){
+    statusEl.className = "pill " + (cls||"");
+    statusEl.textContent = txt;
+  }
   function log(msg, cls=""){
     const line = document.createElement("div");
-    line.className = "logline" + (cls ? " " + cls : "");
     line.textContent = msg;
+    if (cls) line.className = cls;
     logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
   }
-  function setStatus(s){ statusEl.textContent = s; }
+  function clearLog(){ logEl.textContent = ""; }
+
+  function win(frame){ return frame.contentWindow; }
+  function doc(frame){ return frame.contentDocument; }
 
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-  function win(){ return iframe.contentWindow; }
-  function doc(){ return iframe.contentDocument; }
 
-  function q(sel){
-    const el = doc().querySelector(sel);
-    if (!el) throw new Error("Missing element: " + sel);
-    return el;
-  }
-  function isVisible(el){
+  function isVisible(frame, el){
     if (!el) return false;
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return false;
-    const cs = win().getComputedStyle(el);
+    const cs = win(frame).getComputedStyle(el);
     if (cs.display === "none" || cs.visibility === "hidden" || cs.opacity === "0") return false;
     return true;
   }
 
-  async function waitFor(sel, timeout=2000){
+  function q(frame, sel){
+    const el = doc(frame).querySelector(sel);
+    if (!el) throw new Error("Missing element: " + sel);
+    return el;
+  }
+
+  async function waitFor(frame, sel, timeout=2000){
     const t0 = performance.now();
-    while (performance.now() - t0 < timeout){
-      const el = doc().querySelector(sel);
+    while (performance.now()-t0 < timeout){
+      const el = doc(frame).querySelector(sel);
       if (el) return el;
       await sleep(20);
     }
     throw new Error("Timeout waiting for " + sel);
   }
-  async function waitForVisible(sel, timeout=2000){
+  async function waitForVisible(frame, sel, timeout=2000){
     const t0 = performance.now();
-    while (performance.now() - t0 < timeout){
-      const el = doc().querySelector(sel);
-      if (el && isVisible(el)) return el;
+    while (performance.now()-t0 < timeout){
+      const el = doc(frame).querySelector(sel);
+      if (el && isVisible(frame, el)) return el;
       await sleep(20);
     }
     throw new Error("Timeout waiting for visible " + sel);
   }
-  async function waitForGone(sel, timeout=2000){
+  async function waitForGone(frame, sel, timeout=2000){
     const t0 = performance.now();
-    while (performance.now() - t0 < timeout){
-      const el = doc().querySelector(sel);
-      if (!el || !isVisible(el)) return true;
+    while (performance.now()-t0 < timeout){
+      const el = doc(frame).querySelector(sel);
+      if (!el || !isVisible(frame, el)) return true;
       await sleep(20);
     }
     throw new Error("Timeout waiting for gone " + sel);
   }
-  async function waitForContains(sel, needle, timeout=2000){
+  async function waitForContains(frame, sel, needle, timeout=2000){
     const t0 = performance.now();
-    while (performance.now() - t0 < timeout){
-      const el = doc().querySelector(sel);
+    while (performance.now()-t0 < timeout){
+      const el = doc(frame).querySelector(sel);
       if (el){
         const txt = (el.value != null ? el.value : el.textContent) || "";
         if (String(txt).includes(String(needle))) return true;
@@ -134,10 +169,10 @@
     }
     throw new Error(`Timeout waiting for contains "${needle}" in ${sel}`);
   }
-  async function waitForTextNotEqual(sel, prev, timeout=2000){
+  async function waitForTextNotEqual(frame, sel, prev, timeout=2000){
     const t0 = performance.now();
-    while (performance.now() - t0 < timeout){
-      const el = doc().querySelector(sel);
+    while (performance.now()-t0 < timeout){
+      const el = doc(frame).querySelector(sel);
       if (el){
         const txt = (el.value != null ? el.value : el.textContent) || "";
         if (String(txt) !== String(prev)) return true;
@@ -146,68 +181,62 @@
     }
     throw new Error("Timeout waiting for text change on " + sel);
   }
-  async function waitForCountAtLeast(sel, n, timeout=2000){
+  async function waitForCountAtLeast(frame, sel, n, timeout=2000){
     const t0 = performance.now();
-    while (performance.now() - t0 < timeout){
-      const c = doc().querySelectorAll(sel).length;
+    while (performance.now()-t0 < timeout){
+      const c = doc(frame).querySelectorAll(sel).length;
       if (c >= n) return c;
       await sleep(20);
     }
     throw new Error(`Timeout waiting for countAtLeast ${sel} >= ${n}`);
   }
 
-  function clickSel(sel){
-    const el = q(sel);
-    el.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, cancelable:true, view:win()}));
+  function clickSel(frame, sel){
+    const el = q(frame, sel);
+    el.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, cancelable:true, view:win(frame)}));
     el.click();
-    el.dispatchEvent(new MouseEvent("mouseup", {bubbles:true, cancelable:true, view:win()}));
+    el.dispatchEvent(new MouseEvent("mouseup", {bubbles:true, cancelable:true, view:win(frame)}));
   }
 
-  function setValue(sel, val){
-    const el = q(sel);
+  function setValue(frame, sel, val){
+    const el = q(frame, sel);
     el.focus();
     el.value = val;
     el.dispatchEvent(new InputEvent("input", {bubbles:true, cancelable:true}));
     el.dispatchEvent(new Event("change", {bubbles:true, cancelable:true}));
   }
 
-  function getTextAny(selOrVar){
+  function getTextAny(frame, selOrVar){
     if (typeof selOrVar === "string" && selOrVar.startsWith("$")){
       return String(vars[selOrVar.slice(1)] ?? "");
     }
-    const el = q(selOrVar);
+    const el = q(frame, selOrVar);
     return String(el.value != null ? el.value : el.textContent ?? "");
   }
-
   function resolveArg(a){
-    if (typeof a === "string" && a.startsWith("$")){
-      return vars[a.slice(1)];
-    }
+    if (typeof a === "string" && a.startsWith("$")) return vars[a.slice(1)];
     return a;
   }
+  function assert(cond, msg){ if (!cond) throw new Error(msg); }
 
-  function assert(cond, msg){
-    if (!cond) throw new Error(msg);
+  function expectVisible(frame, sel){
+    const el = q(frame, sel);
+    assert(isVisible(frame, el), "Not visible: " + sel);
   }
-
-  function expectVisible(sel){
-    const el = q(sel);
-    assert(isVisible(el), "Not visible: " + sel);
-  }
-  function expectContains(a, b){
-    const txt = (typeof a === "string" && a.startsWith("$")) ? String(resolveArg(a) ?? "") : getTextAny(a);
+  function expectContains(frame, a, b){
+    const txt = (typeof a === "string" && a.startsWith("$")) ? String(resolveArg(a) ?? "") : getTextAny(frame, a);
     if (!String(txt).includes(String(b))){
       throw new Error(`expectContains failed: "${b}" not in "${txt}"`);
     }
   }
-  function expectNotEqual(a, b){
+  function expectNotEqual(a,b){
     if (String(a) === String(b)) throw new Error(`expectNotEqual failed: ${a} == ${b}`);
   }
-  function count(sel){ return doc().querySelectorAll(sel).length; }
+  function count(frame, sel){ return doc(frame).querySelectorAll(sel).length; }
 
-  function expectContained(innerSel, outerSel, pad=0){
-    const inner = q(innerSel);
-    const outer = q(outerSel);
+  function expectContained(frame, innerSel, outerSel, pad=0){
+    const inner = q(frame, innerSel);
+    const outer = q(frame, outerSel);
     const ir = inner.getBoundingClientRect();
     const or = outer.getBoundingClientRect();
     if (ir.left < or.left - pad || ir.top < or.top - pad || ir.right > or.right + pad || ir.bottom > or.bottom + pad){
@@ -216,19 +245,18 @@
   }
 
   function squareCenter(fileRank, boardRect){
-    const files = "abcdefgh";
-    const f = files.indexOf(fileRank[0]);
-    const r = parseInt(fileRank[1], 10);
-    if (f < 0 || !(r>=1 && r<=8)) return null;
-    // a1 is bottom-left from White's view
-    const sq = boardRect.width / 8;
-    const x = boardRect.left + (f + 0.5) * sq;
-    const y = boardRect.top + ((8 - r) + 0.5) * sq;
-    return {x, y};
+    const files="abcdefgh";
+    const f=files.indexOf(fileRank[0]);
+    const r=parseInt(fileRank[1],10);
+    if (f<0 || !(r>=1 && r<=8)) return null;
+    const sq = boardRect.width/8;
+    const x = boardRect.left + (f+0.5)*sq;
+    const y = boardRect.top + ((8-r)+0.5)*sq;
+    return {x,y};
   }
 
-  function dispatchPointer(type, x, y){
-    const w = win();
+  function dispatchPointer(frame, type, x, y){
+    const w = win(frame);
     const el = w.document.elementFromPoint(x, y);
     if (!el) throw new Error(`No element at point (${x.toFixed(1)},${y.toFixed(1)})`);
     el.dispatchEvent(new PointerEvent(type, {
@@ -237,70 +265,217 @@
     }));
   }
 
-  async function dragSquare(from, to, holdMs=120){
-    // Prefer #boardWrap if present, otherwise fall back to #boardHost .sc-shell
+  async function dragSquare(frame, from, to, holdMs=120){
     const boardEl =
-      doc().querySelector("#boardWrap") ||
-      doc().querySelector("#boardHost .sc-shell") ||
-      doc().querySelector("#boardHost");
-
+      doc(frame).querySelector("#boardWrap") ||
+      doc(frame).querySelector("#boardHost .sc-shell") ||
+      doc(frame).querySelector("#boardHost");
     if (!boardEl) throw new Error("dragSquare: could not find board element");
     const r = boardEl.getBoundingClientRect();
-    const a = squareCenter(from, r);
-    const b = squareCenter(to, r);
+    const a = squareCenter(from, r), b = squareCenter(to, r);
     if (!a || !b) throw new Error(`dragSquare could not locate square centers for ${from} or ${to}`);
-
-    dispatchPointer("pointerdown", a.x, a.y);
+    dispatchPointer(frame, "pointerdown", a.x, a.y);
     await sleep(Math.max(0, holdMs));
-    dispatchPointer("pointermove", b.x, b.y);
+    dispatchPointer(frame, "pointermove", b.x, b.y);
     await sleep(16);
-    dispatchPointer("pointerup", b.x, b.y);
+    dispatchPointer(frame, "pointerup", b.x, b.y);
     await sleep(30);
+  }
+
+  // ---- Robust step scanner: reads JSON arrays from text, respecting strings/escapes ----
+  function stripCommentsKeepNewlines(text){
+    // Remove full-line comments beginning with optional whitespace then '#'
+    return text
+      .split("\n")
+      .map(line => (/^\s*#/.test(line) ? "" : line))
+      .join("\n");
+  }
+
+  function scanNextJSONArray(text, startIdx){
+    // Find next '['
+    let i = startIdx;
+    const n = text.length;
+    while (i < n && /\s/.test(text[i])) i++;
+    if (i >= n) return null;
+    if (text[i] !== "[") {
+      // Any non-ws junk is illegal
+      const snippet = text.slice(i, Math.min(n, i+120));
+      throw new Error("Invalid content where a JSON step was expected:\n" + snippet);
+    }
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (; i < n; i++){
+      const ch = text[i];
+      if (inStr){
+        if (esc){ esc = false; continue; }
+        if (ch === "\\"){ esc = true; continue; }
+        if (ch === "\""){ inStr = false; continue; }
+        continue;
+      } else {
+        if (ch === "\""){ inStr = true; continue; }
+        if (ch === "["){ depth++; continue; }
+        if (ch === "]"){ depth--; if (depth === 0){
+          const end = i+1;
+          return { json: text.slice(startIdxNonWS(startIdx, text), end), next: end };
+        } continue; }
+      }
+    }
+    return { json: null, next: n, incomplete: true };
+
+    function startIdxNonWS(si, s){
+      let j = si;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      return j;
+    }
+  }
+
+  function parseTestsStrict(src){
+    const lines = src.replace(/\r/g,"").split("\n");
+
+    // Strict structure:
+    // - Only blank lines or comment lines allowed outside tests.
+    // - Each test begins with "TEST " (space). "TEST:" is invalid.
+    const tests = [];
+    let i = 0;
+
+    function fail(msg){ throw new Error(msg); }
+
+    while (i < lines.length){
+      const raw = lines[i];
+      const line = raw.trim();
+
+      if (!line || line.startsWith("#")) { i++; continue; }
+
+      if (line.startsWith("TEST:")) fail(`Invalid test header (must start with 'TEST '): ${raw}`);
+      if (!line.startsWith("TEST ")) fail(`Invalid line outside of a TEST block: ${raw}`);
+
+      const name = line.slice(5).trim();
+      if (!name) fail("TEST header missing name at line " + (i+1));
+
+      // Collect until next TEST header or EOF.
+      i++;
+      let bodyLines = [];
+      while (i < lines.length){
+        const t = lines[i].trim();
+        if (t && !t.startsWith("#")){
+          if (t.startsWith("TEST:")) fail(`Invalid test header (must start with 'TEST '): ${lines[i]}`);
+          if (t.startsWith("TEST ")) break;
+        }
+        bodyLines.push(lines[i]);
+        i++;
+      }
+
+      const body = stripCommentsKeepNewlines(bodyLines.join("\n"));
+      const steps = [];
+
+      // Scan repeated JSON arrays
+      let pos = 0;
+      while (true){
+        // skip whitespace
+        while (pos < body.length && /\s/.test(body[pos])) pos++;
+        if (pos >= body.length) break;
+        const scanned = scanJSONArrayFrom(body, pos);
+        steps.push(scanned.step);
+        pos = scanned.next;
+      }
+
+      tests.push({name, steps});
+    }
+    return tests;
+
+    function scanJSONArrayFrom(s, pos){
+      // Find next '[' at/after pos, then match to closing ']' respecting strings.
+      // Return parsed JSON and next index.
+      while (pos < s.length && /\s/.test(s[pos])) pos++;
+      if (pos >= s.length) return null;
+      if (s[pos] !== "["){
+        const snippet = s.slice(pos, Math.min(s.length, pos+120));
+        fail("Invalid content where a JSON step was expected:\n" + snippet);
+      }
+      let depth = 0, inStr=false, esc=false;
+      let i = pos;
+      for (; i < s.length; i++){
+        const ch = s[i];
+        if (inStr){
+          if (esc){ esc=false; continue; }
+          if (ch === "\\"){ esc=true; continue; }
+          if (ch === "\""){ inStr=false; continue; }
+          continue;
+        } else {
+          if (ch === "\""){ inStr=true; continue; }
+          if (ch === "["){ depth++; continue; }
+          if (ch === "]"){ depth--; if (depth === 0){ i++; break; } continue; }
+        }
+      }
+      if (depth !== 0) fail("Could not parse JSON step (incomplete/invalid):\n" + s.slice(pos, Math.min(s.length, pos+200)));
+
+      const jsonText = s.slice(pos, i);
+      let step;
+      try { step = JSON.parse(jsonText); }
+      catch(e){ fail("Could not parse JSON step (invalid JSON):\n" + jsonText); }
+      if (!Array.isArray(step)) fail("Step must be a JSON array: " + jsonText);
+      return { step, next: i };
+    }
+  }
+
+  // Decide which frame an op runs in.
+  // Default: desktop. Mobile-only ops can be forced via ["setViewport","mobile"] in your tests if you add it later.
+  let currentFrame = "desktop";
+  function frameForOp(op){
+    // Most ops should run against desktop unless tests explicitly change it.
+    // You can still target mobile via ["useViewport","mobile"] if you add that test op; implemented below.
+    return (currentFrame === "mobile") ? mobFrame : deskFrame;
   }
 
   async function stepExec(step){
     const [op, ...raw] = step;
-    const args = raw.map(resolveArg);
+    const args = raw.map(a => (typeof a === "string" && a.startsWith("$")) ? vars[a.slice(1)] : a);
+    const frame = frameForOp(op);
 
     switch(op){
-      case "sleep": await sleep(args[0]||0); return;
-      case "waitFor": await waitFor(args[0], args[1] ?? 2000); return;
-      case "waitForVisible": await waitForVisible(args[0], args[1] ?? 2000); return;
-      case "waitForGone": await waitForGone(args[0], args[1] ?? 2000); return;
-      case "waitForContains": await waitForContains(args[0], args[1], args[2] ?? 2000); return;
-      case "waitForTextNotEqual": await waitForTextNotEqual(args[0], args[1], args[2] ?? 2000); return;
-      case "waitForCountAtLeast": await waitForCountAtLeast(args[0], args[1], args[2] ?? 2000); return;
+      case "useViewport":
+        if (args[0] !== "desktop" && args[0] !== "mobile") throw new Error("useViewport expects 'desktop' or 'mobile'");
+        currentFrame = args[0];
+        return;
 
-      case "click": clickSel(args[0]); return;
-      case "type": setValue(args[0], String(args[1] ?? "")); return;
+      case "sleep": await sleep(args[0]||0); return;
+      case "waitFor": await waitFor(frame, args[0], args[1] ?? 2000); return;
+      case "waitForVisible": await waitForVisible(frame, args[0], args[1] ?? 2000); return;
+      case "waitForGone": await waitForGone(frame, args[0], args[1] ?? 2000); return;
+      case "waitForContains": await waitForContains(frame, args[0], args[1], args[2] ?? 2000); return;
+      case "waitForTextNotEqual": await waitForTextNotEqual(frame, args[0], args[1], args[2] ?? 2000); return;
+      case "waitForCountAtLeast": await waitForCountAtLeast(frame, args[0], args[1], args[2] ?? 2000); return;
+
+      case "click": clickSel(frame, args[0]); return;
+      case "type": setValue(frame, args[0], String(args[1] ?? "")); return;
 
       case "eval": {
-        // Evaluate JS in the target iframe context. If it returns a Promise, await it.
         const code = String(args[0] ?? "");
-        const w = win();
+        const w = win(frame);
         const ret = w.eval(code);
         if (ret && typeof ret.then === "function") await ret;
         return;
       }
 
-      case "expectVisible": expectVisible(args[0]); return;
-      case "expectContains": expectContains(args[0], args[1]); return;
+      case "expectVisible": expectVisible(frame, args[0]); return;
+      case "expectContains": expectContains(frame, args[0], args[1]); return;
       case "expectNotEqual": expectNotEqual(args[0], args[1]); return;
 
       case "storeText": {
-        const val = getTextAny(args[0]);
-        vars[String(args[1])] = val;
+        const v = getTextAny(frame, args[0]);
+        vars[String(args[1])] = v;
         return;
       }
 
       case "countAtLeast": {
-        const n = count(args[0]);
+        const n = count(frame, args[0]);
         if (n < args[1]) throw new Error(`countAtLeast failed: ${args[0]} had ${n}, need >= ${args[1]}`);
         return;
       }
 
-      case "expectContained": expectContained(args[0], args[1], args[2] ?? 0); return;
-      case "dragSquare": await dragSquare(String(args[0]), String(args[1]), args[2] ?? 120); return;
+      case "expectContained": expectContained(frame, args[0], args[1], args[2] ?? 0); return;
+      case "dragSquare": await dragSquare(frame, String(args[0]), String(args[1]), args[2] ?? 120); return;
 
       case "timeUnder": {
         const budgetMs = Number(args[0]);
@@ -313,81 +488,72 @@
       }
 
       default:
-        log(`SKIP op ${op}`, "skip");
+        log(`SKIP op ${op}`, "warn");
         return;
     }
   }
 
-  // STRICT parsing:
-  // - Blocks separated by blank lines.
-  // - Only '#' comment lines are allowed.
-  // - Every block MUST start with 'TEST ' (space). 'TEST:' and anything else fails.
-  // - Steps are JSON arrays; multi-line JSON is buffered.
-  function parseTests(src){
-    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
-    const tests = [];
-    for (let bi=0; bi<blocks.length; bi++){
-      const b = blocks[bi];
-      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
-      // Only allow blank lines (handled by split) or comment lines starting with '#'
-      const lines = rawLines
-        .map(l => l.trim())
-        .filter(l => l.length && !l.startsWith("#"));
-      if (!lines.length) continue;
-
-      const nameLine = lines.shift();
-
-      // Strict: every block MUST begin with 'TEST ' (space) — reject 'TEST:' etc.
-      if (nameLine.startsWith("TEST:") || nameLine.startsWith("TEST\t") || nameLine === "TEST") {
-        throw new Error(`Invalid test header (must start with 'TEST '): ${nameLine}`);
-      }
-      if (!nameLine.startsWith("TEST ")) {
-        throw new Error(`Invalid line outside of a TEST block: ${nameLine}`);
-      }
-
-      const name = nameLine.slice(5).trim();
-      if (!name) throw new Error("TEST header missing name: " + nameLine);
-
-      const steps = [];
-      let buf = "";
-      for (const line of lines){
-        buf = buf ? (buf + "\n" + line) : line;
-        try{
-          const step = JSON.parse(buf);
-          steps.push(step);
-          buf = "";
-        }catch(e){
-          // keep buffering until valid JSON
-        }
-      }
-      if (buf.trim()) throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
-
-      tests.push({name, steps});
-    }
+  async function loadTests(){
+    const url = $("#testsUrl").value.trim();
+    const res = await fetch(url, {cache:"no-store"});
+    if (!res.ok) throw new Error(`Could not load ${url}: ${res.status}`);
+    const txt = await res.text();
+    const tests = parseTestsStrict(txt);
+    log(`✔ Loaded ${url} (${txt.length} bytes)`, "ok");
+    log(`✔ Parsed ${tests.length} TEST blocks`, "ok");
     return tests;
   }
 
-  async function runAll(fresh=false){
-    logEl.textContent = "";
+  function scaleFrames(){
+    const deskHost = $("#desktopCard .viewportHost");
+    const mobHost = $("#mobileCard .viewportHost");
+    const d = deskHost.getBoundingClientRect();
+    const m = mobHost.getBoundingClientRect();
+    const ds = Math.min((d.width-20)/DESK_W, (d.height-20)/DESK_H, 1);
+    const ms = Math.min((m.width-20)/MOB_W, (m.height-20)/MOB_H, 1);
+    $("#deskScale").style.transform = `scale(${ds})`;
+    $("#mobScale").style.transform = `scale(${ms})`;
+  }
+  window.addEventListener("resize", scaleFrames);
+
+  function waitFramesLoaded(){
+    return Promise.all([
+      new Promise(r => { if (deskFrame.contentDocument?.readyState === "complete") return r(); deskFrame.addEventListener("load", () => r(), {once:true}); }),
+      new Promise(r => { if (mobFrame.contentDocument?.readyState === "complete") return r(); mobFrame.addEventListener("load", () => r(), {once:true}); })
+    ]);
+  }
+
+  async function reloadFrames(){
+    deskStatus.textContent = "reloading";
+    mobStatus.textContent = "reloading";
+    await new Promise(r => {
+      let left=2;
+      const done=()=>{ left--; if (!left) r(); };
+      deskFrame.addEventListener("load", done, {once:true});
+      mobFrame.addEventListener("load", done, {once:true});
+      const bust = "t=" + Date.now();
+      deskFrame.src = "reducer.html?" + bust;
+      mobFrame.src = "reducer.html?" + bust;
+    });
+    deskStatus.textContent = "ready";
+    mobStatus.textContent = "ready";
+    scaleFrames();
+  }
+
+  async function runAll(fresh){
+    clearLog();
     Object.keys(vars).forEach(k => delete vars[k]);
+    currentFrame = "desktop";
 
     setStatus("loading tests...");
-    const testsUrl = $("#testsUrl").value.trim();
-    const res = await fetch(testsUrl, {cache:"no-store"});
-    if (!res.ok) throw new Error(`Could not load ${testsUrl}: ${res.status}`);
-    const txt = await res.text();
-
-    const tests = parseTests(txt);
-    log(`✔ Loaded ${testsUrl} (${txt.length} bytes)`, "ok");
-    log(`✔ Parsed ${tests.length} TEST blocks`, "ok");
+    const tests = await loadTests();
 
     if (fresh){
       setStatus("reloading app...");
-      await new Promise(r => {
-        const onload = () => { iframe.removeEventListener("load", onload); r(); };
-        iframe.addEventListener("load", onload);
-        iframe.src = iframe.src.split("#")[0] + "?t=" + Date.now();
-      });
+      await reloadFrames();
+    } else {
+      await waitFramesLoaded();
+      scaleFrames();
     }
 
     setStatus("running...");
@@ -403,18 +569,21 @@
         pass++;
       }catch(e){
         log(`✘ FAIL ${t.name}`, "bad");
-        log(String(e && e.stack ? e.stack : e), "bad");
+        log(String(e?.stack || e), "bad");
         fail++;
       }
     }
-    setStatus(`done (${pass}/${pass+fail})`);
+    setStatus(`done (${pass}/${pass+fail})`, fail ? "bad" : "ok");
   }
 
-  $("#btnRunAll").addEventListener("click", () => runAll(false).catch(e => { log(String(e.stack||e), "bad"); setStatus("error"); }));
-  $("#btnRunFresh").addEventListener("click", () => runAll(true).catch(e => { log(String(e.stack||e), "bad"); setStatus("error"); }));
+  $("#btnRun").addEventListener("click", () => runAll(false).catch(e => { log(String(e?.stack||e),"bad"); setStatus("error","bad"); }));
+  $("#btnRunFresh").addEventListener("click", () => runAll(true).catch(e => { log(String(e?.stack||e),"bad"); setStatus("error","bad"); }));
 
-  // Auto show "ready" once iframe loads.
-  iframe.addEventListener("load", () => setStatus("ready"));
+  // initial
+  deskFrame.addEventListener("load", () => { deskStatus.textContent="ready"; scaleFrames(); });
+  mobFrame.addEventListener("load", () => { mobStatus.textContent="ready"; scaleFrames(); });
+  scaleFrames();
+})();
 </script>
 </body>
 </html>
