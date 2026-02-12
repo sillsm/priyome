@@ -3,70 +3,51 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Priyome Reducer Test Runner (Desktop + Mobile)</title>
+<title>Priyome Reducer Test Runner (Dual Viewport)</title>
 <style>
   :root{
-    --bg:#0b0d12; --panel:rgba(255,255,255,.03); --b:rgba(255,255,255,.12);
-    --t:#e5e7eb; --m:rgba(229,231,235,.7); --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-    --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b;
+    --bg:#0b0d12; --b:rgba(255,255,255,.12); --t:#e5e7eb; --m:rgba(229,231,235,.7);
+    --ok:#a7f3d0; --fail:#fecaca; --warn:#fde68a;
   }
-  *{box-sizing:border-box}
-  html,body{height:100%}
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
   body{margin:0;background:var(--bg);color:var(--t);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+
   .wrap{display:grid;grid-template-columns:1fr 1fr .95fr;gap:12px;height:100vh;padding:12px;min-height:0;}
-  @media (max-width:1180px){.wrap{grid-template-columns:1fr;grid-template-rows:48vh 48vh auto;height:auto;}}
-  .card{border:1px solid var(--b);border-radius:12px;background:var(--panel);overflow:hidden;min-height:0;display:flex;flex-direction:column;}
+  @media (max-width:1180px){ .wrap{grid-template-columns:1fr;grid-template-rows:48vh 48vh auto;height:auto;} }
+
+  .card{border:1px solid var(--b);border-radius:12px;background:rgba(255,255,255,.03);overflow:hidden;min-height:0;display:flex;flex-direction:column;}
   .head{padding:10px 12px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--b);background:rgba(255,255,255,.04);font-size:12px;color:var(--m);}
-  .dim{color:var(--m)}
-  .ok{color:var(--ok)}
-  .bad{color:var(--bad)}
-  .warn{color:var(--warn)}
-  button, input{
-    padding:8px 10px;border-radius:10px;border:1px solid var(--b);
-    background:rgba(255,255,255,.06);color:var(--t);cursor:pointer;
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-  }
-  input{min-width:260px;width:min(560px,100%);font-family:var(--mono)}
-  pre{margin:0;padding:10px;background:rgba(0,0,0,.35);border-top:1px solid var(--b);overflow:auto;white-space:pre-wrap;font-family:var(--mono);font-size:12px;line-height:1.35;flex:1;min-height:0;}
+  .dim{color:var(--m)} .ok{color:var(--ok)} .warn{color:var(--warn)} .pass{color:var(--ok)} .fail{color:var(--fail)} .skip{color:var(--warn)}
+
+  button, select, input{padding:8px 10px;border-radius:10px;border:1px solid var(--b);background:rgba(255,255,255,.06);color:var(--t);cursor:pointer;}
+  input{min-width:260px;width:min(520px,100%);}
+
   .viewportHost{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:10px;}
-  .frameShell{border:1px solid var(--b);border-radius:12px;background:#000;overflow:hidden;}
-  .scaleWrap{transform-origin:0 0;}
-  iframe{border:0;display:block;background:#000;}
+  .vpFrame{position:relative;border:1px solid var(--b);border-radius:16px;overflow:hidden;background:#000;box-shadow:0 14px 44px rgba(0,0,0,.45);}
+  .vpInner{position:absolute;left:0;top:0;transform-origin:0 0;background:#000;}
+  iframe{border:0;width:100%;height:100%;display:block;background:white;}
+
+  .log{padding:10px 12px;overflow:auto;flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.35;white-space:pre-wrap;background:rgba(0,0,0,.18);}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--b);background:rgba(255,255,255,.04);font-size:12px;color:var(--m);}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="card" id="desktopCard">
+  <div class="card">
     <div class="head">
       <div class="row">
-        <div class="pill">Desktop</div>
-        <div class="pill dim">1200×900</div>
+        <b>App Under Test — Desktop</b>
+        <span class="pill">virtual <b>1200×900</b></span>
+        <span class="dim" id="appLabelDesk"></span>
       </div>
-      <div class="pill" id="deskStatus">ready</div>
+      <div class="row"><span class="pill" id="deskScaleMeta">scale: —</span></div>
     </div>
-    <div class="viewportHost">
-      <div class="frameShell">
-        <div class="scaleWrap" id="deskScale">
-          <iframe id="deskFrame" width="1200" height="900" src="reducer.html"></iframe>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card" id="mobileCard">
-    <div class="head">
-      <div class="row">
-        <div class="pill">Mobile</div>
-        <div class="pill dim">360×640</div>
-      </div>
-      <div class="pill" id="mobStatus">ready</div>
-    </div>
-    <div class="viewportHost">
-      <div class="frameShell">
-        <div class="scaleWrap" id="mobScale">
-          <iframe id="mobFrame" width="360" height="640" src="reducer.html"></iframe>
+    <div class="viewportHost" id="deskHost">
+      <div class="vpFrame" id="deskFrame">
+        <div class="vpInner" id="deskInner">
+          <iframe id="frameDesk" title="app-under-test-desktop"></iframe>
         </div>
       </div>
     </div>
@@ -75,407 +56,346 @@
   <div class="card">
     <div class="head">
       <div class="row">
-        <button id="btnRun">Run</button>
-        <button id="btnRunFresh">Reload + Run</button>
-        <input id="testsUrl" value="reducertests.txt" />
+        <b>App Under Test — Mobile</b>
+        <span class="pill">virtual <b>360×640</b></span>
+        <span class="dim" id="appLabelMob"></span>
       </div>
-      <div class="pill" id="runnerStatus">idle</div>
+      <div class="row"><span class="pill" id="mobScaleMeta">scale: —</span></div>
     </div>
-    <pre id="log"></pre>
+    <div class="viewportHost" id="mobHost">
+      <div class="vpFrame" id="mobFrame">
+        <div class="vpInner" id="mobInner">
+          <iframe id="frameMob" title="app-under-test-mobile"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="head">
+      <div class="row"><b>Runner</b> <span class="dim" id="status">idle</span></div>
+      <div class="row">
+        <select id="targetPick" title="Target iframe">
+          <option value="desktop">Run on Desktop iframe</option>
+          <option value="mobile">Run on Mobile iframe</option>
+        </select>
+        <input id="appPath" placeholder="app path (default: ?app=staging.html or reducer.html)" />
+        <button id="reloadBtn">Reload</button>
+        <button id="runBtn">Run</button>
+        <button id="copyBtn">📋 Copy results</button>
+      </div>
+    </div>
+    <div class="log" id="log"></div>
   </div>
 </div>
 
 <script>
 (() => {
-  const $ = (s, r=document) => r.querySelector(s);
-  const logEl = $("#log");
-  const statusEl = $("#runnerStatus");
-  const deskFrame = $("#deskFrame"), mobFrame = $("#mobFrame");
-  const deskStatus = $("#deskStatus"), mobStatus = $("#mobStatus");
-  const vars = Object.create(null);
+  const DESK_W = 1200, DESK_H = 900;
+  const MOB_W  = 360,  MOB_H  = 640;
 
-  const DESK_W=1200, DESK_H=900;
-  const MOB_W=360, MOB_H=640;
+  const logEl = document.getElementById('log');
+  const statusEl = document.getElementById('status');
+  const frameDesk = document.getElementById('frameDesk');
+  const frameMob  = document.getElementById('frameMob');
+  const appInput = document.getElementById('appPath');
+  const appLabelDesk = document.getElementById('appLabelDesk');
+  const appLabelMob  = document.getElementById('appLabelMob');
+  const targetPick = document.getElementById('targetPick');
 
-  function setStatus(txt, cls=""){
-    statusEl.className = "pill " + (cls||"");
-    statusEl.textContent = txt;
+  const desk = {
+    host: document.getElementById('deskHost'),
+    frame: document.getElementById('deskFrame'),
+    inner: document.getElementById('deskInner'),
+    meta: document.getElementById('deskScaleMeta'),
+    w: DESK_W, h: DESK_H
+  };
+  const mob = {
+    host: document.getElementById('mobHost'),
+    frame: document.getElementById('mobFrame'),
+    inner: document.getElementById('mobInner'),
+    meta: document.getElementById('mobScaleMeta'),
+    w: MOB_W, h: MOB_H
+  };
+
+  function fitViewport(vp){
+    const r = vp.host.getBoundingClientRect();
+    const pad = 12;
+    const availW = Math.max(80, r.width  - pad*2);
+    const availH = Math.max(80, r.height - pad*2);
+    const scale = Math.max(0.1, Math.min(6, Math.min(availW / vp.w, availH / vp.h)));
+    const outW = Math.round(vp.w * scale);
+    const outH = Math.round(vp.h * scale);
+    vp.frame.style.width = outW + "px";
+    vp.frame.style.height = outH + "px";
+    vp.inner.style.width = vp.w + "px";
+    vp.inner.style.height = vp.h + "px";
+    vp.inner.style.transform = `scale(${scale})`;
+    vp.meta.textContent = `scale: ${scale.toFixed(3)} • box: ${outW}×${outH}`;
   }
-  function log(msg, cls=""){
-    const line = document.createElement("div");
-    line.textContent = msg;
-    if (cls) line.className = cls;
-    logEl.appendChild(line);
+  function fitAll(){ fitViewport(desk); fitViewport(mob); }
+  addEventListener("resize", fitAll);
+  setTimeout(fitAll, 0);
+
+  const vars = Object.create(null);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  function log(msg, cls="") {
+    const d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = msg;
+    logEl.appendChild(d);
     logEl.scrollTop = logEl.scrollHeight;
   }
-  function clearLog(){ logEl.textContent = ""; }
 
-  function win(frame){ return frame.contentWindow; }
-  function doc(frame){ return frame.contentDocument; }
-
-  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-
-  function isVisible(frame, el){
-    if (!el) return false;
-    const r = el.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) return false;
-    const cs = win(frame).getComputedStyle(el);
-    if (cs.display === "none" || cs.visibility === "hidden" || cs.opacity === "0") return false;
-    return true;
+  function resolveArg(x){
+    if (typeof x === "string" && x.startsWith("$")) return vars[x.slice(1)];
+    return x;
+  }
+  function looksLikeSelector(s){
+    if (typeof s !== "string") return false;
+    const t = s.trim();
+    if (!t) return false;
+    if (t.includes("\\n")) return false;
+    return t.startsWith("#") || t.startsWith(".") || t.startsWith("[");
   }
 
-  function q(frame, sel){
-    const el = doc(frame).querySelector(sel);
-    if (!el) throw new Error("Missing element: " + sel);
+  function getTargetFrameEl(){
+    return (targetPick.value === "mobile") ? frameMob : frameDesk;
+  }
+  function doc(){
+    const fr = getTargetFrameEl();
+    const d = fr.contentDocument;
+    if (!d) throw new Error("Iframe document not ready (same-origin?)");
+    return d;
+  }
+
+  function q(sel) {
+    const el = doc().querySelector(sel);
+    if (!el) throw new Error(`Missing element: ${sel}`);
     return el;
   }
+  function qMaybe(sel){ return doc().querySelector(sel); }
 
-  async function waitFor(frame, sel, timeout=2000){
+  function isVisible(el){
+    if (!el) return false;
+    const fr = getTargetFrameEl();
+    const cs = fr.contentWindow.getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  async function waitFor(sel, ms=2000){
     const t0 = performance.now();
-    while (performance.now()-t0 < timeout){
-      const el = doc(frame).querySelector(sel);
+    while (performance.now() - t0 < ms){
+      const el = qMaybe(sel);
       if (el) return el;
-      await sleep(20);
+      await sleep(25);
     }
-    throw new Error("Timeout waiting for " + sel);
-  }
-  async function waitForVisible(frame, sel, timeout=2000){
-    const t0 = performance.now();
-    while (performance.now()-t0 < timeout){
-      const el = doc(frame).querySelector(sel);
-      if (el && isVisible(frame, el)) return el;
-      await sleep(20);
-    }
-    throw new Error("Timeout waiting for visible " + sel);
-  }
-  async function waitForGone(frame, sel, timeout=2000){
-    const t0 = performance.now();
-    while (performance.now()-t0 < timeout){
-      const el = doc(frame).querySelector(sel);
-      if (!el || !isVisible(frame, el)) return true;
-      await sleep(20);
-    }
-    throw new Error("Timeout waiting for gone " + sel);
-  }
-  async function waitForContains(frame, sel, needle, timeout=2000){
-    const t0 = performance.now();
-    while (performance.now()-t0 < timeout){
-      const el = doc(frame).querySelector(sel);
-      if (el){
-        const txt = (el.value != null ? el.value : el.textContent) || "";
-        if (String(txt).includes(String(needle))) return true;
-      }
-      await sleep(20);
-    }
-    throw new Error(`Timeout waiting for contains "${needle}" in ${sel}`);
-  }
-  async function waitForTextNotEqual(frame, sel, prev, timeout=2000){
-    const t0 = performance.now();
-    while (performance.now()-t0 < timeout){
-      const el = doc(frame).querySelector(sel);
-      if (el){
-        const txt = (el.value != null ? el.value : el.textContent) || "";
-        if (String(txt) !== String(prev)) return true;
-      }
-      await sleep(20);
-    }
-    throw new Error("Timeout waiting for text change on " + sel);
-  }
-  async function waitForCountAtLeast(frame, sel, n, timeout=2000){
-    const t0 = performance.now();
-    while (performance.now()-t0 < timeout){
-      const c = doc(frame).querySelectorAll(sel).length;
-      if (c >= n) return c;
-      await sleep(20);
-    }
-    throw new Error(`Timeout waiting for countAtLeast ${sel} >= ${n}`);
+    throw new Error(`Timeout waiting for ${sel}`);
   }
 
-  function clickSel(frame, sel){
-    const el = q(frame, sel);
-    el.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, cancelable:true, view:win(frame)}));
-    el.click();
-    el.dispatchEvent(new MouseEvent("mouseup", {bubbles:true, cancelable:true, view:win(frame)}));
+  async function waitForVisible(sel, ms=2000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const el = qMaybe(sel);
+      if (el && isVisible(el)) return el;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for visible ${sel}`);
   }
 
-  function setValue(frame, sel, val){
-    const el = q(frame, sel);
+  async function waitForGone(sel, ms=2000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const el = qMaybe(sel);
+      if (!el) return;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for gone ${sel}`);
+  }
+
+  function getTextAny(selOrText){
+    if (!looksLikeSelector(selOrText)) return String(selOrText ?? "");
+    const el = q(selOrText);
+    if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT")) return (el.value || "").trim();
+    return (el.textContent || "").trim();
+  }
+
+  async function waitForTextNotEqual(sel, prev, ms=2000){
+    const prevVal = resolveArg(prev);
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const cur = getTextAny(sel);
+      if (String(cur) !== String(prevVal)) return;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for text change on ${sel}`);
+  }
+
+  async function waitForContains(selOrText, needle, ms=2000){
+    const want = String(resolveArg(needle) ?? "");
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      const hay = getTextAny(selOrText);
+      if (String(hay).includes(want)) return;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for contains "${want}" in ${selOrText}`);
+  }
+
+  function count(sel){ return doc().querySelectorAll(sel).length; }
+
+  async function waitForCountAtLeast(sel, n, ms=2000){
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms){
+      if (count(sel) >= Number(n)) return;
+      await sleep(25);
+    }
+    throw new Error(`Timeout waiting for countAtLeast ${n} on ${sel} (got ${count(sel)})`);
+  }
+
+  function assert(cond, msg){ if (!cond) throw new Error(msg || "Assertion failed"); }
+
+  function expectVisible(sel){
+    const el = q(sel);
+    assert(isVisible(el), `Not visible: ${sel}`);
+  }
+
+  function expectContains(a0, sub){
+    const needle = String(resolveArg(sub) ?? "");
+    const hay = looksLikeSelector(a0) ? getTextAny(a0) : String(resolveArg(a0) ?? "");
+    assert(String(hay).includes(needle), `expectContains failed: "${needle}" not in "${String(hay)}"`);
+  }
+
+  function expectNotEqual(a, b){
+    const A = String(resolveArg(a));
+    const B = String(resolveArg(b));
+    assert(A !== B, `expectNotEqual failed: both "${A}"`);
+  }
+
+  function expectContained(childSel, parentSel, pad=0){
+    const child = q(childSel);
+    const parent = q(parentSel);
+    const c = child.getBoundingClientRect();
+    const p = parent.getBoundingClientRect();
+    const pd = Number(pad ?? 0);
+    if (c.left < p.left - pd || c.top < p.top - pd || c.right > p.right + pd || c.bottom > p.bottom + pd){
+      throw new Error(`Overflow: ${childSel} not within ${parentSel}`);
+    }
+  }
+
+  function clickSel(sel){
+    const fr = getTargetFrameEl();
+    const el = q(sel);
+    el.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+    el.dispatchEvent(new MouseEvent("pointerup",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+    el.dispatchEvent(new MouseEvent("mouseup",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+    el.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+  }
+
+  function setValue(sel, value){
+    const el = q(sel);
     el.focus();
-    el.value = val;
-    el.dispatchEvent(new InputEvent("input", {bubbles:true, cancelable:true}));
-    el.dispatchEvent(new Event("change", {bubbles:true, cancelable:true}));
+    if ("value" in el) el.value = value;
+    el.dispatchEvent(new Event("input",{bubbles:true}));
+    el.dispatchEvent(new Event("change",{bubbles:true}));
   }
 
-  function getTextAny(frame, selOrVar){
-    if (typeof selOrVar === "string" && selOrVar.startsWith("$")){
-      return String(vars[selOrVar.slice(1)] ?? "");
-    }
-    const el = q(frame, selOrVar);
-    return String(el.value != null ? el.value : el.textContent ?? "");
-  }
-  function resolveArg(a){
-    if (typeof a === "string" && a.startsWith("$")) return vars[a.slice(1)];
-    return a;
-  }
-  function assert(cond, msg){ if (!cond) throw new Error(msg); }
-
-  function expectVisible(frame, sel){
-    const el = q(frame, sel);
-    assert(isVisible(frame, el), "Not visible: " + sel);
-  }
-  function expectContains(frame, a, b){
-    const txt = (typeof a === "string" && a.startsWith("$")) ? String(resolveArg(a) ?? "") : getTextAny(frame, a);
-    if (!String(txt).includes(String(b))){
-      throw new Error(`expectContains failed: "${b}" not in "${txt}"`);
-    }
-  }
-  function expectNotEqual(a,b){
-    if (String(a) === String(b)) throw new Error(`expectNotEqual failed: ${a} == ${b}`);
-  }
-  function count(frame, sel){ return doc(frame).querySelectorAll(sel).length; }
-
-  function expectContained(frame, innerSel, outerSel, pad=0){
-    const inner = q(frame, innerSel);
-    const outer = q(frame, outerSel);
-    const ir = inner.getBoundingClientRect();
-    const or = outer.getBoundingClientRect();
-    if (ir.left < or.left - pad || ir.top < or.top - pad || ir.right > or.right + pad || ir.bottom > or.bottom + pad){
-      throw new Error(`expectContained failed: ${innerSel} not within ${outerSel} (pad ${pad})`);
-    }
-  }
-
-  function squareCenter(fileRank, boardRect){
-    const files="abcdefgh";
-    const f=files.indexOf(fileRank[0]);
-    const r=parseInt(fileRank[1],10);
-    if (f<0 || !(r>=1 && r<=8)) return null;
-    const sq = boardRect.width/8;
-    const x = boardRect.left + (f+0.5)*sq;
-    const y = boardRect.top + ((8-r)+0.5)*sq;
-    return {x,y};
-  }
-
-  function dispatchPointer(frame, type, x, y){
-    const w = win(frame);
-    const el = w.document.elementFromPoint(x, y);
+  function dispatchPointer(type, x, y, opts={}){
+    const fr = getTargetFrameEl();
+    const d = fr.contentDocument;
+    const w = fr.contentWindow;
+    const el = d.elementFromPoint(x, y);
     if (!el) throw new Error(`No element at point (${x.toFixed(1)},${y.toFixed(1)})`);
-    el.dispatchEvent(new PointerEvent(type, {
-      bubbles:true, cancelable:true, pointerId:1, pointerType:"mouse",
-      clientX:x, clientY:y, buttons:1, pressure:0.5
-    }));
+    const ev = new PointerEvent(type, {
+      bubbles:true, cancelable:true, view:w,
+      clientX:x, clientY:y,
+      pointerId: opts.pointerId ?? 1,
+      pointerType: opts.pointerType ?? "mouse",
+      buttons: opts.buttons ?? (type === "pointerdown" ? 1 : 0),
+      pressure: opts.pressure ?? (type === "pointerdown" ? 0.5 : 0),
+      isPrimary:true
+    });
+    el.dispatchEvent(ev);
   }
 
-  async function dragSquare(frame, from, to, holdMs=120){
-    const boardEl =
-      doc(frame).querySelector("#boardWrap") ||
-      doc(frame).querySelector("#boardHost .sc-shell") ||
-      doc(frame).querySelector("#boardHost");
-    if (!boardEl) throw new Error("dragSquare: could not find board element");
-    const r = boardEl.getBoundingClientRect();
-    const a = squareCenter(from, r), b = squareCenter(to, r);
-    if (!a || !b) throw new Error(`dragSquare could not locate square centers for ${from} or ${to}`);
-    dispatchPointer(frame, "pointerdown", a.x, a.y);
-    await sleep(Math.max(0, holdMs));
-    dispatchPointer(frame, "pointermove", b.x, b.y);
+  function getSquareCenterFallback(sq){
+    const d = doc();
+    const candidates = [`[data-square="${sq}"]`,`[data-sq="${sq}"]`,`.sq-${sq}`,`.square-${sq}`];
+    for (const sel of candidates){
+      const el = d.querySelector(sel);
+      if (el){
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width/2, y: r.top + r.height/2 };
+      }
+    }
+    return null;
+  }
+
+  async function dragSquare(fromSq, toSq, durationMs=120){
+    const fr = getTargetFrameEl();
+    const w = fr.contentWindow;
+
+    let a = null, b = null;
+    if (typeof w.__getSquareCenter === "function"){
+      a = w.__getSquareCenter(fromSq);
+      b = w.__getSquareCenter(toSq);
+    }
+    if (!a || !b){
+      a = a || getSquareCenterFallback(fromSq);
+      b = b || getSquareCenterFallback(toSq);
+    }
+    if (!a || !b) throw new Error(`dragSquare could not locate square centers for ${fromSq} or ${toSq}`);
+
+    const steps = Math.max(4, Math.floor(durationMs / 20));
+    dispatchPointer("pointerdown", a.x, a.y, {buttons:1});
     await sleep(16);
-    dispatchPointer(frame, "pointerup", b.x, b.y);
-    await sleep(30);
-  }
-
-  // ---- Robust step scanner: reads JSON arrays from text, respecting strings/escapes ----
-  function stripCommentsKeepNewlines(text){
-    // Remove full-line comments beginning with optional whitespace then '#'
-    return text
-      .split("\n")
-      .map(line => (/^\s*#/.test(line) ? "" : line))
-      .join("\n");
-  }
-
-  function scanNextJSONArray(text, startIdx){
-    // Find next '['
-    let i = startIdx;
-    const n = text.length;
-    while (i < n && /\s/.test(text[i])) i++;
-    if (i >= n) return null;
-    if (text[i] !== "[") {
-      // Any non-ws junk is illegal
-      const snippet = text.slice(i, Math.min(n, i+120));
-      throw new Error("Invalid content where a JSON step was expected:\n" + snippet);
+    for (let i=1;i<steps;i++){
+      const t = i/(steps-1);
+      dispatchPointer("pointermove", a.x + (b.x-a.x)*t, a.y + (b.y-a.y)*t, {buttons:1});
+      await sleep(16);
     }
-    let depth = 0;
-    let inStr = false;
-    let esc = false;
-    for (; i < n; i++){
-      const ch = text[i];
-      if (inStr){
-        if (esc){ esc = false; continue; }
-        if (ch === "\\"){ esc = true; continue; }
-        if (ch === "\""){ inStr = false; continue; }
-        continue;
-      } else {
-        if (ch === "\""){ inStr = true; continue; }
-        if (ch === "["){ depth++; continue; }
-        if (ch === "]"){ depth--; if (depth === 0){
-          const end = i+1;
-          return { json: text.slice(startIdxNonWS(startIdx, text), end), next: end };
-        } continue; }
-      }
-    }
-    return { json: null, next: n, incomplete: true };
-
-    function startIdxNonWS(si, s){
-      let j = si;
-      while (j < s.length && /\s/.test(s[j])) j++;
-      return j;
-    }
-  }
-
-  function parseTestsStrict(src){
-    const lines = src.replace(/\r/g,"").split("\n");
-
-    // Strict structure:
-    // - Only blank lines or comment lines allowed outside tests.
-    // - Each test begins with "TEST " (space). "TEST:" is invalid.
-    const tests = [];
-    let i = 0;
-
-    function fail(msg){ throw new Error(msg); }
-
-    while (i < lines.length){
-      const raw = lines[i];
-      const line = raw.trim();
-
-      if (!line || line.startsWith("#")) { i++; continue; }
-
-      if (line.startsWith("TEST:")) fail(`Invalid test header (must start with 'TEST '): ${raw}`);
-      if (!line.startsWith("TEST ")) fail(`Invalid line outside of a TEST block: ${raw}`);
-
-      const name = line.slice(5).trim();
-      if (!name) fail("TEST header missing name at line " + (i+1));
-
-      // Collect until next TEST header or EOF.
-      i++;
-      let bodyLines = [];
-      while (i < lines.length){
-        const t = lines[i].trim();
-        if (t && !t.startsWith("#")){
-          if (t.startsWith("TEST:")) fail(`Invalid test header (must start with 'TEST '): ${lines[i]}`);
-          if (t.startsWith("TEST ")) break;
-        }
-        bodyLines.push(lines[i]);
-        i++;
-      }
-
-      const body = stripCommentsKeepNewlines(bodyLines.join("\n"));
-      const steps = [];
-
-      // Scan repeated JSON arrays
-      let pos = 0;
-      while (true){
-        // skip whitespace
-        while (pos < body.length && /\s/.test(body[pos])) pos++;
-        if (pos >= body.length) break;
-        const scanned = scanJSONArrayFrom(body, pos);
-        steps.push(scanned.step);
-        pos = scanned.next;
-      }
-
-      tests.push({name, steps});
-    }
-    return tests;
-
-    function scanJSONArrayFrom(s, pos){
-      // Find next '[' at/after pos, then match to closing ']' respecting strings.
-      // Return parsed JSON and next index.
-      while (pos < s.length && /\s/.test(s[pos])) pos++;
-      if (pos >= s.length) return null;
-      if (s[pos] !== "["){
-        const snippet = s.slice(pos, Math.min(s.length, pos+120));
-        fail("Invalid content where a JSON step was expected:\n" + snippet);
-      }
-      let depth = 0, inStr=false, esc=false;
-      let i = pos;
-      for (; i < s.length; i++){
-        const ch = s[i];
-        if (inStr){
-          if (esc){ esc=false; continue; }
-          if (ch === "\\"){ esc=true; continue; }
-          if (ch === "\""){ inStr=false; continue; }
-          continue;
-        } else {
-          if (ch === "\""){ inStr=true; continue; }
-          if (ch === "["){ depth++; continue; }
-          if (ch === "]"){ depth--; if (depth === 0){ i++; break; } continue; }
-        }
-      }
-      if (depth !== 0) fail("Could not parse JSON step (incomplete/invalid):\n" + s.slice(pos, Math.min(s.length, pos+200)));
-
-      const jsonText = s.slice(pos, i);
-      let step;
-      try { step = JSON.parse(jsonText); }
-      catch(e){ fail("Could not parse JSON step (invalid JSON):\n" + jsonText); }
-      if (!Array.isArray(step)) fail("Step must be a JSON array: " + jsonText);
-      return { step, next: i };
-    }
-  }
-
-  // Decide which frame an op runs in.
-  // Default: desktop. Mobile-only ops can be forced via ["setViewport","mobile"] in your tests if you add it later.
-  let currentFrame = "desktop";
-  function frameForOp(op){
-    // Most ops should run against desktop unless tests explicitly change it.
-    // You can still target mobile via ["useViewport","mobile"] if you add that test op; implemented below.
-    return (currentFrame === "mobile") ? mobFrame : deskFrame;
+    dispatchPointer("pointerup", b.x, b.y, {buttons:0});
+    await sleep(60);
   }
 
   async function stepExec(step){
     const [op, ...raw] = step;
-    const args = raw.map(a => (typeof a === "string" && a.startsWith("$")) ? vars[a.slice(1)] : a);
-    const frame = frameForOp(op);
+    const args = raw.map(resolveArg);
 
     switch(op){
-      case "useViewport":
-        if (args[0] !== "desktop" && args[0] !== "mobile") throw new Error("useViewport expects 'desktop' or 'mobile'");
-        currentFrame = args[0];
-        return;
-
       case "sleep": await sleep(args[0]||0); return;
-      case "waitFor": await waitFor(frame, args[0], args[1] ?? 2000); return;
-      case "waitForVisible": await waitForVisible(frame, args[0], args[1] ?? 2000); return;
-      case "waitForGone": await waitForGone(frame, args[0], args[1] ?? 2000); return;
-      case "waitForContains": await waitForContains(frame, args[0], args[1], args[2] ?? 2000); return;
-      case "waitForTextNotEqual": await waitForTextNotEqual(frame, args[0], args[1], args[2] ?? 2000); return;
-      case "waitForCountAtLeast": await waitForCountAtLeast(frame, args[0], args[1], args[2] ?? 2000); return;
+      case "waitFor": await waitFor(args[0], args[1] ?? 2000); return;
+      case "waitForVisible": await waitForVisible(args[0], args[1] ?? 2000); return;
+      case "waitForGone": await waitForGone(args[0], args[1] ?? 2000); return;
+      case "waitForContains": await waitForContains(args[0], args[1], args[2] ?? 2000); return;
+      case "waitForTextNotEqual": await waitForTextNotEqual(args[0], args[1], args[2] ?? 2000); return;
+      case "waitForCountAtLeast": await waitForCountAtLeast(args[0], args[1], args[2] ?? 2000); return;
 
-      case "click": clickSel(frame, args[0]); return;
-      case "type": setValue(frame, args[0], String(args[1] ?? "")); return;
+      case "click": clickSel(args[0]); return;
+      case "type": setValue(args[0], String(args[1] ?? "")); return;
 
-      case "eval": {
-        const code = String(args[0] ?? "");
-        const w = win(frame);
-        const ret = w.eval(code);
-        if (ret && typeof ret.then === "function") await ret;
-        return;
-      }
-
-      case "expectVisible": expectVisible(frame, args[0]); return;
-      case "expectContains": expectContains(frame, args[0], args[1]); return;
+      case "expectVisible": expectVisible(args[0]); return;
+      case "expectContains": expectContains(args[0], args[1]); return;
       case "expectNotEqual": expectNotEqual(args[0], args[1]); return;
 
       case "storeText": {
-        const v = getTextAny(frame, args[0]);
-        vars[String(args[1])] = v;
+        const val = getTextAny(args[0]);
+        vars[String(args[1])] = val;
         return;
       }
 
       case "countAtLeast": {
-        const n = count(frame, args[0]);
+        const n = count(args[0]);
         if (n < args[1]) throw new Error(`countAtLeast failed: ${args[0]} had ${n}, need >= ${args[1]}`);
         return;
       }
 
-      case "expectContained": expectContained(frame, args[0], args[1], args[2] ?? 0); return;
-      case "dragSquare": await dragSquare(frame, String(args[0]), String(args[1]), args[2] ?? 120); return;
+      case "expectContained": expectContained(args[0], args[1], args[2] ?? 0); return;
+      case "dragSquare": await dragSquare(String(args[0]), String(args[1]), args[2] ?? 120); return;
 
       case "timeUnder": {
         const budgetMs = Number(args[0]);
@@ -488,101 +408,159 @@
       }
 
       default:
-        log(`SKIP op ${op}`, "warn");
+        log(`SKIP op ${op}`, "skip");
         return;
     }
   }
 
-  async function loadTests(){
-    const url = $("#testsUrl").value.trim();
-    const res = await fetch(url, {cache:"no-store"});
-    if (!res.ok) throw new Error(`Could not load ${url}: ${res.status}`);
-    const txt = await res.text();
-    const tests = parseTestsStrict(txt);
-    log(`✔ Loaded ${url} (${txt.length} bytes)`, "ok");
-    log(`✔ Parsed ${tests.length} TEST blocks`, "ok");
+  // Parse your existing format: blocks separated by blank lines; first line "TEST ..."
+  // Each step is JSON (buffered across lines if needed).
+  function parseTests(src){
+    const blocks = src.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+    const tests = [];
+    for (const b of blocks){
+      const rawLines = b.split("\n").map(l => l.replace(/\r/g,""));
+      const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      if (!lines.length) continue;
+      const nameLine = lines.shift();
+      if (!nameLine.startsWith("TEST ")) continue;
+      const name = nameLine.slice(5).trim();
+
+      const steps = [];
+      let buf = "";
+      for (const line of lines){
+        buf = buf ? (buf + "\n" + line) : line;
+        try{
+          const step = JSON.parse(buf);
+          steps.push(step);
+          buf = "";
+        }catch(e){
+          // keep buffering
+        }
+      }
+      if (buf.trim()) throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
+      tests.push({name, steps});
+    }
     return tests;
   }
 
-  function scaleFrames(){
-    const deskHost = $("#desktopCard .viewportHost");
-    const mobHost = $("#mobileCard .viewportHost");
-    const d = deskHost.getBoundingClientRect();
-    const m = mobHost.getBoundingClientRect();
-    const ds = Math.min((d.width-20)/DESK_W, (d.height-20)/DESK_H, 1);
-    const ms = Math.min((m.width-20)/MOB_W, (m.height-20)/MOB_H, 1);
-    $("#deskScale").style.transform = `scale(${ds})`;
-    $("#mobScale").style.transform = `scale(${ms})`;
-  }
-  window.addEventListener("resize", scaleFrames);
-
-  function waitFramesLoaded(){
-    return Promise.all([
-      new Promise(r => { if (deskFrame.contentDocument?.readyState === "complete") return r(); deskFrame.addEventListener("load", () => r(), {once:true}); }),
-      new Promise(r => { if (mobFrame.contentDocument?.readyState === "complete") return r(); mobFrame.addEventListener("load", () => r(), {once:true}); })
-    ]);
+  async function loadText(path){
+    const r = await fetch(path, {cache:"no-store"});
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${path}`);
+    return await r.text();
   }
 
-  async function reloadFrames(){
-    deskStatus.textContent = "reloading";
-    mobStatus.textContent = "reloading";
-    await new Promise(r => {
-      let left=2;
-      const done=()=>{ left--; if (!left) r(); };
-      deskFrame.addEventListener("load", done, {once:true});
-      mobFrame.addEventListener("load", done, {once:true});
-      const bust = "t=" + Date.now();
-      deskFrame.src = "reducer.html?" + bust;
-      mobFrame.src = "reducer.html?" + bust;
-    });
-    deskStatus.textContent = "ready";
-    mobStatus.textContent = "ready";
-    scaleFrames();
+  function getDefaultApp(){
+    const u = new URL(location.href);
+    const qp = u.searchParams.get("app");
+    if (qp) return qp;
+    return "reducer.html";
   }
 
-  async function runAll(fresh){
-    clearLog();
+  function setApp(){
+    const app = appInput.value.trim() || getDefaultApp();
+    appInput.value = app;
+    frameDesk.src = app;
+    frameMob.src = app;
+    appLabelDesk.textContent = app;
+    appLabelMob.textContent = app;
+  }
+
+  async function run(){
+    logEl.innerHTML = "";
     Object.keys(vars).forEach(k => delete vars[k]);
-    currentFrame = "desktop";
 
-    setStatus("loading tests...");
-    const tests = await loadTests();
-
-    if (fresh){
-      setStatus("reloading app...");
-      await reloadFrames();
-    } else {
-      await waitFramesLoaded();
-      scaleFrames();
+    statusEl.textContent = "loading tests…";
+    let testsText;
+    try{
+      testsText = await loadText("reducertests.txt");
+      log(`✔ Loaded reducertests.txt (${testsText.length} bytes)`, "ok");
+    }catch(e){
+      log(`✘ FAILED to load reducertests.txt: ${e}`, "fail");
+      statusEl.textContent = "failed (tests not loaded)";
+      return;
     }
 
-    setStatus("running...");
-    let pass=0, fail=0;
+    let tests;
+    try{
+      tests = parseTests(testsText);
+      log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
+      if (!tests.length){
+        log(`Hint: blocks must start with "TEST ..." and be separated by blank lines.`, "dim");
+        statusEl.textContent = "failed (0 tests parsed)";
+        return;
+      }
+    }catch(e){
+      log(`✘ FAILED to parse tests: ${e.message || e}`, "fail");
+      statusEl.textContent = "failed (parse error)";
+      return;
+    }
+
+    const targetName = (targetPick.value === "mobile") ? "mobile" : "desktop";
+    statusEl.textContent = `running (${targetName})`;
+
+    let pass = 0;
+
     for (const t of tests){
-      log(`\nTEST: ${t.name}`);
+      log("\nTEST: " + t.name, "dim");
+
+      // Reload target between tests (keeps isolation like your original runner).
+      const fr = getTargetFrameEl();
+      try{ fr.contentWindow.location.reload(); }catch(e){
+        log(`✘ Could not reload target iframe (same-origin?)`, "fail");
+        log(String(e?.message || e), "fail");
+        statusEl.textContent = "failed (reload error)";
+        return;
+      }
+
+      // Wait for document ready + at least one stable anchor
+      await sleep(0);
       try{
-        for (const step of t.steps){
-          log("  " + JSON.stringify(step));
-          await stepExec(step);
+        await waitFor("body", 8000);
+      }catch(e){
+        // body should exist; if not, bail
+        log(`✘ Iframe did not become ready`, "fail");
+        statusEl.textContent = "failed (iframe not ready)";
+        return;
+      }
+
+      try{
+        for (const s of t.steps){
+          log("  " + JSON.stringify(s));
+          await stepExec(s);
         }
-        log(`✔ PASS ${t.name}`, "ok");
+        log("✔ PASS " + t.name, "pass");
         pass++;
       }catch(e){
-        log(`✘ FAIL ${t.name}`, "bad");
-        log(String(e?.stack || e), "bad");
-        fail++;
+        log("✘ FAIL " + t.name, "fail");
+        log(String(e && e.stack ? e.stack : (e && e.message ? e.message : e)), "fail");
       }
     }
-    setStatus(`done (${pass}/${pass+fail})`, fail ? "bad" : "ok");
+
+    statusEl.textContent = `done (${pass}/${tests.length}) on ${targetName}`;
   }
 
-  $("#btnRun").addEventListener("click", () => runAll(false).catch(e => { log(String(e?.stack||e),"bad"); setStatus("error","bad"); }));
-  $("#btnRunFresh").addEventListener("click", () => runAll(true).catch(e => { log(String(e?.stack||e),"bad"); setStatus("error","bad"); }));
+  async function runWithFreshLoad(){
+    setApp();
+    await Promise.all([
+      new Promise(r => frameDesk.addEventListener("load", r, {once:true})),
+      new Promise(r => frameMob.addEventListener("load", r, {once:true}))
+    ]);
+    await run();
+  }
 
-  // initial
-  deskFrame.addEventListener("load", () => { deskStatus.textContent="ready"; scaleFrames(); });
-  mobFrame.addEventListener("load", () => { mobStatus.textContent="ready"; scaleFrames(); });
-  scaleFrames();
+  document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
+  document.getElementById("reloadBtn").addEventListener("click", () => getTargetFrameEl().contentWindow.location.reload());
+  document.getElementById("copyBtn").addEventListener("click", async () => {
+    const text = Array.from(logEl.querySelectorAll("div")).map(d => d.textContent).join("\n");
+    try{ await navigator.clipboard.writeText(text); log("✔ Copied results to clipboard", "ok"); }
+    catch(e){ log("✘ Clipboard copy failed (permission?)", "fail"); }
+  });
+
+  appInput.value = getDefaultApp();
+  setApp();
+  fitAll();
+  log("Ready. Pick target (desktop/mobile), click Run. Tests loaded from reducertests.txt.", "dim");
 })();
 </script>
 </body>
