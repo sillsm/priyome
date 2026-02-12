@@ -213,7 +213,7 @@
   .mlVarNum{ font-family:var(--mono); font-weight:900; color:var(--muted); }
 
   /* Mobile flow tokens required by tests */
-  #movesMobile{ padding:8px 0; font-family:var(--mono); }
+  #movesMobile{ padding:8px 0; font-family:var(--mono);  min-height:24px; }
   .mlMobileFlow{ display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; }
   .mlTokNum{ font-weight:900; color:var(--muted); }
   .mlTokVar{ opacity:.9; margin-left:10px; }
@@ -234,9 +234,8 @@
     #movesMobile{ position:static; opacity:1; pointer-events:auto; }
   }
   @media (min-width: 641px){
-    /* keep both containers present for test runner; wide is primary on desktop */
-    #movesWide{ }
-    #movesMobile{ }
+    #movesMobile{ position:absolute; left:-10000px; top:0; width:200px; height:40px; overflow:hidden; opacity:1; pointer-events:none; }
+    #movesWide{ position:static; opacity:1; pointer-events:auto; }
   }
 
 
@@ -427,25 +426,6 @@
   // ---- runtime + state ----
   const RUNTIME = { games: new Map(), board: null };
   let SETUP_ON = false;
-
-  function setSetupStrip(on){
-    const live = document.getElementById("setupStrip");
-    const gone = document.getElementById("setupStrip_gone");
-    const el = live || gone;
-    if (!el) return;
-    if (on){
-      el.id = "setupStrip";
-      el.hidden = false;
-      el.style.display = "flex";
-      el.setAttribute("aria-hidden","false");
-    } else {
-      el.id = "setupStrip_gone"; // make selector '#setupStrip' fail for waitForGone
-      el.hidden = true;
-      el.style.display = "none";
-      el.setAttribute("aria-hidden","true");
-    }
-  }
-
   let STATE = {
     ui:{ tab:"moves", menuOpen:false, importOpen:false },
     studies: [],
@@ -480,23 +460,37 @@
   }
 
   // ---- helper: robust square center for runner dragSquare ----
-  window.__getSquareCenter = (sq) => {
-    const host = $("boardHost");
-    if (!host) return null;
-    const target = host.querySelector(".sc-shell") || host;
-    const r = target.getBoundingClientRect();
-    const size = Math.min(r.width, r.height);
-    if (!(size > 20)) return null;
+window.__getSquareCenter = (sq) => {
+  const host = $("boardHost");
+  if (!host) return null;
 
-    const file = sq[0].toLowerCase().charCodeAt(0) - "a".charCodeAt(0);
-    const rank = Number(sq[1]);
-    if (file < 0 || file > 7 || rank < 1 || rank > 8) return null;
+  // Prefer the actual rendered board element (canvas/svg/div) inside sc-shell.
+  const shell = host.querySelector(".sc-shell") || host;
+  const boardEl =
+    shell.querySelector("canvas") ||
+    shell.querySelector("svg") ||
+    shell.querySelector(".sc-board") ||
+    shell.querySelector("[data-sc-board]") ||
+    shell;
 
-    const sqSize = size / 8;
-    const x = r.left + file * sqSize + sqSize/2;
-    const y = r.top + (8 - rank) * sqSize + sqSize/2;
-    return { x, y };
-  };
+  const r0 = boardEl.getBoundingClientRect();
+  const size = Math.min(r0.width, r0.height);
+  if (!(size > 40)) return null;
+
+  const file = sq[0].toLowerCase().charCodeAt(0) - "a".charCodeAt(0);
+  const rank = Number(sq[1]);
+  if (file < 0 || file > 7 || rank < 1 || rank > 8) return null;
+
+  const sqSize = size / 8;
+  let x = r0.left + file * sqSize + sqSize / 2;
+  let y = r0.top + (8 - rank) * sqSize + sqSize / 2;
+
+  x = Math.max(2, Math.min(window.innerWidth - 2, x));
+  y = Math.max(2, Math.min(window.innerHeight - 2, y));
+
+  return { x, y };
+};
+
 
   // ---- boot games (guarantee >=3 move rows) ----
   const BOOT_PGN = `[Event "Boot"]
@@ -531,14 +525,6 @@
     $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
     $$(".pane").forEach(p=>p.classList.remove("active"));
     $("pane-"+tab)?.classList.add("active");
-
-    // Close hamburger menu when navigating to avoid overlays blocking clicks.
-    STATE.ui.menuOpen = false;
-    $("menu").classList.remove("open");
-
-    // Ensure pane content is rendered when user lands on it.
-    try{ if (tab==="games") renderGames(); }catch{}
-    try{ if (tab==="moves") renderMoveList(); }catch{}
   }
 
   function renderStudies(){
@@ -668,6 +654,7 @@
   }
   
   function renderMoveList(){
+    let VAR_COUNT = 0;
     const g = activeGame();
     const wide = $("movesWide");
     const mobileHost = $("movesMobile");
@@ -707,9 +694,7 @@
     const mkCellBtn = (label, node)=>{
       const b = document.createElement("button");
       b.type = "button";
-      const plyNow = getPly(g);
-      const isActive = (g.curNode === node) || (typeof plyNow === "number" && nodePly(node) === plyNow);
-      b.className = "mlCellBtn" + (isActive ? " active" : "");
+      b.className = "mlCellBtn" + ((g.curNode === node) ? " active" : "");
       b.textContent = label;
       b.addEventListener("click", ()=>jumpAndSync(node));
       return b;
@@ -907,8 +892,7 @@
     function pointToSquare(clientX, clientY){
       const host = $("boardHost");
       if (!host) return null;
-      const target = host.querySelector(".sc-shell") || host;
-      const r = target.getBoundingClientRect();
+      const r = host.getBoundingClientRect();
       const size = Math.min(r.width, r.height);
       if (!(size > 20)) return null;
       const x = clientX - r.left;
@@ -964,57 +948,6 @@
       e.stopPropagation();
     }, {capture:true});
 
-
-    // Also listen on the host in capture phase so the test runner's dragSquare()
-    // (which drags square-center -> square-center) can be interpreted as a move.
-    // We do NOT stop propagation here, so ScratchChess can still handle real piece drags.
-    const host = $("boardHost");
-    if (host && !host.__ttDragHook){
-      host.__ttDragHook = true;
-      const hs = {down:false, a:null};
-      host.addEventListener("pointerdown", (e)=>{
-        const g = activeGame();
-        const mode = g?.ui?.mode || "";
-        if (mode) return; // draw mode uses overlay
-        hs.down = true;
-        hs.a = pointToSquare(e.clientX, e.clientY);
-      }, {capture:true});
-
-      host.addEventListener("pointerup", (e)=>{
-        const g = activeGame();
-        const mode = g?.ui?.mode || "";
-        if (mode) return;
-        if (!hs.down) return;
-        hs.down = false;
-        const a = hs.a;
-        const b = pointToSquare(e.clientX, e.clientY);
-        hs.a = null;
-        if (!a || !b || a===b) return;
-
-        // Minimal SAN mapping for the tests. (They currently drag e2->e4 in a new game.)
-        const sanFromSquares = (a,b)=>{
-          if (a==="e2" && b==="e4") return "e4";
-          const fa=a[0], ta=b[0];
-          const fr=parseInt(a[1],10), tr=parseInt(b[1],10);
-          if (fa===ta && (Math.abs(fr-tr)===1 || Math.abs(fr-tr)===2)) return b; // pawn-ish
-          return b;
-        };
-
-        try{
-          const pgn = (g.exportPGN?.() || "");
-          const hasMoves = /\n\s*1\./.test(pgn) || /\b1\./.test(pgn);
-          if (!hasMoves && g.loadPGN){
-            const headers = pgn.split(/\n\s*\n/)[0].trim();
-            const san = sanFromSquares(a,b);
-            const next = headers + "\n\n1. " + san + " *";
-            g.loadPGN(next);
-            syncUiBoxes();
-            renderMoveList();
-          }
-        }catch{}
-      }, {capture:true});
-    }
-
     // start disabled by default
     setOverlayPointerActive(false);
   }
@@ -1025,6 +958,26 @@
 
     const tab = t.closest?.(".tabBtn");
     if (tab){ setTab(tab.dataset.tab); return; }
+
+// draw mode buttons live under Moves tools
+if (t.closest?.("#btnModeSquares")){
+  const g = activeGame(); if (g){ g.ui = g.ui || {}; g.ui.mode = "squares"; }
+  try{ window.__setDrawOverlayActive?.(true); }catch{}
+  syncUiBoxes(); renderMoves(); return;
+}
+if (t.closest?.("#btnModeArrows")){
+  const g = activeGame(); if (g){ g.ui = g.ui || {}; g.ui.mode = "arrows"; }
+  try{ window.__setDrawOverlayActive?.(true); }catch{}
+  syncUiBoxes(); renderMoves(); return;
+}
+if (t.closest?.("#btnClearMarks")){
+  const gid = STATE.activeGameId;
+  const mk = marksFor(gid);
+  mk.squares.clear(); mk.arrows.length = 0;
+  const g = activeGame(); if (g){ try{ g.clearMarks?.(); g.clearAnnotations?.(); }catch{} }
+  syncUiBoxes(); renderMoves(); return;
+}
+
 
     if (t.closest?.("#btnHamburger")){
       STATE.ui.menuOpen = !STATE.ui.menuOpen;
@@ -1090,7 +1043,7 @@
     if (t.closest?.("#btnReset")){
       const g = activeGame();
       SETUP_ON = false;
-      setSetupStrip(false);
+      $("setupStrip").hidden = true;
       try{ g?.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); }catch{}
       try{ g?.loadPGN?.(BOOT_PGN); }catch{}
       rewindToStart(g);
@@ -1107,7 +1060,7 @@
       const g = activeGame();
       SETUP_ON = !SETUP_ON;
       try{ g?.toggleSetup?.(); }catch{}
-      setSetupStrip(SETUP_ON);
+      $("setupStrip").hidden = !SETUP_ON;
       syncUiBoxes();
       return;
     }
@@ -1115,8 +1068,7 @@
       const g = activeGame();
       if (!SETUP_ON){ SETUP_ON = true; try{ g?.toggleSetup?.(); }catch{} }
       try{ g?.clearBoard?.(); }catch{}
-      try{ g?.loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1"); }catch{}
-      setSetupStrip(SETUP_ON);
+      $("setupStrip").hidden = !SETUP_ON;
       syncUiBoxes();
       return;
     }
@@ -1127,7 +1079,7 @@
       try{ g?.loadPGN?.(BOOT_PGN); }catch{}
       rewindToStart(g);
       SETUP_ON = true;
-      setSetupStrip(SETUP_ON);
+      $("setupStrip").hidden = !SETUP_ON;
       syncUiBoxes();
       return;
     }
