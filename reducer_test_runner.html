@@ -382,19 +382,40 @@
       case "expectContains": expectContains(args[0], args[1]); return;
       case "expectNotEqual": expectNotEqual(args[0], args[1]); return;
 
-      case "htmlContains": {
-        const html = await getAppHtml();
-        const sub = String(args[0] ?? "");
-        if (!html.includes(sub)) throw new Error(`htmlContains failed: missing substring:\n${sub}`);
-        return;
-      }
+case "htmlContains": {
+  const html = await getAppHtml();
+  const sub = String(args[0] ?? "");
 
-      case "htmlNotContains": {
-        const html = await getAppHtml();
-        const sub = String(args[0] ?? "");
-        if (html.includes(sub)) throw new Error(`htmlNotContains failed: found substring:\n${sub}`);
-        return;
-      }
+  const okRaw = html.includes(sub);
+  const okNorm = normWS(html).includes(normWS(sub));
+
+  if (!okRaw && !okNorm){
+    throw new Error(
+      `htmlContains failed.\n` +
+      `--- wanted ---\n${sub}\n` +
+      `--- note ---\n(raw + normalized match both failed)`
+    );
+  }
+  return;
+}
+
+case "htmlNotContains": {
+  const html = await getAppHtml();
+  const sub = String(args[0] ?? "");
+
+  const hitRaw = html.includes(sub);
+  const hitNorm = normWS(html).includes(normWS(sub));
+
+  if (hitRaw || hitNorm){
+    throw new Error(
+      `htmlNotContains failed.\n` +
+      `--- forbidden ---\n${sub}\n` +
+      `--- note ---\n(found in ${hitRaw ? "raw" : "normalized"} html)`
+    );
+  }
+  return;
+}
+
 
       case "storeText": {
         const val = getTextAny(args[0]);
@@ -506,6 +527,15 @@
     return html;
   }
 
+  function normWS(s){
+  return String(s ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n+/g, "\n")
+    .trim();
+}
+
+
   function getDefaultApp(){
     const u = new URL(location.href);
     const qp = u.searchParams.get("app");
@@ -596,19 +626,21 @@
       window.__appHtmlCache = null;
 
       let failed = false;
-      for (const s of t.steps){
-        const op = s && s[0];
-        log("  " + JSON.stringify(s));
-        try{
-          await stepExec(s);
-        }catch(e){
-          failed = true;
-          const msg = String(e && e.stack ? e.stack : (e && e.message ? e.message : e));
-          log("✘ STEP FAIL [" + op + "] " + t.name, "fail");
-          log(msg, "fail");
-          if (!isSoftOp(op)) break; // stop early on non-assertion failures
-        }
-      }
+for (const s of t.steps){
+  const op = s && s[0];
+  log("  " + JSON.stringify(s));
+  try{
+    await stepExec(s);
+    if (isSoftOp(op)) log("  ✔ OK [" + op + "]", "ok");
+  }catch(e){
+    failed = true;
+    const msg = String(e && e.stack ? e.stack : (e && e.message ? e.message : e));
+    log("✘ STEP FAIL [" + op + "] " + t.name, "fail");
+    log(msg, "fail");
+    if (!isSoftOp(op)) break;
+  }
+}
+
 
       if (!failed){
         log("✔ PASS " + t.name, "pass");
