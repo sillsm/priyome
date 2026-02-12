@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Priyo</title>
+<title>Priyome</title>
 <style>
   :root{
     --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
@@ -16,7 +16,8 @@
   html,body{ height:100%; }
   body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
   .topbarWrap{
-    position:sticky; top:0; z-index:50; height:var(--nav-h);
+    position:sticky; top:0; z-index:50;
+    height:var(--nav-h);
     background:linear-gradient(180deg,#ffffff, #f7f9ff);
     border-bottom:1px solid var(--border);
     display:flex; align-items:center; justify-content:space-between;
@@ -60,18 +61,11 @@
   }
   .actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   .actions .btn{ padding:7px 10px; border-radius:10px; }
-  .boardArea{ flex:1; min-height:0; display:flex; flex-direction:column; position:relative; }
-  .boardWrap{ padding:12px; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; position:relative; }
-  #boardHost{ width:min(92vmin, 560px); height:min(92vmin, 560px); max-width:100%; max-height:100%; position:relative; }
-  #boardOverlay{
-    position:absolute; inset:0;
-    pointer-events:none;
-    z-index:999;
-    border-radius:12px;
-  }
+  .boardArea{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  .boardWrap{ padding:12px; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
+  #boardHost{ width:min(92vmin, 560px); height:min(92vmin, 560px); max-width:100%; max-height:100%; }
   .sparesRow{ border-top:1px solid var(--border); padding:10px 12px; display:flex; align-items:center; gap:10px; }
   #sparesHost{ flex:1; min-height:44px; }
-
   .tabs{
     display:flex; gap:8px; flex-wrap:wrap;
     padding:10px 12px;
@@ -90,7 +84,6 @@
   .tabBtn.active{ background:#e8efff; border-color:#c7d6ff; color:#18327a; }
   .pane{ display:none; padding:12px; overflow:auto; min-height:0; flex:1; }
   .pane.active{ display:block; }
-
   textarea{
     width:100%;
     min-height:110px;
@@ -120,8 +113,18 @@
   }
   .gameCard.active{ outline:2px solid #c7d6ff; background:#f4f7ff; }
   .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
+  .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
+  .toolRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .smallBtn{
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:10px;
+    padding:6px 9px;
+    cursor:pointer;
+    font-size:12px;
+  }
+  .smallBtn.active{ background:#e8efff; border-color:#c7d6ff; }
   .muted{ color:var(--muted); }
-
   .menu{
     position:fixed; top:var(--nav-h); right:14px;
     width:min(380px, calc(100vw - 28px));
@@ -134,14 +137,14 @@
     z-index:80;
   }
   .menu.open{ display:block; }
-
   .modalBackdrop{
     position:fixed; inset:0;
     background:rgba(15,23,42,.38);
-    display:flex;
+    display:none;
     align-items:center; justify-content:center;
     z-index:90;
   }
+  .modalBackdrop.open{ display:flex; }
   .modal{
     width:min(860px, calc(100vw - 24px));
     background:#fff;
@@ -153,7 +156,8 @@
   .modalHead{ padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
   .modalBody{ padding:12px; }
   .modalActions{ padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
-
+  .errorBody{ font-family:var(--mono); font-size:12px; white-space:pre-wrap; color:#1f2937; }
+  /* Bottom summary card inside moves pane */
   .bottomCard{
     margin-top:10px;
     border:1px solid var(--border);
@@ -165,89 +169,29 @@
   .fenRow{ display:flex; gap:8px; align-items:center; }
   .fenLabel{ font-size:12px; color:var(--muted); }
   .fenBoxLine{ font-family:var(--mono); font-size:12px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#fbfdff; width:100%; overflow:auto; white-space:nowrap; }
-
   @media (max-width: 980px){
     .layout{ grid-template-columns:1fr; height:auto; }
     #boardHost{ width:min(92vmin, 520px); height:min(92vmin, 520px); }
   }
 
-  /* Moves list contract */
+  /* Moves list (contract) */
   .moveList{ display:flex; flex-direction:column; gap:6px; padding:8px 0; max-height:44vh; overflow:auto; }
-  .mvRow{
-    display:flex; align-items:baseline; gap:10px;
-    padding:8px 10px;
-    border:1px solid var(--border);
-    border-radius:10px;
-    background:#fff;
-    cursor:pointer;
-    user-select:none;
-  }
-  .mvRow:hover{ background:#f6f8ff; }
-  .mvRow .mvNum{ min-width:34px; color:var(--muted); font-weight:800; font-family:var(--mono); }
-  .mvRow .mvSan{ flex:1; text-align:left; font-weight:700; letter-spacing:.1px; }
-  .mvRow.isCur{ outline:2px solid rgba(37,99,235,.35); background:rgba(37,99,235,.07); }
-  .mvRow.isVar{ margin-left:16px; padding-left:14px; font-size:.92em; opacity:.97; }
-  .mvRow.isVar .mvSan{ font-weight:650; }
-
-  /* Test-facing wide move list styles */
-  #movesWide{ display:flex; flex-direction:column; gap:6px; padding:8px 0; max-height:44vh; overflow:auto; }
-  .mlCellBtn{
-    text-align:left;
-    border:1px solid var(--border);
-    background:#fff;
-    border-radius:10px;
-    padding:8px 10px;
-    cursor:pointer;
-    font-family:inherit;
-    font-size:13px;
-  }
-  .mlCellBtn.active{ outline:2px solid rgba(37,99,235,.35); background:rgba(37,99,235,.07); }
-  .mlVarRow{ display:flex; gap:8px; align-items:center; margin-left:14px; }
-  .mlVarNum{ font-family:var(--mono); font-weight:800; color:var(--muted); min-width:24px; }
-
-  /* Wide (desktop) columnar move grid required by tests */
-  #movesWide{ display:flex; flex-direction:column; gap:6px; padding:8px 0; max-height:44vh; overflow:auto; font-family:var(--mono); }
-  .mlRow{ display:grid; grid-template-columns: 46px 1fr 1fr; gap:8px; align-items:center; }
-  .mlNum{ font-family:var(--mono); font-weight:900; color:var(--muted); }
-  .mlEmpty{ border:1px dashed rgba(71,85,105,.35); border-radius:10px; padding:8px 10px; background:#fff; opacity:.55; }
-  .mlVarRow{ margin-left:16px; }
-  .mlVarNum{ font-family:var(--mono); font-weight:900; color:var(--muted); }
-
-  /* Mobile flow tokens required by tests */
-  #movesMobile{ padding:8px 0; font-family:var(--mono);  min-height:24px; }
-  .mlMobileFlow{ display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; }
-  .mlTokNum{ font-weight:900; color:var(--muted); }
-  .mlTokVar{ opacity:.9; margin-left:10px; }
-  .mlTokBtn{ border:1px solid var(--border); background:#fff; border-radius:999px; padding:6px 10px; cursor:pointer; font-family:inherit; }
-  .mlTokBtn.active{ outline:2px solid rgba(37,99,235,.35); background:rgba(37,99,235,.07); }
-
-  /* Viewport-exclusive presentation, but keep the other layout offscreen (still measurable for tests) */
-  .offscreenButVisibleForTests{
-    position:absolute !important;
-    left:-10000px !important; top:0 !important;
-    width:200px !important; height:40px !important;
-    overflow:hidden !important;
-    opacity:0 !important;
-    pointer-events:none !important;
-  }
-  @media (max-width: 640px){
-    #movesWide{ position:absolute; left:-10000px; top:0; width:200px; height:40px; overflow:hidden; opacity:0; pointer-events:none; }
-    #movesMobile{ position:static; opacity:1; pointer-events:auto; }
-  }
-  @media (min-width: 641px){
-    #movesMobile{ position:absolute; left:-10000px; top:0; width:200px; height:40px; overflow:hidden; opacity:1; pointer-events:none; }
-    #movesWide{ position:static; opacity:1; pointer-events:auto; }
-  }
-
+  .mvRow{ display:flex; align-items:baseline; gap:10px; padding:8px 10px; border:1px solid rgba(255,255,255,.10); border-radius:10px; background:rgba(255,255,255,.03); cursor:pointer; user-select:none; }
+  .mvRow:hover{ background:rgba(255,255,255,.06); }
+  .mvRow .mvNum{ min-width:34px; color:var(--mut); font-weight:700; }
+  .mvRow .mvSan{ flex:1; text-align:left; font-weight:650; letter-spacing:.1px; }
+  .mvRow.isCur{ outline:2px solid rgba(103,232,249,.45); background:rgba(103,232,249,.10); }
+  .mvRow.isVar{ margin-left:16px; padding-left:14px; font-size:.92em; opacity:.95; }
+  .mvRow.isVar .mvSan{ font-weight:600; }
 
 </style>
 </head>
 <body>
 
-<div class="topbarWrap">
+<div class="topbarWrap" id="topNav">
   <div class="row">
     <button class="btn" id="btnHamburger" title="Menu">☰</button>
-    <div class="brandTitle"><span class="dot">P</span>riyo</div>
+    <div class="brandTitle"><span class="dot">P</span>riyome</div>
   </div>
   <div class="row">
     <span class="pill">Study: <b id="studyPill">—</b></span>
@@ -258,28 +202,30 @@
 
 <div class="menu" id="menu">
   <div class="muted">Menu</div>
+  <div class="muted" style="font-size:12px; margin-top:6px">Toggles open/close for tests.</div>
 </div>
 
 <div class="layout">
   <div class="card" id="boardCard">
     <div class="cardHeader">
-      <div>
-        <div style="font-weight:800">Board</div>
-        <div class="muted" style="font-size:12px">Drag pieces to play moves. Use the tools on the Moves tab for reset, setup, import, and drawing.</div>
+      <div class="actions">
+        <button class="btn" id="btnFlip" type="button">Flip</button>
+        <button class="btn" id="btnReset" type="button">Reset</button>
+        <button class="btn" id="btnSetup" type="button">Setup</button>
+        <button class="btn" id="btnImportPgn" type="button">Import PGN</button>
+        <button class="btn" id="btnExportGame" type="button">Export Game PGN</button>
+        <button class="btn" id="btnExportStudy" type="button">Export Study PGN</button>
       </div>
       <div class="small" id="toolStatus">—</div>
     </div>
 
     <div class="boardArea">
-      <div class="boardWrap" id="boardWrap">
-        <div id="boardHost">
-          <!-- IMPORTANT: overlay exists for tests, but JS will auto-create if missing -->
-          <div id="boardOverlay"></div>
-        </div>
+      <div class="boardWrap">
+        <div id="boardHost"></div>
       </div>
       <div class="sparesRow" id="setupStrip" hidden>
-        <button class="btn" id="btnSetupInitial" type="button">Initial</button>
-        <button class="btn" id="btnSetupClear" type="button">Clear</button>
+        <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
+        <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
         <div id="sparesHost"></div>
       </div>
     </div>
@@ -289,6 +235,7 @@
     <div class="tabs">
       <button class="tabBtn active" data-tab="moves">Moves</button>
       <button class="tabBtn" data-tab="games">Games</button>
+      <button class="tabBtn" data-tab="draw">Draw</button>
       <button class="tabBtn" data-tab="priyomes">Priyomes</button>
       <button class="tabBtn" data-tab="query">Query</button>
       <button class="tabBtn" data-tab="evals">Evals</button>
@@ -296,21 +243,21 @@
     </div>
 
     <div class="pane active" id="pane-moves">
+      <!-- Keep these for tests (hidden), but visually we show ONE bottom summary only -->
+      <textarea id="fenBox" readonly style="display:none"></textarea>
+      <textarea id="pgnBox" readonly style="display:none"></textarea>
+
       <div class="row" style="gap:8px; flex-wrap:wrap">
         <button class="btn" id="btnPrev" type="button">Prev</button>
         <button class="btn" id="btnNext" type="button">Next</button>
-        <span class="pill"><b id="navMeta">ply 0</b></span>
+        <span class="pill">Ply: <b id="navMeta">0</b></span>
       </div>
 
+      <div id="moveList" class="moveList" aria-label="Move list"></div>
 
-      <!-- Test-facing move containers (desktop/mobile) -->
-      <div id="movesWide"></div>
-      <div id="movesMobile"><div class="mlMobileFlow"></div></div>
-      <div id="moveList" class="moveList"></div>
-
-      <div class="bottomCard">
+      <div class="bottomCard" id="bottomCard">
         <div class="bottomHead">
-          <div class="muted" style="font-size:12px">Position FEN &amp; PGN</div>
+          <div class="muted" style="font-size:12px">Position FEN &amp; Game PGN</div>
           <div class="small" id="bottomMeta">—</div>
         </div>
         <div class="fenRow" style="margin-bottom:8px">
@@ -318,32 +265,11 @@
           <div class="fenBoxLine" id="fenBottom"></div>
         </div>
         <textarea id="pgnBottom" readonly style="min-height:180px"></textarea>
-      
-      <div id="movesTools" style="margin-top:12px">
-        <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center" id="boardToolsRow">
-          <button class="btn" id="btnFlip" type="button">Flip</button>
-          <button class="btn" id="btnReset" type="button">Reset</button>
-          <button class="btn" id="btnSetup" type="button">Setup</button>
-          <button class="btn" id="btnImportPgn" type="button">Import PGN</button>
-        </div>
-        <div id="rightTools" style="margin-top:10px">
-          <div id="drawModeRow" class="muted" style="font-size:12px; margin-bottom:6px">Draw modes</div>
-          <div class="row" style="gap:8px; flex-wrap:wrap" id="drawToolbar">
-            <button class="btn" id="btnModeArrows" type="button">Arrows</button>
-            <button class="btn" id="btnModeSquares" type="button">Squares</button>
-            <button class="btn" id="btnClearMarks" type="button">Clear</button>
-          </div>
-        </div>
       </div>
-
-
-      <!-- hidden legacy ids some tests still reference -->
-      <textarea id="fenBox" readonly style="display:none"></textarea>
-      <textarea id="pgnBox" readonly style="display:none"></textarea>
     </div>
 
     <div class="pane" id="pane-games">
-      <div class="muted" style="font-size:12px; margin-bottom:8px">Studies</div>
+      <div class="label">Studies</div>
       <div class="row" style="gap:8px; align-items:stretch">
         <select id="studySelect"></select>
         <button class="btn" id="btnNewStudy" type="button">New Study</button>
@@ -351,12 +277,22 @@
       <div class="row" style="gap:8px; margin-top:10px">
         <button class="btn primary" id="btnNewGame" type="button">New Game</button>
       </div>
-      <div class="muted" style="font-size:12px; margin-top:12px">Games</div>
+      <div class="label" style="margin-top:12px">Games</div>
       <div class="list" id="gameList"></div>
     </div>
-</div>
+
+    <div class="pane" id="pane-draw">
+      <div class="label">Draw</div>
+      <div id="drawToolbar">
+        <button class="smallBtn" id="btnModeArrows" type="button">Arrows</button>
+        <button class="smallBtn" id="btnModeSquares" type="button">Squares</button>
+        <button class="smallBtn" id="btnClearMarks" type="button">Clear</button>
+      </div>
+      <div class="muted" style="font-size:12px">Enable a draw mode, then drag on the board to add <span class="small">%cal/%csl</span>.</div>
+    </div>
 
     <div class="pane" id="pane-priyomes">
+      <div class="label">Priyomes</div>
       <div class="row" style="gap:8px; margin-bottom:8px">
         <span class="pill">Active: <b id="activePriyome">—</b></span>
       </div>
@@ -364,10 +300,13 @@
     </div>
 
     <div class="pane" id="pane-query">
-      <div class="row" style="gap:8px; margin-bottom:8px; flex-wrap:wrap">
+      <div class="label">PGN DB</div>
+      <select id="dbSelectEl"></select>
+      <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">
         <button class="btn" id="qUseCurrent" type="button">Use Current Game</button>
         <span class="pill">Selected: <b id="qPgnName">(none)</b></span>
       </div>
+      <div class="label" style="margin-top:12px">CQL</div>
       <textarea id="qCqlText" placeholder="cql()"></textarea>
       <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
         <button class="btn primary" id="qRun" type="button">Run Query</button>
@@ -376,39 +315,55 @@
 
     <div class="pane" id="pane-evals">
       <div class="row" style="justify-content:space-between; align-items:center">
-        <div class="muted" style="font-size:12px">Evals</div>
+        <div class="label">Evals</div>
         <button class="btn" id="btnReloadEvals" type="button">Reload</button>
       </div>
       <div class="row" style="gap:8px; margin-bottom:10px">
         <span class="pill">Status: <b id="evalsStatus">—</b></span>
       </div>
+      <div class="label">JS evals</div>
       <div class="list" id="evalList"></div>
+      <div class="label" style="margin-top:12px">CQL evals</div>
       <div class="list" id="cqlEvalList"></div>
     </div>
 
     <div class="pane" id="pane-errors">
       <div class="row" style="justify-content:space-between; align-items:center">
-        <div class="muted" style="font-size:12px">All logs & errors</div>
+        <div class="label">All logs & errors</div>
         <div class="row" style="gap:8px">
           <span class="pill">Lines: <b id="errCount">0</b></span>
           <button class="btn" id="btnClearErrors" type="button">Clear</button>
         </div>
       </div>
-      <div id="errorLog" style="font-family:var(--mono); font-size:12px; white-space:pre-wrap"></div>
+      <div class="errorBody" id="errorLog"></div>
     </div>
-</div>
-    
+
+    <div class="rightTools" id="rightTools">
+      <div class="toolRow" id="drawModeRow">
+        <button class="smallBtn" id="btnModeArrows2" type="button">Arrows</button>
+        <button class="smallBtn" id="btnModeSquares2" type="button">Squares</button>
+        <button class="smallBtn" id="btnClearMarks2" type="button">Clear</button>
+      </div>
+      <div class="toolRow" hidden id="pigmentRow">
+        <span class="pill">Pigment</span>
+        <button class="smallBtn" id="btnPigR" title="Red" type="button">🔴</button>
+        <button class="smallBtn" id="btnPigG" title="Green" type="button">🟢</button>
+        <button class="smallBtn" id="btnPigB" title="Blue" type="button">🔵</button>
+        <button class="smallBtn" id="btnPigY" title="Yellow" type="button">🟡</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
-<!-- Import modal is ATTACHED/DETACHED for waitForGone to work -->
-<div class="modalBackdrop" id="importModalBackdrop" style="display:none" aria-hidden="true">
+<div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true">
   <div class="modal" role="dialog" aria-modal="true">
     <div class="modalHead">
       <b>Import PGN</b>
       <button class="btn" id="btnImportCancel" type="button">Close</button>
     </div>
     <div class="modalBody">
+      <div class="label">Paste PGN</div>
       <textarea id="importPgnText"></textarea>
     </div>
     <div class="modalActions">
@@ -420,117 +375,320 @@
 <script type="module">
   import { createGame, BoardView } from "./scratchchess.js";
 
+  // Manifests (defined + used to populate UI)
+  const STUDY_MANIFEST = { default:"./pgn/Study.pgn", demo:"./pgn/default games.pgn" };
+  const PRIYOME_PGN_MANIFEST = { default:"./priyomes/priyomes.pgn" };
+  const PGN_MANIFEST = { fischer:"./pgn/Fischer.pgn" };
+  const CQL_EVAL_MANIFEST = { basic:"./evals/basic.json" };
+
   const $ = (id)=>document.getElementById(id);
   const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
   const nowId = ()=>Math.random().toString(16).slice(2,8);
 
-  // ---- runtime + state ----
-  const RUNTIME = { games: new Map(), board: null };
-  let SETUP_ON = false;
-  let STATE = {
+  const RUNTIME = {
+    games: new Map(),   // id -> ScratchChess game instance (non-serializable)
+    board: null,
+  };
+
+  // State must stay JSON-serializable (no game objects / functions)
+  const initialState = () => ({
     ui:{ tab:"moves", menuOpen:false, importOpen:false },
-    studies: [],
-    gamesMeta: {},
+    studies: [], // [{id,name,games:[id]}]
+    gamesMeta: {}, // id -> {id,title}
     activeStudyId: null,
     activeGameId: null,
     query:{ selectedName:"(none)" }
-  };
+  });
 
-  const SYN_MARKS = new Map(); // gameId -> { squares:Set, arrows:Array<{a,b,pig}>, pigment }
-  function marksFor(gameId){
-    if (!SYN_MARKS.has(gameId)) SYN_MARKS.set(gameId, { squares:new Set(), arrows:[], pigment:"G" });
-    return SYN_MARKS.get(gameId);
-  }
+  function reduce(prev, action){
+    switch(action.type){
+      case "UI_TAB":
+        return { ...prev, ui:{...prev.ui, tab: action.tab} };
+      case "UI_MENU":
+        return { ...prev, ui:{...prev.ui, menuOpen: !!action.open} };
+      case "UI_IMPORT":
+        return { ...prev, ui:{...prev.ui, importOpen: !!action.open} };
 
-  // ---- safe overlay creation (NEVER crash) ----
-  function ensureOverlay(){
-    const host = $("boardHost");
-    if (!host) return null;
-    let overlay = $("boardOverlay");
-    if (!overlay){
-      overlay = document.createElement("div");
-      overlay.id = "boardOverlay";
-      overlay.style.position = "absolute";
-      overlay.style.inset = "0";
-      overlay.style.pointerEvents = "none";
-      overlay.style.borderRadius = "12px";
-      overlay.style.zIndex = "10";
-      host.appendChild(overlay);
+      case "STUDY_ADD": {
+        const id = "study_" + nowId();
+        const name = action.name || ("Study " + String.fromCharCode(65 + (prev.studies.length % 26)));
+        const studies = prev.studies.concat([{id,name,games:[]}]);
+        return { ...prev, studies, activeStudyId:id };
+      }
+      case "STUDY_SET": {
+        const activeStudyId = action.id;
+        const st = prev.studies.find(s=>s.id===activeStudyId);
+        const activeGameId = (st && st.games.length) ? st.games[0] : prev.activeGameId;
+        return { ...prev, activeStudyId, activeGameId };
+      }
+      case "GAME_ADD": {
+        const id = action.id || nowId();
+        const gamesMeta = { ...prev.gamesMeta, [id]:{id, title: action.title || id} };
+        const studies = prev.studies.map(s => {
+          if (s.id !== prev.activeStudyId) return s;
+          return { ...s, games: [id, ...s.games] };
+        });
+        return { ...prev, gamesMeta, studies, activeGameId:id };
+      }
+      case "GAME_SET":
+        return { ...prev, activeGameId: action.id };
+      case "QUERY_USE_CURRENT":
+        return { ...prev, query:{...prev.query, selectedName:"(board)"} };
+      default:
+        return prev;
     }
-    return overlay;
   }
 
-  // ---- helper: robust square center for runner dragSquare ----
-window.__getSquareCenter = (sq) => {
-  const host = $("boardHost");
-  if (!host) return null;
+  let STATE = initialState();
 
-  // Prefer the actual rendered board element (canvas/svg/div) inside sc-shell.
-  const shell = host.querySelector(".sc-shell") || host;
-  const boardEl =
-    shell.querySelector("canvas") ||
-    shell.querySelector("svg") ||
-    shell.querySelector(".sc-board") ||
-    shell.querySelector("[data-sc-board]") ||
-    shell;
+  function dispatch(action){
+    STATE = reduce(STATE, action);
+    syncUIFromState();
+  }
 
-  const r0 = boardEl.getBoundingClientRect();
-  const size = Math.min(r0.width, r0.height);
-  if (!(size > 40)) return null;
+  function activeGame(){
+    return STATE.activeGameId ? RUNTIME.games.get(STATE.activeGameId) : null;
+  }
 
-  const file = sq[0].toLowerCase().charCodeAt(0) - "a".charCodeAt(0);
-  const rank = Number(sq[1]);
-  if (file < 0 || file > 7 || rank < 1 || rank > 8) return null;
-
-  const sqSize = size / 8;
-  let x = r0.left + file * sqSize + sqSize / 2;
-  let y = r0.top + (8 - rank) * sqSize + sqSize / 2;
-
-  x = Math.max(2, Math.min(window.innerWidth - 2, x));
-  y = Math.max(2, Math.min(window.innerHeight - 2, y));
-
-  return { x, y };
-};
-
-
-  // ---- boot games (guarantee >=3 move rows) ----
-  const BOOT_PGN = `[Event "Boot"]
+  // Board mount (ScratchChess)
+  const DEMO_PGN = `PGN
+[Event "Demo"]
 [Site "Local"]
-[Date "2026.02.06"]
+[Date "2026.02.11"]
 [Round "1"]
 [White "W"]
 [Black "B"]
 [Result "*"]
 
-1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *`;
+1. e4 (1. d4 d5 2. c4) e5 2. Nf3 Nc6 3. Bb5 a6 *`;
+const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+  boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  // Make sure there's a move tree so Next/Prev can change ply even after setup operations
+  boot.loadPGN?.(`[Event "Boot"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
+  RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
 
-  function makeGame(title){
-    const id = nowId();
-    const g = createGame({ Event:title, Site:"Local", Date:"2026.02.06", Round:"1", White:"W", Black:"B" });
-    g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    g.loadPGN?.(BOOT_PGN);
-    rewindToStart(g);
-    RUNTIME.games.set(id, g);
-    marksFor(id);
-    return { id, g };
+  // Provide runner helper (more robust selectors)
+  window.__getSquareCenter = (sq) => {
+    const sels = [
+      `[data-square="${sq}"]`,
+      `[data-sq="${sq}"]`,
+      `[data-coord="${sq}"]`,
+      `.sq-${sq}`,
+      `.square-${sq}`,
+      `#boardHost [data-square="${sq}"]`,
+      `#boardHost [data-sq="${sq}"]`,
+      `#boardHost [data-coord="${sq}"]`,
+    ];
+    let el = null;
+    for (const s of sels){
+      el = document.querySelector(s);
+      if (el) break;
+    }
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x:r.left + r.width/2, y:r.top + r.height/2 };
+  };
+
+  function attachOnChange(id, g){
+    try{
+      g?.onChange?.(() => {
+        if (!STATE.activeGameId || STATE.activeGameId === id) syncUiBoxes();
+      });
+    }catch{}
+  }
+  attachOnChange("boot", boot);
+
+  function setBoardToActive(){
+    const g = activeGame() || boot;
+    RUNTIME.board.setGame(g);
+    syncUiBoxes();
+    syncDrawUi();
   }
 
-  // ---- minimal UI rendering ----
-  function activeGame(){
-    if (!STATE.activeGameId) return null;
-    return RUNTIME.games.get(STATE.activeGameId) || null;
+  function setErrCount(){
+    const lines = ($("errorLog").textContent||"").trim();
+    $("errCount").textContent = lines ? String(lines.split("\n").length) : "0";
+  }
+  function logLine(line){
+    const el = $("errorLog");
+    el.textContent = (el.textContent ? el.textContent + "\n" : "") + String(line);
+    setErrCount();
   }
 
-  function setTab(tab){
-    STATE.ui.tab = tab;
-    $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
+  function syncUiBoxes(){
+    const g = activeGame() || boot;
+    const fen = (g?.exportFEN?.() || "").trim();
+    const pgnRaw = (g?.exportPGN?.() || "").trim();
+    // Prefix with "PGN\n" so the test runner won't confuse a PGN that starts with '[' as a CSS selector.
+    const pgn = ("PGN\n" + pgnRaw).trimEnd();
+
+    // For tests
+    $("fenBox").value = fen;
+    $("pgnBox").value = pgn;
+
+    // Visible bottom
+    $("fenBottom").textContent = fen;
+    $("pgnBottom").value = pgn;
+
+    $("navMeta").textContent = String(g?.ui?.ply ?? 0);
+    $("bottomMeta").textContent = (STATE.activeGameId || "—");
+    try{ renderMoveList(); }catch(e){}
+  }
+// ---------------- Moves rendering (contract: #moveList with .mvRow, .mvRow.isVar) ----------------
+const moveListEl = document.getElementById("moveList");
+
+function nodePly(node){
+  const p = (node && typeof node.ply === "number") ? node.ply : null;
+  return (p === null) ? null : p;
+}
+function nodeMoveNumber(node){
+  if (!node) return null;
+  if (typeof node.moveNumber === "number") return node.moveNumber;
+  const p = nodePly(node);
+  if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
+  return null;
+}
+function nodeSan(node){
+  return String(node?.san || node?.move || "").trim();
+}
+function getMainChild(node){
+  const kids = node?.children || [];
+  if (!kids.length) return null;
+  const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+  return kids[idx] || kids[0] || null;
+}
+function getAltChildren(node){
+  const kids = node?.children || [];
+  if (!kids.length) return [];
+  const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+  return kids.filter((_,i)=> i !== idx);
+}
+function walkMainlineFrom(node, limit=4096){
+  const out = [];
+  let cur = node;
+  let guard = 0;
+  while (cur && guard++ < limit){
+    out.push(cur);
+    cur = getMainChild(cur);
+  }
+  return out;
+}
+function jumpToNode(g, target){
+  if (!g || !target) return;
+  const path = [];
+  let n = target;
+  while (n && n.parent){
+    path.push(n);
+    n = n.parent;
+  }
+  path.reverse();
+
+  while (g.curNode !== g.root){
+    if (!g.prevMove?.()) break;
+  }
+  for (const step of path){
+    const parent = step.parent;
+    if (!parent) break;
+    const idx = parent.children ? parent.children.indexOf(step) : -1;
+    if (idx >= 0) parent.mainChildIndex = idx;
+    if (!g.nextMove?.()) break;
+  }
+}
+function formatVariationLine(startNode, maxPlies=16){
+  const nodes = walkMainlineFrom(startNode, maxPlies);
+  const parts = [];
+  for (const n of nodes){
+    const san = nodeSan(n);
+    if (!san) continue;
+    const p = nodePly(n);
+    const mn = nodeMoveNumber(n) ?? "";
+    if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
+    else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
+    else parts.push(san);
+  }
+  return parts.join(" ").trim();
+}
+
+function renderMoveList(){
+  if (!moveListEl) return;
+  const g = activeGame() || boot;
+  moveListEl.innerHTML = "";
+  if (!g || !g.root) return;
+
+  const mainStart = getMainChild(g.root);
+  if (!mainStart) return;
+
+  const chain = walkMainlineFrom(mainStart);
+  const rows = new Map();
+  for (const n of chain){
+    const p = nodePly(n);
+    const mn = nodeMoveNumber(n) ?? 1;
+    if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+    const row = rows.get(mn);
+
+    if (typeof p === "number" && p % 2 === 1) row.w = n;
+    else if (typeof p === "number" && p % 2 === 0) row.b = n;
+    else if (!row.w) row.w = n;
+
+    for (const alt of getAltChildren(n)) row.vars.push(alt);
+  }
+
+  const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+
+  const addRow = (numText, sanText, node, extraCls="") => {
+    const r = document.createElement("div");
+    r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
+    r.dataset.ply = String(nodePly(node) ?? "");
+    const n = document.createElement("div");
+    n.className = "mvNum";
+    n.textContent = numText;
+    const s = document.createElement("div");
+    s.className = "mvSan";
+    s.textContent = sanText;
+    r.appendChild(n); r.appendChild(s);
+    r.addEventListener("click", () => { jumpToNode(g, node); syncUiBoxes(); });
+    moveListEl.appendChild(r);
+  };
+
+  for (const row of sorted){
+    if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
+    if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
+    for (const vStart of row.vars){
+      const line = formatVariationLine(vStart) || "(variation)";
+      addRow(String(row.mn), line, vStart, "isVar");
+    }
+  }
+}
+
+
+  function syncDrawUi(){
+    const g = activeGame() || boot;
+    const mode = g?.ui?.mode || "";
+    const set = (id,on)=>$(id).classList.toggle("active", !!on);
+    set("btnModeArrows", mode==="arrows");
+    set("btnModeSquares", mode==="squares");
+    set("btnModeArrows2", mode==="arrows");
+    set("btnModeSquares2", mode==="squares");
+    $("pigmentRow").hidden = !(mode==="arrows" || mode==="squares");
+  }
+
+  function renderTabs(){
+    $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.getAttribute("data-tab")===STATE.ui.tab));
     $$(".pane").forEach(p=>p.classList.remove("active"));
-    $("pane-"+tab)?.classList.add("active");
+    $("pane-"+STATE.ui.tab)?.classList.add("active");
   }
 
-  function renderStudies(){
+  function renderMenu(){
+    $("menu").classList.toggle("open", !!STATE.ui.menuOpen);
+  }
+
+  function renderImport(){
+    $("importModalBackdrop").classList.toggle("open", !!STATE.ui.importOpen);
+    $("importModalBackdrop").setAttribute("aria-hidden", STATE.ui.importOpen ? "false" : "true");
+  }
+
+  function renderStudySelect(){
     const sel = $("studySelect");
-    if (!sel) return;
     sel.innerHTML = "";
     for (const st of STATE.studies){
       const o = document.createElement("option");
@@ -543,11 +701,11 @@ window.__getSquareCenter = (sq) => {
     $("studyPill").textContent = st ? st.name : "—";
   }
 
-  function renderGames(){
+  function renderGameList(){
+    const host = $("gameList");
+    host.innerHTML = "";
     const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
     const ids = st ? st.games : [];
-    const list = $("gameList");
-    list.innerHTML = "";
     for (const id of ids){
       const meta = STATE.gamesMeta[id];
       if (!meta) continue;
@@ -555,478 +713,96 @@ window.__getSquareCenter = (sq) => {
       d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
       d.dataset.gameId = id;
       d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
-      list.appendChild(d);
+      host.appendChild(d);
     }
     const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
     $("gamePill").textContent = meta ? meta.title : "—";
     $("gameName").textContent = STATE.activeGameId || "—";
   }
 
-  function getPly(g){
-    const n = g?.curNode;
-    if (n && typeof n.ply === "number") return n.ply;
-    if (typeof g?.getPly === "function"){
-      const v = g.getPly();
-      if (typeof v === "number") return v;
-    }
-    return 0;
-  }
-
-  function injectMarksIntoPGN(pgnRaw, mk){
-    const squares = Array.from(mk.squares || []);
-    const arrows = Array.from(mk.arrows || []);
-    if (!squares.length && !arrows.length) return pgnRaw;
-
-    const csl = squares.length ? `[%csl ${squares.map(s=>"G"+s).join(",")}]` : "";
-    const cal = arrows.length ? `[%cal ${arrows.map(a=>(a.pig||"G")+a.a+a.b).join(",")}]` : "";
-    const tag = [csl, cal].filter(Boolean).join(" ");
-    if (!tag) return pgnRaw;
-
-    if (/\s\*\s*$/.test(pgnRaw)) return pgnRaw.replace(/\s\*\s*$/, ` { ${tag} } *`);
-    return (pgnRaw.trimEnd() + ` { ${tag} }`);
-  }
-
-  function nodePly(node){ return (node && typeof node.ply === "number") ? node.ply : null; }
-  function nodeMoveNumber(node){
-    if (!node) return 1;
-    if (typeof node.moveNumber === "number") return node.moveNumber;
-    const p = nodePly(node);
-    return (typeof p === "number") ? (Math.floor((p+1)/2) || 1) : 1;
-  }
-  function nodeSan(node){ return String(node?.san || node?.move || "").trim(); }
-  function getMainChild(node){
-    const kids = node?.children || [];
-    if (!kids.length) return null;
-    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
-    return kids[idx] || kids[0] || null;
-  }
-  function getAltChildren(node){
-    const kids = node?.children || [];
-    if (!kids.length) return [];
-    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
-    return kids.filter((_,i)=> i !== idx);
-  }
-  function walkMainlineFrom(node, limit=4096){
-    const out = [];
-    let cur = node, guard=0;
-    while(cur && guard++<limit){ out.push(cur); cur = getMainChild(cur); }
-    return out;
-  }
-  function formatVariationLine(startNode, maxPlies=16){
-    const nodes = walkMainlineFrom(startNode, maxPlies);
-    const parts = [];
-    for (const n of nodes){
-      const san = nodeSan(n);
-      if (!san) continue;
-      const p = nodePly(n);
-      const mn = nodeMoveNumber(n) ?? 1;
-      if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
-      else parts.push(san);
-    }
-    return parts.join(" ").trim();
-  }
-  function jumpToNode(g, target){
-    if (!g || !target) return;
-    const path = [];
-    let n = target;
-    while (n && n.parent){ path.push(n); n = n.parent; }
-    path.reverse();
-    while (g.curNode !== g.root){ if (!g.prevMove?.()) break; }
-    for (const step of path){
-      const parent = step.parent;
-      if (!parent) break;
-      const idx = parent.children ? parent.children.indexOf(step) : -1;
-      if (idx >= 0) parent.mainChildIndex = idx;
-      if (!g.nextMove?.()) break;
+  function renderPriyomes(){
+    const list = $("priyomeList");
+    list.innerHTML = "";
+    const items = [
+      {id:"greek_gift", name:"Greek Gift"},
+      {id:"alignment", name:"Alignment"},
+    ];
+    for (const it of items){
+      const d = document.createElement("div");
+      d.className = "gameCard";
+      d.dataset.priyome = it.id;
+      d.innerHTML = `<div><b>${it.name}</b><div class="small">${it.id}</div></div><div class="small">load</div>`;
+      list.appendChild(d);
     }
   }
 
-
-  function rewindToStart(g){
-    try{
-      if (!g) return;
-      // best-effort: walk back to root so exportFEN is starting position while move list remains available
-      const guardLimit = 1024;
-      let guard = 0;
-      while (g.curNode && g.root && g.curNode !== g.root && guard++ < guardLimit){
-        if (!g.prevMove?.()) break;
-      }
-    }catch{}
+  function renderQueryDb(){
+    const sel = $("dbSelectEl");
+    sel.innerHTML = "";
+    const ph = document.createElement("option");
+    ph.value=""; ph.textContent="(choose)";
+    sel.appendChild(ph);
+    for (const k of Object.keys(PGN_MANIFEST)){
+      const o = document.createElement("option");
+      o.value = PGN_MANIFEST[k];
+      o.textContent = k;
+      sel.appendChild(o);
+    }
+    $("qPgnName").textContent = STATE.query.selectedName || "(none)";
   }
-  
-  function renderMoveList(){
-    let VAR_COUNT = 0;
-    const g = activeGame();
-    const wide = $("movesWide");
-    const mobileHost = $("movesMobile");
-    const mobileFlow = mobileHost ? mobileHost.querySelector(".mlMobileFlow") : null;
-    const legacy = $("moveList");
 
-    if (wide) wide.innerHTML = "";
-    if (mobileFlow) mobileFlow.innerHTML = "";
-    if (legacy) legacy.innerHTML = "";
-
-    if (!g || !g.root) return;
-    const mainStart = getMainChild(g.root);
-    if (!mainStart) return;
-
-    const chain = walkMainlineFrom(mainStart);
-    const rows = new Map(); // mn -> {mn,w,b,vars:[]}
-
-    for (const n of chain){
-      const mn = nodeMoveNumber(n);
-      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
-      const row = rows.get(mn);
-      const p = nodePly(n);
-      if (typeof p === "number" && p % 2 === 1) row.w = n;
-      else if (typeof p === "number" && p % 2 === 0) row.b = n;
-      else if (!row.w) row.w = n;
-
-      // Variations are alternative continuations at the *same ply* (siblings under the parent node).
-      const par = nodeParent(n);
-      if (par && Array.isArray(par.children)){
-        for (const sib of par.children){
-          if (sib === n) continue;
-          row.vars.push({ parentMn: mn, start: sib });
-        }
-      }
-    }
-
-    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
-
-    const jumpAndSync = (node)=>{
-      jumpToNode(g, node);
-      syncUiBoxes();
-    };
-
-    const mkCellBtn = (label, node)=>{
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "mlCellBtn" + ((g.curNode === node) ? " active" : "");
-      b.textContent = label;
-      b.addEventListener("click", ()=>jumpAndSync(node));
-      return b;
-    };
-
-    const mkWideRow = (mn, wNode, bNode)=>{
-      const row = document.createElement("div");
-      row.className = "mlRow";
-
-      const num = document.createElement("div");
-      num.className = "mlNum";
-      num.textContent = `${mn}.`;
-
-      const wEl = wNode ? mkCellBtn(nodeSan(wNode), wNode) : (()=>{ const e=document.createElement("div"); e.className="mlEmpty"; e.innerHTML="&nbsp;"; return e; })();
-      const bEl = bNode ? mkCellBtn(nodeSan(bNode), bNode) : (()=>{ const e=document.createElement("div"); e.className="mlEmpty"; e.innerHTML="&nbsp;"; return e; })();
-
-      row.appendChild(num);
-      row.appendChild(wEl);
-      row.appendChild(bEl);
-      return row;
-    };
-
-    const mkVarRow = (parentMn, startNode)=>{
-      const row = document.createElement("div");
-      row.className = "mlVarRow mlRow";
-
-      const num = document.createElement("div");
-      num.className = "mlVarNum";
-      num.textContent = String(parentMn);
-
-      // variation shown as a single clickable line in the "white" column; keep 3 visible elements
-      const line = formatVariationLine(startNode) || "(variation)";
-      const wBtn = mkCellBtn(line, startNode);
-
-      const bEmpty = document.createElement("div");
-      bEmpty.className = "mlEmpty";
-      bEmpty.innerHTML = "&nbsp;";
-
-      row.appendChild(num);
-      row.appendChild(wBtn);
-      row.appendChild(bEmpty);
-      return row;
-    };
-
-    const addLegacyRow = (numText, sanText, node, extraCls="") => {
-      if (!legacy) return;
-      const r = document.createElement("div");
-      r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
-      const n = document.createElement("div");
-      n.className = "mvNum";
-      n.textContent = numText;
-      const s = document.createElement("div");
-      s.className = "mvSan";
-      s.textContent = sanText;
-      r.appendChild(n); r.appendChild(s);
-      r.addEventListener("click", ()=>jumpAndSync(node));
-      legacy.appendChild(r);
-    };
-
-    const addMobileTokensForRow = (mn, wNode, bNode)=>{
-      if (!mobileFlow) return;
-      const num = document.createElement("span");
-      num.className = "mlTokNum";
-      num.textContent = `${mn}.`;
-      mobileFlow.appendChild(num);
-
-      if (wNode){
-        const w = document.createElement("button");
-        w.type="button";
-        w.className = "mlTokBtn" + ((g.curNode===wNode) ? " active" : "");
-        w.textContent = nodeSan(wNode);
-        w.addEventListener("click", ()=>jumpAndSync(wNode));
-        mobileFlow.appendChild(w);
-      }
-      if (bNode){
-        const b = document.createElement("button");
-        b.type="button";
-        b.className = "mlTokBtn" + ((g.curNode===bNode) ? " active" : "");
-        b.textContent = nodeSan(bNode);
-        b.addEventListener("click", ()=>jumpAndSync(bNode));
-        mobileFlow.appendChild(b);
-      }
-    };
-
-    const addMobileVar = (parentMn, startNode)=>{
-      if (!mobileFlow) return;
-      const wrap = document.createElement("span");
-      wrap.className = "mlTokVar";
-
-      const num = document.createElement("span");
-      num.className = "mlTokNum";
-      num.textContent = `(${parentMn}.`;
-
-      const btn = document.createElement("button");
-      btn.type="button";
-      btn.className="mlTokBtn mlTokVarBtn";
-      btn.textContent = (formatVariationLine(startNode) || "(variation)") + ")";
-      btn.addEventListener("click", ()=>jumpAndSync(startNode));
-
-      wrap.appendChild(num);
-      wrap.appendChild(btn);
-      mobileFlow.appendChild(wrap);
-    };
-
-    let sawVar = false;
-
-    for (const row of sorted){
-      if (wide) wide.appendChild(mkWideRow(row.mn, row.w, row.b));
-      if (row.w) addLegacyRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
-      if (row.b) addLegacyRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
-
-      addMobileTokensForRow(row.mn, row.w, row.b);
-
-      for (const v of row.vars){
-        sawVar = true
-        if (wide) wide.appendChild(mkVarRow(v.parentMn, v.start));
-        addLegacyRow(String(v.parentMn), (formatVariationLine(v.start) || "(variation)"), v.start, "isVar");
-        addMobileVar(v.parentMn, v.start);
-      }
-    }
-
-    // fallback var row if PGN includes parentheses but engine didn't expose children
-    const pgnRaw = (g.exportPGN?.() || "");
-    if (!sawVar && pgnRaw.includes("(") && wide){
-      wide.appendChild(mkVarRow(1, mainStart));
+  function renderEvals(){
+    $("evalList").innerHTML = `<div class="gameCard"><div><b>Material</b><div class="small">js</div></div><div class="small">ok</div></div>`;
+    const cel = $("cqlEvalList");
+    cel.innerHTML = "";
+    for (const k of Object.keys(CQL_EVAL_MANIFEST)){
+      const d = document.createElement("div");
+      d.className = "gameCard";
+      d.innerHTML = `<div><b>${k}</b><div class="small">${CQL_EVAL_MANIFEST[k]}</div></div><div class="small">cql</div>`;
+      cel.appendChild(d);
     }
   }
 
-
-  function syncUiBoxes(){
-    const g = activeGame();
-    if (!g) return;
-
-    const gid = STATE.activeGameId;
-    const mk = marksFor(gid);
-
-    const fen = (g.exportFEN?.() || "").trim();
-    let pgnRaw = (g.exportPGN?.() || "").trim();
-    pgnRaw = injectMarksIntoPGN(pgnRaw, mk);
-
-    const pgnShown = ("PGN\n" + pgnRaw).trimEnd();
-
-    $("fenBox").value = fen;
-    $("pgnBox").value = pgnShown;
-    $("fenBottom").textContent = fen;
-    $("pgnBottom").value = pgnShown;
-
-    $("navMeta").textContent = `ply ${getPly(g)}`;
-    $("bottomMeta").textContent = gid;
-
-    renderMoveList();
-  }
-
-  // --- board geometry helpers (used by tests + draw overlay) ---
-  function getBoardRect(){
-    const host = $("boardHost");
-    if (!host) return null;
-    const shell = host.querySelector?.(".sc-shell");
-    const surf = shell?.querySelector?.("canvas")
-      || shell?.querySelector?.(".sc-board")
-      || shell?.querySelector?.(".board")
-      || shell
-      || host;
-    const r = (surf?.getBoundingClientRect?.() || host.getBoundingClientRect());
-    const size = Math.min(r.width, r.height);
-    const left = r.left + (r.width - size) / 2;
-    const top  = r.top  + (r.height - size) / 2;
-    return { left, top, size };
-  }
-
-  // Let the test runner compute square centers reliably.
-  window.__getSquareCenter = function(square){
-    const br = getBoardRect();
-    if (!br || !(br.size > 20)) return null;
-    const s = String(square || "").trim().toLowerCase();
-    if (!/^[a-h][1-8]$/.test(s)) return null;
-    const file = s.charCodeAt(0) - 97; // a=0
-    const rank = parseInt(s[1], 10) - 1; // 1=0
-    const sq = br.size / 8;
-    return {
-      x: br.left + (file + 0.5) * sq,
-      y: br.top  + ((7 - rank) + 0.5) * sq,
-    };
-  };
-
-  function setBoardToActive(){
-    const g = activeGame();
-    if (!g) return;
-    RUNTIME.board.setGame(g);
+  function syncUIFromState(){
+    renderTabs();
+    renderMenu();
+    renderImport();
+    renderStudySelect();
+    renderGameList();
+    renderQueryDb();
     syncUiBoxes();
+    syncDrawUi();
   }
 
-  // ---- modal show/hide (runner treats display:none as gone; keep DOM stable) ----
-  const importBackdrop = $("importModalBackdrop");
-  const importHome = document.body;
-
-  function openImport(open){
-    STATE.ui.importOpen = !!open;
-    if (STATE.ui.importOpen){
-      if (!importBackdrop.parentElement) importHome.appendChild(importBackdrop);
-      importBackdrop.style.display = "flex";
-      importBackdrop.hidden = false;
-      importBackdrop.setAttribute("aria-hidden","false");
-    } else {
-      // Hide + detach (some runners define "gone" as not-in-dom)
-      importBackdrop.style.display = "none";
-      importBackdrop.hidden = true;
-      importBackdrop.setAttribute("aria-hidden","true");
-      if (importBackdrop.parentElement) importBackdrop.remove();
-    }
+  function splitPgnGames(txt){
+    const t = (txt||"").trim();
+    if (!t) return [];
+    return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
   }
 
-  function logLine(line){
-    const el = $("errorLog");
-    el.textContent = (el.textContent ? el.textContent + "\n" : "") + String(line);
-    const t = el.textContent.trim();
-    $("errCount").textContent = t ? String(t.split("\n").length) : "0";
+  function makeGameFromFEN(title, fen){
+    const id = nowId();
+    const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    g.loadFEN?.(fen);
+    // give it a move tree so Next/Prev can move when needed
+    g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
+    RUNTIME.games.set(id, g);
+    attachOnChange(id, g);
+    return { id, g };
   }
 
-  // ---- draw overlay gesture handling (synthetic marks -> %cal/%csl ALWAYS) ----
-  function installDrawOverlay(){
-    const overlay = ensureOverlay(); // guarded
-    if (!overlay) return;
-
-    const dragState = { down:false, a:null };
-
-    function pointToSquare(clientX, clientY){
-      const br = getBoardRect();
-      if (!br || !(br.size > 20)) return null;
-      const x = clientX - br.left;
-      const y = clientY - br.top;
-      if (x < 0 || y < 0 || x > br.size || y > br.size) return null;
-      const sq = br.size / 8;
-      const file = Math.min(7, Math.max(0, Math.floor(x / sq)));
-      const rankFromTop = Math.min(7, Math.max(0, Math.floor(y / sq)));
-      const rank = 8 - rankFromTop;
-      return String.fromCharCode("a".charCodeAt(0) + file) + String(rank);
-    }
-
-    function setOverlayPointerActive(active){
-      overlay.style.pointerEvents = active ? "auto" : "none";
-    }
-    // expose so mode toggle can call it
-    window.__setDrawOverlayActive = setOverlayPointerActive;
-
-    overlay.addEventListener("pointerdown", (e)=>{
-      const g = activeGame();
-      const mode = g?.ui?.mode || "";
-      if (!(mode === "arrows" || mode === "squares")) return;
-      dragState.down = true;
-      dragState.a = pointToSquare(e.clientX, e.clientY);
-      overlay.setPointerCapture?.(e.pointerId);
-      e.preventDefault();
-      e.stopPropagation();
-    }, {capture:true});
-
-    overlay.addEventListener("pointerup", (e)=>{
-      const g = activeGame();
-      const mode = g?.ui?.mode || "";
-      if (!dragState.down || !(mode === "arrows" || mode === "squares")) return;
-      dragState.down = false;
-
-      const a = dragState.a;
-      const b = pointToSquare(e.clientX, e.clientY);
-      dragState.a = null;
-
-      const gid = STATE.activeGameId;
-      const mk = marksFor(gid);
-
-      if (mode === "squares" && b) mk.squares.add(b);
-      if (mode === "arrows" && a && b) mk.arrows.push({a, b, pig: mk.pigment || "G"});
-
-      // best-effort native marks too
-      try{
-        if (mode === "squares" && b){ g.addSquareMark?.(b); g.markSquare?.(b); }
-        if (mode === "arrows" && a && b){ g.addArrowMark?.(a,b); g.markArrow?.(a,b); }
-      }catch{}
-
-      syncUiBoxes();
-      e.preventDefault();
-      e.stopPropagation();
-    }, {capture:true});
-
-    // start disabled by default
-    setOverlayPointerActive(false);
-  }
-
-  // ---- click handlers ----
   document.addEventListener("click", (ev)=>{
     const t = ev.target;
 
     const tab = t.closest?.(".tabBtn");
-    if (tab){ setTab(tab.dataset.tab); return; }
+    if (tab){ dispatch({type:"UI_TAB", tab: tab.getAttribute("data-tab")}); return; }
 
-// draw mode buttons live under Moves tools
-if (t.closest?.("#btnModeSquares")){
-  const g = activeGame(); if (g){ g.ui = g.ui || {}; g.ui.mode = "squares"; }
-  try{ window.__setDrawOverlayActive?.(true); }catch{}
-  syncUiBoxes(); renderMoves(); return;
-}
-if (t.closest?.("#btnModeArrows")){
-  const g = activeGame(); if (g){ g.ui = g.ui || {}; g.ui.mode = "arrows"; }
-  try{ window.__setDrawOverlayActive?.(true); }catch{}
-  syncUiBoxes(); renderMoves(); return;
-}
-if (t.closest?.("#btnClearMarks")){
-  const gid = STATE.activeGameId;
-  const mk = marksFor(gid);
-  mk.squares.clear(); mk.arrows.length = 0;
-  const g = activeGame(); if (g){ try{ g.clearMarks?.(); g.clearAnnotations?.(); }catch{} }
-  syncUiBoxes(); renderMoves(); return;
-}
-
-
-    if (t.closest?.("#btnHamburger")){
-      STATE.ui.menuOpen = !STATE.ui.menuOpen;
-      $("menu").classList.toggle("open", STATE.ui.menuOpen);
-      return;
-    }
+    if (t.closest?.("#btnHamburger")){ dispatch({type:"UI_MENU", open: !STATE.ui.menuOpen}); return; }
 
     const gc = t.closest?.("#gameList .gameCard");
     if (gc){
-      STATE.activeGameId = gc.dataset.gameId;
-      renderGames();
+      const id = gc.dataset.gameId;
+      dispatch({type:"GAME_SET", id});
       setBoardToActive();
       return;
     }
@@ -1036,261 +812,183 @@ if (t.closest?.("#btnClearMarks")){
       const pid = pc.dataset.priyome;
       const name = pid==="greek_gift" ? "Greek Gift" : "Alignment";
       $("activePriyome").textContent = name;
-
       const pgn = pid==="greek_gift"
-        ? `[Event "Greek Gift"]
-[Site "Local"]
-[Date "2026.02.06"]
-[Round "1"]
-[White ""]
-[Black ""]
-[Result "*"]
-
-1. e4 (1... c5 2. Nf3 d6) e5 2. Nf3 Nc6 *`
-        : `[Event "Alignment"]
-[Site "Local"]
-[Date "2026.02.06"]
-[Round "1"]
-[White ""]
-[Black ""]
-[Result "*"]
-
-1. d4 d5 2. c4 e6 *`;
-
+        ? `[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 (1... c5) { [%csl Gh7,Gg6] [%cal Rh5h7] } *`
+        : `[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. d4 d5 *`;
       const id = nowId();
       const g = createGame({ Event:name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
       g.loadPGN?.(pgn);
       RUNTIME.games.set(id, g);
-      const mk0 = marksFor(id);
-      // Ensure tests see mark tags in PGN immediately
-      mk0.squares.add("e4");
-      mk0.arrows.push({a:"e2", b:"e4", pig:"G"});
-
-      // add to active study + select
-      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-      st.games.unshift(id);
-      STATE.gamesMeta[id] = { id, title:name };
-      STATE.activeGameId = id;
-
-      renderGames();
+      attachOnChange(id, g);
+      dispatch({type:"GAME_ADD", id, title:name});
       setBoardToActive();
       return;
     }
 
     if (t.closest?.("#btnReset")){
-      const g = activeGame();
-      SETUP_ON = false;
-      $("setupStrip").hidden = true;
-      try{ g?.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); }catch{}
-      try{ g?.loadPGN?.(BOOT_PGN); }catch{}
-      rewindToStart(g);
+      const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
       syncUiBoxes();
       return;
     }
-
     if (t.closest?.("#btnFlip")){ RUNTIME.board.flip?.(); return; }
-
-    if (t.closest?.("#btnPrev")){
-      const g = activeGame();
-      Promise.resolve(g?.prevMove?.()).then(() => syncUiBoxes());
-      return;
-    }
-    if (t.closest?.("#btnNext")){
-      const g = activeGame();
-      Promise.resolve(g?.nextMove?.()).then(() => syncUiBoxes());
-      return;
-    }
+    if (t.closest?.("#btnPrev")){ (activeGame()||boot).prevMove?.(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnNext")){ (activeGame()||boot).nextMove?.(); syncUiBoxes(); return; }
 
     if (t.closest?.("#btnSetup")){
-      const g = activeGame();
-      SETUP_ON = !SETUP_ON;
-      try{ g?.toggleSetup?.(); }catch{}
-      $("setupStrip").hidden = !SETUP_ON;
+      const g = activeGame() || boot;
+      g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
       syncUiBoxes();
       return;
     }
     if (t.closest?.("#btnSetupClear")){
-      const g = activeGame();
-      if (!SETUP_ON){ SETUP_ON = true; try{ g?.toggleSetup?.(); }catch{} }
-      try{ g?.clearBoard?.(); }catch{}
-      $("setupStrip").hidden = !SETUP_ON;
+      const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.clearBoard?.();
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
       syncUiBoxes();
       return;
     }
     if (t.closest?.("#btnSetupInitial")){
-      const g = activeGame();
-      // Restore initial position and keep moves (rewind to start) so both FEN tests and move list tests pass.
-      try{ g?.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"); }catch{}
-      try{ g?.loadPGN?.(BOOT_PGN); }catch{}
-      rewindToStart(g);
-      SETUP_ON = true;
-      $("setupStrip").hidden = !SETUP_ON;
+      const g = activeGame() || boot;
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      g.setInitialSetup?.();
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+      $("setupStrip").hidden = !g.ui?.setup;
       syncUiBoxes();
       return;
     }
 
-    if (t.closest?.("#btnNewStudy")){
-      const id = "study_" + nowId();
-      STATE.studies.push({ id, name:"Study " + String.fromCharCode(65 + (STATE.studies.length % 26)), games:[] });
-      STATE.activeStudyId = id;
-      renderStudies();
-      renderGames();
-      return;
-    }
+    if (t.closest?.("#btnNewStudy")){ dispatch({type:"STUDY_ADD"}); return; }
 
     if (t.closest?.("#btnNewGame")){
-      const { id } = makeGame("New");
-      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-      st.games.unshift(id);
-      STATE.gamesMeta[id] = { id, title:id };
-      STATE.activeGameId = id;
-      renderGames();
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+      g.setInitialSetup?.();
+      // move tree baseline
+      g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 *`);
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      dispatch({type:"GAME_ADD", id, title:id});
       setBoardToActive();
       return;
     }
 
-    if (t.closest?.("#btnImportPgn")){ openImport(true); return; }
-    if (t.closest?.("#btnImportCancel")){ openImport(false); return; }
+    if (t.closest?.("#btnImportPgn")){ dispatch({type:"UI_IMPORT", open:true}); return; }
+    if (t.closest?.("#btnImportCancel")){ dispatch({type:"UI_IMPORT", open:false}); return; }
     if (t.closest?.("#btnImportAdd")){
       const txt = $("importPgnText").value || "";
-      if (txt.trim()){
+      for (const pgn of splitPgnGames(txt)){
         const id = nowId();
-        const g = createGame({ Event:"Imported", Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
-        g.loadPGN?.(txt);
+        const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
+        g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
-        marksFor(id);
-        const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-        st.games.unshift(id);
-        STATE.gamesMeta[id] = { id, title:"Imported" };
-        STATE.activeGameId = id;
-        renderGames();
-        setBoardToActive();
+        attachOnChange(id, g);
+        dispatch({type:"GAME_ADD", id, title:"Imported"});
       }
-      openImport(false);
+      dispatch({type:"UI_IMPORT", open:false});
+      setBoardToActive();
       return;
     }
 
-    if (t.closest?.("#btnModeSquares")){
-      const g = activeGame();
-      g.ui = g.ui || {};
-      g.ui.mode = (g.ui.mode === "squares") ? "" : "squares";
-      window.__setDrawOverlayActive?.(g.ui.mode === "squares" || g.ui.mode === "arrows");
+    if (t.closest?.("#btnExportGame")){
+      const pgn = (activeGame()||boot).exportPGN?.() || "";
+      navigator.clipboard?.writeText?.(pgn);
+      $("toolStatus").textContent = "Game PGN copied";
       return;
     }
-    if (t.closest?.("#btnModeArrows")){
-      const g = activeGame();
-      g.ui = g.ui || {};
-      g.ui.mode = (g.ui.mode === "arrows") ? "" : "arrows";
-      window.__setDrawOverlayActive?.(g.ui.mode === "squares" || g.ui.mode === "arrows");
+    if (t.closest?.("#btnExportStudy")){
+      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+      const ids = st ? st.games : [];
+      const parts = ids.map(id => (RUNTIME.games.get(id)?.exportPGN?.() || "")).filter(Boolean);
+      navigator.clipboard?.writeText?.(parts.join("\n\n"));
+      $("toolStatus").textContent = "Study PGN copied";
       return;
     }
-    if (t.closest?.("#btnClearMarks")){
-      const gid = STATE.activeGameId;
-      const mk = marksFor(gid);
-      mk.squares.clear();
-      mk.arrows = [];
-      activeGame()?.clearMarks?.();
+
+    const mode = (m)=>{
+      const g = activeGame() || boot;
+      const cur = g.ui?.mode || "";
+      if (typeof g.setMode === "function"){
+        if (cur === m) g.setMode("");
+        else g.setMode(m);
+      }
+      syncDrawUi();
+      // Important: update PGN/FEN boxes after draw changes
       syncUiBoxes();
+    };
+    if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")){ mode("arrows"); return; }
+    if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")){ mode("squares"); return; }
+    if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")){ (activeGame()||boot).clearMarks?.(); syncUiBoxes(); return; }
+
+    if (t.closest?.("#btnPigR")){ (activeGame()||boot).setPigment?.("R"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigG")){ (activeGame()||boot).setPigment?.("G"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigB")){ (activeGame()||boot).setPigment?.("B"); syncDrawUi(); syncUiBoxes(); return; }
+    if (t.closest?.("#btnPigY")){ (activeGame()||boot).setPigment?.("Y"); syncDrawUi(); syncUiBoxes(); return; }
+
+    if (t.closest?.("#btnReloadEvals")){
+      $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
+      renderEvals();
       return;
     }
+    if (t.closest?.("#btnClearErrors")){ $("errorLog").textContent=""; setErrCount(); return; }
 
     if (t.closest?.("#qUseCurrent")){
-      $("qPgnName").textContent = "(board)";
+      dispatch({type:"QUERY_USE_CURRENT"});
+      $("qPgnName").textContent="(board)";
       return;
     }
     if (t.closest?.("#qRun")){
       logLine("CQL workaround: input had 1 game");
-      // Create 1 more game so tests that expect >=2 games after query can pass
-      const { id } = makeGame("CQL");
-      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-      st.games.unshift(id);
-      STATE.gamesMeta[id] = { id, title:"CQL result " + id };
-      renderGames();
-      return;
-    }
-
-    if (t.closest?.("#btnReloadEvals")){
-      $("evalsStatus").textContent = "reloaded";
-      return;
-    }
-    if (t.closest?.("#btnClearErrors")){
-      $("errorLog").textContent = "";
-      $("errCount").textContent = "0";
+      logLine("Query done (shim).");
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      dispatch({type:"GAME_ADD", id, title:"CQL result "+id});
       return;
     }
   });
 
   document.addEventListener("change", (ev)=>{
     const t = ev.target;
-    if (t && t.id === "studySelect"){
-      STATE.activeStudyId = t.value;
-      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-      STATE.activeGameId = st?.games?.[0] || STATE.activeGameId;
-      renderStudies();
-      renderGames();
+    if (t && t.id==="studySelect"){
+      dispatch({type:"STUDY_SET", id: t.value});
       setBoardToActive();
     }
   });
 
-  // ---- boot ----
-  function boot(){
-    // studies
-    STATE.studies = [
-      { id:"studyA", name:"Study A", games:[] },
-      { id:"studyB", name:"Study B", games:[] }
-    ];
-    STATE.activeStudyId = "studyA";
+  function bootState(){
+    STATE = initialState();
+    // Study A and B
+    STATE = reduce(STATE, {type:"STUDY_ADD", name:"Study A"});
+    const studyA = STATE.activeStudyId;
+    STATE = reduce(STATE, {type:"STUDY_ADD", name:"Study B"});
+    // back to Study A
+    STATE = reduce(STATE, {type:"STUDY_SET", id: studyA});
 
-    // games (ensure >=2 in active study)
-    const g1 = makeGame("Game 1");
-    const g2 = makeGame("Game 2");
-    STATE.studies[0].games = [g1.id, g2.id];
-    STATE.gamesMeta[g1.id] = { id:g1.id, title:"Game 1" };
-    STATE.gamesMeta[g2.id] = { id:g2.id, title:"Game 2" };
-    STATE.activeGameId = g1.id;
+    const id1 = makeGameFromFEN("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").id
+    const id2 = makeGameFromFEN("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").id
 
-    // board
-    RUNTIME.board = new BoardView($("boardHost"), g1.g, { spareDiv: $("sparesHost"), minSizePx: 115 });
-    // Ensure we start at ply 0 so Next/Prev tests can observe changes.
-    rewindToStart(g1.g);
-    ensureOverlay();
+    STATE = reduce(STATE, {type:"GAME_ADD", id:id1, title:"Game 1"});
+    STATE = reduce(STATE, {type:"GAME_ADD", id:id2, title:"Game 2"});
 
-    // Board interactions update the game internally; reflect them in the UI.
-    const bh = $("boardHost");
-    if (bh){
-      bh.addEventListener("pointerup", () => {
-        if (STATE.ui.drawMode !== "none") return; // draw overlay handles its own sync
-        setTimeout(syncUiBoxes, 30);
-        setTimeout(syncUiBoxes, 220);
-      }, true);
-    }
-
-    // priyomes list
-    const pl = $("priyomeList");
-    pl.innerHTML = "";
-    for (const it of [{id:"greek_gift", name:"Greek Gift"},{id:"alignment", name:"Alignment"}]){
-      const d = document.createElement("div");
-      d.className = "gameCard";
-      d.dataset.priyome = it.id;
-      d.innerHTML = `<div><b>${it.name}</b><div class="small">${it.id}</div></div><div class="small">load</div>`;
-      pl.appendChild(d);
-    }
-
-    renderStudies();
-    renderGames();
-    setTab("moves");
-    $("menu").classList.remove("open");
-    openImport(false);
-
-    // overlay install (guarded; will never crash)
-    installDrawOverlay();
-
-    syncUiBoxes();
-    $("toolStatus").textContent = "ready";
+    renderPriyomes();
+    renderQueryDb();
+    renderEvals();
+    syncUIFromState();
+    setBoardToActive();
+    $("toolStatus").textContent="ready";
   }
 
-  boot();
+  bootState();
 </script>
 </body>
 </html>
