@@ -297,6 +297,7 @@
       </div>
       <div class="label" style="margin-top:12px">CQL</div>
       <textarea id="qCqlText" placeholder="cql()"></textarea>
+      <input id="qArgv" placeholder="argv (optional) e.g. -g 20000" style="margin-top:8px" />
       <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
         <button class="btn primary" id="qRun" type="button">Run Query</button>
       </div>
@@ -385,6 +386,33 @@
   const $ = (id)=>document.getElementById(id);
   const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
   const nowId = ()=>Math.random().toString(16).slice(2,8);
+
+
+  /* ----------------------------- CQL runner wiring (state-machine-friendly) ----------------------------- */
+  let qPgnBytesOverride = null; // Uint8Array, lives outside STATE (non-serializable)
+  let _runnerModPromise = null;
+
+  function textToUtf8Bytes(text){
+    return new TextEncoder().encode(text ?? "");
+  }
+
+  function _qlog(level, msg){
+    try{ CTX.log(`[${String(level||"OK")}] ${String(msg??"")}`); }catch{}
+  }
+
+  // Best-effort warm-up; safe to fail.
+  (async () => {
+    try{
+      const mod = await import("./wasm/cql_runner.js");
+      if (typeof mod.ensureWarmPool === "function"){
+        _qlog("OK","Warming wasm pool (2 workers)…");
+        await mod.ensureWarmPool({ onLog: (line) => _qlog("OK", String(line)) });
+        _qlog("OK","Wasm pool warm: primary+standby ready (2/2).");
+      }
+    }catch(e){
+      _qlog("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
+    }
+  })();
 
   /* ----------------------------- Runtime (non-serializable) ----------------------------- */
   const RUNTIME = {
@@ -746,16 +774,237 @@
       $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
     },
     "ERRORS/CLEAR": (S) => { S.logs.lines.length = 0; },
-    "QUERY/USE_CURRENT": (S) => { S.query.selectedName = "(board)"; },
-    "QUERY/RUN_SHIM": (S) => {
-      CTX.log("CQL workaround: input had 1 game");
-      CTX.log("Query done (shim).");
-      const id = nowId();
-      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      T["GAME/ADD"](S, { id, title:"CQL result "+id });
+        "QUERY/DB_SELECT": (S,A) => {
+      // For the manifest dropdown, we store the *display* name only; the URL stays in the DOM.
+      // Selecting a DB clears any "(board) override".
+      S.query.selectedName = A?.label || "(manifest)";
+      // (bytes live outside STATE, see qPgnBytesOverride)
+      qPgnBytesOverride = null;
+    },
+
+    "QUERY/USE_CURRENT": (S) => {
+      // Capture PGN bytes from the current board (override any uploaded/manifest input).
+      try{
+        const g = CTX.g(); if (!g) throw new Error("No current game");
+        const pgn = g.exportPGN?.() || "";
+        qPgnBytesOverride = textToUtf8Bytes(pgn);
+        S.query.selectedName = `(board) ${S.gamesMeta?.[S.activeGameId]?.title || "game"}`;
+
+        // Reset CQL text to the board's query if available.
+        const qCql = $("qCqlText");
+        if (qCql){
+          let cqlText = "";
+          try{
+            if (g.ui?.mode === "query" && typeof g.exportCQL === "function"){
+              cqlText = String(g.exportCQL() || "").trim();
+            }
+          }catch{}
+          // Only overwrite if user hasn't typed anything meaningful.
+          const userTouched = (qCql.dataset.userTouched === "1");
+          if (!userTouched || !String(qCql.value||"").trim()){
+            qCql.value = cqlText;
+            qCql.dataset.userTouched = "0";
+          }
+        }
+
+        logLine("OK","Query input set to the current board.");
+      }catch(e){
+        logLine("ERR","Use board as query failed: " + String(e && e.stack ? e.stack : e));
+        S.ui.tab = "errors";
+      }
+    },
+
+    "QUERY/RUN": async (S) => {
+      // NOTE: this "transition" performs side effects; it's intentionally gnarly but self-contained.
+      try{
+        const qCqlText = $("qCqlText");
+        const cqlText = String(qCqlText?.value || "");
+        if (!cqlText.trim()) throw new Error("CQL is empty.");
+
+        // Resolve PGN bytes in priority: (board override) -> manifest dropdown.
+        let pgnBytes = null;
+        let sourceKey = "";
+
+        if (qPgnBytesOverride){
+          pgnBytes = qPgnBytesOverride;
+          sourceKey = `game:${S.activeGameId || "unknown"}`;
+        } else {
+          const dbUrl = String($("dbSelectEl")?.value || "");
+          if (!dbUrl) throw new Error("Choose a PGN DB, or Use current game.");
+          const r = await fetch(dbUrl, { cache:"no-store" });
+          if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${dbUrl}`);
+          const txt = await r.text();
+          pgnBytes = new TextEncoder().encode(txt);
+          sourceKey = `db:${dbUrl}`;
+          // mirror label for UI
+          S.query.selectedName = `(manifest) ${dbUrl.split("/").pop() || dbUrl}`;
+        }
+
+        // Dummy-game workaround: ensure at least two games in input PGN.
+        const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
+        const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
+        const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
+        const buildDummyGamePgn = () => {
+          const headers = [
+            `[Event "${DUMMY_CQL_EVENT}"]`,
+            `[Site "Local"]`,
+            `[Date "2026.01.01"]`,
+            `[Round "1"]`,
+            `[White "${DUMMY_CQL_WHITE}"]`,
+            `[Black "${DUMMY_CQL_BLACK}"]`,
+            `[Result "0-1"]`,
+          ].join("
+");
+          const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
+          return `${headers}
+
+${moves}
+`;
+        };
+        const isDummyGamePgn = (pgn) => {
+          const h = parseHeaders(String(pgn || ""));
+          return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
+        };
+        const ensureAtLeastTwoGamesPgnBytes = (bytes) => {
+          const txt = new TextDecoder("utf-8").decode(bytes || new Uint8Array());
+          const games = splitMultiPgn(txt);
+          if (games.length >= 2) return { bytes, injected:false };
+          const appended = (txt.trim() + "
+
+" + buildDummyGamePgn()).trim() + "
+";
+          return { bytes: new TextEncoder().encode(appended), injected:true };
+        };
+        const stripDummyFromMultiPgnText = (multi) => {
+          const parts = splitMultiPgn(String(multi || ""));
+          const kept = parts.filter(p => !isDummyGamePgn(p));
+          return kept.join("
+
+").trim();
+        };
+
+        let dummyInjected = false;
+        try{
+          const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+          pgnBytes = ensured.bytes;
+          dummyInjected = !!ensured.injected;
+          if (dummyInjected) logLine("WARN", `CQL workaround: input had 1 game; appended dummy game (${DUMMY_CQL_EVENT}).`);
+        }catch(e){
+          logLine("WARN","CQL workaround failed (continuing without dummy): " + String(e));
+        }
+
+        // UI affordance
+        const qRunBtn = $("qRun");
+        if (qRunBtn) qRunBtn.disabled = true;
+        const toolStatus = $("toolStatus");
+        if (toolStatus) toolStatus.textContent = "running CQL…";
+
+        // Warm import of runner
+        if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
+        const mod = await _runnerModPromise;
+        const runCqlWasm = mod?.runCqlWasm;
+        if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
+
+        const cqlBytes = textToUtf8Bytes(cqlText);
+
+        // argv: optional (if input exists), else empty
+        const argv = String($("qArgv")?.value || "");
+
+        logLine("OK", `Running query with argv: ${argv}`);
+        const job = runCqlWasm(cqlBytes, pgnBytes, argv, {
+          onLog: (line) => {
+            const s = String(line);
+            if (s.startsWith("[stderr]")) logLine("WARN", s);
+            else logLine("OK", s);
+          }
+        });
+
+        const unsub = job.subscribe((j) => {
+          try{
+            if (j.state === "done" || j.state === "error"){
+              unsub?.();
+
+              if (j.state === "error"){
+                logLine("ERR", `Query failed: ${j.error || "unknown error"}`);
+                S.ui.tab = "errors";
+              } else {
+                logLine("OK", `Query done (rc=${String(j.rc)}). outputPgn=${(j.outputPgn||"").length} chars`);
+                let outPgnText = String(j.outputPgn || "");
+
+                if (dummyInjected){
+                  const stripped = stripDummyFromMultiPgnText(outPgnText);
+                  if (stripped !== outPgnText.trim()) logLine("OK","CQL workaround: stripped dummy game from output.");
+                  outPgnText = stripped;
+                }
+
+                if (outPgnText && outPgnText.trim()){
+                  // Import discovered games into ScratchChess + studies
+                  const parts = splitMultiPgn(outPgnText);
+                  const newIds = [];
+                  for (let i=0;i<parts.length;i++){
+                    const pgn = parts[i];
+                    const h = parseHeaders(pgn);
+                    const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
+                    const date  = h.Date || todayYMD();
+                    const id = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+                    const g = createGame({ Event: title, Site:"Local", Date: date, Round:"1", White:h.White||"", Black:h.Black||"" });
+                    g.loadPGN?.(pgn);
+                    RUNTIME.games.set(id, g);
+                    attachOnChange(id, g);
+
+                    S.gamesMeta[id] = { id, title };
+                    newIds.push(id);
+                  }
+
+                  if (newIds.length > 1){
+                    const name = uniqStudyName(`${todayYMD()} Position Query`);
+                    // create study without disturbing existing studies too much
+                    const sid = "study_" + nowId();
+                    S.studies.push({ id: sid, name, games: newIds.slice() });
+                    S.activeStudyId = sid;
+                    S.activeGameId = newIds[0];
+                    logLine("OK", `Created new study "${name}" with ${newIds.length} games from query result.`);
+                  } else if (newIds.length === 1){
+                    // add to current study
+                    const st = S.studies.find(x=>x.id===S.activeStudyId);
+                    if (st) st.games.unshift(newIds[0]);
+                    S.activeGameId = newIds[0];
+                  }
+
+                  // show the games pane (most useful after query)
+                  S.ui.tab = "games";
+                  CTX.setActiveGameToBoard();
+                } else if (dummyInjected){
+                  logLine("WARN","CQL workaround: output contained only dummy game (or nothing); ignoring.");
+                }
+              }
+
+              // restore UI
+              if (qRunBtn) qRunBtn.disabled = false;
+              if (toolStatus) toolStatus.textContent = "ready";
+              render();
+            } else {
+              // progress update (best-effort)
+              const st = j.status ? j.status() : { busy:0, total:1 };
+              if (toolStatus) toolStatus.textContent = `${j.state} — workers ${st.busy}/${st.total}`;
+            }
+          }catch(e){
+            logLine("ERR","Job handler exception: " + String(e && e.stack ? e.stack : e));
+            S.ui.tab = "errors";
+            if (qRunBtn) qRunBtn.disabled = false;
+            if (toolStatus) toolStatus.textContent = "ready";
+            render();
+          }
+        });
+
+      }catch(e){
+        logLine("ERR", `Run exception: ${e && e.stack ? e.stack : String(e)}`);
+        S.ui.tab = "errors";
+        try{ $("qRun").disabled = false; }catch{}
+        try{ $("toolStatus").textContent = "ready"; }catch{}
+      }
     },
   });
 
@@ -763,7 +1012,19 @@
   function dispatch(action){
     try{
       const fn = T[action.type];
-      if (fn) fn(STATE, action, CTX);
+      if (fn){
+        const ret = fn(STATE, action, CTX);
+        if (ret && typeof ret.then === "function"){
+          // Async transition: render after it resolves (or at least after it throws).
+          ret.then(() => {
+            try{ render(); }catch{}
+          }).catch((err) => {
+            try{ CTX.log("[ERR] " + (err?.stack || err)); }catch{}
+            try{ render(); }catch{}
+          });
+          return;
+        }
+      }
     }catch(err){
       // treat reducer exceptions as loggable state (no random crashes)
       try{ CTX.log("[ERR] " + (err?.stack || err)); }catch{}
@@ -938,7 +1199,52 @@
     }
   }
 
+
   /* ----------------------------- Parsing helpers (kept small & deterministic) ----------------------------- */
+  function parseHeaders(pgnText){
+    const out = {};
+    const lines = String(pgnText||"").split(/\r?\n/);
+    for (const line of lines){
+      const m = line.match(/^\s*\[([A-Za-z0-9_]+)\s+"(.*)"\]\s*$/);
+      if (!m) {
+        // stop at first non-header line after headers started
+        if (Object.keys(out).length) break;
+        continue;
+      }
+      out[m[1]] = m[2];
+    }
+    return out;
+  }
+
+  // Split multi-PGN into per-game text blocks. Works for both "\n[Event" and leading whitespace.
+  function splitMultiPgn(multi){
+    const t = String(multi||"").trim();
+    if (!t) return [];
+    return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
+  }
+
+  function todayYMD(){
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const da = String(d.getDate()).padStart(2,"0");
+    return `${y}.${m}.${da}`;
+  }
+
+  function uniqStudyName(base){
+    const b = String(base||"Study").trim() || "Study";
+    let name = b;
+    const taken = new Set(STATE.studies.map(s=>s.name));
+    let i = 2;
+    while (taken.has(name)){
+      name = `${b} (${i++})`;
+    }
+    return name;
+  }
+
+  function logLine(level, msg){
+    try{ CTX.log(`[${String(level||"OK")}] ${String(msg??"")}`); }catch{}
+  }
 
   /* ----------------------------- Marks shim (for tests + simple UX) ----------------------------- */
   function ensureMarks(gameId){
@@ -1178,13 +1484,28 @@
 
     // query
     if (t.closest?.("#qUseCurrent")) return dispatch({ type:"QUERY/USE_CURRENT" });
-    if (t.closest?.("#qRun")) return dispatch({ type:"QUERY/RUN_SHIM" });
+    if (t.closest?.("#qRun")) return dispatch({ type:"QUERY/RUN" });
   });
 
   document.addEventListener("change", (ev)=>{
     const t = ev.target;
+
     if (t && t.id==="studySelect"){
-      dispatch({ type:"STUDY/SET", id: t.value });
+      return dispatch({ type:"STUDY/SET", id: t.value });
+    }
+
+    if (t && t.id==="dbSelectEl"){
+      // store a friendly label; actual URL stays in DOM value
+      const opt = t.options?.[t.selectedIndex];
+      const label = opt ? opt.textContent : "(manifest)";
+      return dispatch({ type:"QUERY/DB_SELECT", label });
+    }
+  });
+
+  document.addEventListener("input", (ev)=>{
+    const t = ev.target;
+    if (t && t.id==="qCqlText"){
+      t.dataset.userTouched = "1";
     }
   });
 </script>
