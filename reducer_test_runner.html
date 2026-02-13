@@ -140,6 +140,60 @@
   const vars = Object.create(null);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// --- HIDE support: values asserted normally, but redacted from the clipboard copy output ---
+const hiddenNeedles = new Set();
+const REDACT_TOKEN = "[data redacted to ensure test integrity]";
+function registerHiddenNeedle(s){
+  const v = String(s ?? "");
+  if (v) hiddenNeedles.add(v);
+}
+function redactCopyText(text){
+  let out = String(text ?? "");
+  // Replace longer needles first to avoid partial overlaps.
+  const needles = Array.from(hiddenNeedles).filter(Boolean).sort((a,b)=>b.length-a.length);
+  for (const n of needles){
+    out = out.split(n).join(REDACT_TOKEN);
+  }
+  return out;
+}
+
+// --- Organic readiness probe: verify tab clicks actually toggle active classes ---
+async function waitForTabActive(tabName, ms=800){
+  const t0 = performance.now();
+  while (performance.now() - t0 < ms){
+    const btn = qMaybe(`.tabBtn[data-tab="${tabName}"]`);
+    const pane = qMaybe(`#pane-${tabName}`);
+    if (btn && pane && btn.classList.contains("active") && pane.classList.contains("active")) return true;
+    await sleep(25);
+  }
+  return false;
+}
+
+async function ensureTabsInteractive(ms=8000){
+  // Preconditions: basic DOM exists
+  await waitFor(".tabs", ms);
+  await waitFor(".tabBtn", ms);
+
+  // Probe: click errors, confirm active classes flip, then return to moves.
+  const t0 = performance.now();
+  while (performance.now() - t0 < ms){
+    try{
+      clickSel(`.tabBtn[data-tab="errors"]`);
+      if (await waitForTabActive("errors", 350)){
+        // Return to moves so tests start from a stable default.
+        clickSel(`.tabBtn[data-tab="moves"]`);
+        await waitForTabActive("moves", 1200);
+        return;
+      }
+    }catch(e){
+      // ignore transient misses while app is wiring
+    }
+    await sleep(50);
+  }
+  throw new Error("App not interactive: tab click did not activate panes");
+}
+
+
   function log(msg, cls="") {
     const d = document.createElement('div');
     if (cls) d.className = cls;
@@ -269,6 +323,15 @@
     assert(String(hay).includes(needle), `expectContains failed: "${needle}" not in "${String(hay)}"`);
   }
 
+// Same as expectContains, but the expected needle is redacted from clipboard copy output.
+function expectContainsHIDE(a0, sub){
+  const needle = String(resolveArg(sub) ?? "");
+  registerHiddenNeedle(needle);
+  const hay = looksLikeSelector(a0) ? getTextAny(a0) : String(resolveArg(a0) ?? "");
+  assert(String(hay).includes(needle), `expectContainsHIDE failed: "${needle}" not in "${String(hay)}"`);
+}
+
+
   function expectNotEqual(a, b){
     const A = String(resolveArg(a));
     const B = String(resolveArg(b));
@@ -289,11 +352,26 @@
   function clickSel(sel){
     const fr = getTargetFrameEl();
     const el = q(sel);
-    el.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true,cancelable:true,view:fr.contentWindow}));
-    el.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true,view:fr.contentWindow}));
-    el.dispatchEvent(new MouseEvent("pointerup",{bubbles:true,cancelable:true,view:fr.contentWindow}));
-    el.dispatchEvent(new MouseEvent("mouseup",{bubbles:true,cancelable:true,view:fr.contentWindow}));
-    el.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,view:fr.contentWindow}));
+
+    // Ensure it's interactable like a real user click.
+    try{ el.scrollIntoView({block:"center", inline:"center"}); }catch{}
+    try{ el.focus({preventScroll:true}); }catch{ try{ el.focus(); }catch{} }
+
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width/2;
+    const y = r.top + r.height/2;
+
+    // Prefer pointer events at the element's center (matches manual clicking more closely).
+    try{
+      dispatchPointer("pointerdown", x, y, {buttons:1});
+      dispatchPointer("pointerup", x, y, {buttons:0});
+    }catch{}
+
+    // Also fire a click on the element itself (covers delegated click handlers).
+    el.dispatchEvent(new MouseEvent("click",{
+      bubbles:true, cancelable:true, view:fr.contentWindow,
+      clientX:x, clientY:y
+    }));
   }
 
   function setValue(sel, value){
@@ -375,11 +453,12 @@
       case "waitForTextNotEqual": await waitForTextNotEqual(args[0], args[1], args[2] ?? 2000); return;
       case "waitForCountAtLeast": await waitForCountAtLeast(args[0], args[1], args[2] ?? 2000); return;
 
-      case "click": clickSel(args[0]); return;
+      case "click": await sleep(50); clickSel(args[0]); return;
       case "type": setValue(args[0], String(args[1] ?? "")); return;
 
       case "expectVisible": expectVisible(args[0]); return;
       case "expectContains": expectContains(args[0], args[1]); return;
+      case "expectContainsHIDE": expectContainsHIDE(args[0], args[1]); return;
       case "expectNotEqual": expectNotEqual(args[0], args[1]); return;
 
       case "storeText": {
@@ -517,6 +596,10 @@
       await sleep(0);
       try{
         await waitFor("body", 8000);
+        // IMPORTANT: body can exist before module wiring finishes. Tabs are our earliest stable UI anchor.
+        await waitFor(".tabs", 8000);
+        await waitFor(".tabBtn", 8000);
+        await ensureTabsInteractive(8000);
       }catch(e){
         // body should exist; if not, bail
         log(`✘ Iframe did not become ready`, "fail");
@@ -552,12 +635,14 @@
   document.getElementById("runBtn").addEventListener("click", runWithFreshLoad);
   document.getElementById("reloadBtn").addEventListener("click", () => getTargetFrameEl().contentWindow.location.reload());
   document.getElementById("copyBtn").addEventListener("click", async () => {
-    const text = Array.from(logEl.querySelectorAll("div")).map(d => d.textContent).join("\n");
-    try{ await navigator.clipboard.writeText(text); log("✔ Copied results to clipboard", "ok"); }
-    catch(e){ log("✘ Clipboard copy failed (permission?)", "fail"); }
-  });
+  let text = Array.from(logEl.querySelectorAll("div")).map(d => d.textContent).join("\n");
+  // Redact hidden expectations ONLY in clipboard output (pane stays verbose).
+  text = redactCopyText(text);
+  try{ await navigator.clipboard.writeText(text); log("✔ Copied results to clipboard", "ok"); }
+  catch(e){ log("✘ Clipboard copy failed (permission?)", "fail"); }
+});
 
-  appInput.value = getDefaultApp();
+appInput.value = getDefaultApp();
   setApp();
   fitAll();
   log("Ready. Pick target (desktop/mobile), click Run. Tests loaded from reducertests.txt.", "dim");
