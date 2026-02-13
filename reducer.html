@@ -323,16 +323,37 @@
     <div class="pane" id="pane-query">
       <div class="label">PGN DB</div>
       <select id="dbSelectEl"></select>
-      <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">
-        <button class="btn" id="qUseCurrent" type="button">Use Current Game</button>
-        <span class="pill">Selected: <b id="qPgnName">(none)</b></span>
+
+      <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; width:100%">
+          <label class="pill" style="display:inline-flex; gap:6px; align-items:center; cursor:pointer">
+            <input id="qPgnFile" type="file" accept=".pgn,.txt" style="display:none" />
+            <span class="btn" type="button">Choose PGN…</span>
+            <b id="qPgnName">(none)</b>
+          </label>
+          <button class="btn" id="qUseCurrent" type="button">Use Current Game</button>
+        </div>
       </div>
+
       <div class="label" style="margin-top:12px">CQL</div>
+      <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center">
+        <label class="pill" style="display:inline-flex; gap:6px; align-items:center; cursor:pointer">
+          <input id="qCqlFile" type="file" accept=".cql,.txt" style="display:none" />
+          <span class="btn" type="button">Load CQL…</span>
+          <b id="qCqlName">—</b>
+        </label>
+        <span class="pill">Status: <b id="qStatus">—</b></span>
+      </div>
+
       <textarea id="qCqlText" placeholder="cql()"></textarea>
+
+      <div class="label" style="margin-top:10px">Args (argv)</div>
+      <input id="qArgv" type="text" value="" placeholder="--games 1 --positions 9999" />
+
       <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
         <button class="btn primary" id="qRun" type="button">Run Query</button>
       </div>
-    </div>
+</div>
 
     <div class="pane" id="pane-evals">
       <div class="row" style="justify-content:space-between; align-items:center">
@@ -426,7 +447,334 @@
   };
 
   /* ----------------------------- STATE (JSON only) ----------------------------- */
-  const STATE = {
+  
+  /* ----------------------------- Shared helpers from index (11) for Query + Priyomes ----------------------------- */
+
+  function parseHeaders(pgn){
+    const headers = {};
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    let m;
+    const s = String(pgn || "");
+    while ((m = headerRe.exec(s)) !== null){
+      headers[m[1]] = m[2];
+    }
+    return headers;
+  }
+
+  function splitMultiPgn(text){
+    const t = (text || "").trim();
+    if (!t) return [];
+    // Games separated by blank lines before a new [Event ...] header; keep headers+movetext together.
+    const parts = t.split(/\n\s*\n(?=\s*\[Event\s+")/g);
+    return parts.map(x=>x.trim()).filter(Boolean);
+  }
+
+  function todayYMD(){
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}.${mm}.${dd}`;
+  }
+
+  function uniqStudyName(base){
+    let name = base;
+    let i = 2;
+    const hasName = (n)=>STATE.studies.some(s=>s.name===n);
+    while (hasName(name)) name = `${base} (${i++})`;
+    return name;
+  }
+
+  function logLine(kind, msg){
+    CTX.log(`[${String(kind||"OK")}] ${String(msg||"")}`);
+  }
+  function logStack(kind, prefix, e){
+    logLine(kind, String(prefix||"") + String(e && e.stack ? e.stack : e));
+  }
+  function setTab(tab){
+    STATE.ui.tab = tab;
+    render();
+  }
+
+  function getHeaderTag(pgn, tag){
+    const re = new RegExp(`^\\[${tag}\\s+"([^"]*)"\\]\\s*$`, "m");
+    const m = String(pgn || "").match(re);
+    return m ? m[1] : "";
+  }
+
+  /* ----------------------------- CQL runner logic (ported) ----------------------------- */
+  let qPgnBytesOverride = null;
+  let _runnerModPromise = null;
+
+  function $(id){ return document.getElementById(id); } // ensure $ exists here too
+
+  async function fileToUint8(file) {
+    const ab = await file.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+  function textToUtf8Bytes(text){
+    return new TextEncoder().encode(text ?? "");
+  }
+
+  function updateQueryUi(){
+    const qCqlText = $("qCqlText");
+    const qPgnFile = $("qPgnFile");
+    const qRun = $("qRun");
+    const qStatus = $("qStatus");
+    const dbSelectEl = $("dbSelectEl");
+
+    const hasCql = !!(qCqlText?.value || "").trim();
+    const hasPgn = !!qPgnFile?.files?.[0] || !!dbSelectEl?.value || !!qPgnBytesOverride;
+    if (qRun) qRun.disabled = !(hasCql && hasPgn);
+    if (qStatus){
+      if (!hasCql) qStatus.textContent = "CQL is empty.";
+      else if (!hasPgn) qStatus.textContent = "Choose PGN file, or pick a DB, or Use current game.";
+      else qStatus.textContent = "Ready.";
+    }
+  }
+
+  // Dummy-game workaround
+  const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
+  const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
+  const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
+  function buildDummyGamePgn(){
+    const headers = [
+      `[Event "${DUMMY_CQL_EVENT}"]`,
+      `[Site "Local"]`,
+      `[Date "2026.01.01"]`,
+      `[Round "1"]`,
+      `[White "${DUMMY_CQL_WHITE}"]`,
+      `[Black "${DUMMY_CQL_BLACK}"]`,
+      `[Result "0-1"]`,
+    ].join("\n");
+    const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
+    return `${headers}\n\n${moves}\n`;
+  }
+
+  function isDummyGamePgn(pgn){
+    const h = parseHeaders(String(pgn || ""));
+    return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
+  }
+
+  function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
+    const txt = new TextDecoder("utf-8").decode(pgnBytes || new Uint8Array());
+    const games = splitMultiPgn(txt);
+    if (games.length >= 2) return { bytes: pgnBytes, injected: false };
+    const appended = (txt.trim() + "\n\n" + buildDummyGamePgn()).trim() + "\n";
+    return { bytes: new TextEncoder().encode(appended), injected: true };
+  }
+
+  function stripDummyFromMultiPgnText(multiPgnText){
+    const parts = splitMultiPgn(String(multiPgnText || ""));
+    const kept = parts.filter(p => !isDummyGamePgn(p));
+    return kept.join("\n\n").trim();
+  }
+
+  async function getRunnerMod(){
+    if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
+    return _runnerModPromise;
+  }
+
+  async function getPgnBytesForDb(dbKey){
+    const url = PGN_MANIFEST?.[dbKey];
+    if (!url) return null;
+    const r = await fetch(url, { cache:"no-store" });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+    const txt = await r.text();
+    return new TextEncoder().encode(txt);
+  }
+
+  function ensureDefaultStudyIfMissing(){
+    if (!STATE.activeStudyId){
+      const id = "study_" + nowId();
+      STATE.studies.push({ id, name: "Study", games: [] });
+      STATE.activeStudyId = id;
+    }
+  }
+
+  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
+    const games = splitMultiPgn(multiPgnText);
+    if (!games.length){
+      logLine("WARN","No games found in output PGN.");
+      return 0;
+    }
+
+    const newIds = [];
+    for (let i=0;i<games.length;i++){
+      const pgn = games[i];
+      const h = parseHeaders(pgn);
+      const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
+      const date  = h.Date || todayYMD();
+      const id = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+      const g = createGame(h);
+      g.loadPGN?.(pgn);
+      // tag for query->use current behavior
+      try{ g.cqlText = ""; g.cqlSourceKey = sourceKey; }catch{}
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      STATE.gamesMeta[id] = { id, title, opening: sourceKey ? `CQL: ${sourceKey}` : "CQL result" };
+
+      newIds.push(id);
+    }
+
+    if (newIds.length > 1){
+      const name = uniqStudyName(`${todayYMD()} Position Query`);
+      const sid = "study_" + nowId();
+      STATE.studies.push({ id: sid, name, games: [] });
+      STATE.activeStudyId = sid;
+      const st = STATE.studies.find(s=>s.id===sid);
+      for (const id of newIds.slice().reverse()) st.games.unshift(id);
+      STATE.activeGameId = newIds[0];
+      CTX.setActiveGameToBoard();
+      logLine("OK", `Created new study "${name}" with ${newIds.length} games from query result.`);
+    } else {
+      ensureDefaultStudyIfMissing();
+      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+      if (st) st.games.unshift(newIds[0]);
+      STATE.activeGameId = newIds[0];
+      CTX.setActiveGameToBoard();
+    }
+
+    renderGameList?.();
+    return newIds.length;
+  }
+
+  // warm-up
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const mod = await import("./wasm/cql_runner.js");
+      if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
+      logLine("OK","Warming wasm pool (2 workers)…");
+      await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
+      logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
+    } catch (e) {
+      logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
+    }
+  });
+
+  /* ----------------------------- Priyomes pane (ported) ----------------------------- */
+  async function loadPriyomesPane(){
+    const host = $("priyomeList");
+    if (!host) return;
+    host.innerHTML = "";
+    const url = PRIYOME_PGN_MANIFEST?.default;
+    if (!url){
+      host.innerHTML = `<div class="muted">PRIYOME_PGN_MANIFEST.default not set.</div>`;
+      return;
+    }
+    try{
+      const txt = await (await fetch(url, { cache:"no-store" })).text();
+      const parts = splitMultiPgn(txt);
+      if (!parts.length){
+        host.innerHTML = `<div class="muted">No Priyomes found in ${url}.</div>`;
+        return;
+      }
+
+      for (let i=0;i<parts.length;i++){
+        const pgn = parts[i];
+        const headers = parseHeaders(pgn);
+        const title = headers.Event || headers.White || `Priyome ${i+1}`;
+        const cqlref = getHeaderTag(pgn, "cqlref") || "";
+
+        const card = document.createElement("div");
+        card.className = "gameCard";
+        card.dataset.priyome = String(i);
+        card.dataset.priyomeName = title;
+        card.dataset.priyomePgn = pgn;
+        card.dataset.priyomeCqlref = cqlref;
+
+        const t = document.createElement("div");
+        t.className = "gameTitle";
+        t.textContent = title;
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.style.fontSize = "12px";
+        meta.style.color = "var(--muted)";
+        meta.textContent = cqlref ? `cqlref: ${cqlref}` : "";
+
+        const miniWrap = document.createElement("div");
+        miniWrap.style.marginTop = "8px";
+        miniWrap.style.border = "1px solid rgba(15,23,42,.08)";
+        miniWrap.style.borderRadius = "12px";
+        miniWrap.style.overflow = "hidden";
+        miniWrap.style.background = "#fff";
+        miniWrap.style.padding = "8px";
+
+        const miniDiv = document.createElement("div");
+        miniDiv.style.width = "100%";
+        miniDiv.style.height = "220px";
+        miniWrap.appendChild(miniDiv);
+
+        // mini game
+        const gMini = createGame(headers);
+        gMini.loadPGN?.(pgn);
+        gMini.toggleMini?.(true);
+
+        try{ new BoardView(miniDiv, gMini, { minSizePx: 90 }); }catch(e){}
+
+        card.appendChild(t);
+        card.appendChild(meta);
+        card.appendChild(miniWrap);
+        host.appendChild(card);
+      }
+
+      logLine("OK", `Loaded Priyomes: ${parts.length} game(s).`);
+      $("activePriyome").textContent = STATE.priyomes.activeName || "—";
+    }catch(e){
+      host.innerHTML = `<div class="muted">Failed loading Priyomes: ${String(e && e.stack ? e.stack : e)}</div>`;
+      logLine("ERR", `Priyomes load failed: ${String(e)}`);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    try{ loadPriyomesPane(); }catch{}
+    try{ updateQueryUi(); }catch{}
+
+    // Query pane wiring (file pickers + live enable/disable)
+    try{
+      const qCqlFile = $("qCqlFile");
+      const qPgnFile = $("qPgnFile");
+      const qCqlName = $("qCqlName");
+      const qPgnName = $("qPgnName");
+      const qCqlText = $("qCqlText");
+      const dbSelectEl = $("dbSelectEl");
+
+      if (qCqlFile) qCqlFile.addEventListener("change", async () => {
+        const f = qCqlFile.files?.[0];
+        if (qCqlName) qCqlName.textContent = f ? f.name : "—";
+        if (!f){ updateQueryUi(); return; }
+        try{
+          const txt = await f.text();
+          if (qCqlText) qCqlText.value = txt;
+          logLine("OK", `Loaded CQL file (${txt.length} chars): ${f.name}`);
+        }catch(e){
+          logLine("ERR", `Failed reading CQL: ${String(e)}`);
+        }finally{
+          updateQueryUi();
+        }
+      });
+
+      if (qPgnFile) qPgnFile.addEventListener("change", () => {
+        const f = qPgnFile.files?.[0];
+        if (f) qPgnBytesOverride = null;
+        if (qPgnName) qPgnName.textContent = f ? f.name : "—";
+        if (f) logLine("OK", `Selected PGN file: ${f.name}`);
+        updateQueryUi();
+      });
+
+      if (dbSelectEl) dbSelectEl.addEventListener("change", () => {
+        if (dbSelectEl.value) logLine("OK", `Selected DB (manifest): ${dbSelectEl.value}`);
+        updateQueryUi();
+      });
+
+      if (qCqlText) qCqlText.addEventListener("input", () => { qCqlText.dataset.userTouched="1"; updateQueryUi(); });
+    }catch{}
+  });
+
+
+const STATE = {
     ui: {
       tab: "moves",
       menuOpen: false,
@@ -760,17 +1108,46 @@
     },
 
     /* ---------- Priyomes ---------- */
-    "PRIYOME/LOAD": (S,A) => {
-      S.priyomes.activeId = A.id;
-      S.priyomes.activeName = A.name;
-      S.ui.syntheticVarSelected = false;
-      const id = nowId();
-      const g = createGame({ Event:A.name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
-      g.loadPGN?.(A.pgn);
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      // load as a new game in current study
-      T["GAME/ADD"](S, { id, title:A.name });
+    "PRIYOME/LOAD": async (S,A) => {
+      try{
+        S.priyomes.activeId = A.id;
+        S.priyomes.activeName = A.name;
+        S.ui.syntheticVarSelected = false;
+
+        const headers = parseHeaders(A.pgn || "");
+        const title = A.name || headers.Event || headers.White || "Priyome";
+        let cqlText = "";
+
+        const cqlref = A.cqlref || getHeaderTag(A.pgn || "", "cqlref") || "";
+        if (cqlref){
+          try{
+            cqlText = await (await fetch(`./cql/${cqlref}.cql`, { cache:"no-store" })).text();
+          }catch(e){
+            logLine("WARN", `Could not load CQL for cqlref "${cqlref}" (${String(e)})`);
+          }
+        }
+
+        const id = `priyome:${cqlref || A.id || "x"}:${Date.now()}`;
+        const g = createGame(headers);
+        g.loadPGN?.(A.pgn);
+        try{ g.cqlText = cqlText; }catch{}
+
+        RUNTIME.games.set(id, g);
+        attachOnChange(id, g);
+        STATE.gamesMeta[id] = { id, title, opening:"Priyome" };
+
+        ensureDefaultStudyIfMissing();
+        const st = STATE.studies.find(x=>x.id===STATE.activeStudyId);
+        if (st) st.games.unshift(id);
+        STATE.activeGameId = id;
+        CTX.setActiveGameToBoard();
+
+        $("activePriyome").textContent = title;
+        setTab("moves");
+      }catch(e){
+        logStack("ERR","Failed to load Priyome to board: ", e);
+        setTab("errors");
+      }
     },
 
     /* ---------- Evals / Errors / Query ---------- */
@@ -778,29 +1155,55 @@
       $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
     },
     "ERRORS/CLEAR": (S) => { S.logs.lines.length = 0; },
-    "QUERY/USE_CURRENT": (S) => { S.query.selectedName = "(board)"; },
-    "QUERY/RUN_SHIM": (S) => {
-      CTX.log("CQL workaround: input had 1 game");
-      CTX.log("Query done (shim).");
-      const id = nowId();
-      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      T["GAME/ADD"](S, { id, title:"CQL result "+id });
+    "QUERY/USE_CURRENT": (S) => {
+      try{
+        const g = CTX.g(); if (!g) throw new Error("No current game");
+        const pgn = g.exportPGN?.() || "";
+        qPgnBytesOverride = textToUtf8Bytes(pgn);
+        const title = (S.activeGameId && S.gamesMeta[S.activeGameId]?.title) ? S.gamesMeta[S.activeGameId].title : "game";
+        $("qPgnName").textContent = `(board) ${title}`;
+
+        // Reset CQL box to the board's default:
+        // - if the game has cqlText, use that
+        // - else if we're in query mode, use exportCQL()
+        const qCql = $("qCqlText");
+        if (qCql){
+          let cqlText = "";
+          try{
+            if (g.cqlText && String(g.cqlText).trim()){
+              cqlText = String(g.cqlText).trim();
+            } else if (g.ui?.mode === "query" && typeof g.exportCQL === "function"){
+              cqlText = String(g.exportCQL() || "").trim();
+            }
+          }catch{}
+          qCql.value = cqlText;
+          qCql.dataset.userTouched = "0";
+        }
+
+        logLine("OK","Query input set to the current board.");
+        updateQueryUi();
+      }catch(e){
+        logStack("ERR","Use board as query failed: ", e);
+        setTab("errors");
+      }
     },
   });
 
   /* ----------------------------- Dispatch (single pipe) ----------------------------- */
   function dispatch(action){
+    let ret;
     try{
       const fn = T[action.type];
-      if (fn) fn(STATE, action, CTX);
+      if (fn) ret = fn(STATE, action, CTX);
     }catch(err){
-      // treat reducer exceptions as loggable state (no random crashes)
       try{ CTX.log("[ERR] " + (err?.stack || err)); }catch{}
     }
     render();
+    // If the transition returned a Promise, re-render on completion and capture errors.
+    if (ret && typeof ret.then === "function"){
+      ret.then(()=>{ try{ render(); }catch{} })
+         .catch((err)=>{ try{ CTX.log("[ERR] " + (err?.stack || err)); }catch{} try{ render(); }catch{} });
+    }
   }
 
   /* ----------------------------- Rendering (single place DOM is updated) ----------------------------- */
@@ -915,20 +1318,8 @@
     const list = $("priyomeList");
     if (!list || list.dataset._built === "1") return;
     list.dataset._built = "1";
-    // build static cards once; selection/loading is handled by events
-    const items = [
-      {id:"greek_gift", name:"Greek Gift", pgn:`[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 (1... c5) { [%csl Gh7,Gg6] [%cal Rh5h7] } *`},
-      {id:"alignment", name:"Alignment", pgn:`[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. d4 d5 *`},
-    ];
-    for (const it of items){
-      const d = document.createElement("div");
-      d.className = "gameCard";
-      d.dataset.priyome = it.id;
-      d.dataset.priyomeName = it.name;
-      d.dataset.priyomePgn = it.pgn;
-      d.innerHTML = `<div><b>${it.name}</b><div class="small">${it.id}</div></div><div class="small">load</div>`;
-      list.appendChild(d);
-    }
+    // Build from manifest (index(11) behavior); safe to fire-and-forget.
+    try{ loadPriyomesPane(); }catch{}
   }
 
   function renderQueryDb(){
@@ -1160,7 +1551,8 @@
       type:"PRIYOME/LOAD",
       id: pc.dataset.priyome,
       name: pc.dataset.priyomeName,
-      pgn: pc.dataset.priyomePgn
+      pgn: pc.dataset.priyomePgn,
+      cqlref: pc.dataset.priyomeCqlref
     });
 
     // board header buttons
@@ -1214,7 +1606,7 @@
 
     // query
     if (t.closest?.("#qUseCurrent")) return dispatch({ type:"QUERY/USE_CURRENT" });
-    if (t.closest?.("#qRun")) return dispatch({ type:"QUERY/RUN_SHIM" });
+    if (t.closest?.("#qRun")) return dispatch({ type:"QUERY/RUN" });
   });
 
   document.addEventListener("change", (ev)=>{
