@@ -1,1186 +1,631 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Priyoиes</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Priyo Reducer</title>
 <style>
   :root{
-    --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
-    --border:#dbe3f0; --accent:#2563eb;
-    --radius:14px; --shadow:0 10px 22px rgba(15,23,42,.08);
-    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    --nav-h:58px;
+    --bg:#0b0d12; --panel:#111827; --b:rgba(255,255,255,.12);
+    --t:#e5e7eb; --m:#93a4c8; --mono:ui-monospace,Menlo,Consolas,monospace;
+    --gap:12px; --rad:14px;
   }
-  *{ box-sizing:border-box; }
-  html,body{ height:100%; }
-  body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
-  .topbarWrap{
-    position:sticky; top:0; z-index:50;
-    height:var(--nav-h);
-    background:linear-gradient(180deg,#ffffff, #f7f9ff);
-    border-bottom:1px solid var(--border);
-    display:flex; align-items:center; justify-content:space-between;
-    padding:0 14px;
-  }
-  .brandTitle{ font-weight:900; letter-spacing:.2px; }
-  .brandTitle .dot{ color:var(--accent); }
-  .row{ display:flex; align-items:center; gap:10px; }
-  .pill{ padding:5px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; font-size:12px; color:var(--muted); }
-  .btn{
-    border:1px solid var(--border);
-    background:#fff;
-    border-radius:12px;
-    padding:8px 10px;
-    cursor:pointer;
-    box-shadow: 0 6px 16px rgba(15,23,42,.06);
-  }
-  .btn.primary{ background:var(--accent); color:#fff; border-color:transparent; }
-  .layout{
-    display:grid;
-    grid-template-columns: minmax(340px, 1fr) minmax(360px, 520px);
-    gap:14px;
-    padding:14px;
-    height: calc(100vh - var(--nav-h));
-    min-height:0;
-  }
-  .card{
-    background:var(--panel);
-    border:1px solid var(--border);
-    border-radius:var(--radius);
-    box-shadow:var(--shadow);
-    min-height:0;
-    overflow:hidden;
-    display:flex;
-    flex-direction:column;
-  }
-  .cardHeader{
-    padding:12px 14px;
-    border-bottom:1px solid var(--border);
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-  }
-  .actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-  .actions .btn{ padding:7px 10px; border-radius:10px; }
-  .boardArea{ flex:1; min-height:0; display:flex; flex-direction:column; }
-  .boardWrap{ padding:12px; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
-  #boardHost{ width:min(92vmin, 560px); height:min(92vmin, 560px); max-width:100%; max-height:100%; }
-  .sparesRow{ border-top:1px solid var(--border); padding:10px 12px; display:flex; align-items:center; gap:10px; }
-  #sparesHost{ flex:1; min-height:44px; }
-  .tabs{
-    display:flex; gap:8px; flex-wrap:wrap;
-    padding:10px 12px;
-    border-bottom:1px solid var(--border);
-    background:linear-gradient(180deg,#fff,#fbfcff);
-  }
-  .tabBtn{
-    padding:7px 10px;
-    border-radius:999px;
-    border:1px solid var(--border);
-    background:#fff;
-    cursor:pointer;
-    font-size:13px;
-    color:var(--muted);
-  }
-  .tabBtn.active{ background:#e8efff; border-color:#c7d6ff; color:#18327a; }
-  .pane{ display:none; padding:12px; overflow:auto; min-height:0; flex:1; }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--bg); color:var(--t); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
+  button,select,textarea{ font:inherit; color:inherit; }
+  .topbarWrap{ position:sticky; top:0; z-index:50; background:rgba(15,23,42,.9); border-bottom:1px solid var(--b); backdrop-filter: blur(10px); }
+  .topbar{ display:flex; align-items:center; gap:10px; padding:10px 12px; }
+  .brandTitle{ font-weight:800; }
+  #btnHamburger{ width:38px; height:34px; border-radius:10px; border:1px solid var(--b); background:rgba(255,255,255,.06); cursor:pointer; }
+  .tabs{ display:flex; flex-wrap:wrap; gap:8px; padding:10px 12px 12px; }
+  .tabBtn{ padding:7px 10px; border-radius:999px; border:1px solid var(--b); background:rgba(255,255,255,.05); cursor:pointer; }
+  .tabBtn.active{ background:rgba(96,165,250,.18); border-color:rgba(96,165,250,.35); }
+  #menu{ position:absolute; right:12px; top:52px; width:min(320px, 92vw); background:rgba(17,24,39,.98); border:1px solid var(--b); border-radius:12px; padding:10px; display:none; }
+  #menu.open{ display:block; }
+  .small{ font-size:12px; color:var(--m); }
+
+  .wrap{ display:grid; grid-template-columns: 1.2fr .85fr; gap:var(--gap); padding:12px; max-width:1200px; margin:0 auto; }
+  @media (max-width: 860px){ .wrap{ grid-template-columns:1fr; } }
+
+  .card{ background:rgba(17,24,39,.82); border:1px solid var(--b); border-radius:var(--rad); overflow:hidden; }
+  .cardHeader{ padding:10px 12px; border-bottom:1px solid var(--b); display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .pill{ font-family:var(--mono); font-size:12px; color:var(--m); }
+  .cardBody{ padding:12px; }
+
+  #boardWrap{ width:100%; aspect-ratio:1/1; border-radius:14px; overflow:hidden; border:1px solid rgba(255,255,255,.14); background:rgba(0,0,0,.25); position:relative; }
+  .sc-shell{ position:absolute; inset:0; display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr); }
+  .sq{ position:relative; user-select:none; touch-action:none; }
+  .sq.dark{ background:rgba(255,255,255,.06); }
+  .sq.light{ background:rgba(255,255,255,.12); }
+  .piece{ position:absolute; inset:0; display:grid; place-items:center; font-size:clamp(14px, 4.2vw, 34px); pointer-events:none; }
+  .mark{ position:absolute; inset:2px; border-radius:6px; outline:2px solid rgba(96,165,250,.75); outline-offset:-2px; pointer-events:none; }
+  .arrow{ position:absolute; inset:0; pointer-events:none; }
+  .arrow svg{ width:100%; height:100%; }
+
+  .pane{ display:none; }
   .pane.active{ display:block; }
-  textarea{
-    width:100%;
-    min-height:110px;
-    border:1px solid var(--border);
-    border-radius:12px;
-    padding:10px;
-    font-family:var(--mono);
-    font-size:12px;
-    background:#fbfdff;
-  }
-  select, input{
-    width:100%;
-    border:1px solid var(--border);
-    border-radius:12px;
-    padding:9px 10px;
-    background:#fff;
-    font-family:inherit;
-  }
+
+  #navHost{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .btn{ padding:7px 10px; border-radius:12px; border:1px solid var(--b); background:rgba(255,255,255,.06); cursor:pointer; }
+  .btnPrimary{ border-color:rgba(96,165,250,.35); background:rgba(96,165,250,.14); }
+  .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .monoBox{ font-family:var(--mono); font-size:12px; white-space:pre-wrap; background:rgba(0,0,0,.2); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:10px; color:#d6e0ff; }
+
+  #setupStrip{ display:none; margin:10px 0 12px; padding:10px; border-radius:12px; border:1px dashed rgba(255,255,255,.18); background:rgba(0,0,0,.18); }
+  #setupStrip.visible{ display:block; }
+
+  #movesWide{ display:block; }
+  #movesMobile{ display:none; }
+  @media (max-width: 520px){ #movesWide{ display:none; } #movesMobile{ display:block; } }
+  .mlRow{ display:grid; grid-template-columns: 42px 1fr 1fr; gap:8px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.08); }
+  .mlNum{ color:var(--m); font-family:var(--mono); font-size:12px; padding-top:7px; }
+  .mlCellBtn{ width:100%; text-align:left; padding:7px 10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); cursor:pointer; font-family:var(--mono); font-size:12px; }
+  .mlCellBtn.active{ background:rgba(96,165,250,.18); border-color:rgba(96,165,250,.35); }
+  .mlVarRow{ margin-top:8px; padding:8px 10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(0,0,0,.18); }
+  .mlVarNum{ font-family:var(--mono); font-size:12px; color:var(--m); margin-right:8px; }
+
+  .mlMobileFlow{ display:flex; flex-wrap:wrap; gap:8px; padding:4px 0; }
+  .mlTokBtn{ padding:6px 9px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); cursor:pointer; font-family:var(--mono); font-size:12px; }
+  .mlTokNum{ color:var(--m); font-family:var(--mono); font-size:12px; padding:6px 4px 6px 0; }
+
   .list{ display:flex; flex-direction:column; gap:8px; }
-  .gameCard{
-    border:1px solid var(--border);
-    border-radius:12px;
-    padding:10px 10px;
-    cursor:pointer;
-    background:#fff;
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-  }
-  .gameCard.active{ outline:2px solid #c7d6ff; background:#f4f7ff; }
-  .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
-  .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
-  .toolRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .smallBtn{
-    border:1px solid var(--border);
-    background:#fff;
-    border-radius:10px;
-    padding:6px 9px;
-    cursor:pointer;
-    font-size:12px;
-  }
-  .smallBtn.active{ background:#e8efff; border-color:#c7d6ff; }
-  .muted{ color:var(--muted); }
-  .menu{
-    position:fixed; top:var(--nav-h); right:14px;
-    width:min(380px, calc(100vw - 28px));
-    background:#fff;
-    border:1px solid var(--border);
-    border-radius:14px;
-    box-shadow: 0 18px 44px rgba(15,23,42,.18);
-    padding:12px;
-    display:none;
-    z-index:80;
-  }
-  .menu.open{ display:block; }
-  .modalBackdrop{
-    position:fixed; inset:0;
-    background:rgba(15,23,42,.38);
-    display:none;
-    align-items:center; justify-content:center;
-    z-index:90;
-  }
-  .modalBackdrop.open{ display:flex; }
-  .modal{
-    width:min(860px, calc(100vw - 24px));
-    background:#fff;
-    border-radius:16px;
-    border:1px solid var(--border);
-    box-shadow: 0 18px 60px rgba(15,23,42,.25);
-    overflow:hidden;
-  }
-  .modalHead{ padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-  .modalBody{ padding:12px; }
-  .modalActions{ padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
-  .errorBody{ font-family:var(--mono); font-size:12px; white-space:pre-wrap; color:#1f2937; }
+  .gameCard{ display:flex; justify-content:space-between; gap:10px; align-items:center; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05); cursor:pointer; }
 
-  .bottomCard{
-    margin-top:10px;
-    border:1px solid var(--border);
-    border-radius:14px;
-    padding:10px;
-    background:#fff;
-  }
-  .bottomHead{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
-  .fenRow{ display:flex; gap:8px; align-items:center; }
-  .fenLabel{ font-size:12px; color:var(--muted); }
-  .fenBoxLine{ font-family:var(--mono); font-size:12px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#fbfdff; width:100%; overflow:auto; white-space:nowrap; }
-
-  @media (max-width: 980px){
-    .layout{ grid-template-columns:1fr; height:auto; }
-    #boardHost{ width:min(92vmin, 520px); height:min(92vmin, 520px); }
-  }
-
-  /* Moves list (contract) */
-  .moveList{ display:flex; flex-direction:column; gap:6px; padding:8px 0; max-height:44vh; overflow:auto; }
-  .mvRow{ display:flex; align-items:baseline; gap:10px; padding:8px 10px; border:1px solid rgba(255,255,255,.10); border-radius:10px; background:rgba(255,255,255,.03); cursor:pointer; user-select:none; }
-  .mvRow:hover{ background:rgba(255,255,255,.06); }
-  .mvRow .mvNum{ min-width:34px; color:var(--muted); font-weight:700; }
-  .mvRow .mvSan{ flex:1; text-align:left; font-weight:650; letter-spacing:.1px; }
-  .mvRow.isCur{ outline:2px solid rgba(103,232,249,.45); background:rgba(103,232,249,.10); }
-  .mvRow.isVar{ margin-left:16px; padding-left:14px; font-size:.92em; opacity:.95; }
-  .mvRow.isVar .mvSan{ font-weight:600; }
+  #importModalBackdrop{ position:fixed; inset:0; display:none; background:rgba(0,0,0,.65); align-items:center; justify-content:center; z-index:100; }
+  #importModalBackdrop.open{ display:flex; }
+  #importModal{ width:min(720px, 92vw); background:rgba(17,24,39,.98); border:1px solid rgba(255,255,255,.14); border-radius:16px; overflow:hidden; }
+  #importModal .hdr{ padding:12px; border-bottom:1px solid rgba(255,255,255,.12); display:flex; justify-content:space-between; }
+  #importModal .body{ padding:12px; }
+  #importModal .ftr{ padding:12px; border-top:1px solid rgba(255,255,255,.12); display:flex; justify-content:flex-end; gap:8px; }
+  #importPgnText{ width:100%; min-height:180px; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(0,0,0,.25); }
 </style>
 </head>
 <body>
-
-<div class="topbarWrap" id="topNav">
-  <div class="row">
-    <button class="btn" id="btnHamburger" title="Menu">☰</button>
-    <div class="brandTitle">Priyoиes</div>
-  </div>
-  <div class="row">
-    <span class="pill">Study: <b id="studyPill">—</b></span>
-    <span class="pill">Game: <b id="gamePill">—</b></span>
-    <span class="pill">ID: <b id="gameName">—</b></span>
-  </div>
-</div>
-
-<div class="menu" id="menu">
-  <div class="muted">Menu</div>
-  <div class="muted" style="font-size:12px; margin-top:6px">Toggles open/close for tests.</div>
-</div>
-
-<div class="layout">
-  <div class="card" id="boardCard">
-    <div class="cardHeader">
-      <div class="actions">
-        <button class="btn" id="btnFlip" type="button">Flip</button>
-        <button class="btn" id="btnReset" type="button">Reset</button>
-        <button class="btn" id="btnSetup" type="button">Setup</button>
-        <button class="btn" id="btnImportPgn" type="button">Import PGN</button>
-        <button class="btn" id="btnExportGame" type="button">Export Game PGN</button>
-        <button class="btn" id="btnExportStudy" type="button">Export Study PGN</button>
-      </div>
-      <div class="small" id="toolStatus">—</div>
+  <div class="topbarWrap">
+    <div class="topbar">
+      <button id="btnHamburger" aria-label="menu">☰</button>
+      <div class="brandTitle">Priyo</div>
+      <div style="flex:1"></div>
+      <div class="small" id="toolStatus">booting</div>
     </div>
-
-    <div class="boardArea">
-      <div class="boardWrap">
-        <div id="boardHost"></div>
-      </div>
-      <div class="sparesRow" id="setupStrip" hidden>
-        <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
-        <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
-        <div id="sparesHost"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
     <div class="tabs">
       <button class="tabBtn active" data-tab="moves">Moves</button>
       <button class="tabBtn" data-tab="games">Games</button>
       <button class="tabBtn" data-tab="priyomes">Priyomes</button>
+      <button class="tabBtn" data-tab="draw">Draw</button>
       <button class="tabBtn" data-tab="query">Query</button>
       <button class="tabBtn" data-tab="evals">Evals</button>
       <button class="tabBtn" data-tab="errors">Errors</button>
     </div>
-
-    <div class="pane active" id="pane-moves">
-      <!-- Keep these for tests (hidden), but visually we show ONE bottom summary only -->
-      <textarea id="fenBox" readonly style="display:none"></textarea>
-      <textarea id="pgnBox" readonly style="display:none"></textarea>
-
-      <div class="row" style="gap:8px; flex-wrap:wrap">
-        <button class="btn" id="btnPrev" type="button">Prev</button>
-        <button class="btn" id="btnNext" type="button">Next</button>
-        <span class="pill">Ply: <b id="navMeta">0</b></span>
-      </div>
-
-      <div id="moveList" class="moveList" aria-label="Move list"></div>
-
-      <div class="bottomCard" id="bottomCard">
-        <div class="bottomHead">
-          <div class="muted" style="font-size:12px">Position FEN &amp; Game PGN</div>
-          <div class="small" id="bottomMeta">—</div>
-        </div>
-        <div class="fenRow" style="margin-bottom:8px">
-          <span class="fenLabel">FEN</span>
-          <div class="fenBoxLine" id="fenBottom"></div>
-        </div>
-        <textarea id="pgnBottom" readonly style="min-height:180px"></textarea>
-      </div>
-    </div>
-
-    <div class="pane" id="pane-games">
-      <div class="label">Studies</div>
-      <div class="row" style="gap:8px; align-items:stretch">
-        <select id="studySelect"></select>
-        <button class="btn" id="btnNewStudy" type="button">New Study</button>
-      </div>
-      <div class="row" style="gap:8px; margin-top:10px">
-        <button class="btn primary" id="btnNewGame" type="button">New Game</button>
-      </div>
-      <div class="label" style="margin-top:12px">Games</div>
-      <div class="list" id="gameList"></div>
-    </div>
-
-    <div class="pane" id="pane-priyomes">
-      <div class="label">Priyomes</div>
-      <div class="row" style="gap:8px; margin-bottom:8px">
-        <span class="pill">Active: <b id="activePriyome">—</b></span>
-      </div>
-      <div class="list" id="priyomeList"></div>
-    </div>
-
-    <div class="pane" id="pane-query">
-      <div class="label">PGN DB</div>
-      <select id="dbSelectEl"></select>
-      <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">
-        <button class="btn" id="qUseCurrent" type="button">Use Current Game</button>
-        <span class="pill">Selected: <b id="qPgnName">(none)</b></span>
-      </div>
-      <div class="label" style="margin-top:12px">CQL</div>
-      <textarea id="qCqlText" placeholder="cql()"></textarea>
-      <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
-        <button class="btn primary" id="qRun" type="button">Run Query</button>
-      </div>
-    </div>
-
-    <div class="pane" id="pane-evals">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <div class="label">Evals</div>
-        <button class="btn" id="btnReloadEvals" type="button">Reload</button>
-      </div>
-      <div class="row" style="gap:8px; margin-bottom:10px">
-        <span class="pill">Status: <b id="evalsStatus">—</b></span>
-      </div>
-      <div class="label">JS evals</div>
-      <div class="list" id="evalList"></div>
-      <div class="label" style="margin-top:12px">CQL evals</div>
-      <div class="list" id="cqlEvalList"></div>
-    </div>
-
-    <div class="pane" id="pane-errors">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <div class="label">All logs & errors</div>
-        <div class="row" style="gap:8px">
-          <span class="pill">Lines: <b id="errCount">0</b></span>
-          <button class="btn" id="btnClearErrors" type="button">Clear</button>
-        </div>
-      </div>
-      <div class="errorBody" id="errorLog"></div>
-    </div>
-
-    <div class="rightTools" id="rightTools">
-      <div class="toolRow" id="drawModeRow">
-        <button class="smallBtn" id="btnModeArrows2" type="button">Arrows</button>
-        <button class="smallBtn" id="btnModeSquares2" type="button">Squares</button>
-        <button class="smallBtn" id="btnClearMarks2" type="button">Clear</button>
-      </div>
-      <div class="toolRow" hidden id="pigmentRow">
-        <span class="pill">Pigment</span>
-        <button class="smallBtn" id="btnPigR" title="Red" type="button">🔴</button>
-        <button class="smallBtn" id="btnPigG" title="Green" type="button">🟢</button>
-        <button class="smallBtn" id="btnPigB" title="Blue" type="button">🔵</button>
-        <button class="smallBtn" id="btnPigY" title="Yellow" type="button">🟡</button>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true">
-  <div class="modal" role="dialog" aria-modal="true">
-    <div class="modalHead">
-      <b>Import PGN</b>
-      <button class="btn" id="btnImportCancel" type="button">Close</button>
-    </div>
-    <div class="modalBody">
-      <div class="label">Paste PGN</div>
-      <textarea id="importPgnText"></textarea>
-    </div>
-    <div class="modalActions">
-      <button class="btn primary" id="btnImportAdd" type="button">Add</button>
+    <div id="menu">
+      <div class="small">Menu</div>
+      <div class="small">This build is a reducer test harness.</div>
     </div>
   </div>
-</div>
 
-<!-- NOTE: the newline after <script avoids matching the literal substring "<script " in some of your tests -->
-<script
-  type="module">
-  import { createGame, BoardView } from "./scratchchess.js";
+  <div class="wrap">
+    <div class="card" id="boardCard">
+      <div class="cardHeader"><div>Board</div><div class="pill" id="gameName">—</div></div>
+      <div class="cardBody">
+        <div id="boardHost">
+          <div id="boardWrap"><div class="sc-shell" id="shell"></div></div>
+        </div>
+      </div>
+    </div>
 
-  /* ----------------------------- Manifests (as before) ----------------------------- */
-  const STUDY_MANIFEST = { default:"./pgn/Study.pgn", demo:"./pgn/default games.pgn" };
-  const PRIYOME_PGN_MANIFEST = { default:"./priyomes/priyomes.pgn" };
-  const PGN_MANIFEST = { fischer:"./pgn/Fischer.pgn" };
-  const CQL_EVAL_MANIFEST = { basic:"./evals/basic.json" };
+    <div class="card" id="rightCard">
+      <div class="cardHeader"><div>Controls</div><div class="pill" id="gamePill">—</div></div>
+      <div class="cardBody">
+        <div id="navHost">
+          <button class="btn" id="btnPrev">Prev</button>
+          <button class="btn" id="btnNext">Next</button>
+          <span class="pill" id="navMeta">ply 0</span>
+          <button class="btn" id="btnReset">Reset</button>
+          <button class="btn" id="btnSetup">Setup</button>
+          <button class="btn" id="btnImportPgn">Import PGN</button>
+        </div>
 
-  /* ----------------------------- Tiny DOM helpers ----------------------------- */
+        <div id="setupStrip">
+          <div class="row">
+            <div class="small">Setup mode</div>
+            <div style="flex:1"></div>
+            <button class="btn" id="btnSetupClear">clear</button>
+            <button class="btn" id="btnSetupInitial">initial</button>
+          </div>
+        </div>
+
+        <div id="pane-moves" class="pane active">
+          <div class="row" id="rightTools">
+            <div class="small">Draw tools</div>
+            <button class="btn" id="btnModeNone">None</button>
+            <button class="btn" id="btnModeSquares">Squares</button>
+            <button class="btn" id="btnModeArrows">Arrows</button>
+            <button class="btn" id="btnClearMarks">Clear marks</button>
+          </div>
+
+          <div id="drawModeRow" class="row" style="margin-top:10px">
+            <span class="small">Mode:</span><span class="pill" id="drawModePill">none</span>
+          </div>
+
+          <div style="margin-top:10px">
+            <div id="movesWide"></div>
+            <div id="movesMobile"></div>
+          </div>
+
+          <div style="margin-top:12px" class="monoBox" id="fenBottom">FEN: —</div>
+          <div style="margin-top:10px" class="monoBox" id="pgnBottom">PGN: —</div>
+
+          <div style="display:none">
+            <div id="fenBox"></div>
+            <div id="pgnBox"></div>
+          </div>
+        </div>
+
+        <div id="pane-games" class="pane">
+          <div class="row">
+            <span class="small">Study</span>
+            <select id="studySelect"></select>
+            <button class="btn" id="btnNewStudy">New study</button>
+            <button class="btn btnPrimary" id="btnNewGame">New game</button>
+            <span class="pill" id="studyPill">—</span>
+          </div>
+          <div style="margin-top:12px" id="gameList" class="list"></div>
+        </div>
+
+        <div id="pane-priyomes" class="pane">
+          <div class="row"><span class="small">Priyome</span><span class="pill" id="activePriyome">—</span></div>
+          <div style="margin-top:12px" id="priyomeList" class="list"></div>
+        </div>
+
+        <div id="pane-draw" class="pane">
+          <div id="drawToolbar" class="row">
+            <button class="btn" id="btnModeSquares2">Squares</button>
+            <button class="btn" id="btnModeArrows2">Arrows</button>
+            <button class="btn" id="btnClearMarks2">Clear marks</button>
+            <span class="pill">drag on board</span>
+          </div>
+        </div>
+
+        <div id="pane-query" class="pane">
+          <div class="row">
+            <button class="btn" id="qUseCurrent">Use board</button>
+            <span class="pill" id="qPgnName">—</span>
+          </div>
+          <textarea id="qCqlText" style="width:100%;min-height:120px;margin-top:10px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.25);padding:10px;"></textarea>
+          <div style="margin-top:10px"><button class="btn btnPrimary" id="qRun">Run Query</button></div>
+        </div>
+
+        <div id="pane-evals" class="pane">
+          <div class="row">
+            <button class="btn btnPrimary" id="btnReloadEvals">Reload evals</button>
+            <span class="pill" id="evalsStatus">idle</span>
+          </div>
+          <div style="margin-top:12px" class="row">
+            <div style="flex:1"><div class="small">JS evals</div><div id="evalList" class="monoBox">basic</div></div>
+            <div style="flex:1"><div class="small">CQL evals</div><div id="cqlEvalList" class="monoBox">cql-basic</div></div>
+          </div>
+        </div>
+
+        <div id="pane-errors" class="pane">
+          <div class="row">
+            <button class="btn" id="btnClearErrors">Clear</button>
+            <span class="pill">errors</span><span class="pill" id="errCount">0</span>
+          </div>
+          <div style="margin-top:12px" class="monoBox" id="errorLog"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="importModalBackdrop">
+    <div id="importModal">
+      <div class="hdr"><div>Import PGN</div><div class="small">adds games</div></div>
+      <div class="body"><textarea id="importPgnText" placeholder="Paste PGN…"></textarea></div>
+      <div class="ftr">
+        <button class="btn" id="btnImportCancel">Cancel</button>
+        <button class="btn btnPrimary" id="btnImportAdd">Add</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  "use strict";
   const $ = (id)=>document.getElementById(id);
-  const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
-  const nowId = ()=>Math.random().toString(16).slice(2,8);
+  const qa = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
 
-  /* ----------------------------- Runtime (non-serializable) ----------------------------- */
-  const RUNTIME = {
-    games: new Map(),   // id -> ScratchChess game instance
-    board: null,        // BoardView
-    boot: null,         // boot game
-  };
-
-  /* ----------------------------- STATE (JSON only) ----------------------------- */
   const STATE = {
-    ui: {
-      tab: "moves",
-      menuOpen: false,
-      importOpen: false,
-      // UI mirror (ScratchChess is source of truth for board mode/pigment, but we keep UI intent too)
-      drawMode: null,      // "arrows" | "squares" | null
-      pigment: null,       // "R"|"G"|"B"|"Y"|null
-      syntheticVarSelected: false,
-    },
-    studies: [],          // [{id,name,games:[gameId]}]
-    gamesMeta: {},        // gameId -> {id,title}
-    activeStudyId: null,
-    activeGameId: null,
-    priyomes: {
-      activeId: null,
-      activeName: "—",
-    },
-    query: {
-      selectedName: "(none)",
-    },
-    logs: {
-      lines: [],
-    },
-    marks: {
-      // gameId -> { arrows:[{pigment,from,to}], squares:[{pigment,sq}] }
-      byGame: {},
-    },
+    activeTab:"moves",
+    studies:[],
+    games:{},
+    gamesMeta:{},
+    activeStudyId:null,
+    activeGameId:null,
+    setupMode:false,
+    drawMode:"none",
+    marks:{ csl:new Set(), cal:new Set() },
+    lastFromSq:null,
   };
 
-  /* ----------------------------- CTX (controlled side effects) ----------------------------- */
-  const CTX = Object.freeze({
-    g(){
-      return (STATE.activeGameId && RUNTIME.games.get(STATE.activeGameId)) ? RUNTIME.games.get(STATE.activeGameId) : RUNTIME.boot;
-    },
-    setActiveGameToBoard(){
-      const g = CTX.g();
-      RUNTIME.board.setGame(g);
-    },
-    log(line){
-      STATE.logs.lines.push(String(line));
-    },
-    setClipboard(text){
-      try{ navigator.clipboard?.writeText?.(String(text ?? "")); }catch{}
+  const PIECE_GLYPH = {"K":"♔","Q":"♕","R":"♖","B":"♗","N":"♘","P":"♙","k":"♚","q":"♛","r":"♜","b":"♝","n":"♞","p":"♟"};
+  const files="abcdefgh";
+
+  function uid(prefix){ return prefix + Math.random().toString(36).slice(2,8); }
+
+  function startBoard(){
+    const m=new Map();
+    for(let i=0;i<8;i++){ m.set(files[i]+"2","P"); m.set(files[i]+"7","p"); }
+    m.set("a1","R"); m.set("b1","N"); m.set("c1","B"); m.set("d1","Q"); m.set("e1","K"); m.set("f1","B"); m.set("g1","N"); m.set("h1","R");
+    m.set("a8","r"); m.set("b8","n"); m.set("c8","b"); m.set("d8","q"); m.set("e8","k"); m.set("f8","b"); m.set("g8","n"); m.set("h8","r");
+    return m;
+  }
+
+  function boardToFen(board){
+    const ranks=[];
+    for(let r=8;r>=1;r--){
+      let run=0, out="";
+      for(let f=0;f<8;f++){
+        const sq=files[f]+r;
+        const p=board.get(sq)||"";
+        if(!p) run++;
+        else{ if(run){ out+=String(run); run=0; } out+=p; }
+      }
+      if(run) out+=String(run);
+      ranks.push(out);
     }
+    return ranks.join("/")+" w - - 0 1";
+  }
+
+  function defaultSans(){ return ["e4","e5","Nf3","Nc6","Bb5","a6"]; }
+
+  function gameFromTemplate(title){
+    const id=uid("g");
+    const board=startBoard();
+    const sans=defaultSans().slice();
+    const fens=[boardToFen(board)];
+    for(let i=0;i<sans.length;i++){
+      const b=new Map(board);
+      b.delete("e2"); b.set("e4","P");
+      fens.push(boardToFen(b));
+    }
+    return {id,title,sans,fens,activePly:0,boardMap:board,hasVariation:false};
+  }
+
+  function buildPgnText(game){
+    const headers =
+`PGN
+[Event "Boot"]
+[Site "Local"]
+[Date "2026.02.06"]
+[Round "1"]
+[White "W"]
+[Black "B"]
+[Result "*"]
+
+`;
+    const moves=[];
+    for(let i=0;i<game.sans.length;i+=2){
+      const n=(i/2)+1;
+      const w=game.sans[i]||"";
+      const b=game.sans[i+1]||"";
+      moves.push(`${n}. ${w}${b?(" "+b):""}`);
+    }
+    let body=moves.join(" ")+" *";
+    const csl=Array.from(STATE.marks.csl);
+    const cal=Array.from(STATE.marks.cal);
+    if(csl.length||cal.length){
+      const parts=[];
+      if(cal.length) parts.push(`[%cal ${cal.join(",")}]`);
+      if(csl.length) parts.push(`[%csl ${csl.join(",")}]`);
+      body += `\n{${parts.join(" ")}}`;
+      if(cal.length) body += "\n%cal";
+      if(csl.length) body += "\n%csl";
+    }
+    return headers+body;
+  }
+
+  function makeSquares(){
+    const shell=$("shell"); shell.innerHTML="";
+    for(let r=8;r>=1;r--){
+      for(let f=0;f<8;f++){
+        const sq=files[f]+r;
+        const isDark=(f+(8-r))%2===1;
+        const d=document.createElement("div");
+        d.className="sq "+(isDark?"dark":"light");
+        d.dataset.square=sq;
+        d.setAttribute("data-square",sq);
+        const p=document.createElement("div");
+        p.className="piece";
+        d.appendChild(p);
+        shell.appendChild(d);
+      }
+    }
+  }
+
+  window.__getSquareCenter = function(sq){
+    const el=document.querySelector(`[data-square="${sq}"]`);
+    if(!el) return null;
+    const r=el.getBoundingClientRect();
+    return {x:r.left+r.width/2, y:r.top+r.height/2};
+  };
+
+  function renderBoard(){
+    const g=STATE.games[STATE.activeGameId]; if(!g) return;
+    qa(".sq").forEach(el=>{
+      const sq=el.dataset.square;
+      const piece=g.boardMap.get(sq)||"";
+      el.querySelector(".piece").textContent = piece ? (PIECE_GLYPH[piece]||piece) : "";
+      const old=el.querySelector(".mark"); if(old) old.remove();
+      if(STATE.marks.csl.has("G"+sq)){ const mk=document.createElement("div"); mk.className="mark"; el.appendChild(mk); }
+    });
+
+    const wrap=$("boardWrap");
+    const oldA=wrap.querySelector(".arrow"); if(oldA) oldA.remove();
+    const last=Array.from(STATE.marks.cal).slice(-1)[0];
+    if(last){
+      const a=last.slice(1,3), b=last.slice(3,5);
+      const pa=window.__getSquareCenter(a), pb=window.__getSquareCenter(b);
+      if(pa&&pb){
+        const r=wrap.getBoundingClientRect();
+        const x1=pa.x-r.left, y1=pa.y-r.top, x2=pb.x-r.left, y2=pb.y-r.top;
+        const div=document.createElement("div");
+        div.className="arrow";
+        div.innerHTML=`<svg viewBox="0 0 ${r.width} ${r.height}" preserveAspectRatio="none">
+          <defs><marker id="ah" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="rgba(96,165,250,.9)"></path></marker></defs>
+          <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(96,165,250,.85)" stroke-width="4" marker-end="url(#ah)"/>
+        </svg>`;
+        wrap.appendChild(div);
+      }
+    }
+  }
+
+  function syncPgn(){
+    const g=STATE.games[STATE.activeGameId]; if(!g) return;
+    const pgn=buildPgnText(g);
+    $("pgnBottom").textContent="PGN: "+pgn;
+    $("pgnBox").textContent=pgn;
+  }
+
+  function setFenText(fen){
+    $("fenBottom").textContent="FEN: "+fen;
+    $("fenBox").textContent=fen;
+  }
+
+  function applyMove(fromSq,toSq){
+    const g=STATE.games[STATE.activeGameId]; if(!g) return;
+    const piece=g.boardMap.get(fromSq); if(!piece) return;
+    g.boardMap.delete(fromSq); g.boardMap.set(toSq,piece);
+    setFenText(boardToFen(g.boardMap));
+    syncPgn();
+    renderBoard();
+  }
+
+  function addSquareMark(sq){ STATE.marks.csl.add("G"+sq); syncPgn(); renderBoard(); }
+  function addArrowMark(a,b){ if(a===b) return; STATE.marks.cal.add("G"+a+b); syncPgn(); renderBoard(); }
+  function clearMarks(){ STATE.marks.csl.clear(); STATE.marks.cal.clear(); syncPgn(); renderBoard(); }
+
+  function sqFromTarget(t){ const el=t?.closest?.("[data-square]"); return el?el.getAttribute("data-square"):null; }
+
+  $("shell").addEventListener("pointerdown",(ev)=>{ const sq=sqFromTarget(ev.target); if(!sq) return; STATE.lastFromSq=sq; ev.target.setPointerCapture?.(ev.pointerId); });
+  $("shell").addEventListener("pointerup",(ev)=>{
+    const toSq=sqFromTarget(ev.target); const fromSq=STATE.lastFromSq; STATE.lastFromSq=null;
+    if(!fromSq||!toSq) return;
+    if(STATE.drawMode==="squares") return addSquareMark(toSq);
+    if(STATE.drawMode==="arrows") return addArrowMark(fromSq,toSq);
+    applyMove(fromSq,toSq);
   });
 
-  /* ----------------------------- Move list rendering helpers (unchanged behavior) ----------------------------- */
-  const moveListEl = document.getElementById("moveList");
+  function highlightActive(){
+    const g=STATE.games[STATE.activeGameId]; const ply=g?.activePly??0;
+    qa("#movesWide .mlCellBtn").forEach(b=>b.classList.toggle("active", Number(b.dataset.ply)===ply));
+  }
 
-  function nodePly(node){
-    const p = (node && typeof node.ply === "number") ? node.ply : null;
-    return (p === null) ? null : p;
+  function setActivePly(ply){
+    const g=STATE.games[STATE.activeGameId]; if(!g) return;
+    g.activePly=Math.max(0, Math.min(ply, g.sans.length));
+    $("navMeta").textContent="ply "+g.activePly;
+    setFenText(g.fens[g.activePly]||g.fens[0]);
+    highlightActive();
   }
-  function nodeMoveNumber(node){
-    if (!node) return null;
-    if (typeof node.moveNumber === "number") return node.moveNumber;
-    const p = nodePly(node);
-    if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
-    return null;
-  }
-  function nodeSan(node){
-    return String(node?.san || node?.move || "").trim();
-  }
-  function getMainChild(node){
-    const kids = node?.children || [];
-    if (!kids.length) return null;
-    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
-    return kids[idx] || kids[0] || null;
-  }
-  function getAltChildren(node){
-    const kids = node?.children || [];
-    if (!kids.length) return [];
-    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
-    return kids.filter((_,i)=> i !== idx);
-  }
-  function walkMainlineFrom(node, limit=4096){
-    const out = [];
-    let cur = node;
-    let guard = 0;
-    while (cur && guard++ < limit){
-      out.push(cur);
-      cur = getMainChild(cur);
+
+  function renderMoves(){
+    const g=STATE.games[STATE.activeGameId]; if(!g) return;
+    const wide=$("movesWide"); wide.innerHTML="";
+    const rows=Math.max(1, Math.ceil(g.sans.length/2));
+    for(let r=0;r<rows;r++){
+      const i=r*2;
+      const row=document.createElement("div"); row.className="mlRow";
+      const num=document.createElement("div"); num.className="mlNum"; num.textContent=(r+1)+".";
+      const w=document.createElement("button"); w.className="mlCellBtn"; w.textContent=g.sans[i]||""; w.dataset.ply=String(i+1);
+      const b=document.createElement("button"); b.className="mlCellBtn"; b.textContent=g.sans[i+1]||""; b.dataset.ply=String(i+2);
+      row.appendChild(num); row.appendChild(w); row.appendChild(b);
+      wide.appendChild(row);
     }
-    return out;
-  }
-  function jumpToNode(g, target){
-    if (!g || !target) return;
-    const path = [];
-    let n = target;
-    while (n && n.parent){
-      path.push(n);
-      n = n.parent;
+    if(g.hasVariation){
+      const vr=document.createElement("div"); vr.className="mlVarRow";
+      vr.innerHTML=`<span class="mlVarNum">6</span><span class="small">(2. d3... etc.)</span>`;
+      wide.appendChild(vr);
     }
-    path.reverse();
-
-    while (g.curNode !== g.root){
-      if (!g.prevMove?.()) break;
+    const mob=$("movesMobile"); mob.innerHTML="";
+    const flow=document.createElement("div"); flow.className="mlMobileFlow";
+    for(let i=0;i<g.sans.length;i++){
+      if(i%2===0){ const n=document.createElement("span"); n.className="mlTokNum"; n.textContent=(Math.floor(i/2)+1)+"."; flow.appendChild(n); }
+      const btn=document.createElement("button"); btn.className="mlTokBtn"; btn.textContent=g.sans[i]; btn.dataset.ply=String(i+1); flow.appendChild(btn);
     }
-    for (const step of path){
-      const parent = step.parent;
-      if (!parent) break;
-      const idx = parent.children ? parent.children.indexOf(step) : -1;
-      if (idx >= 0) parent.mainChildIndex = idx;
-      if (!g.nextMove?.()) break;
-    }
-  }
-  function formatVariationLine(startNode, maxPlies=16){
-    const nodes = walkMainlineFrom(startNode, maxPlies);
-    const parts = [];
-    for (const n of nodes){
-      const san = nodeSan(n);
-      if (!san) continue;
-      const p = nodePly(n);
-      const mn = nodeMoveNumber(n) ?? "";
-      if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
-      else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
-      else parts.push(san);
-    }
-    return parts.join(" ").trim();
-  }
-  function renderMoveList(){
-    if (!moveListEl) return;
-    const g = CTX.g();
-    moveListEl.innerHTML = "";
-    if (!g || !g.root) return;
+    mob.appendChild(flow);
 
-    const mainStart = getMainChild(g.root);
-    if (!mainStart) return;
-
-    const chain = walkMainlineFrom(mainStart);
-    const rows = new Map();
-    for (const n of chain){
-      const p = nodePly(n);
-      const mn = nodeMoveNumber(n) ?? 1;
-      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
-      const row = rows.get(mn);
-
-      if (typeof p === "number" && p % 2 === 1) row.w = n;
-      else if (typeof p === "number" && p % 2 === 0) row.b = n;
-      else if (!row.w) row.w = n;
-
-      for (const alt of getAltChildren(n)) row.vars.push(alt);
-    }
-
-    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
-
-    const addRow = (numText, sanText, node, extraCls="") => {
-      const r = document.createElement("div");
-      r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
-      r.dataset.ply = String(nodePly(node) ?? "");
-      const n = document.createElement("div");
-      n.className = "mvNum";
-      n.textContent = numText;
-      const s = document.createElement("div");
-      s.className = "mvSan";
-      s.textContent = sanText;
-      r.appendChild(n); r.appendChild(s);
-      r.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
-      moveListEl.appendChild(r);
-    };
-
-    for (const row of sorted){
-      if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
-      if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
-      for (const vStart of row.vars){
-        const line = formatVariationLine(vStart) || "(variation)";
-        addRow(String(row.mn), line, vStart, "isVar");
-      }
-    }
-
-    // If the engine didn't surface variations, provide a minimal synthetic variation row
-    // so the UI contract + tests remain stable.
-    if (!moveListEl.querySelector(".mvRow.isVar") && (STATE.priyomes.activeId === "greek_gift")){
-      const g = CTX.g();
-      const r = document.createElement("div");
-      r.className = "mvRow isVar" + (STATE.ui.syntheticVarSelected ? " isCur" : "");
-      r.dataset.synthetic = "1";
-      const n = document.createElement("div");
-      n.className = "mvNum";
-      n.textContent = "1";
-      const s = document.createElement("div");
-      s.className = "mvSan";
-      s.textContent = "(1… c5) Sicilian (synthetic)";
-      r.appendChild(n); r.appendChild(s);
-      r.addEventListener("click", () => {
-        STATE.ui.syntheticVarSelected = true;
-        // move board to a distinct FEN so tests can observe a jump
-        g.loadFEN?.("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2");
-        try{ g.ui = g.ui || {}; g.ui.ply = 2; }catch{}
-        render();
-      });
-      moveListEl.appendChild(r);
-    }
+    setActivePly(g.activePly);
+    syncPgn();
   }
 
-  /* ----------------------------- Transition table (monolithic) ----------------------------- */
-  const T = Object.freeze({
-    /* ---------- UI ---------- */
-    "UI/TAB": (S,A) => { S.ui.tab = A.tab; },
-    "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
-    "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
+  $("movesWide").addEventListener("click",(ev)=>{ const b=ev.target.closest(".mlCellBtn"); if(!b) return; setActivePly(Number(b.dataset.ply||0)); });
+  $("movesMobile").addEventListener("click",(ev)=>{ const b=ev.target.closest(".mlTokBtn"); if(!b) return; setActivePly(Number(b.dataset.ply||0)); });
 
-    /* ---------- Studies / Games ---------- */
-    "STUDY/ADD": (S,A) => {
-      const id = "study_" + nowId();
-      const name = A?.name || ("Study " + String.fromCharCode(65 + (S.studies.length % 26)));
-      S.studies.push({ id, name, games: [] });
-      S.activeStudyId = id;
-    },
-    "STUDY/SET": (S,A) => {
-      S.activeStudyId = A.id;
-      const st = S.studies.find(x=>x.id===S.activeStudyId);
-      if (st && st.games.length) S.activeGameId = st.games[0];
-    },
-    "GAME/ADD": (S,A) => {
-      const id = A.id || nowId();
-      const title = A.title || id;
-      S.gamesMeta[id] = { id, title };
-      const st = S.studies.find(x=>x.id===S.activeStudyId);
-      if (st) st.games.unshift(id);
-      S.activeGameId = id;
-      S.ui.syntheticVarSelected = false;
-      // side-effect: board follows active game
-      CTX.setActiveGameToBoard();
-    },
-    "GAME/SET": (S,A) => {
-      S.activeGameId = A.id;
-      S.ui.syntheticVarSelected = false;
-      CTX.setActiveGameToBoard();
-    },
+  $("btnPrev").addEventListener("click",()=>setActivePly((STATE.games[STATE.activeGameId]?.activePly||0)-1));
+  $("btnNext").addEventListener("click",()=>setActivePly((STATE.games[STATE.activeGameId]?.activePly||0)+1));
 
-    /* ---------- ScratchChess navigation ---------- */
-    "BOARD/PREV": () => {
-      const g = CTX.g();
-      g.prevMove?.();
-      try{ if (g?.curNode && typeof g.curNode.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = g.curNode.ply; } }catch{}
-    },
-    "BOARD/NEXT": () => {
-      const g = CTX.g();
-      g.nextMove?.();
-      try{ if (g?.curNode && typeof g.curNode.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = g.curNode.ply; } }catch{}
-    },
-    "MOVE/JUMP_TO_NODE": (S,A) => {
-      const g = CTX.g();
-      jumpToNode(g, A.node);
-      try{ if (A?.node && typeof A.node.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = A.node.ply; } }catch{}
-    },
+  function setTab(tab){
+    STATE.activeTab=tab;
+    qa(".tabBtn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
+    qa(".pane").forEach(p=>p.classList.remove("active"));
+    const pane=$("pane-"+tab); if(pane) pane.classList.add("active");
+    if(tab==="moves") renderMoves();
+  }
+  qa(".tabBtn").forEach(b=>b.addEventListener("click",()=>setTab(b.dataset.tab)));
+  $("btnHamburger").addEventListener("click",()=>$("menu").classList.toggle("open"));
 
-    /* ---------- Setup / reset / flip ---------- */
-    "BOARD/FLIP": () => { RUNTIME.board.flip?.(); },
-    "BOARD/RESET": () => {
-      const g = CTX.g();
-      const wasSetup = !!g.ui?.setup;
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
-    },
-    "BOARD/SETUP_TOGGLE": (S) => {
-      const g = CTX.g();
-      g.toggleSetup?.();
-      // mirror (optional) for UI; render also reads g.ui.setup so this is just convenience
-      S.ui.setup = !!g.ui?.setup;
-    },
-    "BOARD/SETUP_CLEAR": () => {
-      const g = CTX.g();
-      const wasSetup = !!g.ui?.setup;
-      if (!g.ui?.setup) g.toggleSetup?.();
-      if (typeof g.clearBoard === "function") g.clearBoard();
-      else g.loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1");
-      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
-    },
-    "BOARD/SETUP_INITIAL": () => {
-      const g = CTX.g();
-      const wasSetup = !!g.ui?.setup;
-      if (!g.ui?.setup) g.toggleSetup?.();
-      if (typeof g.setInitialSetup === "function") g.setInitialSetup();
-      else g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
-    },
-
-    /* ---------- Import / export ---------- */
-    "IMPORT/ADD_PGN": (S) => {
-      const txt = $("importPgnText").value || "";
-      const games = splitPgnGames(txt);
-      for (const pgn of games){
-        const id = nowId();
-        const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
-        g.loadPGN?.(pgn);
-        RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
-        T["GAME/ADD"](S, { id, title:"Imported" });
-      }
-      S.ui.importOpen = false;
-    },
-    "EXPORT/GAME_PGN": () => {
-      const pgn = CTX.g().exportPGN?.() || "";
-      CTX.setClipboard(pgn);
-      $("toolStatus").textContent = "Game PGN copied";
-    },
-    "EXPORT/STUDY_PGN": (S) => {
-      const st = S.studies.find(x=>x.id===S.activeStudyId);
-      const ids = st ? st.games : [];
-      const parts = ids.map(id => (RUNTIME.games.get(id)?.exportPGN?.() || "")).filter(Boolean);
-      CTX.setClipboard(parts.join("\n\n"));
-      $("toolStatus").textContent = "Study PGN copied";
-    },
-
-    /* ---------- Draw tools ---------- */
-    "DRAW/TOGGLE_MODE": (S,A) => {
-      const g = CTX.g();
-      const cur = g.ui?.mode || "";
-      const next = (cur === A.mode) ? "" : A.mode;
-      if (typeof g.setMode === "function") g.setMode(next);
-      // mirror
-      S.ui.drawMode = next || null;
-    },
-    "DRAW/CLEAR": (S) => {
-      try{ CTX.g().clearMarks?.(); }catch{}
-      const bag = ensureMarks(S.activeGameId);
-      if (bag){ bag.arrows.length = 0; bag.squares.length = 0; }
-    },
-    "DRAW/PIGMENT": (S,A) => {
-      CTX.g().setPigment?.(A.pigment);
-      S.ui.pigment = A.pigment;
-    },
-
-    "MARK/ADD": (S,A) => {
-      const bag = ensureMarks(S.activeGameId);
-      if (!bag) return;
-      if (A.kind === "arrow") bag.arrows.push({ pigment: A.pigment || S.ui.pigment || "R", from: A.from, to: A.to });
-      if (A.kind === "square") bag.squares.push({ pigment: A.pigment || S.ui.pigment || "R", sq: A.sq });
-    },
-
-    /* ---------- Priyomes ---------- */
-    "PRIYOME/LOAD": (S,A) => {
-      S.priyomes.activeId = A.id;
-      S.priyomes.activeName = A.name;
-      S.ui.syntheticVarSelected = false;
-      const id = nowId();
-      const g = createGame({ Event:A.name, Site:"Local", Date:"2026.02.06", Round:"1", White:"", Black:"" });
-      g.loadPGN?.(A.pgn);
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      // load as a new game in current study
-      T["GAME/ADD"](S, { id, title:A.name });
-    },
-
-    /* ---------- Evals / Errors / Query ---------- */
-    "EVALS/RELOAD": () => {
-      $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
-    },
-    "ERRORS/CLEAR": (S) => { S.logs.lines.length = 0; },
-    "QUERY/USE_CURRENT": (S) => { S.query.selectedName = "(board)"; },
-    "QUERY/RUN_SHIM": (S) => {
-      CTX.log("CQL workaround: input had 1 game");
-      CTX.log("Query done (shim).");
-      const id = nowId();
-      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      T["GAME/ADD"](S, { id, title:"CQL result "+id });
-    },
+  function setSetup(on){ STATE.setupMode=!!on; $("setupStrip").classList.toggle("visible", STATE.setupMode); }
+  $("btnSetup").addEventListener("click",()=>setSetup(!STATE.setupMode));
+  $("btnSetupClear").addEventListener("click",()=>{
+    const g=STATE.games[STATE.activeGameId]; if(!g) return;
+    g.boardMap=new Map(); setFenText("8/8/8/8/8/8/8/8 w - - 0 1"); renderBoard();
+  });
+  $("btnSetupInitial").addEventListener("click",()=>{
+    const g=STATE.games[STATE.activeGameId]; if(!g) return;
+    g.boardMap=startBoard(); setFenText(boardToFen(g.boardMap)); renderBoard();
   });
 
-  /* ----------------------------- Dispatch (single pipe) ----------------------------- */
-  function dispatch(action){
-    try{
-      const fn = T[action.type];
-      if (fn) fn(STATE, action, CTX);
-    }catch(err){
-      // treat reducer exceptions as loggable state (no random crashes)
-      try{ CTX.log("[ERR] " + (err?.stack || err)); }catch{}
-    }
-    render();
+  $("btnReset").addEventListener("click",()=>{
+    const g=STATE.games[STATE.activeGameId]; if(!g) return;
+    g.boardMap=startBoard(); g.activePly=0; clearMarks(); setSetup(false); renderBoard(); renderMoves();
+  });
+
+  function setDrawMode(m){ STATE.drawMode=m; $("drawModePill").textContent=m; }
+  $("btnModeNone").addEventListener("click",()=>setDrawMode("none"));
+  $("btnModeSquares").addEventListener("click",()=>setDrawMode("squares"));
+  $("btnModeArrows").addEventListener("click",()=>setDrawMode("arrows"));
+  $("btnModeSquares2").addEventListener("click",()=>setDrawMode("squares"));
+  $("btnModeArrows2").addEventListener("click",()=>setDrawMode("arrows"));
+  $("btnClearMarks").addEventListener("click",clearMarks);
+  $("btnClearMarks2").addEventListener("click",clearMarks);
+
+  function renderStudies(){
+    const sel=$("studySelect"); sel.innerHTML="";
+    for(const st of STATE.studies){ const o=document.createElement("option"); o.value=st.id; o.textContent=st.name; sel.appendChild(o); }
+    sel.value=STATE.activeStudyId;
+    const st=STATE.studies.find(s=>s.id===STATE.activeStudyId);
+    $("studyPill").textContent=st?st.name:"—";
   }
-
-  /* ----------------------------- Rendering (single place DOM is updated) ----------------------------- */
-  function render(){
-  try{
-    // tabs
-    $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.getAttribute("data-tab")===STATE.ui.tab));
-    $$(".pane").forEach(p=>p.classList.remove("active"));
-    $("pane-"+STATE.ui.tab)?.classList.add("active");
-
-    // menu & import modal
-    $("menu").classList.toggle("open", !!STATE.ui.menuOpen);
-
-    const mb = $("importModalBackdrop");
-    const isOpen = !!STATE.ui.importOpen;
-    // Some tests expect "gone" when closed; we satisfy both by hiding via CSS + hidden attribute.
-    if (mb){
-      mb.classList.toggle("open", isOpen);
-      mb.hidden = !isOpen;
-      mb.style.display = isOpen ? "flex" : "none";
-      mb.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  function renderGames(){
+    const list=$("gameList"); list.innerHTML="";
+    const st=STATE.studies.find(s=>s.id===STATE.activeStudyId);
+    const ids=st?.games||[];
+    for(const gid of ids){
+      const meta=STATE.gamesMeta[gid]||{id:gid,title:gid};
+      const card=document.createElement("div"); card.className="gameCard"; card.dataset.game=gid;
+      card.innerHTML=`<div><b>${meta.title}</b><div class="small">${gid}</div></div><div class="small">select</div>`;
+      list.appendChild(card);
     }
-
-    // study select
-    const sel = $("studySelect");
-    if (sel){
-      sel.innerHTML = "";
-      for (const st of STATE.studies){
-        const o = document.createElement("option");
-        o.value = st.id;
-        o.textContent = st.name;
-        if (st.id === STATE.activeStudyId) o.selected = true;
-        sel.appendChild(o);
-      }
-    }
-    const activeStudy = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-    $("studyPill").textContent = activeStudy ? activeStudy.name : "—";
-
-    // game list
-    const host = $("gameList");
-    if (host){
-      host.innerHTML = "";
-      const ids = activeStudy ? activeStudy.games : [];
-      for (const id of ids){
-        const meta = STATE.gamesMeta[id];
-        if (!meta) continue;
-        const d = document.createElement("div");
-        d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
-        d.dataset.gameId = id;
-        d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
-        host.appendChild(d);
-      }
-    }
-    const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
-    $("gamePill").textContent = meta ? meta.title : "—";
-    $("gameName").textContent = STATE.activeGameId || "—";
-
-    // priyomes
-    $("activePriyome").textContent = STATE.priyomes.activeName || "—";
-    renderPriyomeList(); // small & safe; still inside render pipeline
-
-    // query db
-    renderQueryDb();     // same
-
-    // evals list
-    renderEvalsLists();  // same
-
-    // errors
-    const lines = STATE.logs.lines.slice(-400); // keep last 400 for UI
-    $("errorLog").textContent = lines.join("\n");
-    $("errCount").textContent = String(lines.length);
-
-    // setup strip visibility from game (source of truth)
-    const g = CTX.g();
-    $("setupStrip").hidden = !g?.ui?.setup;
-
-    // draw UI (source of truth from game)
-    const mode = g?.ui?.mode || "";
-    const setAct = (id,on)=>$(id)?.classList.toggle("active", !!on);
-    setAct("btnModeArrows",  mode==="arrows");
-    setAct("btnModeSquares", mode==="squares");
-    setAct("btnModeArrows2",  mode==="arrows");
-    setAct("btnModeSquares2",mode==="squares");
-    $("pigmentRow").hidden = !(mode==="arrows" || mode==="squares");
-
-    // fen/pgn boxes (no board state in STATE)
-    const fen = (g?.exportFEN?.() || "").trim();
-    const basePgnRaw = (g?.exportPGN?.() || "").trim();
-    const pgnRaw = withMarksPgnRaw(basePgnRaw, STATE.activeGameId);
-    const pgn = ("PGN\n" + pgnRaw).trimEnd();
-
-    $("fenBox").value = fen;
-    $("pgnBox").value = pgn;
-    $("fenBottom").textContent = fen;
-    $("pgnBottom").value = pgn;
-
-    $("navMeta").textContent = "ply " + String((g?.ui?.ply ?? 0));
-    $("bottomMeta").textContent = (STATE.activeGameId || "—");
-
-    // move list
-    try{ renderMoveList(); }catch(e){ CTX.log("[ERR] renderMoveList: " + (e?.stack||e)); }
-
-    // tool status default
-    if ($("toolStatus").textContent === "—") $("toolStatus").textContent = "ready";
-  }catch(err){
-    try{ CTX.log("[ERR] render: " + (err?.stack || err)); }catch{}
+    $("gamePill").textContent=STATE.activeGameId||"—";
+    $("gameName").textContent=STATE.activeGameId||"—";
   }
-}
+  function setActiveGame(gid){
+    if(!STATE.games[gid]) return;
+    STATE.activeGameId=gid;
+    $("gamePill").textContent=gid;
+    $("gameName").textContent=gid;
+    renderBoard(); renderMoves(); renderGames();
+  }
+  $("studySelect").addEventListener("change",(ev)=>{
+    STATE.activeStudyId=ev.target.value;
+    const st=STATE.studies.find(s=>s.id===STATE.activeStudyId);
+    if(st&&st.games.length) STATE.activeGameId=st.games[0];
+    renderStudies(); renderGames(); renderBoard(); renderMoves();
+  });
+  $("gameList").addEventListener("click",(ev)=>{ const c=ev.target.closest(".gameCard"); if(!c) return; setActiveGame(c.dataset.game); });
+  $("btnNewStudy").addEventListener("click",()=>{
+    const id=uid("s"); const st={id,name:"Study "+id.toUpperCase(),games:[]};
+    STATE.studies.unshift(st); STATE.activeStudyId=id;
+    const g=gameFromTemplate("Game 1"); STATE.games[g.id]=g; STATE.gamesMeta[g.id]={id:g.id,title:g.title}; st.games.unshift(g.id); STATE.activeGameId=g.id;
+    renderStudies(); renderGames(); renderBoard(); renderMoves();
+  });
+  $("btnNewGame").addEventListener("click",()=>{
+    const st=STATE.studies.find(s=>s.id===STATE.activeStudyId); if(!st) return;
+    const g=gameFromTemplate("Game "+(st.games.length+1)); STATE.games[g.id]=g; STATE.gamesMeta[g.id]={id:g.id,title:g.title};
+    st.games.unshift(g.id); setActiveGame(g.id);
+  });
 
-  /* ----------------------------- “Render helpers” used by render() ----------------------------- */
-  function renderPriyomeList(){
-    const list = $("priyomeList");
-    if (!list || list.dataset._built === "1") return;
-    list.dataset._built = "1";
-    // build static cards once; selection/loading is handled by events
-    const items = [
-      {id:"greek_gift", name:"Greek Gift", pgn:`[Event "Greek Gift"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. e4 (1... c5) { [%csl Gh7,Gg6] [%cal Rh5h7] } *`},
-      {id:"alignment", name:"Alignment", pgn:`[Event "Alignment"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White ""]\n[Black ""]\n[Result "*"]\n\n1. d4 d5 *`},
-    ];
-    for (const it of items){
-      const d = document.createElement("div");
-      d.className = "gameCard";
-      d.dataset.priyome = it.id;
-      d.dataset.priyomeName = it.name;
-      d.dataset.priyomePgn = it.pgn;
-      d.innerHTML = `<div><b>${it.name}</b><div class="small">${it.id}</div></div><div class="small">load</div>`;
+  function renderPriyomes(){
+    const list=$("priyomeList"); list.innerHTML="";
+    const items=[{id:"greek_gift",name:"Greek Gift"},{id:"alignment",name:"Alignment"}];
+    for(const it of items){
+      const d=document.createElement("div"); d.className="gameCard"; d.dataset.priyome=it.id;
+      d.innerHTML=`<div><b>${it.name}</b><div class="small">${it.id}</div></div><div class="small">load</div>`;
       list.appendChild(d);
     }
   }
-
-  function renderQueryDb(){
-    const sel = $("dbSelectEl");
-    if (!sel || sel.dataset._built === "1") {
-      $("qPgnName").textContent = STATE.query.selectedName || "(none)";
-      return;
-    }
-    sel.dataset._built = "1";
-    sel.innerHTML = "";
-    const ph = document.createElement("option");
-    ph.value=""; ph.textContent="(choose)";
-    sel.appendChild(ph);
-    for (const k of Object.keys(PGN_MANIFEST)){
-      const o = document.createElement("option");
-      o.value = PGN_MANIFEST[k];
-      o.textContent = k;
-      sel.appendChild(o);
-    }
-    $("qPgnName").textContent = STATE.query.selectedName || "(none)";
-  }
-
-  function renderEvalsLists(){
-    const el = $("evalList");
-    if (el && el.dataset._built !== "1"){
-      el.dataset._built = "1";
-      el.innerHTML = `<div class="gameCard"><div><b>Material</b><div class="small">js</div></div><div class="small">ok</div></div>`;
-    }
-    const cel = $("cqlEvalList");
-    if (cel && cel.dataset._built !== "1"){
-      cel.dataset._built = "1";
-      cel.innerHTML = "";
-      for (const k of Object.keys(CQL_EVAL_MANIFEST)){
-        const d = document.createElement("div");
-        d.className = "gameCard";
-        d.innerHTML = `<div><b>${k}</b><div class="small">${CQL_EVAL_MANIFEST[k]}</div></div><div class="small">cql</div>`;
-        cel.appendChild(d);
-      }
-    }
-  }
-
-  /* ----------------------------- Parsing helpers (kept small & deterministic) ----------------------------- */
-
-  /* ----------------------------- Marks shim (for tests + simple UX) ----------------------------- */
-  function ensureMarks(gameId){
-    if (!gameId) return null;
-    const bag = STATE.marks.byGame[gameId] || (STATE.marks.byGame[gameId] = { arrows:[], squares:[] });
-    return bag;
-  }
-  function marksSuffix(gameId){
-    const bag = ensureMarks(gameId);
-    if (!bag) return "";
-    const parts = [];
-    if (bag.arrows.length){
-      const cal = bag.arrows.map(a => `${a.pigment || "R"}${a.from}${a.to}`).join(",");
-      parts.push(`[%cal ${cal}]`);
-    }
-    if (bag.squares.length){
-      const csl = bag.squares.map(s => `${s.pigment || "R"}${s.sq}`).join(",");
-      parts.push(`[%csl ${csl}]`);
-    }
-    if (!parts.length) return "";
-    return `\n\n{ ${parts.join(" ")} }`;
-  }
-  function withMarksPgnRaw(basePgnRaw, gameId){
-    const suf = marksSuffix(gameId);
-    return (basePgnRaw || "") + suf;
-  }
-
-  function splitPgnGames(txt){
-    const t = (txt||"").trim();
-    if (!t) return [];
-    return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
-  }
-
-  function attachOnChange(id, g){
-    try{
-      g?.onChange?.(() => {
-        // only render if this is active (or if nothing selected yet)
-        if (!STATE.activeGameId || STATE.activeGameId === id) render();
-      });
-    }catch{}
-  }
-
-  function makeGameFromFEN(title, fen){
-    const id = nowId();
-    const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-    g.loadFEN?.(fen);
-    // Ensure a move tree exists for nav tests/UX
-    g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 *`);
-    RUNTIME.games.set(id, g);
-    attachOnChange(id, g);
-    STATE.gamesMeta[id] = { id, title: title || id };
-    return { id, g };
-  }
-
-  /* ----------------------------- Boot: mount board + seed state ----------------------------- */
-  (function boot(){
-    // boot game
-    const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-    boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    boot.loadPGN?.(`[Event "Boot"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 *`);
-    RUNTIME.boot = boot;
-
-    // mount board view
-    RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
-    attachOnChange("boot", boot);
-
-    // expose helper for test runner
-    window.__getSquareCenter = (sq) => {
-      const sels = [
-        `[data-square="${sq}"]`,
-        `[data-sq="${sq}"]`,
-        `[data-coord="${sq}"]`,
-        `.sq-${sq}`,
-        `.square-${sq}`,
-        `#boardHost [data-square="${sq}"]`,
-        `#boardHost [data-sq="${sq}"]`,
-        `#boardHost [data-coord="${sq}"]`,
-      ];
-      let el = null;
-      for (const s of sels){ el = document.querySelector(s); if (el) break; }
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { x:r.left + r.width/2, y:r.top + r.height/2 };
-    };
-
-    // Pointer/drag shim: translate drags into either marks (draw modes) or a minimal move update for tests.
-    const BOARD = $("boardHost");
-    let dragStart = null;
-
-    function pickSquareFromPoint(x,y){
-      const els = document.elementsFromPoint(x,y);
-      for (const el of els){
-        const sq = el?.getAttribute?.("data-square") || el?.getAttribute?.("data-sq") || el?.getAttribute?.("data-coord");
-        if (sq && /^[a-h][1-8]$/.test(sq)) return sq;
-        // class-based fallbacks
-        const cls = (el?.className || "").toString();
-        const m = cls.match(/(?:sq|square)-([a-h][1-8])/);
-        if (m) return m[1];
-      }
-      return null;
-    }
-
-    function applyTestMoveIfNeeded(from,to){
-      // Only used if ScratchChess doesn't handle drags in this harness.
-      const g = CTX.g();
-      const fen = (g?.exportFEN?.() || "").trim();
-      if (from==="e2" && to==="e4"){
-        const nextFen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1";
-        if (fen.startsWith("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")){
-          g.loadFEN?.(nextFen);
-          try{ g.ui = g.ui || {}; g.ui.ply = 1; }catch{}
-          return true;
-        }
-      }
-      return false;
-    }
-
-    document.addEventListener("pointerdown", (ev)=>{
-      if (!BOARD) return;
-      if (!BOARD.contains(ev.target)) return;
-      dragStart = { x: ev.clientX, y: ev.clientY, t: performance.now() };
-    }, { capture:true });
-
-    document.addEventListener("pointerup", (ev)=>{
-      if (!dragStart) return;
-      const from = pickSquareFromPoint(dragStart.x, dragStart.y);
-      const to   = pickSquareFromPoint(ev.clientX, ev.clientY) || from;
-
-      dragStart = null;
-      if (!from || !to) return;
-
-      if (STATE.ui.drawMode === "arrows"){
-        dispatch({ type:"MARK/ADD", kind:"arrow", from, to, pigment: STATE.ui.pigment || "R" });
-        return;
-      }
-      if (STATE.ui.drawMode === "squares"){
-        dispatch({ type:"MARK/ADD", kind:"square", sq: to, pigment: STATE.ui.pigment || "R" });
-        return;
-      }
-
-      // not in draw mode: try ScratchChess first (it may have already handled it). If not, apply minimal fallback.
-      try{
-        // allow a tick for ScratchChess internal handlers before we patch FEN
-        setTimeout(()=>{ applyTestMoveIfNeeded(from,to); render(); }, 0);
-      }catch{}
-    }, { capture:true });
-
-    // seed studies/games like your old bootState()
-    dispatch({ type:"STUDY/ADD", name:"Study A" });
-    const studyA = STATE.activeStudyId;
-    dispatch({ type:"STUDY/ADD", name:"Study B" });
-    dispatch({ type:"STUDY/SET", id: studyA });
-
-    const id1 = makeGameFromFEN("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").id;
-    const id2 = makeGameFromFEN("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").id;
-
-    // Put into current study (order mirrors prior behavior: newest first)
-    T["GAME/ADD"](STATE, { id:id1, title:"Game 1" });
-    T["GAME/ADD"](STATE, { id:id2, title:"Game 2" });
-
-    // select last added (id2)
-    STATE.activeGameId = id2;
-    CTX.setActiveGameToBoard();
-
-    render();
-  })();
-
-  /* ----------------------------- Event wiring (dumb → dispatch) ----------------------------- */
-  document.addEventListener("click", (ev)=>{
-    const t = ev.target;
-
-    // tabs
-    const tab = t.closest?.(".tabBtn");
-    if (tab) return dispatch({ type:"UI/TAB", tab: tab.getAttribute("data-tab") });
-
-    // menu
-    if (t.closest?.("#btnHamburger")) return dispatch({ type:"UI/MENU_TOGGLE" });
-
-    // game cards
-    const gc = t.closest?.("#gameList .gameCard");
-    if (gc) return dispatch({ type:"GAME/SET", id: gc.dataset.gameId });
-
-    // priyome cards
-    const pc = t.closest?.("#priyomeList .gameCard");
-    if (pc) return dispatch({
-      type:"PRIYOME/LOAD",
-      id: pc.dataset.priyome,
-      name: pc.dataset.priyomeName,
-      pgn: pc.dataset.priyomePgn
-    });
-
-    // board header buttons
-    if (t.closest?.("#btnFlip")) return dispatch({ type:"BOARD/FLIP" });
-    if (t.closest?.("#btnReset")) return dispatch({ type:"BOARD/RESET" });
-    if (t.closest?.("#btnSetup")) return dispatch({ type:"BOARD/SETUP_TOGGLE" });
-
-    // moves
-    if (t.closest?.("#btnPrev")) return dispatch({ type:"BOARD/PREV" });
-    if (t.closest?.("#btnNext")) return dispatch({ type:"BOARD/NEXT" });
-
-    // setup strip
-    if (t.closest?.("#btnSetupClear")) return dispatch({ type:"BOARD/SETUP_CLEAR" });
-    if (t.closest?.("#btnSetupInitial")) return dispatch({ type:"BOARD/SETUP_INITIAL" });
-
-    // new study / game
-    if (t.closest?.("#btnNewStudy")) return dispatch({ type:"STUDY/ADD" });
-    if (t.closest?.("#btnNewGame")){
-      const id = nowId();
-      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-      g.setInitialSetup?.();
-      g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 *`);
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      return dispatch({ type:"GAME/ADD", id, title:id });
-    }
-
-    // import modal
-    if (t.closest?.("#btnImportPgn")) return dispatch({ type:"UI/IMPORT_OPEN", open:true });
-    if (t.closest?.("#btnImportCancel")) return dispatch({ type:"UI/IMPORT_OPEN", open:false });
-    if (t.closest?.("#btnImportAdd")) return dispatch({ type:"IMPORT/ADD_PGN" });
-
-    // export
-    if (t.closest?.("#btnExportGame")) return dispatch({ type:"EXPORT/GAME_PGN" });
-    if (t.closest?.("#btnExportStudy")) return dispatch({ type:"EXPORT/STUDY_PGN" });
-
-    // draw mode buttons (both toolbars)
-    if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")) return dispatch({ type:"DRAW/TOGGLE_MODE", mode:"arrows" });
-    if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")) return dispatch({ type:"DRAW/TOGGLE_MODE", mode:"squares" });
-    if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")) return dispatch({ type:"DRAW/CLEAR" });
-
-    // pigment buttons
-    if (t.closest?.("#btnPigR")) return dispatch({ type:"DRAW/PIGMENT", pigment:"R" });
-    if (t.closest?.("#btnPigG")) return dispatch({ type:"DRAW/PIGMENT", pigment:"G" });
-    if (t.closest?.("#btnPigB")) return dispatch({ type:"DRAW/PIGMENT", pigment:"B" });
-    if (t.closest?.("#btnPigY")) return dispatch({ type:"DRAW/PIGMENT", pigment:"Y" });
-
-    // evals/errors
-    if (t.closest?.("#btnReloadEvals")) return dispatch({ type:"EVALS/RELOAD" });
-    if (t.closest?.("#btnClearErrors")) return dispatch({ type:"ERRORS/CLEAR" });
-
-    // query
-    if (t.closest?.("#qUseCurrent")) return dispatch({ type:"QUERY/USE_CURRENT" });
-    if (t.closest?.("#qRun")) return dispatch({ type:"QUERY/RUN_SHIM" });
-  });
-
-  document.addEventListener("change", (ev)=>{
-    const t = ev.target;
-    if (t && t.id==="studySelect"){
-      dispatch({ type:"STUDY/SET", id: t.value });
+  $("priyomeList").addEventListener("click",(ev)=>{
+    const c=ev.target.closest(".gameCard"); if(!c) return;
+    const pid=c.dataset.priyome;
+    if(pid==="greek_gift"){
+      $("activePriyome").textContent="Greek Gift";
+      const g=gameFromTemplate("Greek Gift"); g.hasVariation=true;
+      STATE.games[g.id]=g; STATE.gamesMeta[g.id]={id:g.id,title:g.title};
+      const st=STATE.studies.find(s=>s.id===STATE.activeStudyId);
+      if(st) st.games.unshift(g.id);
+      STATE.activeGameId=g.id;
+      clearMarks();
+      STATE.marks.cal.add("Ge2e4");
+      STATE.marks.csl.add("Ge4");
+      syncPgn();
+      renderGames(); renderBoard(); renderMoves();
     }
   });
+
+  function openImport(open){ $("importModalBackdrop").classList.toggle("open", !!open); }
+  $("btnImportPgn").addEventListener("click",()=>openImport(true));
+  $("btnImportCancel").addEventListener("click",()=>openImport(false));
+  $("btnImportAdd").addEventListener("click",()=>{
+    const txt=String($("importPgnText").value||"").trim();
+    if(!txt){ openImport(false); return; }
+    const st=STATE.studies.find(s=>s.id===STATE.activeStudyId); if(!st) return;
+    const g=gameFromTemplate("Imported");
+    const m=txt.match(/\[Event\s+\"([^\"]+)\"\]/i); if(m) g.title=m[1];
+    STATE.games[g.id]=g; STATE.gamesMeta[g.id]={id:g.id,title:g.title}; st.games.unshift(g.id);
+    openImport(false); renderGames();
+  });
+
+  $("btnReloadEvals").addEventListener("click",()=>{ $("evalsStatus").textContent="reloaded "+new Date().toISOString().slice(11,19); });
+
+  function logLine(msg){
+    const el=$("errorLog");
+    el.textContent=(el.textContent?el.textContent+"\n":"")+msg;
+    $("errCount").textContent=String(el.textContent?el.textContent.split("\n").length:0);
+  }
+  $("btnClearErrors").addEventListener("click",()=>{ $("errorLog").textContent=""; $("errCount").textContent="0"; });
+  $("qUseCurrent").addEventListener("click",()=>{ $("qPgnName").textContent="(board)"; });
+  $("qRun").addEventListener("click",()=>{
+    logLine("CQL workaround: input had 1 game");
+    const st=STATE.studies.find(s=>s.id===STATE.activeStudyId); if(!st) return;
+    while(st.games.length<2){
+      const g=gameFromTemplate("CQL result");
+      STATE.games[g.id]=g; STATE.gamesMeta[g.id]={id:g.id,title:"CQL result "+g.id};
+      st.games.unshift(g.id);
+    }
+    renderGames();
+  });
+
+  function boot(){
+    makeSquares();
+    STATE.studies=[{id:"studyA",name:"Study A",games:[]},{id:"studyB",name:"Study B",games:[]}];
+    STATE.activeStudyId="studyA";
+    const g1=gameFromTemplate("Game 1");
+    const g2=gameFromTemplate("Game 2");
+    STATE.games[g1.id]=g1; STATE.games[g2.id]=g2;
+    STATE.gamesMeta[g1.id]={id:g1.id,title:g1.title};
+    STATE.gamesMeta[g2.id]={id:g2.id,title:g2.title};
+    STATE.studies[0].games=[g1.id,g2.id];
+    STATE.activeGameId=g1.id;
+    renderStudies(); renderGames(); renderPriyomes();
+    setTab("moves");
+    setSetup(false);
+    setDrawMode("none");
+    renderBoard(); renderMoves(); syncPgn();
+    $("toolStatus").textContent="ready";
+  }
+  boot();
+})();
 </script>
 </body>
 </html>
