@@ -348,7 +348,7 @@
       <textarea id="qCqlText" placeholder="cql()"></textarea>
 
       <div class="label" style="margin-top:10px">Args (argv)</div>
-      <input id="qArgv" type="text" value="" placeholder="--games 1 --positions 9999" />
+      <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql" />
 
       <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
         <button class="btn primary" id="qRun" type="button">Run Query</button>
@@ -574,14 +574,19 @@
     return _runnerModPromise;
   }
 
-  async function getPgnBytesForDb(dbKey){
-    const url = PGN_MANIFEST?.[dbKey];
-    if (!url) return null;
-    const r = await fetch(url, { cache:"no-store" });
-    if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
-    const txt = await r.text();
-    return new TextEncoder().encode(txt);
-  }
+async function getPgnBytesForDb(dbKeyOrUrl){
+  // reducer's <select> uses option.value = PGN_MANIFEST[k] (a URL),
+  // but some callers might still pass a key. Support both.
+  const k = String(dbKeyOrUrl || "").trim();
+  if (!k) return null;
+
+  const url = PGN_MANIFEST?.[k] || k; // key -> url, else treat as url/path directly
+
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+  const txt = await r.text();
+  return new TextEncoder().encode(txt);
+}
 
   function ensureDefaultStudyIfMissing(){
     if (!STATE.activeStudyId){
@@ -1153,6 +1158,125 @@ const STATE = {
       $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
     },
     "ERRORS/CLEAR": (S) => { S.logs.lines.length = 0; },
+    "QUERY/RUN": async (S) => {
+      const qCqlText = $("qCqlText");
+      const qPgnFile = $("qPgnFile");
+      const dbSelectEl = $("dbSelectEl");
+      const qArgv = $("qArgv");
+      const qRun = $("qRun");
+      const qStatus = $("qStatus");
+
+      try{
+        const cqlText = String(qCqlText?.value || "").trim();
+        if (!cqlText) throw new Error("CQL is empty.");
+
+        // Prefer: user-picked PGN file > Use Current override > DB dropdown/path
+        let pgnBytes = null;
+        let sourceKey = "";
+
+        if (qPgnFile?.files?.[0]){
+          const f = qPgnFile.files[0];
+          pgnBytes = await fileToUint8(f);
+          sourceKey = f.name || "pgn-file";
+        } else if (qPgnBytesOverride){
+          pgnBytes = qPgnBytesOverride;
+          sourceKey = "current-game";
+        } else {
+          const v = String(dbSelectEl?.value || "").trim();
+          if (!v) throw new Error("No PGN selected (choose a file, DB, or Use current).");
+          // reducer helper already supports either a manifest key or a direct path/url
+          pgnBytes = await getPgnBytesForDb(v);
+          sourceKey = v;
+        }
+
+        // Dummy-game workaround (same approach as index harness)
+        let _dummyInjected = false;
+        try{
+          const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+          pgnBytes = ensured.bytes;
+          _dummyInjected = !!ensured.injected;
+          if (_dummyInjected){
+            logLine("WARN", `CQL workaround: input had 1 game; appended dummy game (${DUMMY_CQL_EVENT}).`);
+          }
+        }catch(e){
+          logLine("WARN","CQL workaround failed (continuing without dummy): " + String(e));
+        }
+
+        if (qRun) qRun.disabled = true;
+        if (qStatus) qStatus.textContent = "Running…";
+        logLine("OK", `Running query with argv: ${String(qArgv?.value || "")}`);
+
+        const mod = await getRunnerMod();
+        const runCqlWasm = mod.runCqlWasm;
+        if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
+
+        const cqlBytes = textToUtf8Bytes(cqlText);
+        const job = runCqlWasm(cqlBytes, pgnBytes, String(qArgv?.value || ""), {
+          onLog: (line) => {
+            const s = String(line);
+            if (s.startsWith("[stderr]")) logLine("WARN", s);
+            else logLine("OK", s);
+          }
+        });
+
+        return await new Promise((resolve) => {
+          const unsub = job.subscribe((j) => {
+            const st = j.status ? j.status() : { busy:0, total:1 };
+            if (qStatus){
+              qStatus.textContent =
+                `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "");
+            }
+
+            if (j.state !== "done" && j.state !== "error") return;
+
+            try{ unsub(); }catch{}
+            try{
+              if (j.state === "error"){
+                logLine("ERR", `Query failed: ${j.error || "unknown error"}`);
+                setTab("errors");
+              } else {
+                logLine("OK", `Query done (rc=${String(j.rc)}). outputPgn=${(j.outputPgn||"").length} chars`);
+                if (j.outputMissing) logLine("WARN", "output.pgn not found by runner (empty output).");
+
+                let outPgnText = j.outputPgn || "";
+
+                if (_dummyInjected){
+                  const stripped = stripDummyFromMultiPgnText(outPgnText);
+                  if (stripped !== outPgnText.trim()){
+                    logLine("OK","CQL workaround: stripped dummy game from output.");
+                  }
+                  outPgnText = stripped;
+                }
+
+                if (outPgnText && outPgnText.trim()){
+                  const added = addDiscoveredGamesFromPgn(outPgnText, sourceKey);
+                  if (added > 0) setTab("games");
+                } else if (_dummyInjected){
+                  logLine("WARN","CQL workaround: output contained only dummy game (or nothing); ignoring.");
+                }
+              }
+            } catch (e){
+              logStack("ERR","Run exception: ", e);
+              setTab("errors");
+            } finally {
+              if (qRun) qRun.disabled = false;
+              updateQueryUi();
+              resolve();
+            }
+          });
+        });
+
+      }catch(e){
+        logStack("ERR","Run exception: ", e);
+        try{ setTab("errors"); }catch{}
+        try{
+          const qRun = $("qRun");
+          if (qRun) qRun.disabled = false;
+          updateQueryUi();
+        }catch{}
+      }
+    },
+
     "QUERY/USE_CURRENT": (S) => {
       try{
         const g = CTX.g(); if (!g) throw new Error("No current game");
