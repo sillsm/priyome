@@ -1627,24 +1627,67 @@ const STATE = {
       }catch{}
     }, { capture:true });
 
-    // seed studies/games like your old bootState()
-    dispatch({ type:"STUDY/ADD", name:"Study A" });
-    const studyA = STATE.activeStudyId;
-    dispatch({ type:"STUDY/ADD", name:"Study B" });
-    dispatch({ type:"STUDY/SET", id: studyA });
+// seed studies/games from STUDY_MANIFEST PGNs
+(async () => {
+  try {
+    // clear any existing seed (optional, but keeps behavior deterministic)
+    STATE.studies.length = 0;
+    STATE.gamesMeta = {};
+    STATE.activeStudyId = null;
+    STATE.activeGameId = null;
 
-    const id1 = makeGameFromFEN("Game 1", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").id;
-    const id2 = makeGameFromFEN("Game 2", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").id;
+    const entries = Object.entries(STUDY_MANIFEST || {});
+    if (!entries.length) throw new Error("STUDY_MANIFEST is empty.");
 
-    // Put into current study (order mirrors prior behavior: newest first)
-    T["GAME/ADD"](STATE, { id:id1, title:"Game 1" });
-    T["GAME/ADD"](STATE, { id:id2, title:"Game 2" });
+    // Load each manifest PGN into its own study
+    for (const [studyKey, url] of entries) {
+      if (!url) continue;
 
-    // select last added (id2)
-    STATE.activeGameId = id2;
-    CTX.setActiveGameToBoard();
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`Failed to fetch study "${studyKey}": ${r.status} ${r.statusText}`);
+      const txt = await r.text();
 
+      const parts = splitMultiPgn(txt);
+      const sid = "study_" + nowId();
+      STATE.studies.push({ id: sid, name: studyKey, games: [] });
+
+      // Add games in file order
+      for (let i = 0; i < parts.length; i++) {
+        const pgn = parts[i];
+        const h = parseHeaders(pgn);
+        const gid = `${studyKey}:${i}:${nowId()}`;
+
+        const g = createGame(h);
+        g.loadPGN?.(pgn);
+        RUNTIME.games.set(gid, g);
+        attachOnChange(gid, g);
+
+        const title = h.Event || h.White || `Game ${i + 1}`;
+        STATE.gamesMeta[gid] = { id: gid, title };
+
+        STATE.studies[STATE.studies.length - 1].games.push(gid);
+      }
+    }
+
+    // Choose active study: prefer "default" if present, else first
+    const prefer = STATE.studies.find(s => s.name === "default") || STATE.studies[0];
+    STATE.activeStudyId = prefer?.id || null;
+
+    // Choose active game: first game in active study (if any)
+    const st = STATE.studies.find(s => s.id === STATE.activeStudyId);
+    STATE.activeGameId = st?.games?.[0] || null;
+
+    if (STATE.activeGameId) CTX.setActiveGameToBoard();
     render();
+  } catch (e) {
+    CTX.log("[ERR] STUDY_MANIFEST load failed: " + (e?.stack || e));
+    // fallback to old behavior if desired (or just render empty)
+    render();
+  }
+})();
+
+
+
     }catch(e){
       fatal(e);
     }
