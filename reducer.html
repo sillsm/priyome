@@ -596,7 +596,7 @@ async function getPgnBytesForDb(dbKeyOrUrl){
     }
   }
 
-  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey=""){
+  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey="", opts=null){
     const games = splitMultiPgn(multiPgnText);
     if (!games.length){
       logLine("WARN","No games found in output PGN.");
@@ -607,7 +607,8 @@ async function getPgnBytesForDb(dbKeyOrUrl){
     for (let i=0;i<games.length;i++){
       const pgn = games[i];
       const h = parseHeaders(pgn);
-      const title = h.Event ? h.Event : `Discovered Game ${i+1}`;
+      const baseTitle = h.Event ? h.Event : `Discovered Game ${i+1}`;
+      const title = (opts && opts.titlePrefix) ? (String(opts.titlePrefix) + baseTitle) : baseTitle;
       const date  = h.Date || todayYMD();
       const id = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
       const g = createGame(h);
@@ -621,7 +622,17 @@ async function getPgnBytesForDb(dbKeyOrUrl){
       newIds.push(id);
     }
 
-    if (newIds.length > 1){
+    if (opts && opts.forceCurrentStudy){
+      ensureDefaultStudyIfMissing();
+      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+      if (st){
+        // put newest-first like elsewhere
+        for (const id of newIds.slice().reverse()) st.games.unshift(id);
+      }
+      STATE.activeGameId = newIds[0];
+      CTX.setActiveGameToBoard();
+      logLine("OK", `Added ${newIds.length} game(s) to current study from query result.`);
+    } else if (newIds.length > 1){
       const name = uniqStudyName(`${todayYMD()} Position Query`);
       const sid = "study_" + nowId();
       STATE.studies.push({ id: sid, name, games: [] });
@@ -1275,6 +1286,120 @@ const STATE = {
         }catch{}
       }
     },
+"EVAL/RUN_CQL": async (S, A) => {
+      const key = String(A?.key || "").trim();
+      if (!key) return;
+
+      const ent = CQL_EVAL_MANIFEST?.[key];
+      const url = ent?.url;
+      if (!url) { logLine("ERR", `Eval "${key}" missing url.`); setTab("errors"); return; }
+
+      const qCqlText = $("qCqlText");
+      const qArgv = $("qArgv");
+      const qRun = $("qRun");
+      const qStatus = $("qStatus");
+
+      try{
+        // 1) current game -> PGN bytes override
+        const g = CTX.g(); if (!g) throw new Error("No current game");
+        const curTitle = (S.activeGameId && S.gamesMeta[S.activeGameId]?.title) ? S.gamesMeta[S.activeGameId].title : "game";
+        const basePgnRaw = (g.exportPGN?.() || "").trim();
+        const pgnRaw = withMarksPgnRaw(basePgnRaw, S.activeGameId);
+        qPgnBytesOverride = textToUtf8Bytes(pgnRaw);
+        try{ $("qPgnName").textContent = `(eval) ${curTitle}`; }catch{}
+
+        // 2) eval cql -> current CQL textarea
+        const cqlText = await (await fetch(url, { cache:"no-store" })).text();
+        if (qCqlText) qCqlText.value = String(cqlText || "").trim();
+        try{ $("qCqlName").textContent = key; }catch{}
+
+        // 3) run CQL (same wasm path as QUERY/RUN)
+        let pgnBytes = qPgnBytesOverride;
+        let sourceKey = `EVAL:${key}`;
+
+        // Dummy-game workaround (same as QUERY/RUN)
+        let _dummyInjected = false;
+        try{
+          const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+          pgnBytes = ensured.bytes;
+          _dummyInjected = !!ensured.injected;
+          if (_dummyInjected){
+            logLine("WARN", `CQL workaround: input had 1 game; appended dummy game (${DUMMY_CQL_EVENT}).`);
+          }
+        }catch(e){
+          logLine("WARN","CQL workaround failed (continuing without dummy): " + String(e));
+        }
+
+        if (qRun) qRun.disabled = true;
+        if (qStatus) qStatus.textContent = "Running…";
+        logLine("OK", `Running eval "${key}" with argv: ${String(qArgv?.value || "")}`);
+
+        const mod = await getRunnerMod();
+        const runCqlWasm = mod.runCqlWasm;
+        if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
+
+        const cqlBytes = textToUtf8Bytes(String(qCqlText?.value || ""));
+        const job = runCqlWasm(cqlBytes, pgnBytes, String(qArgv?.value || ""), {
+          onLog: (line) => {
+            const s = String(line);
+            if (s.startsWith("[stderr]")) logLine("WARN", s);
+            else logLine("OK", s);
+          }
+        });
+
+        return await new Promise((resolve) => {
+          const unsub = job.subscribe((j) => {
+            const st = j.status ? j.status() : { busy:0, total:1 };
+            if (qStatus){
+              qStatus.textContent =
+                `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "");
+            }
+
+            if (j.state !== "done" && j.state !== "error") return;
+            try{ unsub(); }catch{}
+
+            try{
+              if (j.state === "error"){
+                logLine("ERR", `Eval failed: ${j.error || "unknown error"}`);
+                setTab("errors");
+              } else {
+                logLine("OK", `Eval done (rc=${String(j.rc)}). outputPgn=${(j.outputPgn||"").length} chars`);
+                let outPgnText = j.outputPgn || "";
+
+                if (_dummyInjected){
+                  const stripped = stripDummyFromMultiPgnText(outPgnText);
+                  if (stripped !== outPgnText.trim()) logLine("OK","CQL workaround: stripped dummy game from output.");
+                  outPgnText = stripped;
+                }
+
+                if (outPgnText && outPgnText.trim()){
+                  const prefix = `EVAL: ${curTitle} · `;
+                  const added = addDiscoveredGamesFromPgn(outPgnText, sourceKey, { forceCurrentStudy:true, titlePrefix: prefix });
+                  if (added > 0) setTab("games");
+                } else if (_dummyInjected){
+                  logLine("WARN","CQL workaround: output contained only dummy game (or nothing); ignoring.");
+                }
+              }
+            } catch (e){
+              logStack("ERR","Eval exception: ", e);
+              setTab("errors");
+            } finally {
+              if (qRun) qRun.disabled = false;
+              updateQueryUi();
+              resolve();
+            }
+          });
+        });
+      }catch(e){
+        logStack("ERR","Eval exception: ", e);
+        try{ setTab("errors"); }catch{}
+        try{
+          const qRun = $("qRun");
+          if (qRun) qRun.disabled = false;
+          updateQueryUi();
+        }catch{}
+      }
+    },
 
     "QUERY/USE_CURRENT": (S) => {
       try{
@@ -1473,9 +1598,11 @@ const STATE = {
       cel.dataset._built = "1";
       cel.innerHTML = "";
       for (const k of Object.keys(CQL_EVAL_MANIFEST)){
+        const ent = CQL_EVAL_MANIFEST[k] || {};
         const d = document.createElement("div");
         d.className = "gameCard";
-        d.innerHTML = `<div><b>${k}</b><div class="small">${CQL_EVAL_MANIFEST[k]}</div></div><div class="small">cql</div>`;
+        d.dataset.evalKey = k;
+        d.innerHTML = `<div><b>${k}</b><div class="small">${ent.description || ent.url || ""}</div></div><div class="small">cql</div>`;
         cel.appendChild(d);
       }
     }
@@ -1717,6 +1844,10 @@ const STATE = {
       pgn: pc.dataset.priyomePgn,
       cqlref: pc.dataset.priyomeCqlref
     });
+
+    // eval cards (CQL evals)
+    const ec = t.closest?.("#cqlEvalList .gameCard");
+    if (ec) return dispatch({ type:"EVAL/RUN_CQL", key: ec.dataset.evalKey });
 
     // board header buttons
     if (t.closest?.("#btnFlip")) return dispatch({ type:"BOARD/FLIP" });
