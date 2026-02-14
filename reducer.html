@@ -309,6 +309,7 @@
       </div>
       <div class="row" style="gap:8px; margin-top:10px">
         <button class="btn primary" id="btnNewGame" type="button">New Game</button>
+        <button class="btn" id="btnDrawQuery" type="button">Draw Query</button>
       </div>
       <div class="label" style="margin-top:12px">Games</div>
       <div class="list" id="gameList"></div>
@@ -1014,6 +1015,27 @@ const STATE = {
       S.ui.syntheticVarSelected = false;
       // side-effect: board follows active game
       CTX.setActiveGameToBoard();
+    },
+    "GAME/DRAW_QUERY": (S) => {
+      try{
+        // New query-position game: starts on clear board, enters query mode, and is added to the current study.
+        const id = `query:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+        const g = createGame({ Event:"Query Position", Site:"Local", Date: (typeof todayYMD==="function"?todayYMD():"2026.02.14"), Round:"1", White:"", Black:"", Result:"*" });
+        g.clearBoard?.();
+        g.setMode?.("query"); // per scratchchess behavior
+        // Ensure we start at beginning (ply 0)
+        while (g.curNode && g.curNode !== g.root){ g.prevMove?.(); }
+
+        RUNTIME.games.set(id, g);
+        attachOnChange(id, g);
+
+        T["GAME/ADD"](S, { id, title:"Query Position" });
+        S.ui.tab = "moves";
+        logLine("OK","Created query position game (blank board, Query mode).");
+      }catch(e){
+        logStack("ERR","Draw Query failed: ", e);
+        S.ui.tab = "errors";
+      }
     },
     "GAME/SET": (S,A) => {
       S.activeGameId = A.id;
@@ -1875,6 +1897,8 @@ const STATE = {
       attachOnChange(id, g);
       return dispatch({ type:"GAME/ADD", id, title:id });
     }
+    // draw query
+    if (t.closest?.("#btnDrawQuery")) return dispatch({ type:"GAME/DRAW_QUERY" });
 
     // import modal
     if (t.closest?.("#btnImportPgn")) return dispatch({ type:"UI/IMPORT_OPEN", open:true });
