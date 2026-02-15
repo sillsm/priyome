@@ -109,24 +109,24 @@ find all quiet {
   // ---------------- NEW: MOBILITY RESTRICTED + LOOSE (red) ----
   // Mobility proxy: number of attacked squares <= 2
   // (Uses a-h1-8 as "all squares"; with <- it returns the attacked squares.)
-  square $p in [KQBNRP] {
+  square $p in [KQBNR] {
     if (#(a-h1-8 <- $p) <= 2) then
       squareMark("R" $p)
 
     $atk = #(a -> $p)
     $def = #(A -> $p)
     if ($def <= $atk) then
-      squareMark("R" $p)
+      squareMark("B" $p)
   }
 
-  square $q in [kqbnrp] {
+  square $q in [kqbnr] {
     if (#(a-h1-8 <- $q) <= 2) then
       squareMark("R" $q)
 
     $atk2 = #(A -> $q)
     $def2 = #(a -> $q)
     if ($def2 <= $atk2) then
-      squareMark("R" $q)
+      squareMark("B" $q)
   }
 
   // Emit both tags (if present)
