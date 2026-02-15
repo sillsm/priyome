@@ -288,6 +288,23 @@
 
       <div id="moveList" class="moveList" aria-label="Move list"></div>
 
+      <div class="bottomCard" id="movesQueryCard" style="display:none; margin-top:10px">
+        <div class="bottomHead">
+          <div class="muted" style="font-size:12px">Query Controls</div>
+          <div class="small">Query Position</div>
+        </div>
+
+        <div class="label">PGN DB</div>
+        <select id="mvDbSelectEl"></select>
+
+        <div class="label" style="margin-top:12px">CQL</div>
+        <textarea id="mvCqlText" placeholder="cql()"></textarea>
+
+        <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
+          <button class="btn primary" id="mvRunQuery" type="button">Run Query</button>
+        </div>
+      </div>
+
       <div class="bottomCard" id="bottomCard">
         <div class="bottomHead">
           <div class="muted" style="font-size:12px">Position FEN &amp; Game PGN</div>
@@ -503,6 +520,21 @@
     const re = new RegExp(`^\\[${tag}\\s+"([^"]*)"\\]\\s*$`, "m");
     const m = String(pgn || "").match(re);
     return m ? m[1] : "";
+  }
+
+  function isQueryPositionGameId(id){
+    if (!id) return false;
+    const sid = String(id);
+    if (sid.startsWith("query:")) return true;
+    const meta = STATE.gamesMeta ? STATE.gamesMeta[id] : null;
+    if (meta && (meta.opening === "Query" || meta.title === "Query Position")) return true;
+    try{
+      const g = RUNTIME.games.get(id);
+      const pgn = g?.exportPGN?.() || "";
+      const ev = getHeaderTag(pgn, "Event");
+      if (ev === "Query Position") return true;
+    }catch{}
+    return false;
   }
 
   /* ----------------------------- CQL runner logic (ported) ----------------------------- */
@@ -786,6 +818,23 @@ async function getPgnBytesForDb(dbKeyOrUrl){
       });
 
       if (qCqlText) qCqlText.addEventListener("input", () => { qCqlText.dataset.userTouched="1"; updateQueryUi(); });
+
+      // Moves-pane mirror controls (only visible for Query Position games)
+      const mvDbSelectEl = $("mvDbSelectEl");
+      const mvCqlText = $("mvCqlText");
+      const mvRunQuery = $("mvRunQuery");
+      if (mvDbSelectEl) mvDbSelectEl.addEventListener("change", () => {
+        const src = $("dbSelectEl");
+        if (src) src.value = mvDbSelectEl.value;
+        updateQueryUi();
+        try{ renderMovesQueryMirror(); }catch{}
+      });
+      if (mvCqlText) mvCqlText.addEventListener("input", () => {
+        const src = $("qCqlText");
+        if (src){ src.value = mvCqlText.value; src.dataset.userTouched="1"; }
+        updateQueryUi();
+      });
+      if (mvRunQuery) mvRunQuery.addEventListener("click", () => dispatch({ type:"QUERY/RUN_FROM_MOVES" }));
     }catch{}
   });
 
@@ -1456,6 +1505,12 @@ const STATE = {
         setTab("errors");
       }
     },
+
+    "QUERY/RUN_FROM_MOVES": async (S) => {
+      // Moves-pane mirror "Run Query": peg inputs to the current board, then run.
+      try{ T["QUERY/USE_CURRENT"]?.(S); }catch{}
+      return await T["QUERY/RUN"]?.(S);
+    },
   });
 
   /* ----------------------------- Dispatch (single pipe) ----------------------------- */
@@ -1537,6 +1592,8 @@ const STATE = {
     // query db
     renderQueryDb();     // same
 
+    renderMovesQueryMirror();
+
     // evals list
     renderEvalsLists();  // same
 
@@ -1610,6 +1667,33 @@ const STATE = {
     }
     $("qPgnName").textContent = STATE.query.selectedName || "(none)";
   }
+
+  function renderMovesQueryMirror(){
+    const card = $("movesQueryCard");
+    if (!card) return;
+    const activeId = STATE.activeGameId;
+    const isQ = isQueryPositionGameId(activeId);
+    card.style.display = isQ ? "block" : "none";
+    if (!isQ) return;
+
+    const srcSel = $("dbSelectEl");
+    const dstSel = $("mvDbSelectEl");
+    if (srcSel && dstSel){
+      if (dstSel.innerHTML !== srcSel.innerHTML) dstSel.innerHTML = srcSel.innerHTML;
+      dstSel.value = srcSel.value || "";
+    }
+
+    const srcCql = $("qCqlText");
+    const dstCql = $("mvCqlText");
+    if (srcCql && dstCql){
+      if (document.activeElement !== dstCql) dstCql.value = srcCql.value || "";
+    }
+
+    const srcRun = $("qRun");
+    const dstRun = $("mvRunQuery");
+    if (srcRun && dstRun) dstRun.disabled = !!srcRun.disabled;
+  }
+
 
   function renderEvalsLists(){
     const el = $("evalList");
