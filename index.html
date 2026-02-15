@@ -1340,6 +1340,19 @@ const STATE = {
       g.nextMove?.();
       try{ if (g?.curNode && typeof g.curNode.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = g.curNode.ply; } }catch{}
     },
+    "BOARD/START": () => {
+     const g = CTX.g();
+     while (g?.curNode && g.curNode !== g.root){
+       if (!g.prevMove?.()) break;
+    }
+     try{ g.ui = g.ui || {}; g.ui.ply = 0; }catch{}
+   },
+   "BOARD/END": () => {
+     const g = CTX.g();
+     // Run to end of current mainline (whatever ScratchChess considers "next")
+     while (g?.nextMove?.()) {}
+     try{ if (g?.curNode && typeof g.curNode.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = g.curNode.ply; } }catch{}
+   },
     "MOVE/JUMP_TO_NODE": (S,A) => {
       const g = CTX.g();
       jumpToNode(g, A.node);
@@ -2249,6 +2262,23 @@ const STATE = {
     // query
     if (t.closest?.("#qUseCurrent")) return dispatch({ type:"QUERY/USE_CURRENT" });
     if (t.closest?.("#qRun")) return dispatch({ type:"QUERY/RUN" });
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    // Only when Moves pane is active
+    if (STATE?.ui?.tab !== "moves") return;
+    // Don’t steal keys while typing / editing
+    if (ev.defaultPrevented) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const el = ev.target;
+    const tag = (el && el.tagName) ? el.tagName.toLowerCase() : "";
+    const editable = !!(el && (el.isContentEditable || tag === "input" || tag === "textarea" || tag === "select"));
+    if (editable) return;
+
+    if (ev.key === "ArrowLeft")  { ev.preventDefault(); dispatch({ type:"BOARD/PREV" }); render(); return; }
+    if (ev.key === "ArrowRight") { ev.preventDefault(); dispatch({ type:"BOARD/NEXT" }); render(); return; }
+    if (ev.key === "ArrowUp")    { ev.preventDefault(); dispatch({ type:"BOARD/START" }); render(); return; }
+    if (ev.key === "ArrowDown")  { ev.preventDefault(); dispatch({ type:"BOARD/END" }); render(); return; }
   });
 
   document.addEventListener("change", (ev)=>{
