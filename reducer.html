@@ -186,7 +186,75 @@
   .mvRow.isCur{ outline:2px solid rgba(103,232,249,.45); background:rgba(103,232,249,.10); }
   .mvRow.isVar{ margin-left:16px; padding-left:14px; font-size:.92em; opacity:.95; }
   .mvRow.isVar .mvSan{ font-weight:600; }
+
+  /* --- Moves list (wide: two-column like index(21); mobile: flow) --- */
+  .movesWide{display:block}
+  .movesMobile{display:none}
+  @media (max-width: 899px){
+    .movesWide{display:none}
+    .movesMobile{display:block}
+  }
+  .mlWrap{display:flex; flex-direction:column; gap:4px; min-height:0; flex:1; overflow:auto;}
+  .mlRow{
+    display:grid;
+    grid-template-columns: 40px 1fr 1fr;
+    gap:8px;
+    align-items:stretch;
+    padding:1px 0;
+    border-radius:10px;
+  }
+  .mlNum{
+    color:rgba(15,23,42,38);
+    text-align:right;
+    padding:6px 6px;
+    font-weight:900;
+    user-select:none;
+    font-size:12px;
+  }
+  .mlCellBtn{
+    width:100%;
+    text-align:left;
+    padding:6px 8px;
+    border-radius:10px;
+    border:1px solid transparent;
+    background:transparent;
+    font-weight:800;
+    font-size:14px;
+    line-height:1.05;
+    cursor:pointer;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .mlCellBtn:hover{ background: rgba(15,23,42,04); border-color: rgba(15,23,42,08); }
+  .mlCellBtn.active{ background: rgba(37,99,235,10); border-color: rgba(37,99,235,20); }
+  .mlVarRow{display:grid; grid-template-columns:40px 1fr; gap:8px; padding:1px 0;}
+  .mlVarNum{ color:rgba(15,23,42,28); text-align:right; padding:6px 6px; font-weight:900; user-select:none; font-size:11px;}
+  .mlVarBtn{
+    width:100%; text-align:left; padding:6px 8px; border-radius:10px;
+    border:1px solid transparent; background:transparent;
+    font-weight:700; font-size:13px; cursor:pointer;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .mlVarBtn:hover{ background: rgba(15,23,42,03); border-color: rgba(15,23,42,08); }
+  .mlVarBtn.active{ background: rgba(37,99,235,10); border-color: rgba(37,99,235,18); }
+  .mlVarIndent{ padding-left:16px; }
+  .mlMobileFlow{ display:flex; flex-wrap:wrap; gap:6px; align-items:baseline; padding:8px 0; }
+  .mlTokNum{ color:rgba(15,23,42,45); font-weight:900; font-size:12px; padding:2px 2px; }
+  .mlTokParen{ color:rgba(15,23,42,30); font-weight:900; font-size:12px; padding:2px 2px; }
+  .mlTokBtn{
+    border:1px solid rgba(15,23,42,10);
+    background: rgba(15,23,42,02);
+    border-radius:999px;
+    padding:6px 10px;
+    font-weight:800;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .mlTokBtn:hover{ background: rgba(15,23,42,04); }
+  .mlTokBtn.active{ background: rgba(37,99,235,12); border-color: rgba(37,99,235,20); }
 </style>
+
 </head>
 <body>
 
@@ -287,7 +355,11 @@
       </div>
 
       <div id="moveList" class="moveList" aria-label="Move list"></div>
+      <div class="movesWide"><div class="mlWrap" id="movesWide"></div></div>
+      <div class="movesMobile"><div class="mlWrap" id="movesMobile"></div></div>
 
+      <!-- legacy contract (kept for compatibility / hidden) -->
+      <div id="moveList" class="moveList" aria-label="Move list" style="display:none"></div>
       <div class="bottomCard" id="movesQueryCard" style="display:none; margin-top:10px">
         <div class="bottomHead">
           <div class="muted" style="font-size:12px">Query Controls</div>
@@ -886,8 +958,11 @@ const STATE = {
     }
   });
 
-  /* ----------------------------- Move list rendering helpers (unchanged behavior) ----------------------------- */
-  const moveListEl = document.getElementById("moveList");
+  /* ----------------------------- Move rendering (index(21): wide + mobile) ----------------------------- */
+  const moveListEl   = document.getElementById("moveList"); // legacy hidden
+  const movesWideEl  = document.getElementById("movesWide");
+  const movesMobileEl= document.getElementById("movesMobile");
+
 
   function nodePly(node){
     const p = (node && typeof node.ply === "number") ? node.ply : null;
@@ -960,6 +1035,144 @@ const STATE = {
     }
     return parts.join(" ").trim();
   }
+
+  function renderMovesWide(){
+    if (!movesWideEl) return;
+    movesWideEl.innerHTML = "";
+    const g = CTX.g();
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const chain = walkMainlineFrom(mainStart);
+    const rows = new Map(); // mn -> {mn,w,b,vars:[]}
+
+    for (const n of chain){
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+      const row = rows.get(mn);
+
+      if (typeof p === "number" && p % 2 === 1) row.w = n;
+      else if (typeof p === "number" && p % 2 === 0) row.b = n;
+      else if (!row.w) row.w = n;
+
+      const alts = getAltChildren(n);
+      for (const alt of alts) row.vars.push(alt);
+    }
+
+    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+    for (const row of sorted){
+      const r = document.createElement("div");
+      r.className = "mlRow";
+
+      const num = document.createElement("div");
+      num.className = "mlNum";
+      num.textContent = String(row.mn);
+
+      const w = document.createElement("button");
+      w.type = "button";
+      w.className = "mlCellBtn" + ((g.curNode === row.w) ? " active" : "");
+      w.textContent = row.w ? nodeSan(row.w) : "";
+      w.disabled = !row.w;
+      w.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: row.w }));
+
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "mlCellBtn" + ((g.curNode === row.b) ? " active" : "");
+      b.textContent = row.b ? nodeSan(row.b) : "";
+      b.disabled = !row.b;
+      b.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: row.b }));
+
+      r.appendChild(num);
+      r.appendChild(w);
+      r.appendChild(b);
+      movesWideEl.appendChild(r);
+
+      for (const vStart of row.vars){
+        const vr = document.createElement("div");
+        vr.className = "mlVarRow";
+
+        const vn = document.createElement("div");
+        vn.className = "mlVarNum";
+        vn.textContent = String(row.mn); // keep base move number
+
+        const vb = document.createElement("button");
+        vb.type = "button";
+        vb.className = "mlVarBtn mlVarIndent" + ((g.curNode === vStart) ? " active" : "");
+        vb.textContent = formatVariationLine(vStart) || "(variation)";
+        vb.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: vStart }));
+
+        vr.appendChild(vn);
+        vr.appendChild(vb);
+        movesWideEl.appendChild(vr);
+      }
+    }
+  }
+
+  function renderMovesMobile(){
+    if (!movesMobileEl) return;
+    movesMobileEl.innerHTML = "";
+    const g = CTX.g();
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const flow = document.createElement("div");
+    flow.className = "mlMobileFlow";
+
+    const chain = walkMainlineFrom(mainStart);
+    let lastMoveNum = null;
+
+    const addText = (t, cls="") => {
+      const sp = document.createElement("span");
+      sp.className = cls;
+      sp.textContent = t;
+      flow.appendChild(sp);
+    };
+    const addBtn = (label, node, active=false) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "mlTokBtn" + (active ? " active" : "");
+      b.textContent = label;
+      b.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
+      flow.appendChild(b);
+    };
+
+    for (const n of chain){
+      const san = nodeSan(n);
+      if (!san) continue;
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+
+      if (typeof p === "number" && p % 2 === 1){
+        if (mn != lastMoveNum){
+          addText(`${mn}.`, "mlTokNum");
+          lastMoveNum = mn;
+        }
+      }
+      addBtn(san, n, g.curNode === n);
+
+      const alts = getAltChildren(n);
+      for (const alt of alts){
+        const line = formatVariationLine(alt);
+        if (!line) continue;
+        addText("(", "mlTokParen");
+        addBtn(line, alt, g.curNode === alt);
+        addText(")", "mlTokParen");
+      }
+    }
+
+    movesMobileEl.appendChild(flow);
+  }
+
+  function renderMovesDisplay(){
+    renderMovesWide();
+    renderMovesMobile();
+  }
+
   function renderMoveList(){
     if (!moveListEl) return;
     const g = CTX.g();
@@ -1629,8 +1842,8 @@ const STATE = {
     $("navMeta").textContent = "ply " + String((g?.ui?.ply ?? 0));
     $("bottomMeta").textContent = (STATE.activeGameId || "—");
 
-    // move list
-    try{ renderMoveList(); }catch(e){ CTX.log("[ERR] renderMoveList: " + (e?.stack||e)); }
+    // moves (index(21) rendering)
+    try{ renderMovesDisplay(); }catch(e){ CTX.log("[ERR] renderMovesDisplay: " + (e?.stack||e)); }
 
     // tool status default
     if ($("toolStatus").textContent === "—") $("toolStatus").textContent = "ready";
@@ -1638,6 +1851,7 @@ const STATE = {
     try{ CTX.log("[ERR] render: " + (err?.stack || err)); }catch{}
   }
 }
+
 
   /* ----------------------------- “Render helpers” used by render() ----------------------------- */
   function renderPriyomeList(){
