@@ -1000,9 +1000,12 @@
     const hunks0 = parseUnifiedDiff(diffRaw);
     const baseLines = normalizeEOL(baseText).split("\n");
 
+    const notes = [];
+    notes.push(`De-hallucinate: base lines=${baseLines.length}, diff chars=${String(diffRaw||"").length}, hunks=${hunks0.length}, fuzz=±${fuzz}, maxSkipContext=${maxSkipContext}, ignoreIndent=${ignoreIndent ? "1":"0"}`);
+    notes.push(`De-hallucinate: labels a="${labels.a}" b="${labels.b}"`);
+
     let delta = 0;
     const outHunks = [];
-    const notes = [];
 
     for (let hi=0; hi<hunks0.length; hi++){
       const h = hunks0[hi];
@@ -1010,18 +1013,30 @@
       const lo = Math.max(0, declared - fuzz);
       const hiBound = Math.min(baseLines.length, declared + fuzz);
 
-      let best = null;
+      // Keep top 3 candidates by score
+      let top = []; // [{score,startIdx,skipped,matchedContextMap}]
+      function consider(res){
+        top.push(res);
+        top.sort((a,b)=>b.score - a.score);
+        if (top.length > 3) top.length = 3;
+      }
+
       for (let cand = lo; cand <= hiBound; cand++){
         const res = scoreHunkAt(baseLines, h, cand, declared, ignoreIndent, maxSkipContext);
         if (!res) continue;
-        if (!best || res.score > best.score) best = res;
+        consider(res);
       }
 
-      if (!best){
-        notes.push(`De-hallucinate: Hunk ${hi+1}: no candidate match within ±${fuzz}. Left unchanged.`);
+      if (!top.length){
+        notes.push(`De-hallucinate: Hunk ${hi+1}/${hunks0.length}: no match within [${lo+1}..${hiBound+1}] (declared ${declared+1}). Left unchanged.`);
         outHunks.push(h);
         continue;
       }
+
+      const best = top[0];
+      notes.push(`De-hallucinate: Hunk ${hi+1}/${hunks0.length}: declared=${declared+1} search=[${lo+1}..${hiBound+1}] bestStart=${best.startIdx+1} bestScore=${best.score} skippedContext=${best.skipped}`);
+      if (top.length > 1) notes.push(`De-hallucinate: Hunk ${hi+1}: runnerUp start=${top[1].startIdx+1} score=${top[1].score} skipped=${top[1].skipped}`);
+      if (top.length > 2) notes.push(`De-hallucinate: Hunk ${hi+1}: third start=${top[2].startIdx+1} score=${top[2].score} skipped=${top[2].skipped}`);
 
       // Rewrite context lines using best matched base lines; drop skipped context lines.
       const ctxMap = new Map(best.matchedContextMap.map(x => [x.hunkLineIndex, x.baseLine]));
@@ -1045,6 +1060,10 @@
         }
       }
 
+      if (dropped){
+        notes.push(`De-hallucinate: Hunk ${hi+1}: dropped ${dropped} hallucinated context line(s) (tolerance=${maxSkipContext}).`);
+      }
+
       // Recompute counts
       let oldCount = 0, newCount = 0;
       for (const raw of newLines){
@@ -1059,8 +1078,6 @@
       const shift = best.startIdx - declared;
       const appliedNewStart = Math.max(1, (h.newStart + shift));
 
-      notes.push(`De-hallucinate: Hunk ${hi+1}: best start line ${appliedOldStart} (score ${best.score}, skipped ${best.skipped}${dropped ? `, dropped ${dropped}` : ""}).`);
-
       outHunks.push({
         oldStart: appliedOldStart,
         oldCount: oldCount || 0,
@@ -1071,6 +1088,7 @@
 
       // Update delta heuristically based on net line change
       delta += (newCount - oldCount);
+      notes.push(`De-hallucinate: Hunk ${hi+1}: rewritten header @@ -${appliedOldStart},${oldCount} +${appliedNewStart},${newCount} @@, delta now ${delta >= 0 ? "+" : ""}${delta}`);
     }
 
     return { text: serializeUnifiedDiff(outHunks, labels.a, labels.b), notes };
@@ -1143,28 +1161,6 @@
         max_skip_context: 2
       });
 
-  $("#btnDeHallucinate").addEventListener("click", () => {
-    clearErr();
-    try{
-      const base = leftText.value;
-      const patch = diffText.value;
-      const res = deHallucinateDiff(base, patch, {
-        ignoreIndent: !!(ignoreIndentEl && ignoreIndentEl.checked),
-        fuzz: 500,
-        max_skip_context: 2
-      });
-      diffText.value = res.text;
-      refreshPanel(diffText, diffGutter, diffLines, diffChars);
-      onAnyChange();
-      for (const note of res.notes) logErr(note);
-      setDiffStatusState("ok", "Diff: de-hallucinated");
-    } catch(e){
-      setDiffStatusState("bad", "Diff: de-hallucinate failed");
-      logErr(e && e.message ? e.message : String(e));
-    }
-  });
-
-
       rightText.value = res.text;
       refreshPanel(rightText, rightGutter, rightLines, rightChars);
 
@@ -1180,6 +1176,41 @@
       logErr(e && e.message ? e.message : String(e));
     }
   });
+
+
+
+$("#btnDeHallucinate").addEventListener("click", () => {
+    clearErr();
+    try{
+      const base = leftText.value;
+      const patch = diffText.value;
+
+      logErr(`De-hallucinate click: baseChars=${base.length}, baseLines=${countLines(base)}, diffChars=${patch.length}, diffLines=${countLines(patch)}`);
+
+      const t0 = performance.now();
+      const res = deHallucinateDiff(base, patch, {
+        ignoreIndent: !!(ignoreIndentEl && ignoreIndentEl.checked),
+        fuzz: 500,
+        max_skip_context: 2
+      });
+      const t1 = performance.now();
+
+      diffText.value = res.text;
+      refreshPanel(diffText, diffGutter, diffLines, diffChars);
+      onAnyChange();
+
+      logErr(`De-hallucinate done in ${(t1 - t0).toFixed(1)}ms; newDiffChars=${res.text.length}, newDiffLines=${countLines(res.text)}`);
+      for (const note of res.notes) logErr(note);
+
+      setDiffStatusState("ok", "Diff: de-hallucinated");
+    } catch(e){
+      setDiffStatusState("bad", "Diff: de-hallucinate failed");
+      logErr(e && e.message ? e.message : String(e));
+      if (e && e.stack) logErr(e.stack);
+    }
+  });
+
+
 
   $("#btnNormalize").addEventListener("click", () => {
     leftText.value = normalizeEOL(leftText.value);
