@@ -1046,6 +1046,7 @@ const STATE = {
       mode: "grid",           // "grid" | "list"
       selectedKey: null,      // e.g. "Fischer"
       gameIds: [],            // loaded game ids for selected player
+      cache: {},             // key -> { gameIds:[...], loaded:true, count:n }
     },
     studies: [],          // [{id,name,games:[gameId]}]
     gamesMeta: {},        // gameId -> {id,title}
@@ -1077,7 +1078,8 @@ const STATE = {
       RUNTIME.board.setGame(g);
     },
     log(line){
-      STATE.logs.lines.push(String(line));
+      const ts = new Date().toISOString();
+      STATE.logs.lines.push(ts + " " + String(line));
     },
     setClipboard(text){
       try{ navigator.clipboard?.writeText?.(String(text ?? "")); }catch{}
@@ -1379,11 +1381,6 @@ const STATE = {
     /* ---------- UI ---------- */
     "UI/TAB": (S,A) => {
       S.ui.tab = A.tab;
-      if (A.tab === "players"){
-        S.players.mode = "grid";
-        S.players.selectedKey = null;
-        S.players.gameIds = [];
-      }
     },
     "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
     "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
@@ -1391,14 +1388,12 @@ const STATE = {
     /* ---------- Players ---------- */
     "PLAYERS/OPEN": (S) => {
       S.ui.tab = "players";
-      S.players.mode = "grid";
-      S.players.selectedKey = null;
-      S.players.gameIds = [];
     },
     "PLAYERS/BACK": (S) => {
       S.players.mode = "grid";
       S.players.selectedKey = null;
       S.players.gameIds = [];
+      // NOTE: do not clear S.players.cache; keep loaded games for session
     },
     "PLAYERS/SELECT": async (S,A) => {
       const key = String(A.key || "");
@@ -1413,30 +1408,60 @@ const STATE = {
 
       S.players.mode = "list";
       S.players.selectedKey = key;
-      clearPlayersCache();
+
+      // cache hit: keep games loaded & processed for this session
+      const cached = S.players.cache?.[key];
+      if (cached && Array.isArray(cached.gameIds) && cached.gameIds.length){
+        S.players.gameIds = cached.gameIds.slice();
+        logLine("OK", `Players: cache hit for ${key} (${cached.gameIds.length} games).`);
+        return;
+      }
 
       try{
-        const txt = await (await fetch(pgnUrl, { cache:"no-store" })).text();
+        const t0 = performance.now();
+        logLine("DBG", `Players: fetch start key=${key} url=${pgnUrl}`);
+        const r = await fetch(pgnUrl, { cache:"no-store" });
+        const txt = await r.text();
+        const t1 = performance.now();
+        logLine("DBG", `Players: fetch done key=${key} chars=${txt.length} ms=${(t1-t0).toFixed(1)}`);
+
         const parts = splitMultiPgn(txt);
 
-        const ids = [];
+        // ---- Pass 1: parse headers ----
+        const t2 = performance.now();
+        logLine("DBG", `Players: parseHeaders start key=${key} games=${parts.length}`);
+        const parsed = [];
         for (let i=0;i<parts.length;i++){
           const pgn = parts[i];
           const h = parseHeaders(pgn);
-          const id = `player:${key}:${i}:${nowId()}`;
+          const title = h.Event || `${h.White || key} vs ${h.Black || "?"}` || `Game ${i+1}`;
+          parsed.push({ i, pgn, h, title });
+        }
+        const t3 = performance.now();
+        logLine("DBG", `Players: parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
 
-          const g = createGame(h);
-          g.loadPGN?.(pgn);
+        // ---- Pass 2: create games + loadPGN ----
+        const t4 = performance.now();
+        logLine("DBG", `Players: loadPGN start key=${key} games=${parsed.length}`);
+        const ids = [];
+        for (let j=0;j<parsed.length;j++){
+          const it = parsed[j];
+          const id = `player:${key}:${it.i}:${nowId()}`;
+
+          const g = createGame(it.h);
+          g.loadPGN?.(it.pgn);
           RUNTIME.games.set(id, g);
           attachOnChange(id, g);
 
-          const title = h.Event || `${h.White || key} vs ${h.Black || "?"}` || `Game ${i+1}`;
-          S.gamesMeta[id] = { id, title, opening:`Player: ${key}` };
-
+          S.gamesMeta[id] = { id, title: it.title, opening:`Player: ${key}` };
           ids.push(id);
         }
+        const t5 = performance.now();
+        logLine("DBG", `Players: loadPGN done key=${key} games=${ids.length} ms=${(t5-t4).toFixed(1)}`);
 
         S.players.gameIds = ids;
+        S.players.cache = S.players.cache || {};
+        S.players.cache[key] = { gameIds: ids.slice(), loaded: true, count: ids.length };
         logLine("OK", `Players: loaded ${ids.length} games for ${key}.`);
       }catch(e){
         logStack("ERR", `Players load failed (${key}): `, e);
