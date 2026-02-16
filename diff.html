@@ -307,6 +307,7 @@
       <div class="actions">
         <button class="btn primary" id="btnGen">Generate diff from Left→Right</button>
         <button class="btn" id="btnApply">Apply Center diff to Left → Right</button>
+        <button class="btn" id="btnDeHallucinate" title="Rewrite diff context to best match the Left panel">De-hallucinate</button>
         <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="ignoreIndent" style="transform:translateY(1px)" checked />
           Ignore indentation
@@ -795,6 +796,7 @@
   function applyUnifiedDiffFuzzy(baseText, diff, opts){
     const ignoreIndent = !!(opts && opts.ignoreIndent);
     const fuzz = (opts && Number.isFinite(opts.fuzz)) ? Math.max(0, Math.floor(opts.fuzz)) : 500;
+    const maxSkipContext = (opts && Number.isFinite(opts.max_skip_context)) ? Math.max(0, Math.floor(opts.max_skip_context)) : 2;
 
     const normForCompare = (s) => {
       const x = String(s ?? "");
@@ -818,6 +820,7 @@
       let baseIdx = startIdx;
       const replacement = [];
       let consumed = 0;
+      let skippedContext = 0;
 
       for (const raw of hunk.lines){
         if (raw === ""){
@@ -830,7 +833,13 @@
 
         if (tag === " "){
           if (baseIdx >= cur.length) return null;
-          if (normForCompare(cur[baseIdx]) !== normForCompare(content)) return null;
+          if (normForCompare(cur[baseIdx]) !== normForCompare(content)){
+            if (skippedContext < maxSkipContext){
+              skippedContext++;
+              continue; // skip hallucinated context line
+            }
+            return null;
+          }
           replacement.push(content);
           baseIdx++;
           consumed++;
@@ -847,7 +856,7 @@
         }
       }
 
-      return { consumed, replacement };
+      return { consumed, replacement, skippedContext };
     }
 
     function snippet(lines, start, count){
@@ -893,6 +902,11 @@
         fuzzyNotes.push(`Hunk ${hi+1}: applied at line ${best.idx+1} (declared ${declared+1}, offset ${offset >= 0 ? "+" : ""}${offset}).`);
       }
 
+      if (best.skippedContext){
+        anyFuzzy = true;
+        fuzzyNotes.push(`Hunk ${hi+1}: skipped ${best.skippedContext} mismatching context line(s) to match.`);
+      }
+
       // Apply splice: replace consumed base lines with replacement lines
       cur.splice(best.idx, best.consumed, ...best.replacement);
 
@@ -901,6 +915,165 @@
     }
 
     return { text: cur.join("\n"), anyFuzzy, fuzzyNotes };
+  }
+
+
+  // ---------- De-hallucinate: rewrite diff context to best match Left ----------
+  function serializeUnifiedDiff(hunks, aLabel, bLabel){
+    let out = "";
+    out += `--- ${aLabel}\n`;
+    out += `+++ ${bLabel}\n`;
+    for (const h of hunks){
+      out += `@@ -${h.oldStart},${h.oldCount} +${h.newStart},${h.newCount} @@\n`;
+      out += h.lines.join("\n") + "\n";
+    }
+    return out;
+  }
+
+  function extractDiffLabels(diffRaw){
+    const d = normalizeEOL(diffRaw).split("\n");
+    let a = DEFAULT_A, b = DEFAULT_B;
+    for (const line of d){
+      if (line.startsWith("--- ")){ a = line.slice(4).trim() || a; }
+      if (line.startsWith("+++ ")){ b = line.slice(4).trim() || b; }
+      if (a && b && line.startsWith("@@ ")) break;
+    }
+    return { a, b };
+  }
+
+  // Score a candidate alignment for a hunk against base lines.
+  // Returns {score, startIdx, skipped, matchedContextMap, appliedOldStart, appliedNewStart}
+  function scoreHunkAt(baseLines, hunk, candStartIdx, declaredStartIdx, ignoreIndent, maxSkipContext){
+    const norm = (s) => {
+      const x = String(s ?? "");
+      if (!ignoreIndent) return x;
+      return x.replace(/^\s+/, "");
+    };
+
+    let baseIdx = candStartIdx;
+    let skipped = 0;
+    let matched = 0;
+    let matchedContextMap = []; // array of {hunkLineIndex, baseLine}
+    for (let li=0; li<hunk.lines.length; li++){
+      const raw = hunk.lines[li];
+      if (!raw) continue;
+      const tag = raw[0];
+      const content = raw.slice(1);
+
+      if (tag === "+"){
+        continue; // doesn't consume base
+      }
+      if (tag === " "){
+        if (baseIdx >= baseLines.length) return null;
+        if (norm(baseLines[baseIdx]) !== norm(content)){
+          if (skipped < maxSkipContext){
+            skipped++;
+            continue; // skip hallucinated context line
+          }
+          return null;
+        }
+        matched++;
+        matchedContextMap.push({ hunkLineIndex: li, baseLine: baseLines[baseIdx] });
+        baseIdx++;
+      } else if (tag === "-"){
+        if (baseIdx >= baseLines.length) return null;
+        if (norm(baseLines[baseIdx]) !== norm(content)) return null; // keep deletes strict
+        matched++;
+        baseIdx++;
+      } else {
+        return null;
+      }
+    }
+
+    // score: matches - small penalties
+    const dist = Math.abs(candStartIdx - declaredStartIdx);
+    const score = matched * 10 - dist - skipped * 6;
+    return { score, startIdx: candStartIdx, skipped, matchedContextMap };
+  }
+
+  function deHallucinateDiff(baseText, diffRaw, opts){
+    const ignoreIndent = !!(opts && opts.ignoreIndent);
+    const fuzz = (opts && Number.isFinite(opts.fuzz)) ? Math.max(0, Math.floor(opts.fuzz)) : 500;
+    const maxSkipContext = (opts && Number.isFinite(opts.max_skip_context)) ? Math.max(0, Math.floor(opts.max_skip_context)) : 2;
+
+    const labels = extractDiffLabels(diffRaw);
+    const hunks0 = parseUnifiedDiff(diffRaw);
+    const baseLines = normalizeEOL(baseText).split("\n");
+
+    let delta = 0;
+    const outHunks = [];
+    const notes = [];
+
+    for (let hi=0; hi<hunks0.length; hi++){
+      const h = hunks0[hi];
+      const declared = Math.max(0, (h.oldStart - 1) + delta);
+      const lo = Math.max(0, declared - fuzz);
+      const hiBound = Math.min(baseLines.length, declared + fuzz);
+
+      let best = null;
+      for (let cand = lo; cand <= hiBound; cand++){
+        const res = scoreHunkAt(baseLines, h, cand, declared, ignoreIndent, maxSkipContext);
+        if (!res) continue;
+        if (!best || res.score > best.score) best = res;
+      }
+
+      if (!best){
+        notes.push(`De-hallucinate: Hunk ${hi+1}: no candidate match within ±${fuzz}. Left unchanged.`);
+        outHunks.push(h);
+        continue;
+      }
+
+      // Rewrite context lines using best matched base lines; drop skipped context lines.
+      const ctxMap = new Map(best.matchedContextMap.map(x => [x.hunkLineIndex, x.baseLine]));
+      const newLines = [];
+      let dropped = 0;
+
+      for (let li=0; li<h.lines.length; li++){
+        const raw = h.lines[li];
+        if (!raw){ newLines.push(raw); continue; }
+        const tag = raw[0];
+        if (tag === " "){
+          if (ctxMap.has(li)){
+            newLines.push(" " + ctxMap.get(li));
+          } else {
+            // This was a skipped hallucinated context line
+            dropped++;
+            continue;
+          }
+        } else {
+          newLines.push(raw);
+        }
+      }
+
+      // Recompute counts
+      let oldCount = 0, newCount = 0;
+      for (const raw of newLines){
+        if (!raw) continue;
+        const tag = raw[0];
+        if (tag === " "){ oldCount++; newCount++; }
+        else if (tag === "-"){ oldCount++; }
+        else if (tag === "+"){ newCount++; }
+      }
+
+      const appliedOldStart = best.startIdx + 1;
+      const shift = best.startIdx - declared;
+      const appliedNewStart = Math.max(1, (h.newStart + shift));
+
+      notes.push(`De-hallucinate: Hunk ${hi+1}: best start line ${appliedOldStart} (score ${best.score}, skipped ${best.skipped}${dropped ? `, dropped ${dropped}` : ""}).`);
+
+      outHunks.push({
+        oldStart: appliedOldStart,
+        oldCount: oldCount || 0,
+        newStart: appliedNewStart,
+        newCount: newCount || 0,
+        lines: newLines
+      });
+
+      // Update delta heuristically based on net line change
+      delta += (newCount - oldCount);
+    }
+
+    return { text: serializeUnifiedDiff(outHunks, labels.a, labels.b), notes };
   }
 
   // ---------- Wiring ----------
@@ -966,8 +1139,31 @@
 
       const res = applyUnifiedDiffFuzzy(base, patch, {
         ignoreIndent: !!(ignoreIndentEl && ignoreIndentEl.checked),
-        fuzz: 500
+        fuzz: 500,
+        max_skip_context: 2
       });
+
+  $("#btnDeHallucinate").addEventListener("click", () => {
+    clearErr();
+    try{
+      const base = leftText.value;
+      const patch = diffText.value;
+      const res = deHallucinateDiff(base, patch, {
+        ignoreIndent: !!(ignoreIndentEl && ignoreIndentEl.checked),
+        fuzz: 500,
+        max_skip_context: 2
+      });
+      diffText.value = res.text;
+      refreshPanel(diffText, diffGutter, diffLines, diffChars);
+      onAnyChange();
+      for (const note of res.notes) logErr(note);
+      setDiffStatusState("ok", "Diff: de-hallucinated");
+    } catch(e){
+      setDiffStatusState("bad", "Diff: de-hallucinate failed");
+      logErr(e && e.message ? e.message : String(e));
+    }
+  });
+
 
       rightText.value = res.text;
       refreshPanel(rightText, rightGutter, rightLines, rightChars);
