@@ -74,6 +74,7 @@ function makeNode(parent = null) {
     uci: null,
     moveInfo: null,
     snapBefore: null,
+    fenAfter: null, // cached FEN after this node's move (root is initial position)
     ply: 0,
     marks: { sqMarks: new Map(), arrows: [] },
   };
@@ -136,6 +137,7 @@ export class Game {
     this.root.ply = 0;
     this.curNode = this.root;
     this.initialSnap = null;
+    this.mainlineFens = [];
     this._pendingPromotion = null;
 
     this.initializePosition();
@@ -157,6 +159,20 @@ export class Game {
   toggleSetup(v) { this.ui.setup = v == null ? !this.ui.setup : !!v; this.sel.fromSq=null; this.sel.legalTo=[]; this._emit(); }
   toggleMini(v) { this.ui.mini = v == null ? !this.ui.mini : !!v; this._emit(); }
 
+  _rebuildMainlineFenCache() {
+    // mainlineFens[ply] = FEN after that ply's move (ply 0 = root position)
+    const out = [];
+    let n = this.root;
+    if (n && n.fenAfter) out[0] = n.fenAfter;
+    while (n && n.children && n.children.length) {
+      const c = n.children[n.mainChildIndex] || n.children[0];
+      if (!c) break;
+      if (c.fenAfter) out[c.ply] = c.fenAfter;
+      n = c;
+    }
+    this.mainlineFens = out;
+  }
+
   clearBoard() {
     this.state.board = Array(64).fill(null);
     this.state.side = "w";
@@ -169,6 +185,8 @@ export class Game {
     this.root.ply = 0;
     this.curNode = this.root;
     this.initialSnap = snapshotFrom(this.state);
+    this.root.fenAfter = this.exportFEN();
+    this._rebuildMainlineFenCache();
 
     this.sel.fromSq = null;
     this.sel.legalTo = [];
@@ -191,7 +209,8 @@ export class Game {
     this._emit();
   }
 
-  loadFEN(fen) {
+  // Apply a FEN directly to internal state (no tags/tree reset, no emit).
+  _applyFENToState(fen) {
     const parts = String(fen || "").trim().split(/\s+/);
     if (!parts.length) return;
 
@@ -219,6 +238,10 @@ export class Game {
 
     this.state.halfmove = +(parts[4] || 0);
     this.state.fullmove = +(parts[5] || 1);
+  }
+
+  loadFEN(fen) {
+    this._applyFENToState(fen);
 
 
     // If we loaded an arbitrary FEN (not necessarily the standard start), exportPGN should
@@ -233,6 +256,8 @@ export class Game {
     this.root.ply = 0;
     this.curNode = this.root;
     this.initialSnap = snapshotFrom(this.state);
+    this.root.fenAfter = this.exportFEN();
+    this._rebuildMainlineFenCache();
 
     this.sel.fromSq = null;
     this.sel.legalTo = [];
@@ -765,6 +790,7 @@ export class Game {
     node.moveInfo = moveInfo;
     node.snapBefore = snapBefore;
     node.ply = parent.ply + 1;
+    node.fenAfter = this.exportFEN();
 
     parent.children.push(node);
     if (parent.children.length === 1) parent.mainChildIndex = 0;
@@ -779,8 +805,10 @@ export class Game {
 
   prevMove() {
     if (this.curNode === this.root) return false;
-    restoreInto(this.state, this.curNode.snapBefore);
-    this.curNode = this.curNode.parent;
+    const parent = this.curNode.parent;
+    if (parent && parent.fenAfter) this._applyFENToState(parent.fenAfter);
+    else if (this.initialSnap) restoreInto(this.state, this.initialSnap);
+    this.curNode = parent;
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
@@ -794,13 +822,46 @@ export class Game {
     if (!n.children.length) return false;
     const child = n.children[n.mainChildIndex] || n.children[0];
 
-    restoreInto(this.state, child.snapBefore);
-    const fromIdx = parseSq(child.uci.slice(0, 2));
-    const toIdx = parseSq(child.uci.slice(2, 4));
-    const promo = child.uci.length >= 5 ? child.uci[4].toUpperCase() : null;
-    this._applyMoveRaw(fromIdx, toIdx, promo || null);
+    if (child.fenAfter) {
+      this._applyFENToState(child.fenAfter);
+    } else {
+      // Fallback: replay move (should be rare; ensures we don't break older nodes)
+      restoreInto(this.state, child.snapBefore);
+      const fromIdx = parseSq(child.uci.slice(0, 2));
+      const toIdx = parseSq(child.uci.slice(2, 4));
+      const promo = child.uci.length >= 5 ? child.uci[4].toUpperCase() : null;
+      this._applyMoveRaw(fromIdx, toIdx, promo || null);
+      child.fenAfter = this.exportFEN();
+      this._rebuildMainlineFenCache();
+    }
 
     this.curNode = child;
+    this.sel.fromSq = null;
+    this.sel.legalTo = [];
+    this._pendingPromotion = null;
+    this.state.pendingPromotion = null;
+    this._emit();
+    return true;
+  }
+
+  // Jump to a mainline ply number (0 = root).
+  // Uses cached mainlineFens when available.
+  jumpToPly(n) {
+    const target = Math.max(0, Math.floor(+n || 0));
+
+    // Walk nodes along mainline to keep curNode consistent with the tree.
+    let node = this.root;
+    while (node && node.ply < target) {
+      if (!node.children.length) break;
+      node = node.children[node.mainChildIndex] || node.children[0];
+    }
+    if (!node) node = this.root;
+
+    // Fast apply via cache (fallback to node.fenAfter)
+    const fen = (this.mainlineFens && this.mainlineFens[target]) || node.fenAfter || this.root.fenAfter;
+    if (fen) this._applyFENToState(fen);
+
+    this.curNode = node;
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
@@ -817,12 +878,15 @@ export class Game {
     if (parent.mainChildIndex >= parent.children.length)
       parent.mainChildIndex = Math.max(0, parent.children.length - 1);
 
-    restoreInto(this.state, this.curNode.snapBefore);
+    if (parent && parent.fenAfter) this._applyFENToState(parent.fenAfter);
+    else if (this.initialSnap) restoreInto(this.state, this.initialSnap);
     this.curNode = parent;
+    this._rebuildMainlineFenCache();
     this.sel.fromSq = null;
     this.sel.legalTo = [];
     this._pendingPromotion = null;
     this.state.pendingPromotion = null;
+    this._rebuildMainlineFenCache();
     this._emit();
     return true;
   }
@@ -833,6 +897,7 @@ export class Game {
     const i = parent.children.indexOf(this.curNode);
     if (i < 0) return false;
     parent.mainChildIndex = i;
+    this._rebuildMainlineFenCache();
     this._emit();
     return true;
   }
@@ -1004,11 +1069,10 @@ exportCQL() {
     if (fenTagMatch) this.loadFEN(fenTagMatch[1]);
     else this.initializePosition();
 
-    // strip variations
+    // keep variations (parentheses) so we can build the move tree.
     let t = text;
-    while (/\([^()]*\)/.test(t)) t = t.replace(/\([^()]*\)/g, " ");
 
-    // keep only csl/cal comments
+    // keep only csl/cal comments (replace with __CMT_i__ tokens)
     const comments = [];
     t = t.replace(/\{([^}]*)\}/g, (_, inner) => {
       const keep = [];
@@ -1021,14 +1085,45 @@ exportCQL() {
       return ` __CMT_${comments.length - 1}__ `;
     });
 
+    // remove tag pairs from movetext, NAGs; keep parentheses.
     t = t.replace(/^\s*\[[^\]]*\]\s*$/gm, " ");
     t = t.replace(/\$\d+/g, " ");
-    t = t.replace(/\b\d+\.(\.\.)?/g, " ");
     t = t.replace(/\s+/g, " ").trim();
-    const tokens = t.length ? t.split(" ") : [];
 
-    for (const tok of tokens) {
-      if (/^(__CMT_\d+__)$/i.test(tok)) {
+    // Tokenize including parentheses and comment placeholders.
+    const tokens = (t.match(/\(|\)|__CMT_\d+__|[^\s()]+/g) || []).map(s=>s.trim()).filter(Boolean);
+
+    let i = 0;
+    const isMoveNum = (tok) => /^\d+\.(?:\.\.)?$/.test(tok) || /^\d+\.\.\.$/.test(tok);
+
+    const parseSeq = () => {
+      while (i < tokens.length) {
+        const tok = tokens[i++];
+
+        if (tok === ")") return;
+
+        if (tok === "(") {
+          // Variation: in PGN, a variation generally branches from the position *before* the last move.
+          // That corresponds to curNode.parent (or root if already at root).
+          const savedNode = this.curNode;
+          const savedSnap = snapshotFrom(this.state);
+
+          const baseNode = this.curNode.parent || this.root;
+          this.curNode = baseNode;
+          if (baseNode && baseNode.fenAfter) this._applyFENToState(baseNode.fenAfter);
+          else if (this.initialSnap) restoreInto(this.state, this.initialSnap);
+
+          parseSeq();
+
+          // restore to where we were
+          restoreInto(this.state, savedSnap);
+          this.curNode = savedNode;
+          continue;
+        }
+
+        if (isMoveNum(tok)) continue;
+
+        if (/^(__CMT_\d+__)$/i.test(tok)) {
         const id = +tok.match(/__CMT_(\d+)__/i)[1];
         const payload = comments[id] || "";
         const parts = payload.split("|").map((s) => s.trim());
@@ -1056,7 +1151,7 @@ exportCQL() {
           }
         }
         continue;
-      }
+        }
 
       if (tok === "1-0" || tok === "0-1" || tok === "1/2-1/2" || tok === "*") {
         this.tags.Result = tok;
@@ -1067,11 +1162,21 @@ exportCQL() {
       if (!mv) break;
       const uci = sqName(mv.from) + sqName(mv.to) + (mv.promo ? mv.promo.toLowerCase() : "");
       const ok = this.makeMoveUCI(uci);
+      if (!ok) break;
       if (this.state.pendingPromotion) this.resolvePendingPromotion(mv.promo || "Q");
-    }
+
+      // ensure fenAfter exists (makeMoveUCI should set it, but keep safe)
+      if (this.curNode && !this.curNode.fenAfter) this.curNode.fenAfter = this.exportFEN();
+      }
+    };
+
+    parseSeq();
+    this._rebuildMainlineFenCache();
 
     this._emit();
   }
+
+
 
   _sanToMove(san) {
     const clean = String(san).replace(/[+#]$/g, "").trim();
