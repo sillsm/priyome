@@ -1058,17 +1058,22 @@ exportCQL() {
 
   loadPGN(pgnText) {
     const text = String(pgnText || "").replace(/\r/g, "");
-
-    const tagRe = /^\s*\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    const tagRe = /^\s*\[([A-Za-z0-9_]+)\s+\"([^\"]*)\"\]\s*$/gm;
+    const parsedTags = {};
     let m;
     while ((m = tagRe.exec(text)) !== null) {
       const k = m[1], v = m[2];
-      if (this.tags[k] != null) this.tags[k] = v;
+      parsedTags[k] = v;
     }
 
     const fenTagMatch = text.match(/^\s*\[FEN\s+"([^"]+)"\]\s*$/m);
     if (fenTagMatch) this.loadFEN(fenTagMatch[1]);
     else this.initializePosition();
+
+    // Re-apply PGN headers *after* loadFEN/initializePosition so we don't clobber tags like Result.
+    for (const [k, v] of Object.entries(parsedTags)) {
+      if (this.tags[k] != null) this.tags[k] = v;
+    }
 
     // keep variations (parentheses) so we can build the move tree.
     let t = text;
@@ -1089,6 +1094,11 @@ exportCQL() {
     // remove tag pairs from movetext, NAGs; keep parentheses.
     t = t.replace(/^\s*\[[^\]]*\]\s*$/gm, " ");
     t = t.replace(/\$\d+/g, " ");
+
+    // Some PGNs omit the space after move numbers (e.g., "1.e4" or "14...Nf6").
+    // Split those so tokenization doesn't treat "2.Nf3" as a pawn move to f3.
+    t = t.replace(/(\d+)\.\.\.([^\s(])/g, "$1... $2");
+    t = t.replace(/(\d+)\.([^\s\.\(])/g, "$1. $2");
     t = t.replace(/\s+/g, " ").trim();
 
     // Tokenize including parentheses and comment placeholders.
