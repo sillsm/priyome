@@ -14,6 +14,7 @@
 //   - resolvePendingPromotion(letter)  ("Q","R","B","N")
 //   - prevMove()
 //   - nextMove()
+//   - jumpToPly()
 //   - deleteMoveFromHere()
 //   - promoteVariationFromHere()
 //   - clearMarks()
