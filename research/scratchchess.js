@@ -2126,7 +2126,8 @@ export function extractSanTokensFromPGN(pgnText) {
     // Skip empties / ellipses
     if (t === "..." || t === ".") continue;
 
-    t = canonSanToken(t);    if (!t) continue;
+    t = canonSanToken(t);    
+    if (!t) continue;
     toks.push(t);
   }
 
