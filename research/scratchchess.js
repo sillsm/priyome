@@ -2204,6 +2204,7 @@ export async function loadOpeningTables({
 
       const key = makeKey(w, b);
       console.log("Load Opening TABLE DEBUG:", JSON.stringify(key)); //DEBUG
+      if (key === "d4\u001fe4|d5\u001fe6") console.log("STORING VALUE FOR FRENCH:", JSON.stringify(name)); //DEBUG
 
       // If duplicate keys occur, prefer the "more specific" label:
       // Heuristic: longer name wins; otherwise keep existing.
@@ -2278,6 +2279,7 @@ export async function openingFromPGN(pgnText, { maxPlies = 32, index = null, tim
       console.log("HAS KEY?", index.has(key), "KEY LEN", key.length); // DEBUG
     }
     const hit = index.get(key);
+    console.log("LOOKUP VALUE:", JSON.stringify(hit)); //DEBUG
     if (hit) bestName = hit;
   }
 
