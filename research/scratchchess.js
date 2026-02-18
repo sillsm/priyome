@@ -2155,6 +2155,7 @@ export async function loadOpeningTables({
 
   for (const L of letters) {
     const url = `${baseDir}/${L}.tsv`;
+    console.log("LOADING OPENING FILE:", url); // DEBUG LOG
     const resp = await fetchFn(url);
     const text = await resp.text();
 
@@ -2207,6 +2208,7 @@ export async function loadOpeningTables({
   }
 
   OPENING_INDEX = index;
+  console.log("OPENING INDEX SIZE:", index.size); // DEBUG LOG
   return { size: OPENING_INDEX.size };
 }
 
