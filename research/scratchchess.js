@@ -2273,7 +2273,10 @@ export async function openingFromPGN(pgnText, { maxPlies = 32, index = null, tim
     else binInsertSorted(bSorted, m);
 
     const key = makeKey(wSorted, bSorted);
-    if (ply === 3) console.log("OpeningFromPGN KEY @4 plies:", JSON.stringify(key)); // DEBUG
+    if (ply === 3) {
+      console.log("OpeningFromPGN KEY @4 plies:", JSON.stringify(key)); // DEBUG
+      console.log("HAS KEY?", index.has(key), "KEY LEN", key.length); // DEBUG
+    }
     const hit = index.get(key);
     if (hit) bestName = hit;
   }
