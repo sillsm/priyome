@@ -2018,3 +2018,224 @@ export class BoardView {
     };
   }
 }
+// opening_bag.js
+// Bag-of-moves opening assignment from lichess TSV opening tables.
+//
+// Key format (stable + collision-safe):
+//   whiteMovesSorted.join(UNIT_SEP) + "|" + blackMovesSorted.join(UNIT_SEP)
+//
+// Example: 1. e4 e6 2. d4 d5 3. Be3
+//   => white=["e4","d4","Be3"] black=["e6","d5"]
+//   => "Be3␟d4␟e4|d5␟e6"  (␟ is UNIT_SEP = \u001F)
+
+const UNIT_SEP = "\u001F";
+
+let OPENING_INDEX = new Map(); // key -> name (string)
+
+/** Binary-insert into sorted array of strings (keeps array sorted lexicographically). */
+function binInsertSorted(arr, s) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] < s) lo = mid + 1;
+    else hi = mid;
+  }
+  arr.splice(lo, 0, s);
+}
+
+/**
+ * Remove PGN headers, comments, variations, NAGs, move numbers, results.
+ * Return SAN-ish tokens in play order, without trying to validate legality.
+ */
+export function extractSanTokensFromPGN(pgnText) {
+  if (!pgnText) return [];
+
+  let s = String(pgnText);
+
+  // Drop PGN tag-pairs
+  s = s.replace(/\[[^\]]*\]\s*/g, " ");
+
+  // Drop brace comments
+  s = s.replace(/\{[^}]*\}/g, " ");
+
+  // Drop semicolon comments to end-of-line
+  s = s.replace(/;[^\n\r]*/g, " ");
+
+  // Drop numeric annotation glyphs like $1 $14
+  s = s.replace(/\$\d+/g, " ");
+
+  // Drop variations (...) using a simple stack scan
+  // (Robust enough for typical PGN; avoids catastrophic regex on nested parens.)
+  {
+    let out = "";
+    let depth = 0;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "(") { depth++; continue; }
+      if (ch === ")") { if (depth > 0) depth--; continue; }
+      if (depth === 0) out += ch;
+    }
+    s = out;
+  }
+
+  // Normalize whitespace
+  s = s.replace(/[\r\n\t]+/g, " ").trim();
+
+  // Remove move numbers: "1." or "23..." or "4.Nxd4"
+  s = s.replace(/\b\d+\.(?:\.\.)?/g, " ");
+
+  // Remove results
+  s = s.replace(/\b1-0\b|\b0-1\b|\b1\/2-1\/2\b|\*/g, " ");
+
+  // Split into tokens
+  const raw = s.split(/\s+/).filter(Boolean);
+
+  // Clean tokens (strip trailing annotation punctuation; normalize castle zeros)
+  const toks = [];
+  for (let t of raw) {
+    // Some PGNs have "..." tokens or stray punctuation
+    t = t.replace(/^\.+/, "").replace(/\.+$/, "");
+    if (!t) continue;
+
+    // Normalize castling written with zeros
+    if (t === "0-0") t = "O-O";
+    if (t === "0-0-0") t = "O-O-O";
+
+    // Drop check/mate/annotation suffixes: + # ! ? !!
+    // (If your TSV includes +/#, remove this line.)
+    t = t.replace(/[!?+#]+$/g, "");
+
+    // Remove leading "..." (rare tokenization artifacts)
+    t = t.replace(/^\.\.\./, "");
+
+    // Skip pure move-number artifacts
+    if (/^\d+$/.test(t)) continue;
+
+    // Skip empties / ellipses
+    if (t === "..." || t === ".") continue;
+
+    toks.push(t);
+  }
+
+  return toks;
+}
+
+/** Compute bag key from already-sorted arrays */
+function makeKey(whiteSorted, blackSorted) {
+  return `${whiteSorted.join(UNIT_SEP)}|${blackSorted.join(UNIT_SEP)}`;
+}
+
+/**
+ * Parse a "pgn" cell from the TSV, e.g. "1. e4 e6 2. d4 d5 3. Be3"
+ * into SAN tokens. This uses the same extractor as full PGN text.
+ */
+function extractSanTokensFromTsvPgnCell(pgnCell) {
+  return extractSanTokensFromPGN(pgnCell);
+}
+
+/**
+ * Load ./third_party/liopenings/{a,b,c,d,e}.tsv and build OPENING_INDEX.
+ *
+ * By default uses fetch(), so it works in browser builds.
+ * If you want Node, pass { fetchFn: async (url)=>({text:async()=>fs.readFileSync(...)}) }.
+ */
+export async function loadOpeningTables({
+  baseDir = "./third_party/liopenings",
+  letters = ["a", "b", "c", "d", "e"],
+  fetchFn = (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null),
+} = {}) {
+  if (!fetchFn) {
+    throw new Error("loadOpeningTables: no fetch() available; pass fetchFn for Node.");
+  }
+
+  const index = new Map();
+
+  for (const L of letters) {
+    const url = `${baseDir}/${L}.tsv`;
+    const resp = await fetchFn(url);
+    const text = await resp.text();
+
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    if (!lines.length) continue;
+
+    // Expect header: eco\tname\tpgn
+    // We'll tolerate extra cols but only use first 3.
+    const start = lines[0].toLowerCase().includes("eco") ? 1 : 0;
+
+    for (let i = start; i < lines.length; i++) {
+      const line = lines[i];
+      const parts = line.split("\t");
+      if (parts.length < 3) continue;
+
+      const eco = parts[0].trim();
+      const name = parts[1].trim();
+      const pgnCell = parts.slice(2).join("\t").trim(); // just in case name contains tabs (rare)
+
+      if (!name || !pgnCell) continue;
+
+      const moves = extractSanTokensFromTsvPgnCell(pgnCell);
+      if (!moves.length) continue;
+
+      // Build bag by side and sort within side
+      const w = [];
+      const b = [];
+      for (let ply = 0; ply < moves.length; ply++) {
+        const m = moves[ply];
+        if (ply % 2 === 0) w.push(m);
+        else b.push(m);
+      }
+      w.sort();
+      b.sort();
+
+      const key = makeKey(w, b);
+
+      // If duplicate keys occur, prefer the "more specific" label:
+      // Heuristic: longer name wins; otherwise keep existing.
+      if (!index.has(key)) {
+        index.set(key, name);
+      } else {
+        const prev = index.get(key);
+        if ((name.length || 0) > (prev.length || 0)) index.set(key, name);
+      }
+
+      // (eco currently unused; keep if you want to store ECO too)
+      void eco;
+    }
+  }
+
+  OPENING_INDEX = index;
+  return { size: OPENING_INDEX.size };
+}
+
+/**
+ * openingFromPGN(pgnText, { maxPlies=32, index=OPENING_INDEX })
+ * - Tokenize moves
+ * - Incrementally build sorted bags for White/Black
+ * - After each ply, lookup key; keep the deepest hit; return best name (or "")
+ */
+export function openingFromPGN(pgnText, { maxPlies = 32, index = OPENING_INDEX } = {}) {
+  if (!index || index.size === 0) {
+    throw new Error("openingFromPGN: opening index is empty. Call loadOpeningTables() first.");
+  }
+
+  const moves = extractSanTokensFromPGN(pgnText);
+  if (!moves.length) return "";
+
+  const wSorted = [];
+  const bSorted = [];
+
+  let bestName = "";
+  let plies = Math.min(moves.length, maxPlies);
+
+  for (let ply = 0; ply < plies; ply++) {
+    const m = moves[ply];
+    if (ply % 2 === 0) binInsertSorted(wSorted, m);
+    else binInsertSorted(bSorted, m);
+
+    const key = makeKey(wSorted, bSorted);
+    const hit = index.get(key);
+    if (hit) bestName = hit;
+  }
+
+  return bestName;
+}
