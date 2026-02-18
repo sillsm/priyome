@@ -2035,6 +2035,15 @@ const UNIT_SEP = "\u001F";
 
 let OPENING_INDEX = new Map(); // key -> name (string)
 
+// Canonicalize SAN-ish tokens so TSV + PGN produce byte-identical keys.
+function canonSanToken(t) {
+  return String(t)
+    .replace(/\uFEFF/g, "")     // UTF-8 BOM / zero-width oddities
+    .replace(/\u00A0/g, " ")    // NBSP -> space
+    .trim()
+    .normalize("NFC");
+}
+
 /** Binary-insert into sorted array of strings (keeps array sorted lexicographically). */
 function binInsertSorted(arr, s) {
   let lo = 0, hi = arr.length;
@@ -2117,6 +2126,7 @@ export function extractSanTokensFromPGN(pgnText) {
     // Skip empties / ellipses
     if (t === "..." || t === ".") continue;
 
+    t = canonSanToken(t);    if (!t) continue;
     toks.push(t);
   }
 
