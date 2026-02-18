@@ -2283,6 +2283,7 @@ export async function openingFromPGN(pgnText, { maxPlies = 32, index = null, tim
     if (hit) bestName = hit;
   }
 
+  console.log("RETURNING BEST NAME:", JSON.stringify(bestName)); //DEBUG
   return bestName;
 }
 
