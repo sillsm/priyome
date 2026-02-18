@@ -2192,6 +2192,7 @@ export async function loadOpeningTables({
       b.sort();
 
       const key = makeKey(w, b);
+      console.log("Load Opening TABLE DEBUG:", JSON.stringify(key)); //DEBUG
 
       // If duplicate keys occur, prefer the "more specific" label:
       // Heuristic: longer name wins; otherwise keep existing.
@@ -2261,6 +2262,7 @@ export async function openingFromPGN(pgnText, { maxPlies = 32, index = null, tim
     else binInsertSorted(bSorted, m);
 
     const key = makeKey(wSorted, bSorted);
+    if (ply === 3) console.log("OpeningFromPGN KEY @4 plies:", JSON.stringify(key)); // DEBUG
     const hit = index.get(key);
     if (hit) bestName = hit;
   }
