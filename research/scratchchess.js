@@ -23,6 +23,7 @@
 //   - toggleFlip([bool])
 //   - toggleSetup([bool])
 //   - toggleMini([bool])
+//   - openingFromPGN()
 //   - onChange(fn)->unsubscribe
 //
 // class BoardView
