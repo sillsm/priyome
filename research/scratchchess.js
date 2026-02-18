@@ -1258,6 +1258,9 @@ exportCQL() {
 }
 
 export function createGame(opts) {
+  //Kick off opening-table loading in the background (once per module).
+  // This keeps game creation snappy while letting openingFromPGN() be ready ASAP.
+  try { ensureOpeningLoadStarted(); } catch {}
   return new Game(opts);
 }
 
@@ -2207,17 +2210,40 @@ export async function loadOpeningTables({
   return { size: OPENING_INDEX.size };
 }
 
+// ---------------------------------------------------------------------------
+// Openings: async load + readiness
+// ---------------------------------------------------------------------------
+
+let OPENING_LOAD_PROMISE = null;
+
+function ensureOpeningLoadStarted({ basePath = "./third_party/liopenings/", files = ["a.tsv","b.tsv","c.tsv","d.tsv","e.tsv"] } = {}) {
+  if (OPENING_LOAD_PROMISE) return OPENING_LOAD_PROMISE;
+  OPENING_LOAD_PROMISE = loadOpeningTables({ basePath, files }).catch(() => ({ size: 0 }));
+  return OPENING_LOAD_PROMISE;
+}
+
+async function waitForOpeningsReady(timeoutMs = 2000) {
+  if (OPENING_INDEX && OPENING_INDEX.size > 0) return true;
+  const p = ensureOpeningLoadStarted();
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("openingFromPGN: opening tables not ready (timeout)")), timeoutMs));
+  await Promise.race([p, timeout]);
+  if (!OPENING_INDEX || OPENING_INDEX.size === 0) throw new Error("openingFromPGN: opening index is empty (load failed?)");
+  return true;
+}
+
 /**
  * openingFromPGN(pgnText, { maxPlies=32, index=OPENING_INDEX })
  * - Tokenize moves
  * - Incrementally build sorted bags for White/Black
  * - After each ply, lookup key; keep the deepest hit; return best name (or "")
  */
-export function openingFromPGN(pgnText, { maxPlies = 32, index = OPENING_INDEX } = {}) {
-  if (!index || index.size === 0) {
-    throw new Error("openingFromPGN: opening index is empty. Call loadOpeningTables() first.");
+export async function openingFromPGN(pgnText, { maxPlies = 32, index = null, timeoutMs = 2000 } = {}) {
+  // Default to the module index. If it isn't ready yet, wait briefly (and/or kick off load).
+  if (!index) {
+    await waitForOpeningsReady(timeoutMs);
+    index = OPENING_INDEX;
   }
-
+  if (!index || index.size === 0) return "";
   const moves = extractSanTokensFromPGN(pgnText);
   if (!moves.length) return "";
 
@@ -2239,3 +2265,16 @@ export function openingFromPGN(pgnText, { maxPlies = 32, index = OPENING_INDEX }
 
   return bestName;
 }
+
+// Game-method wrappers so table-driven harnesses can call these via ctx.g[fn].
+Game.prototype.loadOpeningTables = async function (opts) {
+  // If caller provides opts, use them; otherwise default path/files.
+  const res = await loadOpeningTables(opts || {});
+  // Keep background promise consistent.
+  OPENING_LOAD_PROMISE = Promise.resolve(res);
+  return res;
+};
+
+Game.prototype.openingFromPGN = async function (pgnText, opts) {
+  return await openingFromPGN(pgnText, opts || {});
+};
