@@ -677,6 +677,8 @@
     return setTimeout(fn, 0);
   }
 
+  const sideGame = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+
   async function preloadOneManifestPgn(key, url){
     if (!key || !url) return;
     if (STATE.pgnCache?.byKey?.[key]?.ready) return;
@@ -694,7 +696,7 @@
     for (let i=0;i<parts.length;i++){
       const pgn = parts[i];
       const h = parseHeaders(pgn);
-      const openingName = await g.openingFromPGN(pgn);
+      const openingName = await sideGame.openingFromPGN(pgn);
       const title =  `${h.White || key} vs ${h.Black || "?"} {openingName}` || `Game ${i+1}`;
       parsed.push({ i, pgn, h, title });
     }
@@ -1523,8 +1525,7 @@ const STATE = {
         for (let i=0;i<parts.length;i++){
           const pgn = parts[i];
           const h = parseHeaders(pgn);
-          const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-          const openingName = await g.openingFromPGN(pgn);
+          const openingName = await sideGame.openingFromPGN(pgn);
 
           const event = (h.Event || "").trim();
           const white = (h.White || key).trim();
