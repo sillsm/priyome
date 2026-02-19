@@ -23,6 +23,7 @@
 //   - toggleFlip([bool])
 //   - toggleSetup([bool])
 //   - toggleMini([bool])
+//   - openingFromPGN()
 //   - onChange(fn)->unsubscribe
 //
 // class BoardView
@@ -1257,6 +1258,9 @@ exportCQL() {
 }
 
 export function createGame(opts) {
+  //Kick off opening-table loading in the background (once per module).
+  // This keeps game creation snappy while letting openingFromPGN() be ready ASAP.
+  try { ensureOpeningLoadStarted(); } catch {}
   return new Game(opts);
 }
 
@@ -2017,3 +2021,279 @@ export class BoardView {
     };
   }
 }
+// opening_bag.js
+// Bag-of-moves opening assignment from lichess TSV opening tables.
+//
+// Key format (stable + collision-safe):
+//   whiteMovesSorted.join(UNIT_SEP) + "|" + blackMovesSorted.join(UNIT_SEP)
+//
+// Example: 1. e4 e6 2. d4 d5 3. Be3
+//   => white=["e4","d4","Be3"] black=["e6","d5"]
+//   => "Be3␟d4␟e4|d5␟e6"  (␟ is UNIT_SEP = \u001F)
+
+const UNIT_SEP = "\u001F";
+
+let OPENING_INDEX = new Map(); // key -> name (string)
+
+// Canonicalize SAN-ish tokens so TSV + PGN produce byte-identical keys.
+function canonSanToken(t) {
+  return String(t)
+    .replace(/\uFEFF/g, "")     // UTF-8 BOM / zero-width oddities
+    .replace(/\u00A0/g, " ")    // NBSP -> space
+    .trim()
+    .normalize("NFC");
+}
+
+/** Binary-insert into sorted array of strings (keeps array sorted lexicographically). */
+function binInsertSorted(arr, s) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] < s) lo = mid + 1;
+    else hi = mid;
+  }
+  arr.splice(lo, 0, s);
+}
+
+/**
+ * Remove PGN headers, comments, variations, NAGs, move numbers, results.
+ * Return SAN-ish tokens in play order, without trying to validate legality.
+ */
+export function extractSanTokensFromPGN(pgnText) {
+  if (!pgnText) return [];
+
+  let s = String(pgnText);
+
+  // Drop PGN tag-pairs
+  s = s.replace(/\[[^\]]*\]\s*/g, " ");
+
+  // Drop brace comments
+  s = s.replace(/\{[^}]*\}/g, " ");
+
+  // Drop semicolon comments to end-of-line
+  s = s.replace(/;[^\n\r]*/g, " ");
+
+  // Drop numeric annotation glyphs like $1 $14
+  s = s.replace(/\$\d+/g, " ");
+
+  // Drop variations (...) using a simple stack scan
+  // (Robust enough for typical PGN; avoids catastrophic regex on nested parens.)
+  {
+    let out = "";
+    let depth = 0;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "(") { depth++; continue; }
+      if (ch === ")") { if (depth > 0) depth--; continue; }
+      if (depth === 0) out += ch;
+    }
+    s = out;
+  }
+
+  // Normalize whitespace
+  s = s.replace(/[\r\n\t]+/g, " ").trim();
+
+  // Remove move numbers: "1." or "23..." or "4.Nxd4"
+  s = s.replace(/\b\d+\.(?:\.\.)?/g, " ");
+
+  // Remove results
+  s = s.replace(/\b1-0\b|\b0-1\b|\b1\/2-1\/2\b|\*/g, " ");
+
+  // Split into tokens
+  const raw = s.split(/\s+/).filter(Boolean);
+
+  // Clean tokens (strip trailing annotation punctuation; normalize castle zeros)
+  const toks = [];
+  for (let t of raw) {
+    // Some PGNs have "..." tokens or stray punctuation
+    t = t.replace(/^\.+/, "").replace(/\.+$/, "");
+    if (!t) continue;
+
+    // Normalize castling written with zeros
+    if (t === "0-0") t = "O-O";
+    if (t === "0-0-0") t = "O-O-O";
+
+    // Drop check/mate/annotation suffixes: + # ! ? !!
+    // (If your TSV includes +/#, remove this line.)
+    t = t.replace(/[!?+#]+$/g, "");
+
+    // Remove leading "..." (rare tokenization artifacts)
+    t = t.replace(/^\.\.\./, "");
+
+    // Skip pure move-number artifacts
+    if (/^\d+$/.test(t)) continue;
+
+    // Skip empties / ellipses
+    if (t === "..." || t === ".") continue;
+
+    t = canonSanToken(t);    
+    if (!t) continue;
+    toks.push(t);
+  }
+
+  return toks;
+}
+
+/** Compute bag key from already-sorted arrays */
+function makeKey(whiteSorted, blackSorted) {
+  return `${whiteSorted.join(UNIT_SEP)}|${blackSorted.join(UNIT_SEP)}`;
+}
+
+/**
+ * Parse a "pgn" cell from the TSV, e.g. "1. e4 e6 2. d4 d5 3. Be3"
+ * into SAN tokens. This uses the same extractor as full PGN text.
+ */
+function extractSanTokensFromTsvPgnCell(pgnCell) {
+  return extractSanTokensFromPGN(pgnCell);
+}
+
+/**
+ * Load ./third_party/liopenings/{a,b,c,d,e}.tsv and build OPENING_INDEX.
+ *
+ */
+async function loadOpeningTables({
+  baseDir = "./third_party/liopenings",
+  letters = ["a", "b", "c", "d", "e"],
+  fetchFn = (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null),
+} = {}) {
+  if (!fetchFn) {
+    throw new Error("loadOpeningTables: no fetch() available; pass fetchFn for Node.");
+  }
+
+  const index = new Map();
+
+  for (const L of letters) {
+    const url = `${baseDir}/${L}.tsv`;
+    console.log("LOADING OPENING FILE:", url); // DEBUG LOG
+    const resp = await fetchFn(url);
+    const text = await resp.text();
+
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    if (!lines.length) continue;
+
+    // Expect header: eco\tname\tpgn
+    // We'll tolerate extra cols but only use first 3.
+    const start = lines[0].toLowerCase().includes("eco") ? 1 : 0;
+
+    for (let i = start; i < lines.length; i++) {
+      const line = lines[i];
+      const parts = line.split("\t");
+      if (parts.length < 3) continue;
+
+      const eco = parts[0].trim();
+      const name = parts[1].trim();
+      const pgnCell = parts.slice(2).join("\t").trim(); // just in case name contains tabs (rare)
+
+      if (!name || !pgnCell) continue;
+
+      const moves = extractSanTokensFromTsvPgnCell(pgnCell);
+      if (!moves.length) continue;
+
+      // Build bag by side and sort within side
+      const w = [];
+      const b = [];
+      for (let ply = 0; ply < moves.length; ply++) {
+        const m = moves[ply];
+        if (ply % 2 === 0) w.push(m);
+        else b.push(m);
+      }
+      w.sort();
+      b.sort();
+
+      const key = makeKey(w, b);
+      console.log("Load Opening TABLE DEBUG:", JSON.stringify(key)); //DEBUG
+      if (key === "d4\u001fe4|d5\u001fe6") console.log("STORING VALUE FOR FRENCH:", JSON.stringify(name)); //DEBUG
+
+      // If duplicate keys occur, prefer the "more specific" label:
+      // Heuristic: longer name wins; otherwise keep existing.
+      if (!index.has(key)) {
+        index.set(key, name);
+      } else {
+        const prev = index.get(key);
+        if ((name.length || 0) > (prev.length || 0)) index.set(key, name);
+      }
+
+      // (eco currently unused; keep if you want to store ECO too)
+      void eco;
+    }
+  }
+
+  OPENING_INDEX = index;
+  console.log("OPENING INDEX SIZE:", index.size); // DEBUG LOG
+  return { size: OPENING_INDEX.size };
+}
+
+// ---------------------------------------------------------------------------
+// Openings: async load + readiness
+// ---------------------------------------------------------------------------
+
+let OPENING_LOAD_PROMISE = null;
+
+function ensureOpeningLoadStarted({ basePath = "./third_party/liopenings/", files = ["a.tsv","b.tsv","c.tsv","d.tsv","e.tsv"] } = {}) {
+  if (OPENING_LOAD_PROMISE) return OPENING_LOAD_PROMISE;
+  OPENING_LOAD_PROMISE = loadOpeningTables({ basePath, files }).catch(() => ({ size: 0 }));
+  return OPENING_LOAD_PROMISE;
+}
+
+async function waitForOpeningsReady(timeoutMs = 2000) {
+  if (OPENING_INDEX && OPENING_INDEX.size > 0) return true;
+  const p = ensureOpeningLoadStarted();
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("openingFromPGN: opening tables not ready (timeout)")), timeoutMs));
+  await Promise.race([p, timeout]);
+  if (!OPENING_INDEX || OPENING_INDEX.size === 0) throw new Error("openingFromPGN: opening index is empty (load failed?)");
+  return true;
+}
+
+/**
+ * openingFromPGN(pgnText, { maxPlies=32, index=OPENING_INDEX })
+ * - Tokenize moves
+ * - Incrementally build sorted bags for White/Black
+ * - After each ply, lookup key; keep the deepest hit; return best name (or "")
+ */
+async function openingFromPGN(pgnText, { maxPlies = 32, index = null, timeoutMs = 2000 } = {}) {
+  // Default to the module index. If it isn't ready yet, wait briefly (and/or kick off load).
+  if (!index) {
+    await waitForOpeningsReady(timeoutMs);
+    index = OPENING_INDEX;
+  }
+  if (!index || index.size === 0) return "";
+  const moves = extractSanTokensFromPGN(pgnText);
+  if (!moves.length) return "";
+
+  const wSorted = [];
+  const bSorted = [];
+
+  let bestName = "";
+  let plies = Math.min(moves.length, maxPlies);
+
+  for (let ply = 0; ply < plies; ply++) {
+    const m = moves[ply];
+    if (ply % 2 === 0) binInsertSorted(wSorted, m);
+    else binInsertSorted(bSorted, m);
+
+    const key = makeKey(wSorted, bSorted);
+    if (ply === 3) {
+      console.log("OpeningFromPGN KEY @4 plies:", JSON.stringify(key)); // DEBUG
+      console.log("HAS KEY?", index.has(key), "KEY LEN", key.length); // DEBUG
+    }
+    const hit = index.get(key);
+    console.log("LOOKUP VALUE:", JSON.stringify(hit)); //DEBUG
+    if (hit) bestName = hit;
+  }
+
+  console.log("RETURNING BEST NAME:", JSON.stringify(bestName)); //DEBUG
+  return bestName;
+}
+
+// Game-method wrappers so table-driven harnesses can call these via ctx.g[fn].
+Game.prototype.loadOpeningTables = async function (opts) {
+  // If caller provides opts, use them; otherwise default path/files.
+  const res = await loadOpeningTables(opts || {});
+  // Keep background promise consistent.
+  OPENING_LOAD_PROMISE = Promise.resolve(res);
+  return res;
+};
+
+Game.prototype.openingFromPGN = async function (pgnText, opts) {
+  return await openingFromPGN(pgnText, opts || {});
+};
