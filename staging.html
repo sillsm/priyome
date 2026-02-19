@@ -1524,9 +1524,15 @@ const STATE = {
           const pgn = parts[i];
           const h = parseHeaders(pgn);
           const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-          openingName = g.openingFromPGN(pgn);
-          const title = (h.Event + openingName) || `${h.White || key} vs ${h.Black || "?"}` || `Game ${i+1}`;
-          parsed.push({ i, pgn, h, title });
+          const openingName = await g.openingFromPGN(pgn);
+
+          const event = (h.Event || "").trim();
+          const white = (h.White || key).trim();
+          const black = (h.Black || "?").trim();
+          const opening = (openingName || "").trim();
+
+          const title =
+            (event || opening) ? `${white} v. ${black} [${event}] [${(h.Date || "").slice(0,4)}]` : `${white} vs ${black}` || `Game ${i+1}`;
         }
         const t3 = performance.now();
         logLine("DBG", `[${new Date().toISOString()}] Players: parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
