@@ -671,6 +671,27 @@
     return parts.map(x=>x.trim()).filter(Boolean);
   }
 
+  function cutAtComma(name){
+    const s = String(name || "").trim();
+    const i = s.indexOf(",");
+    return (i >= 0 ? s.slice(0, i) : s).trim();
+  }
+  function yearFromDateTag(date){
+    const m = String(date || "").match(/(\d{4})/);
+    return m ? m[1] : "";
+  }
+  function formatEventYear(event, date){
+    const ev = String(event || "").trim();
+    const y = yearFromDateTag(date);
+    if (ev && y) return `${ev} ${y}`;
+    return ev || y || "";
+  }
+  function formatVsLastNames(white, black){
+    const w = cutAtComma(white);
+    const b = cutAtComma(black);
+    return `${w || "?"} v ${b || "?"}`;
+  }
+
   // ----------------------------- PGN_MANIFEST preload (headers only; non-blocking) -----------------------------
   function _idle(fn){
     if (typeof requestIdleCallback === "function") return requestIdleCallback(()=>fn(), { timeout: 250 });
@@ -697,8 +718,14 @@
       const pgn = parts[i];
       const h = parseHeaders(pgn);
       const openingName = await sideGame.openingFromPGN(pgn);
-      const title =  `${h.White || key} vs ${h.Black || "?"} ${openingName}` || `Game ${i+1}`;
-      parsed.push({ i, pgn, h, title });
+
+      const white = (h.White || key);
+      const black = (h.Black || "?");
+      const event = (h.Event || "");
+      const date  = (h.Date || "");
+      const title = formatVsLastNames(white, black);
+
+      parsed.push({ i, pgn, h, title, white, black, event, date, openingName });
     }
     const t3 = performance.now();
     logLine("DBG", `[${new Date().toISOString()}] PGN preload parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
@@ -713,7 +740,7 @@
       const it = parsed[j];
       const id = `player:${key}:${it.i}`;
       ids.push(id);
-      STATE.gamesMeta[id] = { id, title: it.title, opening:`Player: ${key}` };
+      STATE.gamesMeta[id] = { id, title: it.title, opening: it.openingName || "", event: it.event || "", date: it.date || "", white: it.white || "", black: it.black || "" };
     }
     STATE.players = STATE.players || { cache:{} };
     STATE.players.cache = STATE.players.cache || {};
@@ -1502,7 +1529,7 @@ const STATE = {
           for (let j=0;j<pre.parts.length;j++){
             const it = pre.parts[j];
             const id = `player:${key}:${it.i}`;
-            S.gamesMeta[id] = { id, title: it.title, opening:`Player: ${key}` };
+            S.gamesMeta[id] = { id, title: it.title, opening: it.openingName || "", event: it.event || "", date: it.date || "", white: it.white || "", black: it.black || "" };
           }
 
           logLine("OK", `Players: using preloaded headers for ${key} (${ids.length} games).`);
@@ -1527,13 +1554,13 @@ const STATE = {
           const h = parseHeaders(pgn);
           const openingName = await sideGame.openingFromPGN(pgn);
 
-          const event = (h.Event || "").trim();
-          const white = (h.White || key).trim();
-          const black = (h.Black || "?").trim();
-          const opening = (openingName || "").trim();
-          const date    = h.Date.Trim();
+          const white = (h.White || key);
+          const black = (h.Black || "?");
+          const event = (h.Event || "");
+          const date  = (h.Date || "");
+          const title = formatVsLastNames(white, black);
 
-          const title = `${white} v. ${black} [${event}] ${opening} ${date}`;
+          parsed.push({ i, pgn, h, title, white, black, event, date, openingName });
         }
         const t3 = performance.now();
         logLine("DBG", `[${new Date().toISOString()}] Players: parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
@@ -2351,12 +2378,17 @@ const STATE = {
         const d = document.createElement("div");
         d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
         d.dataset.playerGameId = id;
-        d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
+        const vs = formatVsLastNames(meta.white || "", meta.black || "");
+        const open = String(meta.opening || "").trim();
+        const evy  = formatEventYear(meta.event || "", meta.date || "");
+        d.innerHTML = `<div><b>${vs || meta.title || ""}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
         gamesHost.appendChild(d);
       }
       if (!STATE.players.gameIds.length){
         gamesHost.innerHTML = `<div class="muted">No games found.</div>`;
       }
+
+
     }
 
     if (back) back.hidden = false;
