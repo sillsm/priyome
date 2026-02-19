@@ -1467,101 +1467,7 @@ const STATE = {
       S.players.gameIds = [];
       // NOTE: do not clear S.players.cache; keep loaded games for session
     },
-    "PLAYERS/SELECT": async (S,A) => {
-      const key = String(A.key || "");
-      if (!key) return;
-
-      const pgnUrl = PGN_MANIFEST?.[key];
-      if (!pgnUrl){
-        logLine("ERR", `Players: no PGN_MANIFEST entry for "${key}".`);
-        S.ui.tab = "errors";
-        return;
-      }
-
-      S.players.mode = "list";
-      S.players.selectedKey = key;
-
-      // cache hit: keep games loaded & processed for this session
-      const cached = S.players.cache?.[key];
-      if (cached && Array.isArray(cached.gameIds) && cached.gameIds.length){
-        S.players.gameIds = cached.gameIds.slice();
-        logLine("OK", `Players: cache hit for ${key} (${cached.gameIds.length} games).`);
-        return;
-      }
-
-      try{
-        // Prefer global PGN preload cache (populated after wasm warm-up)
-        const pre = S.pgnCache?.byKey?.[key];
-        if (pre && pre.ready && Array.isArray(pre.parts) && pre.parts.length){
-          const ids = pre.parts.map(it => `player:${key}:${it.i}`);
-          S.players.gameIds = ids.slice();
-          S.players.cache = S.players.cache || {};
-          S.players.cache[key] = { gameIds: ids.slice(), parts: pre.parts, ready:true };
-
-          // Prime metadata (for list rendering) but DO NOT create games / loadPGN here.
-          for (let j=0;j<pre.parts.length;j++){
-            const it = pre.parts[j];
-            const id = `player:${key}:${it.i}`;
-            S.gamesMeta[id] = { id, title: it.title, opening:`Player: ${key}` };
-          }
-
-          logLine("OK", `Players: using preloaded headers for ${key} (${ids.length} games).`);
-          return;
-        }
-
-        // Fallback: fetch + parse headers now (still no createGame/loadPGN here)
-        const t0 = performance.now();
-        logLine("DBG", `[${new Date().toISOString()}] Players: fetch start key=${key} url=${pgnUrl}`);
-        const r = await fetch(pgnUrl, { cache:"no-store" });
-        const txt = await r.text();
-        const t1 = performance.now();
-        logLine("DBG", `[${new Date().toISOString()}] Players: fetch done key=${key} chars=${txt.length} ms=${(t1-t0).toFixed(1)}`);
-
-        const parts = splitMultiPgn(txt);
-
-        const t2 = performance.now();
-        logLine("DBG", `[${new Date().toISOString()}] Players: parseHeaders start key=${key} games=${parts.length}`);
-        const parsed = [];
-        for (let i=0;i<parts.length;i++){
-          const pgn = parts[i];
-          const h = parseHeaders(pgn);
-          const openingName = await sideGame.openingFromPGN(pgn);
-
-          const event = (h.Event || "").trim();
-          const white = (h.White || key).trim();
-          const black = (h.Black || "?").trim();
-          const opening = (openingName || "").trim();
-          const date    = h.Date.Trim();
-
-          const title = `${white} v. ${black} [${event}] ${opening} ${date}`;
-        }
-        const t3 = performance.now();
-        logLine("DBG", `[${new Date().toISOString()}] Players: parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
-
-        // Store for session + global cache
-        S.pgnCache = S.pgnCache || { byKey:{} };
-        S.pgnCache.byKey[key] = { url: pgnUrl, parts: parsed, ready:true };
-
-        const ids = [];
-        for (let j=0;j<parsed.length;j++){
-          const it = parsed[j];
-          const id = `player:${key}:${it.i}`;
-          ids.push(id);
-          S.gamesMeta[id] = { id, title: it.title, opening:`Player: ${key}` };
-          logLine("DBG", `${it.title}`);
-
-        }
-
-        S.players.gameIds = ids.slice();
-        S.players.cache = S.players.cache || {};
-        S.players.cache[key] = { gameIds: ids.slice(), parts: parsed, ready:true };
-
-        logLine("OK", `Players: prepared ${ids.length} games for ${key} (lazy loadPGN on click).`);
-      }catch(e){
-        logStack("ERR", `Players load failed (${key}): `, e);
-        S.ui.tab = "errors";
-      }
-    },
+    "PLAYERS/SELECT": async (S,A) => {//empty for now},
     "PLAYERS/GAME_SET": (S,A) => {
       // Do NOT change active study; just load board to this game.
       const id = String(A.id || "");
@@ -1581,7 +1487,7 @@ const STATE = {
               g.loadPGN?.(it.pgn);
               RUNTIME.games.set(id, g);
               attachOnChange(id, g);
-              logLine("DBG", `[${new Date().toISOString()}] Players: loadPGN (crazy lazy) ok id=${id}`);
+              logLine("DBG", `[${new Date().toISOString()}] Players: loadPGN (lazy) ok id=${id}`);
             } else {
               logLine("WARN", `[${new Date().toISOString()}] Players: missing cached PGN for id=${id}`);
             }
