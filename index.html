@@ -114,6 +114,68 @@
     display:flex; align-items:center; justify-content:space-between; gap:10px;
   }
   .gameCard.active{ outline:2px solid #c7d6ff; background:#f4f7ff; }
+
+  .playersGrid{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap:10px;
+    margin-top:10px;
+  }
+  .playerCard{
+    border:1px solid var(--border);
+    border-radius:12px;
+    background:#fff;
+    padding:10px;
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    align-items:center;
+    text-align:center;
+  }
+  .playerCard:hover{ background:#f7f9ff; }
+  .playerAvatar{
+    width:72px; height:72px;
+    border-radius:12px;
+    overflow:hidden;
+    border:1px solid rgba(15,23,42,.10);
+    background:#fff;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .playerAvatar img{
+    width:100%; height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .playerName{
+    font-weight:800;
+    font-size:12px;
+    color:var(--text);
+    line-height:1.1;
+  }
+
+  .playersBack{
+    position:sticky;
+    top:0;
+    float:right;
+    margin-top:-2px;
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:999px;
+    padding:6px 10px;
+    cursor:pointer;
+    box-shadow: 0 10px 20px rgba(15,23,42,.10);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .12s ease;
+  }
+  #pane-players.listMode .playersBack{
+    opacity:1;
+    pointer-events:auto;
+  }
+  #pane-players.listMode:hover .playersBack{
+    opacity:1;
+  }
   .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
   .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
   .toolRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -363,6 +425,7 @@
       <button class="tabBtn" data-tab="priyomes">Priyomes</button>
       <button class="tabBtn" data-tab="query">Query</button>
       <button class="tabBtn" data-tab="evals">Evals</button>
+      <button class="tabBtn" data-tab="players">Players</button>
       <button class="tabBtn" data-tab="errors">Errors</button>
     </div>
 
@@ -484,6 +547,23 @@
       <div class="list" id="cqlEvalList"></div>
     </div>
 
+    <div class="pane" id="pane-players">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="label" id="playersTitle">Players</div>
+        <span class="pill" id="playersHint">Pick a player</span>
+      </div>
+
+      <!-- hover back arrow (only visible in list mode) -->
+      <button class="playersBack" id="playersBack" type="button" title="Back">←</button>
+
+      <div id="playersGrid" class="playersGrid"></div>
+
+      <div id="playersGamesWrap" style="display:none; margin-top:10px">
+        <div class="label" style="margin-top:6px">Games</div>
+        <div class="list" id="playersGameList"></div>
+      </div>
+    </div>
+
     <div class="pane" id="pane-errors">
       <div class="row" style="justify-content:space-between; align-items:center">
         <div class="label">All logs & errors</div>
@@ -543,9 +623,10 @@
   const PGN_MANIFEST = { Fischer: "./pgn/Fischer.pgn", 
                          Karpov: "./pgn/Karpov.pgn" 
                        };
-  const PLAYER_IMAGE = { Fischer: "./third_party/images/fisher.jpeg", 
-                         Karpov:  "./third_party/images/karpov.jpg", 
-                       };
+  const PLAYER_IMAGE = {
+    Fischer: "./third_party/images/fischer.jpeg",
+    Karpov: "./third_party/images/karpov.jpg",
+  };
   const PRIYOME_PGN_MANIFEST = { default: "./priyomes/priyomes.pgn" };
   const CQL_MANIFEST = {}; // optional extra dropdown items
   const CQL_EVAL_MANIFEST = {
@@ -589,6 +670,84 @@
     const parts = t.split(/\n\s*\n(?=\s*\[Event\s+")/g);
     return parts.map(x=>x.trim()).filter(Boolean);
   }
+
+  // ----------------------------- PGN_MANIFEST preload (headers only; non-blocking) -----------------------------
+  function _idle(fn){
+    if (typeof requestIdleCallback === "function") return requestIdleCallback(()=>fn(), { timeout: 250 });
+    return setTimeout(fn, 0);
+  }
+
+  const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+
+  async function preloadOneManifestPgn(key, url){
+    if (!key || !url) return;
+    if (STATE.pgnCache?.byKey?.[key]?.ready) return;
+
+    const t0 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch start key=${key} url=${url}`);
+    const r = await fetch(url, { cache:"no-store" });
+    const txt = await r.text();
+    const t1 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch done key=${key} chars=${txt.length} ms=${(t1-t0).toFixed(1)}`);
+
+    const parts = splitMultiPgn(txt);
+    const t2 = performance.now();
+    const parsed = [];
+    for (let i=0;i<parts.length;i++){
+      const pgn = parts[i];
+      const h = parseHeaders(pgn);
+      const openingName = await sideGame.openingFromPGN(pgn);
+      const title =  `${h.White || key} vs ${h.Black || "?"} ${openingName}` || `Game ${i+1}`;
+      parsed.push({ i, pgn, h, title });
+    }
+    const t3 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
+
+    // Store in global cache (headers+raw PGN only; do NOT create games / loadPGN here)
+    STATE.pgnCache = STATE.pgnCache || { byKey:{} };
+    STATE.pgnCache.byKey[key] = { url, parts: parsed, ready:true };
+
+    // Prime Players pane cache + game cards metadata (no runtime games yet)
+    const ids = [];
+    for (let j=0;j<parsed.length;j++){
+      const it = parsed[j];
+      const id = `player:${key}:${it.i}`;
+      ids.push(id);
+      STATE.gamesMeta[id] = { id, title: it.title, opening:`Player: ${key}` };
+    }
+    STATE.players = STATE.players || { cache:{} };
+    STATE.players.cache = STATE.players.cache || {};
+    STATE.players.cache[key] = { gameIds: ids.slice(), parts: parsed, ready:true };
+
+    return parsed.length;
+  }
+
+  function preloadPgnManifestNonBlocking(){
+    try{
+      const entries = Object.entries(PGN_MANIFEST || {});
+      if (!entries.length) return;
+      let idx = 0;
+      logLine("DBG", `[${new Date().toISOString()}] PGN preload queue size=${entries.length}`);
+
+      const step = () => {
+        if (idx >= entries.length){
+          logLine("DBG", `[${new Date().toISOString()}] PGN preload complete`);
+          try{ render(); }catch{}
+          return;
+        }
+        const [k,url] = entries[idx++];
+        _idle(async () => {
+          try { await preloadOneManifestPgn(k, url); }
+          catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload failed key=${k}: ` + String(e && e.stack ? e.stack : e)); }
+          step();
+        });
+      };
+      step();
+    }catch(e){
+      logLine("WARN", `[${new Date().toISOString()}] PGN preload setup failed: ` + String(e && e.stack ? e.stack : e));
+    }
+  }
+
 
   function todayYMD(){
     const d = new Date();
@@ -724,6 +883,17 @@ async function getPgnBytesForDb(dbKeyOrUrl){
   return new TextEncoder().encode(txt);
 }
 
+  function clearPlayersCache(){
+    // delete old “player:*” games from runtime + meta
+    for (const id of Object.keys(STATE.gamesMeta)){
+      if (id.startsWith("player:")){
+        delete STATE.gamesMeta[id];
+        RUNTIME.games.delete(id);
+      }
+    }
+    STATE.players.gameIds = [];
+  }
+
   function ensureDefaultStudyIfMissing(){
     if (!STATE.activeStudyId){
       const id = "study_" + nowId();
@@ -800,6 +970,8 @@ async function getPgnBytesForDb(dbKeyOrUrl){
     } catch (e) {
       logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
     }
+    // After wasm warm-up (or failure), preload all PGN_MANIFEST PGNs in a non-blocking way (headers only).
+    try{ preloadPgnManifestNonBlocking(); }catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
   });
 
   /* ----------------------------- Priyomes pane (ported) ----------------------------- */
@@ -950,6 +1122,16 @@ const STATE = {
       pigment: null,       // "R"|"G"|"B"|"Y"|null
       syntheticVarSelected: false,
     },
+    players: {
+      mode: "grid",           // "grid" | "list"
+      selectedKey: null,      // e.g. "Fischer"
+      gameIds: [],            // loaded game ids for selected player
+      cache: {},             // key -> { gameIds:[...], loaded:true, count:n }
+    },
+    pgnCache: {
+      // key -> { url, parts:[{i,pgn,h,title}], ready:true }
+      byKey: {},
+    },
     studies: [],          // [{id,name,games:[gameId]}]
     gamesMeta: {},        // gameId -> {id,title}
     activeStudyId: null,
@@ -980,7 +1162,8 @@ const STATE = {
       RUNTIME.board.setGame(g);
     },
     log(line){
-      STATE.logs.lines.push(String(line));
+      const ts = new Date().toISOString();
+      STATE.logs.lines.push(ts + " " + String(line));
     },
     setClipboard(text){
       try{ navigator.clipboard?.writeText?.(String(text ?? "")); }catch{}
@@ -1031,25 +1214,13 @@ const STATE = {
   }
   function jumpToNode(g, target){
     if (!g || !target) return;
-    const path = [];
-    let n = target;
-    while (n && n.parent){
-      path.push(n);
-      n = n.parent;
-    }
-    path.reverse();
-
-    while (g.curNode !== g.root){
-      if (!g.prevMove?.()) break;
-    }
-    for (const step of path){
-      const parent = step.parent;
-      if (!parent) break;
-      const idx = parent.children ? parent.children.indexOf(step) : -1;
-      if (idx >= 0) parent.mainChildIndex = idx;
-      if (!g.nextMove?.()) break;
-    }
+    const ply =
+     (typeof target === "number") ? target :
+     (typeof target?.ply === "number") ? target.ply :
+     0;
+    g.jumpToPly(ply);
   }
+  
   function formatVariationLine(startNode, maxPlies=16){
     const nodes = walkMainlineFrom(startNode, maxPlies);
     const parts = [];
@@ -1280,9 +1451,150 @@ const STATE = {
   /* ----------------------------- Transition table (monolithic) ----------------------------- */
   const T = Object.freeze({
     /* ---------- UI ---------- */
-    "UI/TAB": (S,A) => { S.ui.tab = A.tab; },
+    "UI/TAB": (S,A) => {
+      S.ui.tab = A.tab;
+    },
     "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
     "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
+
+    /* ---------- Players ---------- */
+    "PLAYERS/OPEN": (S) => {
+      S.ui.tab = "players";
+    },
+    "PLAYERS/BACK": (S) => {
+      S.players.mode = "grid";
+      S.players.selectedKey = null;
+      S.players.gameIds = [];
+      // NOTE: do not clear S.players.cache; keep loaded games for session
+    },
+    "PLAYERS/SELECT": async (S,A) => {
+      const key = String(A.key || "");
+      if (!key) return;
+
+      const pgnUrl = PGN_MANIFEST?.[key];
+      if (!pgnUrl){
+        logLine("ERR", `Players: no PGN_MANIFEST entry for "${key}".`);
+        S.ui.tab = "errors";
+        return;
+      }
+
+      S.players.mode = "list";
+      S.players.selectedKey = key;
+
+      // cache hit: keep games loaded & processed for this session
+      const cached = S.players.cache?.[key];
+      if (cached && Array.isArray(cached.gameIds) && cached.gameIds.length){
+        S.players.gameIds = cached.gameIds.slice();
+        logLine("OK", `Players: cache hit for ${key} (${cached.gameIds.length} games).`);
+        return;
+      }
+
+      try{
+        // Prefer global PGN preload cache (populated after wasm warm-up)
+        const pre = S.pgnCache?.byKey?.[key];
+        if (pre && pre.ready && Array.isArray(pre.parts) && pre.parts.length){
+          const ids = pre.parts.map(it => `player:${key}:${it.i}`);
+          S.players.gameIds = ids.slice();
+          S.players.cache = S.players.cache || {};
+          S.players.cache[key] = { gameIds: ids.slice(), parts: pre.parts, ready:true };
+
+          // Prime metadata (for list rendering) but DO NOT create games / loadPGN here.
+          for (let j=0;j<pre.parts.length;j++){
+            const it = pre.parts[j];
+            const id = `player:${key}:${it.i}`;
+            S.gamesMeta[id] = { id, title: it.title, opening:`Player: ${key}` };
+          }
+
+          logLine("OK", `Players: using preloaded headers for ${key} (${ids.length} games).`);
+          return;
+        }
+
+        // Fallback: fetch + parse headers now (still no createGame/loadPGN here)
+        const t0 = performance.now();
+        logLine("DBG", `[${new Date().toISOString()}] Players: fetch start key=${key} url=${pgnUrl}`);
+        const r = await fetch(pgnUrl, { cache:"no-store" });
+        const txt = await r.text();
+        const t1 = performance.now();
+        logLine("DBG", `[${new Date().toISOString()}] Players: fetch done key=${key} chars=${txt.length} ms=${(t1-t0).toFixed(1)}`);
+
+        const parts = splitMultiPgn(txt);
+
+        const t2 = performance.now();
+        logLine("DBG", `[${new Date().toISOString()}] Players: parseHeaders start key=${key} games=${parts.length}`);
+        const parsed = [];
+        for (let i=0;i<parts.length;i++){
+          const pgn = parts[i];
+          const h = parseHeaders(pgn);
+          const openingName = await sideGame.openingFromPGN(pgn);
+
+          const event = (h.Event || "").trim();
+          const white = (h.White || key).trim();
+          const black = (h.Black || "?").trim();
+          const opening = (openingName || "").trim();
+          const date    = h.Date.Trim();
+
+          const title = `${white} v. ${black} [${event}] ${opening} ${date}`;
+        }
+        const t3 = performance.now();
+        logLine("DBG", `[${new Date().toISOString()}] Players: parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
+
+        // Store for session + global cache
+        S.pgnCache = S.pgnCache || { byKey:{} };
+        S.pgnCache.byKey[key] = { url: pgnUrl, parts: parsed, ready:true };
+
+        const ids = [];
+        for (let j=0;j<parsed.length;j++){
+          const it = parsed[j];
+          const id = `player:${key}:${it.i}`;
+          ids.push(id);
+          S.gamesMeta[id] = { id, title: it.title, opening:`Player: ${key}` };
+          logLine("DBG", `${it.title}`);
+
+        }
+
+        S.players.gameIds = ids.slice();
+        S.players.cache = S.players.cache || {};
+        S.players.cache[key] = { gameIds: ids.slice(), parts: parsed, ready:true };
+
+        logLine("OK", `Players: prepared ${ids.length} games for ${key} (lazy loadPGN on click).`);
+      }catch(e){
+        logStack("ERR", `Players load failed (${key}): `, e);
+        S.ui.tab = "errors";
+      }
+    },
+    "PLAYERS/GAME_SET": (S,A) => {
+      // Do NOT change active study; just load board to this game.
+      const id = String(A.id || "");
+      if (!id) return;
+
+      // Lazy instantiate ScratchChess game + loadPGN at the last second (on click).
+      if (!RUNTIME.games.has(id)){
+        try{
+          const m = /^player:([^:]+):(\d+)$/.exec(id);
+          if (m){
+            const key = m[1];
+            const idx = parseInt(m[2],10) || 0;
+            const parts = (S.players.cache?.[key]?.parts) || (S.pgnCache?.byKey?.[key]?.parts) || null;
+            const it = (parts && parts[idx]) ? parts[idx] : null;
+            if (it && it.pgn){
+              const g = createGame(it.h || {});
+              g.loadPGN?.(it.pgn);
+              RUNTIME.games.set(id, g);
+              attachOnChange(id, g);
+              logLine("DBG", `[${new Date().toISOString()}] Players: loadPGN (lazy) ok id=${id}`);
+            } else {
+              logLine("WARN", `[${new Date().toISOString()}] Players: missing cached PGN for id=${id}`);
+            }
+          }
+        }catch(e){
+          logStack("WARN", `[${new Date().toISOString()}] Players: lazy loadPGN failed id=${id}: `, e);
+        }
+      }
+
+      S.activeGameId = id;
+      S.ui.syntheticVarSelected = false;
+      CTX.setActiveGameToBoard();
+    },
 
     /* ---------- Studies / Games ---------- */
     "STUDY/ADD": (S,A) => {
@@ -1852,6 +2164,9 @@ const STATE = {
     // evals list
     renderEvalsLists();  // same
 
+    // players
+    renderPlayersPane();
+
     // errors
     const lines = STATE.logs.lines.slice(-400); // keep last 400 for UI
     $("errorLog").textContent = lines.join("\n");
@@ -1970,6 +2285,81 @@ const STATE = {
         cel.appendChild(d);
       }
     }
+  }
+
+  function renderPlayersPane(){
+    const pane = $("pane-players");
+    if (!pane) return;
+
+    const title = $("playersTitle");
+    const hint  = $("playersHint");
+    const back  = $("playersBack");
+
+    const grid = $("playersGrid");
+    const gamesWrap = $("playersGamesWrap");
+    const gamesHost = $("playersGameList");
+
+    const mode = STATE.players.mode;
+
+    pane.classList.toggle("listMode", mode === "list");
+
+    if (mode === "grid"){
+      if (title) title.textContent = "Players";
+      if (hint) hint.textContent = "Pick a player";
+      if (gamesWrap) gamesWrap.style.display = "none";
+      if (grid){
+        grid.innerHTML = "";
+        const keys = Object.keys(PLAYER_IMAGE || {});
+        for (const key of keys){
+          const imgUrl = PLAYER_IMAGE[key];
+          const card = document.createElement("div");
+          card.className = "playerCard";
+          card.dataset.playerKey = key;
+
+          const av = document.createElement("div");
+          av.className = "playerAvatar";
+          av.innerHTML = imgUrl ? `<img alt="${key}" src="${imgUrl}">` : "";
+
+          const nm = document.createElement("div");
+          nm.className = "playerName";
+          nm.textContent = key;
+
+          card.appendChild(av);
+          card.appendChild(nm);
+          grid.appendChild(card);
+        }
+        if (!keys.length){
+          grid.innerHTML = `<div class="muted">PLAYER_IMAGE is empty.</div>`;
+        }
+      }
+      if (back) back.hidden = true;
+      return;
+    }
+
+    // list mode
+    const key = STATE.players.selectedKey || "—";
+    if (title) title.textContent = key;
+    if (hint) hint.textContent = `${STATE.players.gameIds.length} game(s)`;
+    if (gamesWrap) gamesWrap.style.display = "";
+    if (grid) grid.innerHTML = "";
+
+    if (gamesHost){
+      gamesHost.innerHTML = "";
+      for (const id of (STATE.players.gameIds || [])){
+        const meta = STATE.gamesMeta[id];
+        if (!meta) continue;
+        const d = document.createElement("div");
+        d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+        d.dataset.playerGameId = id;
+        d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
+        gamesHost.appendChild(d);
+      }
+      if (!STATE.players.gameIds.length){
+        gamesHost.innerHTML = `<div class="muted">No games found.</div>`;
+      }
+    }
+
+    if (back) back.hidden = false;
   }
 
   /* ----------------------------- Parsing helpers (kept small & deterministic) ----------------------------- */
@@ -2212,6 +2602,20 @@ const STATE = {
     // eval cards (CQL evals)
     const ec = t.closest?.("#cqlEvalList .gameCard");
     if (ec) return dispatch({ type:"EVAL/RUN_CQL", key: ec.dataset.evalKey });
+
+    // players back
+    if (t.closest?.("#playersBack")) return dispatch({ type:"PLAYERS/BACK" });
+
+    // player portrait
+    const pl = t.closest?.("#playersGrid .playerCard");
+    if (pl) return dispatch({ type:"PLAYERS/SELECT", key: pl.dataset.playerKey });
+
+    // player game card
+    const pg = t.closest?.("#playersGameList .gameCard");
+    if (pg) return dispatch({ type:"PLAYERS/GAME_SET", id: pg.dataset.playerGameId });
+
+
+
 
     // board header buttons
     if (t.closest?.("#btnFlip")) return dispatch({ type:"BOARD/FLIP" });
