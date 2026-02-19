@@ -2164,7 +2164,6 @@ async function loadOpeningTables({
 
   for (const L of letters) {
     const url = `${baseDir}/${L}.tsv`;
-    console.log("LOADING OPENING FILE:", url); // DEBUG LOG
     const resp = await fetchFn(url);
     const text = await resp.text();
 
@@ -2201,8 +2200,6 @@ async function loadOpeningTables({
       b.sort();
 
       const key = makeKey(w, b);
-      console.log("Load Opening TABLE DEBUG:", JSON.stringify(key)); //DEBUG
-      if (key === "d4\u001fe4|d5\u001fe6") console.log("STORING VALUE FOR FRENCH:", JSON.stringify(name)); //DEBUG
 
       // If duplicate keys occur, prefer the "more specific" label:
       // Heuristic: longer name wins; otherwise keep existing.
@@ -2219,7 +2216,6 @@ async function loadOpeningTables({
   }
 
   OPENING_INDEX = index;
-  console.log("OPENING INDEX SIZE:", index.size); // DEBUG LOG
   return { size: OPENING_INDEX.size };
 }
 
@@ -2272,16 +2268,10 @@ async function openingFromPGN(pgnText, { maxPlies = 32, index = null, timeoutMs 
     else binInsertSorted(bSorted, m);
 
     const key = makeKey(wSorted, bSorted);
-    if (ply === 3) {
-      console.log("OpeningFromPGN KEY @4 plies:", JSON.stringify(key)); // DEBUG
-      console.log("HAS KEY?", index.has(key), "KEY LEN", key.length); // DEBUG
-    }
     const hit = index.get(key);
-    console.log("LOOKUP VALUE:", JSON.stringify(hit)); //DEBUG
     if (hit) bestName = hit;
   }
 
-  console.log("RETURNING BEST NAME:", JSON.stringify(bestName)); //DEBUG
   return bestName;
 }
 
