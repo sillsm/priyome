@@ -2150,10 +2150,8 @@ function extractSanTokensFromTsvPgnCell(pgnCell) {
 /**
  * Load ./third_party/liopenings/{a,b,c,d,e}.tsv and build OPENING_INDEX.
  *
- * By default uses fetch(), so it works in browser builds.
- * If you want Node, pass { fetchFn: async (url)=>({text:async()=>fs.readFileSync(...)}) }.
  */
-export async function loadOpeningTables({
+async function loadOpeningTables({
   baseDir = "./third_party/liopenings",
   letters = ["a", "b", "c", "d", "e"],
   fetchFn = (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null),
@@ -2252,7 +2250,7 @@ async function waitForOpeningsReady(timeoutMs = 2000) {
  * - Incrementally build sorted bags for White/Black
  * - After each ply, lookup key; keep the deepest hit; return best name (or "")
  */
-export async function openingFromPGN(pgnText, { maxPlies = 32, index = null, timeoutMs = 2000 } = {}) {
+async function openingFromPGN(pgnText, { maxPlies = 32, index = null, timeoutMs = 2000 } = {}) {
   // Default to the module index. If it isn't ready yet, wait briefly (and/or kick off load).
   if (!index) {
     await waitForOpeningsReady(timeoutMs);
