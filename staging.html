@@ -911,6 +911,55 @@
   /* ----------------------------- CQL runner logic (ported) ----------------------------- */
   let qPgnBytesOverride = null;
   let _runnerModPromise = null;
+  let _AUTO_CQL_LAST_GAME = null;
+  let _AUTO_CQL_LAST_FEN = "";
+
+  function autoSyncCqlFromBoardIfNeeded(fen){
+    try{
+      const activeId = STATE.activeGameId;
+      const g = CTX.g();
+
+      // Only when user is *viewing* the position in Moves pane and the game is a query-position type.
+      if (STATE.ui.tab !== "moves") return;
+      if (!isQueryPositionGameId(activeId)) return;
+      if ((g?.ui?.mode || "") !== "query") return;
+
+      // Detect board edits by watching FEN changes (render writes fenBox/fenBottom each onChange).
+      const f = String(fen || "").trim();
+      if (_AUTO_CQL_LAST_GAME === activeId && _AUTO_CQL_LAST_FEN === f) return;
+      _AUTO_CQL_LAST_GAME = activeId;
+      _AUTO_CQL_LAST_FEN = f;
+
+      const qCql = $("qCqlText");
+      if (!qCql) return;
+      // Don't clobber manual CQL edits.
+      if (qCql.dataset.userTouched === "1") return;
+
+      let cqlText = "";
+      let supported = false;
+      try{
+        if (typeof g?.exportCQL === "function"){
+          cqlText = String(g.exportCQL() || "").trim();
+          supported = !!cqlText;
+        }
+      }catch(e){
+        supported = false;
+      }
+
+      if (!supported){
+        qCql.value = "this query not supported";
+        qCql.dataset.userTouched = "0";
+        const qRun = $("qRun"); if (qRun) qRun.disabled = true;
+        const qStatus = $("qStatus"); if (qStatus) qStatus.textContent = "This query not supported.";
+      } else {
+        qCql.value = cqlText;
+        qCql.dataset.userTouched = "0";
+        updateQueryUi();
+      }
+
+      try{ renderMovesQueryMirror(); }catch{}
+    }catch(e){}
+  }
 
   async function fileToUint8(file) {
     const ab = await file.arrayBuffer();
@@ -2311,10 +2360,13 @@ const STATE = {
     $("fenBox").value = fen;
     $("pgnBox").value = pgn;
     $("fenBottom").textContent = fen;
+    // Auto-convert board edits to CQL in Moves pane for query-mode games.
+    autoSyncCqlFromBoardIfNeeded(fen);
     $("pgnBottom").value = pgn;
 
     $("navMeta").textContent = "ply " + String((g?.ui?.ply ?? 0));
     $("bottomMeta").textContent = (STATE.activeGameId || "—");
+
 
     // moves (index(21) rendering)
     try{ renderMovesDisplay(); }catch(e){ CTX.log("[ERR] renderMovesDisplay: " + (e?.stack||e)); }
