@@ -467,10 +467,10 @@
       <textarea id="pgnBox" readonly style="display:none"></textarea>
 
       <div class="row" style="gap:8px; flex-wrap:wrap">
-        <button class="btn" id="btnPrev" type="button">Prev</button>
-        <button class="btn" id="btnNext" type="button">Next</button>
+        <span class="pill"><b id="openingUnderBoard">—</b></span>
         <span class="pill">Ply: <b id="navMeta">0</b></span>
       </div>
+
 
       <div id="moveList" class="moveList" aria-label="Move list"></div>
       <div class="movesWide"><div class="mlWrap" id="movesWide"></div></div>
@@ -1073,20 +1073,32 @@ async function getPgnBytesForDb(dbKeyOrUrl){
     for (let i=0;i<games.length;i++){
       const pgn = games[i];
       const h = parseHeaders(pgn);
-      const baseTitle = h.Event ? h.Event : `Discovered Game ${i+1}`;
-      const title = (opts && opts.titlePrefix) ? (String(opts.titlePrefix) + baseTitle) : baseTitle;
       const date  = h.Date || todayYMD();
       const id = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
-      const g = createGame(h);
-      g.loadPGN?.(pgn);
-      // tag for query->use current behavior
-      try{ g.cqlText = ""; g.cqlSourceKey = sourceKey; }catch{}
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      STATE.gamesMeta[id] = { id, title, opening: sourceKey ? `CQL: ${sourceKey}` : "CQL result" };
+
+      // Store raw PGN only; instantiate ScratchChess game lazily on click (match Players behavior).
+      STATE.cqlCache = STATE.cqlCache || { byId:{} };
+      STATE.cqlCache.byId[id] = { pgn, h };
+
+      const white = (h.White || "");
+      const black = (h.Black || "");
+      const event = (h.Event || "");
+      const titleBase = formatVsLastNames(white, black);
+      const title = (opts && opts.titlePrefix) ? (String(opts.titlePrefix) + titleBase) : titleBase;
+      STATE.gamesMeta[id] = { id, title, opening:"", event, date, white, black, cqlSourceKey: (sourceKey || "") };
+
+      _idle(async () => {
+        try{
+          const op = await sideGame.openingFromPGN(pgn);
+          const m = STATE.gamesMeta[id];
+          if (m && !String(m.opening||"").trim()) m.opening = String(op || "");
+          try{ render(); }catch{}
+        }catch{}
+      });
 
       newIds.push(id);
     }
+
 
     if (opts && opts.forceCurrentStudy){
       ensureDefaultStudyIfMissing();
@@ -1296,9 +1308,14 @@ const STATE = {
       // key -> { url, parts:[{i,pgn,h,title}], ready:true }
       byKey: {},
     },
+    cqlCache: {
+      // id -> { pgn, h }
+      byId: {},
+    },
     studies: [],          // [{id,name,games:[gameId]}]
     gamesMeta: {},        // gameId -> {id,title}
     activeStudyId: null,
+
     activeGameId: null,
     priyomes: {
       activeId: null,
@@ -1804,11 +1821,40 @@ const STATE = {
         S.ui.tab = "errors";
       }
     },
-    "GAME/SET": (S,A) => {
-      S.activeGameId = A.id;
+    "GAME/SET": async (S,A) => {
+      const id = String(A.id || "");
+      if (!id) return;
+
+      // Lazy instantiate ScratchChess game + loadPGN for CQL results on click (match Players).
+      if (!RUNTIME.games.has(id) && id.startsWith("cql:")){
+        try{
+          const it = S.cqlCache?.byId?.[id] || null;
+          if (it && it.pgn){
+            const g = createGame(it.h || {});
+            g.loadPGN?.(it.pgn);
+            try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
+            RUNTIME.games.set(id, g);
+            attachOnChange(id, g);
+            // Ensure opening name comes from ScratchChess helper
+            try{
+              const meta = S.gamesMeta?.[id];
+              if (meta && !String(meta.opening||"").trim()){
+                meta.opening = String(await sideGame.openingFromPGN(it.pgn) || "");
+              }
+            }catch{}
+          } else {
+            logLine("WARN", `[${new Date().toISOString()}] CQL: missing cached PGN for id=${id}`);
+          }
+        }catch(e){
+          logStack("WARN", `[${new Date().toISOString()}] CQL: lazy loadPGN failed id=${id}: `, e);
+        }
+      }
+
+      S.activeGameId = id;
       S.ui.syntheticVarSelected = false;
       CTX.setActiveGameToBoard();
     },
+
 
     /* ---------- ScratchChess navigation ---------- */
     "BOARD/PREV": () => {
@@ -2310,15 +2356,22 @@ const STATE = {
         const d = document.createElement("div");
         d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
         d.dataset.gameId = id;
-        d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
+        const vs = (meta.white || meta.black) ? formatVsLastNames(meta.white || "", meta.black || "") : (meta.title || "");
+        const open = String(meta.opening || "").trim();
+        const evy  = formatEventYear(meta.event || "", meta.date || "");
+        d.innerHTML = `<div><b>${vs}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
         host.appendChild(d);
       }
     }
+
     const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
     $("gamePill").textContent = meta ? meta.title : "—";
+    const oub = $("openingUnderBoard");
+    if (oub) oub.textContent = (meta && String(meta.opening||"").trim()) ? String(meta.opening).trim() : "—";
     $("gameName").textContent = STATE.activeGameId || "—";
 
     // priyomes
+
     $("activePriyome").textContent = STATE.priyomes.activeName || "—";
     renderPriyomeList(); // small & safe; still inside render pipeline
 
