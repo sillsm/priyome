@@ -114,6 +114,38 @@
     display:flex; align-items:center; justify-content:space-between; gap:10px;
   }
   .gameCard.active{ outline:2px solid #c7d6ff; background:#f4f7ff; }
+/* --- Priyomes pane: markdown sections + compact mini-board cards --- */
+#pane-priyomes .priSectionTitle{
+  margin:10px 2px 6px;
+  font-weight:900;
+  font-size:12px;
+  letter-spacing:.2px;
+}
+#pane-priyomes .priSectionRule{
+  height:2px;
+  background:var(--border);
+  border-radius:999px;
+  margin:0 2px 10px;
+}
+#pane-priyomes .gameCard{
+  display:block;
+  padding:6px;
+}
+#pane-priyomes .gameTitle{
+  font-weight:900;
+  font-size:12px;
+  margin:0 0 6px;
+}
+#pane-priyomes .priMiniWrap{
+  border:1px solid rgba(15,23,42,.08);
+  border-radius:12px;
+  overflow:hidden;
+  background:#fff;
+}
+#pane-priyomes .priMini{
+  width:100%;
+  height:170px;
+}
 
   .playersGrid{
     display:grid;
@@ -627,7 +659,13 @@
     Fischer: "./third_party/images/fischer.jpeg",
     Karpov: "./third_party/images/karpov.jpg",
   };
-  const PRIYOME_PGN_MANIFEST = { default: "./priyomes/priyomes.pgn" };
+  const PRIYOME_PGN_MANIFEST = { default: "./priyomes.md" };
+
+  // Prefetch priyomes markdown early (so pane switches feel instant).
+  const _PRIYOMES_MD_URL = PRIYOME_PGN_MANIFEST?.default;
+  const _PRIYOMES_MD_PROMISE = (_PRIYOMES_MD_URL
+    ? fetch(_PRIYOMES_MD_URL, { cache:"no-store" }).then(r=>r.text())
+    : Promise.resolve(""));
   const CQL_MANIFEST = {}; // optional extra dropdown items
   const CQL_EVAL_MANIFEST = {
     naivealignments: { url:"./cql/naivealignments.cql", description:"Naive alignments demo" },
@@ -669,6 +707,51 @@
     // Games separated by blank lines before a new [Event ...] header; keep headers+movetext together.
     const parts = t.split(/\n\s*\n(?=\s*\[Event\s+")/g);
     return parts.map(x=>x.trim()).filter(Boolean);
+  }
+
+  function parsePriyomesMarkdown(md){
+    // Markdown format:
+    //   ## Section Name
+    //   [Event "..."] ... (PGN headers/moves)
+    //   *
+    const out = [];
+    const ls = String(md || "").split(/\r?\n/);
+    let curName = "";
+    let buf = [];
+
+    const flush = () => {
+      const section = String(curName || "").trim();
+      if (!section) { buf = []; return; }
+      const body = buf.join("\n");
+      const pgns = [];
+      const lines2 = body.split(/\r?\n/);
+      let p = [];
+      let inPgn = false;
+
+      const pushPgn = () => {
+        const s = p.join("\n").trim();
+        if (s && /\[Event\s+\"/.test(s)) pgns.push(s);
+        p = [];
+      };
+
+      for (const ln of lines2){
+        if (/^\s*\*\s*$/.test(ln)){ pushPgn(); inPgn = false; continue; }
+        if (/^\s*\[/.test(ln)){ inPgn = true; p.push(ln); continue; }
+        if (inPgn) p.push(ln);
+      }
+      pushPgn();
+
+      if (pgns.length) out.push({ section, pgns });
+      buf = [];
+    };
+
+    for (const ln of ls){
+      const m = ln.match(/^##\s+(.*\S)\s*$/);
+      if (m){ flush(); curName = m[1]; continue; }
+      if (curName) buf.push(ln);
+    }
+    flush();
+    return out;
   }
 
   function cutAtComma(name){
@@ -813,6 +896,7 @@
     if (!id) return false;
     const sid = String(id);
     if (sid.startsWith("query:")) return true;
+    if (sid.startsWith("priyome:")) return true;
     const meta = STATE.gamesMeta ? STATE.gamesMeta[id] : null;
     if (meta && (meta.opening === "Query" || meta.title === "Query Position")) return true;
     try{
@@ -827,6 +911,55 @@
   /* ----------------------------- CQL runner logic (ported) ----------------------------- */
   let qPgnBytesOverride = null;
   let _runnerModPromise = null;
+  let _AUTO_CQL_LAST_GAME = null;
+  let _AUTO_CQL_LAST_FEN = "";
+
+  function autoSyncCqlFromBoardIfNeeded(fen){
+    try{
+      const activeId = STATE.activeGameId;
+      const g = CTX.g();
+
+      // Only when user is *viewing* the position in Moves pane and the game is a query-position type.
+      if (STATE.ui.tab !== "moves") return;
+      if (!isQueryPositionGameId(activeId)) return;
+      if ((g?.ui?.mode || "") !== "query") return;
+
+      // Detect board edits by watching FEN changes (render writes fenBox/fenBottom each onChange).
+      const f = String(fen || "").trim();
+      if (_AUTO_CQL_LAST_GAME === activeId && _AUTO_CQL_LAST_FEN === f) return;
+      _AUTO_CQL_LAST_GAME = activeId;
+      _AUTO_CQL_LAST_FEN = f;
+
+      const qCql = $("qCqlText");
+      if (!qCql) return;
+      // Don't clobber manual CQL edits.
+      if (qCql.dataset.userTouched === "1") return;
+
+      let cqlText = "";
+      let supported = false;
+      try{
+        if (typeof g?.exportCQL === "function"){
+          cqlText = String(g.exportCQL() || "").trim();
+          supported = !!cqlText;
+        }
+      }catch(e){
+        supported = false;
+      }
+
+      if (!supported){
+        qCql.value = "this query not supported";
+        qCql.dataset.userTouched = "0";
+        const qRun = $("qRun"); if (qRun) qRun.disabled = true;
+        const qStatus = $("qStatus"); if (qStatus) qStatus.textContent = "This query not supported.";
+      } else {
+        qCql.value = cqlText;
+        qCql.dataset.userTouched = "0";
+        updateQueryUi();
+      }
+
+      try{ renderMovesQueryMirror(); }catch{}
+    }catch(e){}
+  }
 
   async function fileToUint8(file) {
     const ab = await file.arrayBuffer();
@@ -1006,69 +1139,71 @@ async function getPgnBytesForDb(dbKeyOrUrl){
     const host = $("priyomeList");
     if (!host) return;
     host.innerHTML = "";
+
     const url = PRIYOME_PGN_MANIFEST?.default;
     if (!url){
       host.innerHTML = `<div class="muted">PRIYOME_PGN_MANIFEST.default not set.</div>`;
       return;
     }
+
     try{
-      const txt = await (await fetch(url, { cache:"no-store" })).text();
-      const parts = splitMultiPgn(txt);
-      if (!parts.length){
+      const md = (await _PRIYOMES_MD_PROMISE) || (await (await fetch(url, { cache:"no-store" })).text());
+      const sections = parsePriyomesMarkdown(md);
+
+      if (!sections.length){
         host.innerHTML = `<div class="muted">No Priyomes found in ${url}.</div>`;
         return;
       }
 
-      for (let i=0;i<parts.length;i++){
-        const pgn = parts[i];
-        const headers = parseHeaders(pgn);
-        const title = headers.Event || headers.White || `Priyome ${i+1}`;
-        const cqlref = getHeaderTag(pgn, "cqlref") || "";
+      let idx = 0;
+      for (let si=0; si<sections.length; si++){
+        const sec = sections[si];
 
-        const card = document.createElement("div");
-        card.className = "gameCard";
-        card.dataset.priyome = String(i);
-        card.dataset.priyomeName = title;
-        card.dataset.priyomePgn = pgn;
-        card.dataset.priyomeCqlref = cqlref;
+        const h = document.createElement("div");
+        h.className = "priSectionTitle";
+        h.textContent = sec.section;
+        host.appendChild(h);
 
-        const t = document.createElement("div");
-        t.className = "gameTitle";
-        t.textContent = title;
+        const rule = document.createElement("div");
+        rule.className = "priSectionRule";
+        host.appendChild(rule);
 
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        meta.style.fontSize = "12px";
-        meta.style.color = "var(--muted)";
-        meta.textContent = cqlref ? `cqlref: ${cqlref}` : "";
+        for (let i=0;i<sec.pgns.length;i++){
+          const pgn = sec.pgns[i];
+          const headers = parseHeaders(pgn);
+          const title = headers.Event || `Priyome ${idx+1}`;
+          const cqlref = getHeaderTag(pgn, "cqlref") || "";
 
-        const miniWrap = document.createElement("div");
-        miniWrap.style.marginTop = "8px";
-        miniWrap.style.border = "1px solid rgba(15,23,42,.08)";
-        miniWrap.style.borderRadius = "12px";
-        miniWrap.style.overflow = "hidden";
-        miniWrap.style.background = "#fff";
-        miniWrap.style.padding = "8px";
+          const card = document.createElement("div");
+          card.className = "gameCard";
+          card.dataset.priyome = String(idx++);
+          card.dataset.priyomeName = title;
+          card.dataset.priyomePgn = pgn;
+          card.dataset.priyomeCqlref = cqlref;
 
-        const miniDiv = document.createElement("div");
-        miniDiv.style.width = "100%";
-        miniDiv.style.height = "220px";
-        miniWrap.appendChild(miniDiv);
+          const t = document.createElement("div");
+          t.className = "gameTitle";
+          t.textContent = title;
 
-        // mini game
-        const gMini = createGame(headers);
-        gMini.loadPGN?.(pgn);
-        gMini.toggleMini?.(true);
+          const miniWrap = document.createElement("div");
+          miniWrap.className = "priMiniWrap";
 
-        try{ new BoardView(miniDiv, gMini, { minSizePx: 90 }); }catch(e){}
+          const miniDiv = document.createElement("div");
+          miniDiv.className = "priMini";
+          miniWrap.appendChild(miniDiv);
 
-        card.appendChild(t);
-        card.appendChild(meta);
-        card.appendChild(miniWrap);
-        host.appendChild(card);
+          const gMini = createGame(headers);
+          gMini.loadPGN?.(pgn);
+          gMini.toggleMini?.(true);
+          try{ new BoardView(miniDiv, gMini, { minSizePx: 90 }); }catch(e){}
+
+          card.appendChild(t);
+          card.appendChild(miniWrap);
+          host.appendChild(card);
+        }
       }
 
-      logLine("OK", `Loaded Priyomes: ${parts.length} game(s).`);
+      logLine("OK", `Loaded Priyomes: ${idx} item(s).`);
       $("activePriyome").textContent = STATE.priyomes.activeName || "—";
     }catch(e){
       host.innerHTML = `<div class="muted">Failed loading Priyomes: ${String(e && e.stack ? e.stack : e)}</div>`;
@@ -1079,6 +1214,8 @@ async function getPgnBytesForDb(dbKeyOrUrl){
   document.addEventListener("DOMContentLoaded", () => {
     try{ loadPriyomesPane(); }catch{}
     try{ updateQueryUi(); }catch{}
+
+
 
     // Query pane wiring (file pickers + live enable/disable)
     try{
@@ -1809,7 +1946,9 @@ const STATE = {
 
         const id = `priyome:${cqlref || A.id || "x"}:${Date.now()}`;
         const g = createGame(headers);
-        g.loadPGN?.(A.pgn);
+        g.loadPGN(A.pgn);
+        g.setMode("query"); // Set the clicked priyome to query mode 
+        
         try{ g.cqlText = cqlText; }catch{}
 
         RUNTIME.games.set(id, g);
@@ -2221,10 +2360,13 @@ const STATE = {
     $("fenBox").value = fen;
     $("pgnBox").value = pgn;
     $("fenBottom").textContent = fen;
+    // Auto-convert board edits to CQL in Moves pane for query-mode games.
+    autoSyncCqlFromBoardIfNeeded(fen);
     $("pgnBottom").value = pgn;
 
     $("navMeta").textContent = "ply " + String((g?.ui?.ply ?? 0));
     $("bottomMeta").textContent = (STATE.activeGameId || "—");
+
 
     // moves (index(21) rendering)
     try{ renderMovesDisplay(); }catch(e){ CTX.log("[ERR] renderMovesDisplay: " + (e?.stack||e)); }
