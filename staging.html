@@ -1712,7 +1712,7 @@
         m.openingByPly = m.openingByPly || {};
         // only set if still missing (avoid races)
         if (!m.openingByPly[p]) m.openingByPly[p] = String(op || "").trim();
-        render();
+
       }catch{}
     });
   }
@@ -2442,30 +2442,6 @@ async function getPgnBytesForDb(dbKeyOrUrl){
     renderMovesMobile();
   }
 
-  function renderMoveList(){
-    if (!moveListEl) return;
-    const g = CTX.g();
-    moveListEl.innerHTML = "";
-    if (!g || !g.root) return;
-
-    const mainStart = getMainChild(g.root);
-    if (!mainStart) return;
-
-    const chain = walkMainlineFrom(mainStart);
-    const rows = new Map();
-    for (const n of chain){
-      const p = nodePly(n);
-      const mn = nodeMoveNumber(n) ?? 1;
-      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
-      const row = rows.get(mn);
-
-      if (typeof p === "number" && p % 2 === 1) row.w = n;
-      else if (typeof p === "number" && p % 2 === 0) row.b = n;
-      else if (!row.w) row.w = n;
-
-      for (const alt of getAltChildren(n)) row.vars.push(alt);
-    }
-
     const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
 
     const addRow = (numText, sanText, node, extraCls="") => {
@@ -2491,33 +2467,7 @@ async function getPgnBytesForDb(dbKeyOrUrl){
         addRow(String(row.mn), line, vStart, "isVar");
       }
     }
-
-    // If the engine didn't surface variations, provide a minimal synthetic variation row
-    // so the UI contract + tests remain stable.
-    if (!moveListEl.querySelector(".mvRow.isVar") && (STATE.priyomes.activeId === "greek_gift")){
-      const g = CTX.g();
-      const r = document.createElement("div");
-      r.className = "mvRow isVar" + (STATE.ui.syntheticVarSelected ? " isCur" : "");
-      r.dataset.synthetic = "1";
-      const n = document.createElement("div");
-      n.className = "mvNum";
-      n.textContent = "1";
-      const s = document.createElement("div");
-      s.className = "mvSan";
-      s.textContent = "(1… c5) Sicilian (synthetic)";
-      r.appendChild(n); r.appendChild(s);
-      r.addEventListener("click", () => {
-        STATE.ui.syntheticVarSelected = true;
-        // move board to a distinct FEN so tests can observe a jump
-        g.loadFEN?.("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2");
-        try{ g.ui = g.ui || {}; g.ui.ply = 2; }catch{}
-        render();
-      });
-      moveListEl.appendChild(r);
-    }
   }
-
-
 
 
   /* ----------------------------- “Render helpers” used by render() ----------------------------- */
