@@ -683,6 +683,19 @@
   const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
   const nowId = ()=>Math.random().toString(16).slice(2,8);
 
+  /* ----------------------------- Architecture Description ----------------------------- */
+  // The event loop is 
+  // 1. Someone passes an action to dispatch. This can be a click listener, or once on boot
+  // or at the completion of an async event. For example, listen for a left button press.
+  // 2. Dispatch is a pure function that takes (State, Action) -> New State.
+  // 3. Render is called only once, after the state has been reduced.
+  // 
+  // Sometimes there are longer-term or bigger async things that need to produce side-effects.
+  // Those things are handled by RUNTIME. 
+  // 1. For example, RUNTIME fetches and processes player PGNs async. But it should immediately 
+  // dispatch an action like FETCHING/LOADING to modify the state. When the RUNTIME call is done,
+  // it dispatches an action like FETCHING/COMPLETE.
+
   /* ----------------------------- Runtime (non-serializable) ----------------------------- */
   const RUNTIME = {
     games: new Map(),   // id -> ScratchChess game instance
@@ -691,7 +704,50 @@
   };
 
   /* ----------------------------- STATE (JSON only) ----------------------------- */
-  
+  const STATE = {
+    ui: {
+      tab: "moves",
+      menuOpen: false,
+      importOpen: false,
+      // UI mirror (ScratchChess is source of truth for board mode/pigment, but we keep UI intent too)
+      drawMode: null,      // "arrows" | "squares" | null
+      pigment: null,       // "R"|"G"|"B"|"Y"|null
+      syntheticVarSelected: false,
+    },
+    players: {
+      mode: "grid",           // "grid" | "list"
+      selectedKey: null,      // e.g. "Fischer"
+      gameIds: [],            // loaded game ids for selected player
+      cache: {},             // key -> { gameIds:[...], loaded:true, count:n }
+    },
+    pgnCache: {
+      // key -> { url, parts:[{i,pgn,h,title}], ready:true }
+      byKey: {},
+    },
+    cqlCache: {
+      // id -> { pgn, h }
+      byId: {},
+    },
+    studies: [],          // [{id,name,games:[gameId]}]
+    gamesMeta: {},        // gameId -> {id,title}
+    activeStudyId: null,
+
+    activeGameId: null,
+    priyomes: {
+      activeId: null,
+      activeName: "—",
+    },
+    query: {
+      selectedName: "(none)",
+    },
+    logs: {
+      lines: [],
+    },
+    marks: {
+      // gameId -> { arrows:[{pigment,from,to}], squares:[{pigment,sq}] }
+      byGame: {},
+    },
+  };
   /* ----------------------------- Shared helpers from index (11) for Query + Priyomes ----------------------------- */
 
   function parseHeaders(pgn){
@@ -1349,52 +1405,6 @@ async function getPgnBytesForDb(dbKeyOrUrl){
       if (mvRunQuery) mvRunQuery.addEventListener("click", () => dispatch({ type:"QUERY/RUN_FROM_MOVES" }));
     }catch{}
   });
-
-
-const STATE = {
-    ui: {
-      tab: "moves",
-      menuOpen: false,
-      importOpen: false,
-      // UI mirror (ScratchChess is source of truth for board mode/pigment, but we keep UI intent too)
-      drawMode: null,      // "arrows" | "squares" | null
-      pigment: null,       // "R"|"G"|"B"|"Y"|null
-      syntheticVarSelected: false,
-    },
-    players: {
-      mode: "grid",           // "grid" | "list"
-      selectedKey: null,      // e.g. "Fischer"
-      gameIds: [],            // loaded game ids for selected player
-      cache: {},             // key -> { gameIds:[...], loaded:true, count:n }
-    },
-    pgnCache: {
-      // key -> { url, parts:[{i,pgn,h,title}], ready:true }
-      byKey: {},
-    },
-    cqlCache: {
-      // id -> { pgn, h }
-      byId: {},
-    },
-    studies: [],          // [{id,name,games:[gameId]}]
-    gamesMeta: {},        // gameId -> {id,title}
-    activeStudyId: null,
-
-    activeGameId: null,
-    priyomes: {
-      activeId: null,
-      activeName: "—",
-    },
-    query: {
-      selectedName: "(none)",
-    },
-    logs: {
-      lines: [],
-    },
-    marks: {
-      // gameId -> { arrows:[{pigment,from,to}], squares:[{pigment,sq}] }
-      byGame: {},
-    },
-  };
 
   /* ----------------------------- CTX (controlled side effects) ----------------------------- */
   const CTX = Object.freeze({
