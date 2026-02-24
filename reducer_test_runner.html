@@ -31,6 +31,14 @@
 
   .log{padding:10px 12px;overflow:auto;flex:1;min-height:0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.35;white-space:pre-wrap;background:rgba(0,0,0,.18);}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--b);background:rgba(255,255,255,.04);font-size:12px;color:var(--m);}
+
+  .tests{padding:10px 12px;border-bottom:1px solid var(--b);max-height:34vh;overflow:auto;background:rgba(0,0,0,.10);}
+  .testRow{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:10px;}
+  .testRow:hover{background:rgba(255,255,255,.04);}
+  .tIcon{border:1px solid var(--b);background:rgba(255,255,255,.06);border-radius:10px;padding:4px 7px;line-height:1;cursor:pointer;user-select:none}
+  .tTitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tErr{font-size:12px;color:var(--fail);margin-left:auto}
+  .tEdit{width:100%;min-height:120px;margin:6px 0 10px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:1.35;white-space:pre;resize:vertical}
 </style>
 </head>
 <body>
@@ -85,6 +93,7 @@
         <button id="copyBtn">📋 Copy results</button>
       </div>
     </div>
+    <div class="tests" id="tests"></div>
     <div class="log" id="log"></div>
   </div>
 </div>
@@ -96,6 +105,7 @@
 
   const logEl = document.getElementById('log');
   const statusEl = document.getElementById('status');
+  const testsEl = document.getElementById('tests');
   const frameDesk = document.getElementById('frameDesk');
   const frameMob  = document.getElementById('frameMob');
   const appInput = document.getElementById('appPath');
@@ -523,6 +533,138 @@ function expectContainsHIDE(a0, sub){
     return tests;
   }
 
+  // Parse tests but keep the original raw block (so we can edit a single test in-place).
+  function parseTestsWithRaw(src){
+    const blocks = src.split(/\n\s*\n/).map(b => b.replace(/\r/g,"").trim()).filter(Boolean);
+    const tests = [];
+    for (const b of blocks){
+      const rawLines = b.split("\n");
+      const lines = rawLines.map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+      if (!lines.length) continue;
+      const nameLine = lines.shift();
+      if (!nameLine.startsWith("TEST ")) continue;
+      const name = nameLine.slice(5).trim();
+
+      const steps = [];
+      let buf = "";
+      for (const line of lines){
+        buf = buf ? (buf + "\n" + line) : line;
+        try{
+          const step = JSON.parse(buf);
+          steps.push(step);
+          buf = "";
+        }catch(e){
+          // keep buffering
+        }
+      }
+      if (buf.trim()) throw new Error("Could not parse JSON step (incomplete/invalid):\n" + buf);
+      tests.push({name, steps, raw: b});
+    }
+    return tests;
+  }
+
+  // Editable per-test source (session only).
+  let testsSourceText = "";
+  let testsCache = [];
+  const testOverrides = new Map(); // name -> { raw, parsed?, err? }
+
+  function getEffectiveTest(i){
+    const base = testsCache[i];
+    if (!base) return null;
+    const ov = testOverrides.get(base.name);
+    if (ov && ov.parsed) return ov.parsed;
+    return base;
+  }
+
+  function renderTestsList(){
+    testsEl.innerHTML = "";
+    if (!testsCache.length){
+      const d = document.createElement("div");
+      d.className = "dim";
+      d.textContent = "No tests loaded.";
+      testsEl.appendChild(d);
+      return;
+    }
+
+    testsCache.forEach((t, idx) => {
+      const row = document.createElement("div");
+      row.className = "testRow";
+      row.dataset.testIndex = String(idx);
+
+      const btnEdit = document.createElement("span");
+      btnEdit.className = "tIcon";
+      btnEdit.title = "Edit this test";
+      btnEdit.textContent = "✏️";
+
+      const btnRun = document.createElement("span");
+      btnRun.className = "tIcon";
+      btnRun.title = "Run this test";
+      btnRun.textContent = "♻️";
+
+      const title = document.createElement("div");
+      title.className = "tTitle";
+      title.textContent = t.name;
+
+      const err = document.createElement("div");
+      err.className = "tErr";
+      err.style.display = "none";
+
+      row.appendChild(btnEdit);
+      row.appendChild(btnRun);
+      row.appendChild(title);
+      row.appendChild(err);
+      testsEl.appendChild(row);
+
+      let editor = null;
+
+      function closeEditor(){
+        if (!editor) return;
+        editor.remove();
+        editor = null;
+      }
+
+      function showErr(msg){
+        err.textContent = msg || "";
+        err.style.display = msg ? "block" : "none";
+      }
+
+      btnEdit.addEventListener("click", () => {
+        if (editor){ closeEditor(); return; }
+        editor = document.createElement("textarea");
+        editor.className = "tEdit";
+        const ov = testOverrides.get(t.name);
+        editor.value = (ov && typeof ov.raw === "string") ? ov.raw : t.raw;
+        testsEl.insertBefore(editor, row.nextSibling);
+        editor.focus();
+        editor.setSelectionRange(editor.value.length, editor.value.length);
+
+        // Clicking away stops editing + saves/validates.
+        editor.addEventListener("blur", () => {
+          const raw = editor.value.replace(/\r/g,"").trim();
+          try{
+            const parsed = parseTestsWithRaw(raw);
+            if (parsed.length !== 1) throw new Error("Edit must contain exactly one TEST block");
+            if (parsed[0].name !== t.name) throw new Error("Test name line must stay the same");
+            testOverrides.set(t.name, { raw, parsed: parsed[0], err: "" });
+            showErr("");
+          }catch(e){
+            testOverrides.set(t.name, { raw, parsed: null, err: String(e?.message || e) });
+            showErr("parse error");
+          }
+          closeEditor();
+        }, {once:true});
+      });
+
+      btnRun.addEventListener("click", async () => {
+        await runSingle(idx);
+      });
+
+      // If an override exists with an error, show it.
+      const ov = testOverrides.get(t.name);
+      if (ov && ov.err) showErr("parse error");
+    });
+  }
+
   async function loadText(path){
     const r = await fetch(path, {cache:"no-store"});
     if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${path}`);
@@ -545,6 +687,77 @@ function expectContainsHIDE(a0, sub){
     appLabelMob.textContent = app;
   }
 
+  async function loadAndRenderTests(){
+    try{
+      testsSourceText = await loadText("reducertests.txt");
+      testsCache = parseTestsWithRaw(testsSourceText);
+      renderTestsList();
+    }catch(e){
+      testsCache = [];
+      renderTestsList();
+      log(`✘ FAILED to load/parse reducertests.txt for list: ${String(e?.message || e)}`, "fail");
+    }
+  }
+
+  async function prepareIframeForTest(){
+    // Reload target between tests (keeps isolation like your original runner).
+    const fr = getTargetFrameEl();
+    try{ fr.contentWindow.location.reload(); }catch(e){
+      log(`✘ Could not reload target iframe (same-origin?)`, "fail");
+      log(String(e?.message || e), "fail");
+      statusEl.textContent = "failed (reload error)";
+      throw e;
+    }
+
+    // Wait for document ready + at least one stable anchor
+    await sleep(0);
+    await waitFor("body", 8000);
+    await waitFor(".tabs", 8000);
+    await waitFor(".tabBtn", 8000);
+    await ensureTabsInteractive(8000);
+  }
+
+  async function runOneTest(t){
+    log("\nTEST: " + t.name, "dim");
+    await prepareIframeForTest();
+    for (const s of t.steps){
+      log("  " + JSON.stringify(s));
+      await stepExec(s);
+    }
+    log("✔ PASS " + t.name, "pass");
+  }
+
+  async function runSingle(idx){
+    // Clear log + vars for a single-test run (keeps behavior predictable).
+    logEl.innerHTML = "";
+    Object.keys(vars).forEach(k => delete vars[k]);
+
+    const targetName = (targetPick.value === "mobile") ? "mobile" : "desktop";
+    statusEl.textContent = `running (single • ${targetName})`;
+
+    const t = getEffectiveTest(idx);
+    if (!t){
+      log(`✘ Missing test at index ${idx}`, "fail");
+      statusEl.textContent = "failed (missing test)";
+      return;
+    }
+    const ov = testOverrides.get(t.name);
+    if (ov && ov.err){
+      log(`✘ Cannot run "${t.name}" — edit has a parse error`, "fail");
+      statusEl.textContent = "failed (parse error)";
+      return;
+    }
+
+    try{
+      await runOneTest(t);
+      statusEl.textContent = `done (single pass) on ${targetName}`;
+    }catch(e){
+      log("✘ FAIL " + t.name, "fail");
+      log(String(e && e.stack ? e.stack : (e && e.message ? e.message : e)), "fail");
+      statusEl.textContent = `done (single fail) on ${targetName}`;
+    }
+  }
+
   async function run(){
     logEl.innerHTML = "";
     Object.keys(vars).forEach(k => delete vars[k]);
@@ -562,7 +775,7 @@ function expectContainsHIDE(a0, sub){
 
     let tests;
     try{
-      tests = parseTests(testsText);
+      tests = parseTestsWithRaw(testsText);
       log(`✔ Parsed ${tests.length} TEST blocks`, tests.length ? "ok" : "warn");
       if (!tests.length){
         log(`Hint: blocks must start with "TEST ..." and be separated by blank lines.`, "dim");
@@ -575,44 +788,20 @@ function expectContainsHIDE(a0, sub){
       return;
     }
 
+    // Keep list in sync with the latest file contents (and preserve any in-session overrides).
+    testsSourceText = testsText;
+    testsCache = tests;
+    renderTestsList();
+
     const targetName = (targetPick.value === "mobile") ? "mobile" : "desktop";
     statusEl.textContent = `running (${targetName})`;
 
     let pass = 0;
 
     for (const t of tests){
-      log("\nTEST: " + t.name, "dim");
-
-      // Reload target between tests (keeps isolation like your original runner).
-      const fr = getTargetFrameEl();
-      try{ fr.contentWindow.location.reload(); }catch(e){
-        log(`✘ Could not reload target iframe (same-origin?)`, "fail");
-        log(String(e?.message || e), "fail");
-        statusEl.textContent = "failed (reload error)";
-        return;
-      }
-
-      // Wait for document ready + at least one stable anchor
-      await sleep(0);
       try{
-        await waitFor("body", 8000);
-        // IMPORTANT: body can exist before module wiring finishes. Tabs are our earliest stable UI anchor.
-        await waitFor(".tabs", 8000);
-        await waitFor(".tabBtn", 8000);
-        await ensureTabsInteractive(8000);
-      }catch(e){
-        // body should exist; if not, bail
-        log(`✘ Iframe did not become ready`, "fail");
-        statusEl.textContent = "failed (iframe not ready)";
-        return;
-      }
-
-      try{
-        for (const s of t.steps){
-          log("  " + JSON.stringify(s));
-          await stepExec(s);
-        }
-        log("✔ PASS " + t.name, "pass");
+        const effective = (testOverrides.get(t.name)?.parsed) || t;
+        await runOneTest(effective);
         pass++;
       }catch(e){
         log("✘ FAIL " + t.name, "fail");
@@ -645,6 +834,8 @@ function expectContainsHIDE(a0, sub){
 appInput.value = getDefaultApp();
   setApp();
   fitAll();
+  // Load list immediately so every test shows ✏️ and ♻️ even before a run.
+  loadAndRenderTests();
   log("Ready. Pick target (desktop/mobile), click Run. Tests loaded from reducertests.txt.", "dim");
 })();
 </script>
