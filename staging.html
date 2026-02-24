@@ -713,6 +713,7 @@
   /* ----------------------------- RUNTIME side effects ----------------------------- */
   RUNTIME.playerLoads = new Map(); // key -> Promise
   RUNTIME.gameLoads = new Map();   // id -> Promise
+  RUNTIME.priyomeLoads = new Map(); // key -> Promise
 
   RUNTIME.syncBoard = function syncBoard(){
     try{ CTX.setActiveGameToBoard(); }catch{}
@@ -823,6 +824,73 @@
     })();
 
     RUNTIME.gameLoads.set(id, p);
+    return p;
+  };
+
+
+  RUNTIME.loadPriyome = async function loadPriyome(payload){
+    const priyomeId = String(payload?.id || "");
+    const name = String(payload?.name || "").trim();
+    const pgn = String(payload?.pgn || "");
+    const cqlref0 = String(payload?.cqlref || "").trim();
+    const cqlref = cqlref0 || getHeaderTag(pgn, "cqlref") || "";
+
+    // De-dupe in-flight loads for the same priyome card.
+    const key = `priyome:${cqlref || priyomeId || "x"}`;
+    if (RUNTIME.priyomeLoads.has(key)) return RUNTIME.priyomeLoads.get(key);
+
+    const p = (async ()=>{
+      dispatch({ type:"PRIYOME/LOADING", id: priyomeId, name: name || "Priyome" });
+      try{
+        const headers = parseHeaders(pgn || "");
+        const title = name || headers.Event || headers.White || "Priyome";
+        let cqlText = "";
+
+        if (cqlref){
+          try{
+            const r = await fetch(`./cql/${cqlref}.cql`, { cache:"no-store" });
+            if (r.ok) cqlText = await r.text();
+            else logLine("WARN", `Could not load CQL for cqlref "${cqlref}" (HTTP ${r.status})`);
+          }catch(e){
+            logLine("WARN", `Could not load CQL for cqlref "${cqlref}" (${String(e)})`);
+          }
+        }
+
+        // Create a new logical game id each time (match prior behavior).
+        const id = `priyome:${cqlref || priyomeId || "x"}:${Date.now()}`;
+
+        // Store raw PGN source in STATE via reducer (purity step).
+        dispatch({
+          type:"PRIYOME/OK",
+          priyomeId,
+          priyomeName: title,
+          game: { id, title, opening:"Priyome", pgn, headers, cqlText }
+        });
+
+        // Instantiate the ScratchChess game + load the board.
+        await RUNTIME.ensureGameLoaded(id);
+        try{
+          const g = RUNTIME.games.get(id);
+          if (g){
+            try{ g.setMode?.("query"); }catch{}
+            try{ g.cqlText = cqlText; }catch{}
+          }
+        }catch{}
+
+        RUNTIME.syncBoard();
+        // Populate query pane from the new current game.
+        dispatch({ type:"QUERY/USE_CURRENT" });
+        dispatch({ type:"UI/REFRESH" });
+
+      }catch(e){
+        logStack("ERR","Failed to load Priyome to board: ", e);
+        dispatch({ type:"PRIYOME/ERR", id: priyomeId, err: String(e?.message || e) });
+      }finally{
+        RUNTIME.priyomeLoads.delete(key);
+      }
+    })();
+
+    RUNTIME.priyomeLoads.set(key, p);
     return p;
   };
 
@@ -1283,48 +1351,38 @@
     },
 
     /* ---------- Priyomes ---------- */
-    "PRIYOME/LOAD": async (S,A) => {
-      try{
-        S.priyomes.activeId = A.id;
-        S.priyomes.activeName = A.name;
-        S.ui.syntheticVarSelected = false;
+    "PRIYOME/LOADING": (S,A) => {
+      S.priyomes.activeId = String(A.id || "");
+      S.priyomes.activeName = String(A.name || "Priyome");
+      S.ui.syntheticVarSelected = false;
+      // Keep user in Moves so the board update is obvious when the load completes.
+      S.ui.tab = "moves";
+    },
+    "PRIYOME/OK": (S,A) => {
+      const g = A?.game || null;
+      if (!g || !g.id) return;
 
-        const headers = parseHeaders(A.pgn || "");
-        const title = A.name || headers.Event || headers.White || "Priyome";
-        let cqlText = "";
+      // Persist priyome label.
+      S.priyomes.activeId = String(A.priyomeId || S.priyomes.activeId || "");
+      S.priyomes.activeName = String(A.priyomeName || g.title || "Priyome");
 
-        const cqlref = A.cqlref || getHeaderTag(A.pgn || "", "cqlref") || "";
-        if (cqlref){
-          try{
-            cqlText = await (await fetch(`./cql/${cqlref}.cql`, { cache:"no-store" })).text();
-          }catch(e){
-            logLine("WARN", `Could not load CQL for cqlref "${cqlref}" (${String(e)})`);
-          }
-        }
+      // Store raw PGN source for lazy instantiation (RUNTIME.ensureGameLoaded).
+      S.pgnSource = S.pgnSource || { byId:{} };
+      S.pgnSource.byId[g.id] = { pgn: String(g.pgn || ""), h: (g.headers || {}) };
 
-        const id = `priyome:${cqlref || A.id || "x"}:${Date.now()}`;
-        const g = createGame(headers);
-        g.loadPGN(A.pgn);
-        g.setMode("query"); // Set the clicked priyome to query mode 
-        
-        try{ g.cqlText = cqlText; }catch{}
+      S.gamesMeta[g.id] = { id: g.id, title: String(g.title || g.id), opening: String(g.opening || "") };
 
-        RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
-        STATE.gamesMeta[id] = { id, title, opening:"Priyome" };
+      ensureDefaultStudyIfMissing();
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      if (st) st.games.unshift(g.id);
 
-        ensureDefaultStudyIfMissing();
-        const st = STATE.studies.find(x=>x.id===STATE.activeStudyId);
-        if (st) st.games.unshift(id);
-        STATE.activeGameId = id;
-        CTX.setActiveGameToBoard();
-
-        $("activePriyome").textContent = title;
-        setTab("moves");
-      }catch(e){
-        logStack("ERR","Failed to load Priyome to board: ", e);
-        setTab("errors");
-      }
+      S.activeGameId = g.id;
+      S.ui.syntheticVarSelected = false;
+      S.ui.tab = "moves";
+    },
+    "PRIYOME/ERR": (S,A) => {
+      S.ui.tab = "errors";
+      logLine("ERR", `Priyome load failed: ${String(A?.err || "error")}`);
     },
 
     /* ---------- Evals / Errors / Query ---------- */
@@ -2887,16 +2945,20 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
     // priyome cards
     const pc = t.closest?.("#priyomeList .gameCard");
-    if (pc) return dispatch({
-      type:"PRIYOME/LOAD",
-      id: pc.dataset.priyome,
-      name: pc.dataset.priyomeName,
-      pgn: pc.dataset.priyomePgn,
-      cqlref: pc.dataset.priyomeCqlref
-    });
+    if (pc){
+      // Async load belongs in RUNTIME; reducer stays pure.
+      RUNTIME.loadPriyome({
+        id: pc.dataset.priyome,
+        name: pc.dataset.priyomeName,
+        pgn: pc.dataset.priyomePgn,
+        cqlref: pc.dataset.priyomeCqlref
+      });
+      return;
+    }
 
     // eval cards (CQL evals)
     const ec = t.closest?.("#cqlEvalList .gameCard");
+
     if (ec){
       const key = ec.dataset.evalKey;
       dispatch({ type:"EVAL/RUN_CQL", key });
