@@ -747,6 +747,21 @@
         }
 
         dispatch({ type:"PLAYER/OK", key, url, parts });
+        // Fill in opening names asynchronously (so lists show openings without extra clicks).
+        _idle(async ()=>{
+          try{
+            for (const it of parts){
+              const id = `player:${key}:${it.i}`;
+              // Avoid recompute if already present.
+              const meta = STATE.gamesMeta?.[id];
+              if (meta && String(meta.opening||"").trim()) continue;
+              try{
+                const op = await sideGame.openingFromPGN(it.pgn);
+                dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
+              }catch{}
+            }
+          }catch{}
+        });
       }catch(e){
         logStack("ERR", `Players load failed (${key}): `, e);
         dispatch({ type:"PLAYER/ERR", key, err:String(e?.message || e) });
@@ -978,6 +993,20 @@
 
               const items = outPgnText && outPgnText.trim() ? prepareCqlItems(outPgnText, sourceKey) : [];
               dispatch({ type:"CQL/OK", items, sourceKey });
+                // Fill in openings asynchronously so result lists show openings immediately.
+                _idle(async ()=>{
+                  try{
+                    for (const it of items){
+                      const id = it.id;
+                      const meta = STATE.gamesMeta?.[id];
+                      if (meta && String(meta.opening||"").trim()) continue;
+                      try{
+                        const op = await sideGame.openingFromPGN(it.pgn);
+                        dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
+                      }catch{}
+                    }
+                  }catch{}
+                });
             }
           }catch(e){
             dispatch({ type:"CQL/ERR", err:String(e?.message || e) });
@@ -2695,15 +2724,9 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
         const meta = STATE.gamesMeta[id];
         if (!meta) continue;
 
-        // Regression fix: eagerly behave like the card was clicked, so opening details
-        // appear without requiring a click. This triggers ScratchChess instantiation
-        // + background opening computation (openingFromPGN) via ensureGameLoaded.
-        if (!String(meta.opening || "").trim()){
-          try{ RUNTIME.ensureGameLoaded(id); }catch{}
-        }
-
         const d = document.createElement("div");
         d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+
 
 
         d.dataset.playerGameId = id;
