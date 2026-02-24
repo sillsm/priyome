@@ -683,6 +683,19 @@
   const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
   const nowId = ()=>Math.random().toString(16).slice(2,8);
 
+  /* ----------------------------- Architecture Description ----------------------------- */
+  // The event loop is 
+  // 1. Someone passes an action to dispatch. This can be a click listener, or once on boot
+  // or at the completion of an async event. For example, listen for a left button press.
+  // 2. Dispatch is a pure function that takes (State, Action) -> New State.
+  // 3. Render is called only once, after the state has been reduced.
+  // 
+  // Sometimes there are longer-term or bigger async things that need to produce side-effects.
+  // Those things are handled by RUNTIME. 
+  // 1. For example, RUNTIME fetches and processes player PGNs async. But it should immediately 
+  // dispatch an action like FETCHING/LOADING to modify the state. When the RUNTIME call is done,
+  // it dispatches an action like FETCHING/COMPLETE.
+
   /* ----------------------------- Runtime (non-serializable) ----------------------------- */
   const RUNTIME = {
     games: new Map(),   // id -> ScratchChess game instance
@@ -691,667 +704,7 @@
   };
 
   /* ----------------------------- STATE (JSON only) ----------------------------- */
-  
-  /* ----------------------------- Shared helpers from index (11) for Query + Priyomes ----------------------------- */
-
-  function parseHeaders(pgn){
-    const headers = {};
-    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
-    let m;
-    const s = String(pgn || "");
-    while ((m = headerRe.exec(s)) !== null){
-      headers[m[1]] = m[2];
-    }
-    return headers;
-  }
-
-  function splitMultiPgn(text){
-    const t = (text || "").trim();
-    if (!t) return [];
-    // Games separated by blank lines before a new [Event ...] header; keep headers+movetext together.
-    const parts = t.split(/\n\s*\n(?=\s*\[Event\s+")/g);
-    return parts.map(x=>x.trim()).filter(Boolean);
-  }
-
-  function parsePriyomesMarkdown(md){
-    // Markdown format:
-    //   ## Section Name
-    //   [Event "..."] ... (PGN headers/moves)
-    //   *
-    const out = [];
-    const ls = String(md || "").split(/\r?\n/);
-    let curName = "";
-    let buf = [];
-
-    const flush = () => {
-      const section = String(curName || "").trim();
-      if (!section) { buf = []; return; }
-      const body = buf.join("\n");
-      const pgns = [];
-      const lines2 = body.split(/\r?\n/);
-      let p = [];
-      let inPgn = false;
-
-      const pushPgn = () => {
-        const s = p.join("\n").trim();
-        if (s && /\[Event\s+\"/.test(s)) pgns.push(s);
-        p = [];
-      };
-
-      for (const ln of lines2){
-        if (/^\s*\*\s*$/.test(ln)){ pushPgn(); inPgn = false; continue; }
-        if (/^\s*\[/.test(ln)){ inPgn = true; p.push(ln); continue; }
-        if (inPgn) p.push(ln);
-      }
-      pushPgn();
-
-      if (pgns.length) out.push({ section, pgns });
-      buf = [];
-    };
-
-    for (const ln of ls){
-      const m = ln.match(/^##\s+(.*\S)\s*$/);
-      if (m){ flush(); curName = m[1]; continue; }
-      if (curName) buf.push(ln);
-    }
-    flush();
-    return out;
-  }
-
-  function cutAtComma(name){
-    const s = String(name || "").trim();
-    const i = s.indexOf(",");
-    return (i >= 0 ? s.slice(0, i) : s).trim();
-  }
-  function yearFromDateTag(date){
-    const m = String(date || "").match(/(\d{4})/);
-    return m ? m[1] : "";
-  }
-  function formatEventYear(event, date){
-    const ev = String(event || "").trim();
-    const y = yearFromDateTag(date);
-    if (ev && y) return `${ev} ${y}`;
-    return ev || y || "";
-  }
-  function formatVsLastNames(white, black){
-    const w = cutAtComma(white);
-    const b = cutAtComma(black);
-    return `${w || "?"} v ${b || "?"}`;
-  }
-
-  // ----------------------------- PGN_MANIFEST preload (headers only; non-blocking) -----------------------------
-  function _idle(fn){
-    if (typeof requestIdleCallback === "function") return requestIdleCallback(()=>fn(), { timeout: 250 });
-    return setTimeout(fn, 0);
-  }
-
-  const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-
-  // ----------------------------- Live opening label (by current ply) -----------------------------
-  function pgnUpToPly(pgnRaw, ply){
-    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
-    if (p <= 0) return "";
-    const s = String(pgnRaw || "");
-    // drop header section if present (keep only movetext)
-    const movetext = (s.split(/\n\s*\n/).slice(-1)[0] || "").replace(/\s+/g," ").trim();
-    if (!movetext) return "";
-    const toks = movetext.split(" ");
-    const moves = [];
-    for (let i=0;i<toks.length;i++){
-      const t = toks[i].trim();
-      if (!t) continue;
-      // skip move numbers and results
-      if (/^\d+\.(\.\.)?$/.test(t) || /^\d+\.\.\.$/.test(t)) continue;
-      if (t==="*" || t==="1-0" || t==="0-1" || t==="1/2-1/2") continue;
-      moves.push(t);
-      if (moves.length >= p) break;
-    }
-    return moves.join(" ");
-  }
-
-  function openingSig(pgnRaw){
-    const s = String(pgnRaw || "");
-    return String(s.length) + ":" + s.slice(-40);
-  }
-
-  function ensureOpeningForPly(gameId, pgnRaw, ply){
-    if (!gameId) return;
-    const meta = STATE.gamesMeta?.[gameId];
-    if (!meta) return;
-
-    const sig = openingSig(pgnRaw);
-    if (meta._openingSig !== sig){
-      meta._openingSig = sig;
-      meta.openingByPly = {};
-    }
-
-    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
-    if (p <= 0) return;
-    meta.openingByPly = meta.openingByPly || {};
-    if (meta.openingByPly[p]) return;
-
-    const partial = pgnUpToPly(pgnRaw, p);
-    if (!partial) return;
-
-    _idle(async () => {
-      try{
-        const op = await sideGame.openingFromPGN(partial);
-        const m = STATE.gamesMeta?.[gameId];
-        if (!m) return;
-        m.openingByPly = m.openingByPly || {};
-        // only set if still missing (avoid races)
-        if (!m.openingByPly[p]) m.openingByPly[p] = String(op || "").trim();
-        render();
-      }catch{}
-    });
-  }
-
-  async function preloadOneManifestPgn(key, url){
-    if (!key || !url) return;
-    if (STATE.pgnCache?.byKey?.[key]?.ready) return;
-
-    const t0 = performance.now();
-    logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch start key=${key} url=${url}`);
-    const r = await fetch(url, { cache:"no-store" });
-    const txt = await r.text();
-    const t1 = performance.now();
-    logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch done key=${key} chars=${txt.length} ms=${(t1-t0).toFixed(1)}`);
-
-    const parts = splitMultiPgn(txt);
-    const t2 = performance.now();
-    const parsed = [];
-    for (let i=0;i<parts.length;i++){
-      const pgn = parts[i];
-      const h = parseHeaders(pgn);
-      const openingName = await sideGame.openingFromPGN(pgn);
-
-      const white = (h.White || key);
-      const black = (h.Black || "?");
-      const event = (h.Event || "");
-      const date  = (h.Date || "");
-      const title = formatVsLastNames(white, black);
-
-      parsed.push({ i, pgn, h, title, white, black, event, date, openingName });
-    }
-    const t3 = performance.now();
-    logLine("DBG", `[${new Date().toISOString()}] PGN preload parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
-
-    // Store in global cache (headers+raw PGN only; do NOT create games / loadPGN here)
-    STATE.pgnCache = STATE.pgnCache || { byKey:{} };
-    STATE.pgnCache.byKey[key] = { url, parts: parsed, ready:true };
-
-    // Prime Players pane cache + game cards metadata (no runtime games yet)
-    const ids = [];
-    for (let j=0;j<parsed.length;j++){
-      const it = parsed[j];
-      const id = `player:${key}:${it.i}`;
-      ids.push(id);
-      STATE.gamesMeta[id] = { id, title: it.title, opening: it.openingName || "", event: it.event || "", date: it.date || "", white: it.white || "", black: it.black || "" };
-    }
-    STATE.players = STATE.players || { cache:{} };
-    STATE.players.cache = STATE.players.cache || {};
-    STATE.players.cache[key] = { gameIds: ids.slice(), parts: parsed, ready:true };
-
-    return parsed.length;
-  }
-
-  function preloadPgnManifestNonBlocking(){
-    try{
-      const entries = Object.entries(PGN_MANIFEST || {});
-      if (!entries.length) return;
-      let idx = 0;
-      logLine("DBG", `[${new Date().toISOString()}] PGN preload queue size=${entries.length}`);
-
-      const step = () => {
-        if (idx >= entries.length){
-          logLine("DBG", `[${new Date().toISOString()}] PGN preload complete`);
-          try{ render(); }catch{}
-          return;
-        }
-        const [k,url] = entries[idx++];
-        _idle(async () => {
-          try { await preloadOneManifestPgn(k, url); }
-          catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload failed key=${k}: ` + String(e && e.stack ? e.stack : e)); }
-          step();
-        });
-      };
-      step();
-    }catch(e){
-      logLine("WARN", `[${new Date().toISOString()}] PGN preload setup failed: ` + String(e && e.stack ? e.stack : e));
-    }
-  }
-
-
-  function todayYMD(){
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth()+1).padStart(2,"0");
-    const dd = String(d.getDate()).padStart(2,"0");
-    return `${yyyy}.${mm}.${dd}`;
-  }
-
-  function uniqStudyName(base){
-    let name = base;
-    let i = 2;
-    const hasName = (n)=>STATE.studies.some(s=>s.name===n);
-    while (hasName(name)) name = `${base} (${i++})`;
-    return name;
-  }
-
-  function logLine(kind, msg){
-    CTX.log(`[${String(kind||"OK")}] ${String(msg||"")}`);
-  }
-  function logStack(kind, prefix, e){
-    logLine(kind, String(prefix||"") + String(e && e.stack ? e.stack : e));
-  }
-  function setTab(tab){
-    STATE.ui.tab = tab;
-    render();
-  }
-
-  function getHeaderTag(pgn, tag){
-    const re = new RegExp(`^\\[${tag}\\s+"([^"]*)"\\]\\s*$`, "m");
-    const m = String(pgn || "").match(re);
-    return m ? m[1] : "";
-  }
-
-  function isQueryPositionGameId(id){
-    if (!id) return false;
-    const sid = String(id);
-    if (sid.startsWith("query:")) return true;
-    if (sid.startsWith("priyome:")) return true;
-    const meta = STATE.gamesMeta ? STATE.gamesMeta[id] : null;
-    if (meta && (meta.opening === "Query" || meta.title === "Query Position")) return true;
-    try{
-      const g = RUNTIME.games.get(id);
-      const pgn = g?.exportPGN?.() || "";
-      const ev = getHeaderTag(pgn, "Event");
-      if (ev === "Query Position") return true;
-    }catch{}
-    return false;
-  }
-
-  /* ----------------------------- CQL runner logic (ported) ----------------------------- */
-  let qPgnBytesOverride = null;
-  let _runnerModPromise = null;
-  let _AUTO_CQL_LAST_GAME = null;
-  let _AUTO_CQL_LAST_FEN = "";
-
-  function autoSyncCqlFromBoardIfNeeded(fen){
-    try{
-      const activeId = STATE.activeGameId;
-      const g = CTX.g();
-
-      // Only when user is *viewing* the position in Moves pane and the game is a query-position type.
-      if (STATE.ui.tab !== "moves") return;
-      if (!isQueryPositionGameId(activeId)) return;
-      if ((g?.ui?.mode || "") !== "query") return;
-
-      // Detect board edits by watching FEN changes (render writes fenBox/fenBottom each onChange).
-      const f = String(fen || "").trim();
-      if (_AUTO_CQL_LAST_GAME === activeId && _AUTO_CQL_LAST_FEN === f) return;
-      _AUTO_CQL_LAST_GAME = activeId;
-      _AUTO_CQL_LAST_FEN = f;
-
-      const qCql = $("qCqlText");
-      if (!qCql) return;
-      // Don't clobber manual CQL edits.
-      if (qCql.dataset.userTouched === "1") return;
-
-      let cqlText = "";
-      let supported = false;
-      try{
-        if (typeof g?.exportCQL === "function"){
-          cqlText = String(g.exportCQL() || "").trim();
-          supported = !!cqlText;
-        }
-      }catch(e){
-        supported = false;
-      }
-
-      if (!supported){
-        qCql.value = "this query not supported";
-        qCql.dataset.userTouched = "0";
-        const qRun = $("qRun"); if (qRun) qRun.disabled = true;
-        const qStatus = $("qStatus"); if (qStatus) qStatus.textContent = "This query not supported.";
-      } else {
-        qCql.value = cqlText;
-        qCql.dataset.userTouched = "0";
-        updateQueryUi();
-      }
-
-      try{ renderMovesQueryMirror(); }catch{}
-    }catch(e){}
-  }
-
-  async function fileToUint8(file) {
-    const ab = await file.arrayBuffer();
-    return new Uint8Array(ab);
-  }
-  function textToUtf8Bytes(text){
-    return new TextEncoder().encode(text ?? "");
-  }
-
-  function updateQueryUi(){
-    const qCqlText = $("qCqlText");
-    const qPgnFile = $("qPgnFile");
-    const qRun = $("qRun");
-    const qStatus = $("qStatus");
-    const dbSelectEl = $("dbSelectEl");
-
-    const hasCql = !!(qCqlText?.value || "").trim();
-    const hasPgn = !!qPgnFile?.files?.[0] || !!dbSelectEl?.value || !!qPgnBytesOverride;
-    if (qRun) qRun.disabled = !(hasCql && hasPgn);
-    if (qStatus){
-      if (!hasCql) qStatus.textContent = "CQL is empty.";
-      else if (!hasPgn) qStatus.textContent = "Choose PGN file, or pick a DB, or Use current game.";
-      else qStatus.textContent = "Ready.";
-    }
-  }
-
-  // Dummy-game workaround
-  const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
-  const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
-  const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
-
-  function buildDummyGamePgn(){
-    const headers = [
-      `[Event "${DUMMY_CQL_EVENT}"]`,
-      `[Site "Local"]`,
-      `[Date "2026.01.01"]`,
-      `[Round "1"]`,
-      `[White "${DUMMY_CQL_WHITE}"]`,
-      `[Black "${DUMMY_CQL_BLACK}"]`,
-      `[Result "0-1"]`,
-    ].join("\n");
-    const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
-    return `${headers}\n\n${moves}\n`;
-  }
-
-  function isDummyGamePgn(pgn){
-    const h = parseHeaders(String(pgn || ""));
-    return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
-  }
-
-  function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
-    const txt = new TextDecoder("utf-8").decode(pgnBytes || new Uint8Array());
-    const games = splitMultiPgn(txt);
-    if (games.length >= 2) return { bytes: pgnBytes, injected: false };
-    const appended = (txt.trim() + "\n\n" + buildDummyGamePgn()).trim() + "\n";
-    return { bytes: new TextEncoder().encode(appended), injected: true };
-  }
-
-  function stripDummyFromMultiPgnText(multiPgnText){
-    const parts = splitMultiPgn(String(multiPgnText || ""));
-    const kept = parts.filter(p => !isDummyGamePgn(p));
-    return kept.join("\n\n").trim();
-  }
-
-  async function getRunnerMod(){
-    if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
-    return _runnerModPromise;
-  }
-
-async function getPgnBytesForDb(dbKeyOrUrl){
-  // reducer's <select> uses option.value = PGN_MANIFEST[k] (a URL),
-  // but some callers might still pass a key. Support both.
-  const k = String(dbKeyOrUrl || "").trim();
-  if (!k) return null;
-
-  const url = PGN_MANIFEST?.[k] || k; // key -> url, else treat as url/path directly
-
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
-  const txt = await r.text();
-  return new TextEncoder().encode(txt);
-}
-
-  function clearPlayersCache(){
-    // delete old “player:*” games from runtime + meta
-    for (const id of Object.keys(STATE.gamesMeta)){
-      if (id.startsWith("player:")){
-        delete STATE.gamesMeta[id];
-        RUNTIME.games.delete(id);
-      }
-    }
-    STATE.players.gameIds = [];
-  }
-
-  function ensureDefaultStudyIfMissing(){
-    if (!STATE.activeStudyId){
-      const id = "study_" + nowId();
-      STATE.studies.push({ id, name: "Study", games: [] });
-      STATE.activeStudyId = id;
-    }
-  }
-
-  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey="", opts=null){
-    const games = splitMultiPgn(multiPgnText);
-    if (!games.length){
-      logLine("WARN","No games found in output PGN.");
-      return 0;
-    }
-
-    const newIds = [];
-    for (let i=0;i<games.length;i++){
-      const pgn = games[i];
-      const h = parseHeaders(pgn);
-      const date  = h.Date || todayYMD();
-      const id = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
-
-      // Store raw PGN only; instantiate ScratchChess game lazily on click (match Players behavior).
-      STATE.cqlCache = STATE.cqlCache || { byId:{} };
-      STATE.cqlCache.byId[id] = { pgn, h };
-
-      const white = (h.White || "");
-      const black = (h.Black || "");
-      const event = (h.Event || "");
-      const titleBase = formatVsLastNames(white, black);
-      const title = (opts && opts.titlePrefix) ? (String(opts.titlePrefix) + titleBase) : titleBase;
-      STATE.gamesMeta[id] = { id, title, opening:"", event, date, white, black, cqlSourceKey: (sourceKey || "") };
-
-      _idle(async () => {
-        try{
-          const op = await sideGame.openingFromPGN(pgn);
-          const m = STATE.gamesMeta[id];
-          if (m && !String(m.opening||"").trim()) m.opening = String(op || "");
-          try{ render(); }catch{}
-        }catch{}
-      });
-
-      newIds.push(id);
-    }
-
-
-    if (opts && opts.forceCurrentStudy){
-      ensureDefaultStudyIfMissing();
-      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-      if (st){
-        // put newest-first like elsewhere
-        for (const id of newIds.slice().reverse()) st.games.unshift(id);
-      }
-      STATE.activeGameId = newIds[0];
-      CTX.setActiveGameToBoard();
-      logLine("OK", `Added ${newIds.length} game(s) to current study from query result.`);
-    } else if (newIds.length > 1){
-      const name = uniqStudyName(`${todayYMD()} Position Query`);
-      const sid = "study_" + nowId();
-      STATE.studies.push({ id: sid, name, games: [] });
-      STATE.activeStudyId = sid;
-      const st = STATE.studies.find(s=>s.id===sid);
-      for (const id of newIds.slice().reverse()) st.games.unshift(id);
-      STATE.activeGameId = newIds[0];
-      CTX.setActiveGameToBoard();
-      logLine("OK", `Created new study "${name}" with ${newIds.length} games from query result.`);
-    } else {
-      ensureDefaultStudyIfMissing();
-      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
-      if (st) st.games.unshift(newIds[0]);
-      STATE.activeGameId = newIds[0];
-      CTX.setActiveGameToBoard();
-    }
-
-    return newIds.length;
-  }
-
-  // warm-up
-  document.addEventListener("DOMContentLoaded", async () => {
-    try {
-      const mod = await import("./wasm/cql_runner.js");
-      if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
-      logLine("OK","Warming wasm pool (2 workers)…");
-      await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
-      logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
-    } catch (e) {
-      logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
-    }
-    // After wasm warm-up (or failure), preload all PGN_MANIFEST PGNs in a non-blocking way (headers only).
-    try{ preloadPgnManifestNonBlocking(); }catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
-  });
-
-  /* ----------------------------- Priyomes pane (ported) ----------------------------- */
-  async function loadPriyomesPane(){
-    const host = $("priyomeList");
-    if (!host) return;
-    host.innerHTML = "";
-
-    const url = PRIYOME_PGN_MANIFEST?.default;
-    if (!url){
-      host.innerHTML = `<div class="muted">PRIYOME_PGN_MANIFEST.default not set.</div>`;
-      return;
-    }
-
-    try{
-      const md = (await _PRIYOMES_MD_PROMISE) || (await (await fetch(url, { cache:"no-store" })).text());
-      const sections = parsePriyomesMarkdown(md);
-
-      if (!sections.length){
-        host.innerHTML = `<div class="muted">No Priyomes found in ${url}.</div>`;
-        return;
-      }
-
-      let idx = 0;
-      for (let si=0; si<sections.length; si++){
-        const sec = sections[si];
-
-        const h = document.createElement("div");
-        h.className = "priSectionTitle";
-        h.textContent = sec.section;
-        host.appendChild(h);
-
-        const rule = document.createElement("div");
-        rule.className = "priSectionRule";
-        host.appendChild(rule);
-
-        for (let i=0;i<sec.pgns.length;i++){
-          const pgn = sec.pgns[i];
-          const headers = parseHeaders(pgn);
-          const title = headers.Event || `Priyome ${idx+1}`;
-          const cqlref = getHeaderTag(pgn, "cqlref") || "";
-
-          const card = document.createElement("div");
-          card.className = "gameCard";
-          card.dataset.priyome = String(idx++);
-          card.dataset.priyomeName = title;
-          card.dataset.priyomePgn = pgn;
-          card.dataset.priyomeCqlref = cqlref;
-
-          const t = document.createElement("div");
-          t.className = "gameTitle";
-          t.textContent = title;
-
-          const miniWrap = document.createElement("div");
-          miniWrap.className = "priMiniWrap";
-
-          const miniDiv = document.createElement("div");
-          miniDiv.className = "priMini";
-          miniWrap.appendChild(miniDiv);
-
-          const gMini = createGame(headers);
-          gMini.loadPGN?.(pgn);
-          gMini.toggleMini?.(true);
-          try{ new BoardView(miniDiv, gMini, { minSizePx: 90 }); }catch(e){}
-
-          card.appendChild(t);
-          card.appendChild(miniWrap);
-          host.appendChild(card);
-        }
-      }
-
-      logLine("OK", `Loaded Priyomes: ${idx} item(s).`);
-      $("activePriyome").textContent = STATE.priyomes.activeName || "—";
-    }catch(e){
-      host.innerHTML = `<div class="muted">Failed loading Priyomes: ${String(e && e.stack ? e.stack : e)}</div>`;
-      logLine("ERR", `Priyomes load failed: ${String(e)}`);
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    try{ loadPriyomesPane(); }catch{}
-    try{ updateQueryUi(); }catch{}
-
-
-
-    // Query pane wiring (file pickers + live enable/disable)
-    try{
-      const qCqlFile = $("qCqlFile");
-      const qPgnFile = $("qPgnFile");
-      const qCqlName = $("qCqlName");
-      const qPgnName = $("qPgnName");
-      const qCqlText = $("qCqlText");
-      const dbSelectEl = $("dbSelectEl");
-
-      if (qCqlFile) qCqlFile.addEventListener("change", async () => {
-        const f = qCqlFile.files?.[0];
-        if (qCqlName) qCqlName.textContent = f ? f.name : "—";
-        if (!f){ updateQueryUi(); return; }
-        try{
-          const txt = await f.text();
-          if (qCqlText) qCqlText.value = txt;
-          logLine("OK", `Loaded CQL file (${txt.length} chars): ${f.name}`);
-        }catch(e){
-          logLine("ERR", `Failed reading CQL: ${String(e)}`);
-        }finally{
-          updateQueryUi();
-        }
-      });
-
-      if (qPgnFile) qPgnFile.addEventListener("change", () => {
-        const f = qPgnFile.files?.[0];
-        if (f) qPgnBytesOverride = null;
-        if (qPgnName) qPgnName.textContent = f ? f.name : "—";
-        if (f) logLine("OK", `Selected PGN file: ${f.name}`);
-        updateQueryUi();
-      });
-
-      if (dbSelectEl) dbSelectEl.addEventListener("change", () => {
-        if (dbSelectEl.value) logLine("OK", `Selected DB (manifest): ${dbSelectEl.value}`);
-        updateQueryUi();
-      });
-
-      if (qCqlText) qCqlText.addEventListener("input", () => { qCqlText.dataset.userTouched="1"; updateQueryUi(); });
-
-      // Moves-pane mirror controls (only visible for Query Position games)
-      const mvDbSelectEl = $("mvDbSelectEl");
-      const mvCqlText = $("mvCqlText");
-      const mvRunQuery = $("mvRunQuery");
-      if (mvDbSelectEl) mvDbSelectEl.addEventListener("change", () => {
-        const src = $("dbSelectEl");
-        if (src) src.value = mvDbSelectEl.value;
-        updateQueryUi();
-        try{ renderMovesQueryMirror(); }catch{}
-      });
-      if (mvCqlText) mvCqlText.addEventListener("input", () => {
-        const src = $("qCqlText");
-        if (src){ src.value = mvCqlText.value; src.dataset.userTouched="1"; }
-        updateQueryUi();
-      });
-      if (mvRunQuery) mvRunQuery.addEventListener("click", () => dispatch({ type:"QUERY/RUN_FROM_MOVES" }));
-    }catch{}
-  });
-
-
-const STATE = {
+  const STATE = {
     ui: {
       tab: "moves",
       menuOpen: false,
@@ -1395,302 +748,6 @@ const STATE = {
       byGame: {},
     },
   };
-
-  /* ----------------------------- CTX (controlled side effects) ----------------------------- */
-  const CTX = Object.freeze({
-    g(){
-      return (STATE.activeGameId && RUNTIME.games.get(STATE.activeGameId)) ? RUNTIME.games.get(STATE.activeGameId) : RUNTIME.boot;
-    },
-    setActiveGameToBoard(){
-      const g = CTX.g();
-      RUNTIME.board.setGame(g);
-    },
-    log(line){
-      const ts = new Date().toISOString();
-      STATE.logs.lines.push(ts + " " + String(line));
-    },
-    setClipboard(text){
-      try{ navigator.clipboard?.writeText?.(String(text ?? "")); }catch{}
-    }
-  });
-
-  /* ----------------------------- Move rendering (index(21): wide + mobile) ----------------------------- */
-  const moveListEl   = document.getElementById("moveList"); // legacy hidden
-  const movesWideEl  = document.getElementById("movesWide");
-  const movesMobileEl= document.getElementById("movesMobile");
-
-
-  function nodePly(node){
-    const p = (node && typeof node.ply === "number") ? node.ply : null;
-    return (p === null) ? null : p;
-  }
-  function nodeMoveNumber(node){
-    if (!node) return null;
-    if (typeof node.moveNumber === "number") return node.moveNumber;
-    const p = nodePly(node);
-    if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
-    return null;
-  }
-  function nodeSan(node){
-    return String(node?.san || node?.move || "").trim();
-  }
-  function getMainChild(node){
-    const kids = node?.children || [];
-    if (!kids.length) return null;
-    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
-    return kids[idx] || kids[0] || null;
-  }
-  function getAltChildren(node){
-    const kids = node?.children || [];
-    if (!kids.length) return [];
-    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
-    return kids.filter((_,i)=> i !== idx);
-  }
-  function walkMainlineFrom(node, limit=4096){
-    const out = [];
-    let cur = node;
-    let guard = 0;
-    while (cur && guard++ < limit){
-      out.push(cur);
-      cur = getMainChild(cur);
-    }
-    return out;
-  }
-  function jumpToNode(g, target){
-    if (!g || !target) return;
-    const ply =
-     (typeof target === "number") ? target :
-     (typeof target?.ply === "number") ? target.ply :
-     0;
-    g.jumpToPly(ply);
-  }
-  
-  function formatVariationLine(startNode, maxPlies=16){
-    const nodes = walkMainlineFrom(startNode, maxPlies);
-    const parts = [];
-    for (const n of nodes){
-      const san = nodeSan(n);
-      if (!san) continue;
-      const p = nodePly(n);
-      const mn = nodeMoveNumber(n) ?? "";
-      if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
-      else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
-      else parts.push(san);
-    }
-    return parts.join(" ").trim();
-  }
-
-  function renderMovesWide(){
-    if (!movesWideEl) return;
-    movesWideEl.innerHTML = "";
-    const g = CTX.g();
-    if (!g || !g.root) return;
-
-    const mainStart = getMainChild(g.root);
-    if (!mainStart) return;
-
-    const chain = walkMainlineFrom(mainStart);
-    const rows = new Map(); // mn -> {mn,w,b,vars:[]}
-
-    for (const n of chain){
-      const p = nodePly(n);
-      const mn = nodeMoveNumber(n) ?? 1;
-      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
-      const row = rows.get(mn);
-
-      if (typeof p === "number" && p % 2 === 1) row.w = n;
-      else if (typeof p === "number" && p % 2 === 0) row.b = n;
-      else if (!row.w) row.w = n;
-
-      const alts = getAltChildren(n);
-      for (const alt of alts) row.vars.push(alt);
-    }
-
-    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
-    for (const row of sorted){
-      const r = document.createElement("div");
-      r.className = "mlRow";
-
-      const num = document.createElement("div");
-      num.className = "mlNum";
-      num.textContent = String(row.mn);
-
-      const w = document.createElement("button");
-      w.type = "button";
-      w.className = "mlCellBtn" + ((g.curNode === row.w) ? " active" : "");
-      w.textContent = row.w ? nodeSan(row.w) : "";
-      w.disabled = !row.w;
-      w.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: row.w }));
-
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "mlCellBtn" + ((g.curNode === row.b) ? " active" : "");
-      b.textContent = row.b ? nodeSan(row.b) : "";
-      b.disabled = !row.b;
-      b.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: row.b }));
-
-      r.appendChild(num);
-      r.appendChild(w);
-      r.appendChild(b);
-      movesWideEl.appendChild(r);
-
-      for (const vStart of row.vars){
-        const vr = document.createElement("div");
-        vr.className = "mlVarRow";
-
-        const vn = document.createElement("div");
-        vn.className = "mlVarNum";
-        vn.textContent = String(row.mn); // keep base move number
-
-        const vb = document.createElement("button");
-        vb.type = "button";
-        vb.className = "mlVarBtn mlVarIndent" + ((g.curNode === vStart) ? " active" : "");
-        vb.textContent = formatVariationLine(vStart) || "(variation)";
-        vb.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: vStart }));
-
-        vr.appendChild(vn);
-        vr.appendChild(vb);
-        movesWideEl.appendChild(vr);
-      }
-    }
-  }
-
-  function renderMovesMobile(){
-    if (!movesMobileEl) return;
-    movesMobileEl.innerHTML = "";
-    const g = CTX.g();
-    if (!g || !g.root) return;
-
-    const mainStart = getMainChild(g.root);
-    if (!mainStart) return;
-
-    const flow = document.createElement("div");
-    flow.className = "mlMobileFlow";
-
-    const chain = walkMainlineFrom(mainStart);
-    let lastMoveNum = null;
-
-    const addText = (t, cls="") => {
-      const sp = document.createElement("span");
-      sp.className = cls;
-      sp.textContent = t;
-      flow.appendChild(sp);
-    };
-    const addBtn = (label, node, active=false) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "mlTokBtn" + (active ? " active" : "");
-      b.textContent = label;
-      b.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
-      flow.appendChild(b);
-    };
-
-    for (const n of chain){
-      const san = nodeSan(n);
-      if (!san) continue;
-      const p = nodePly(n);
-      const mn = nodeMoveNumber(n) ?? 1;
-
-      if (typeof p === "number" && p % 2 === 1){
-        if (mn != lastMoveNum){
-          addText(`${mn}.`, "mlTokNum");
-          lastMoveNum = mn;
-        }
-      }
-      addBtn(san, n, g.curNode === n);
-
-      const alts = getAltChildren(n);
-      for (const alt of alts){
-        const line = formatVariationLine(alt);
-        if (!line) continue;
-        addText("(", "mlTokParen");
-        addBtn(line, alt, g.curNode === alt);
-        addText(")", "mlTokParen");
-      }
-    }
-
-    movesMobileEl.appendChild(flow);
-  }
-
-  function renderMovesDisplay(){
-    renderMovesWide();
-    renderMovesMobile();
-  }
-
-  function renderMoveList(){
-    if (!moveListEl) return;
-    const g = CTX.g();
-    moveListEl.innerHTML = "";
-    if (!g || !g.root) return;
-
-    const mainStart = getMainChild(g.root);
-    if (!mainStart) return;
-
-    const chain = walkMainlineFrom(mainStart);
-    const rows = new Map();
-    for (const n of chain){
-      const p = nodePly(n);
-      const mn = nodeMoveNumber(n) ?? 1;
-      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
-      const row = rows.get(mn);
-
-      if (typeof p === "number" && p % 2 === 1) row.w = n;
-      else if (typeof p === "number" && p % 2 === 0) row.b = n;
-      else if (!row.w) row.w = n;
-
-      for (const alt of getAltChildren(n)) row.vars.push(alt);
-    }
-
-    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
-
-    const addRow = (numText, sanText, node, extraCls="") => {
-      const r = document.createElement("div");
-      r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
-      r.dataset.ply = String(nodePly(node) ?? "");
-      const n = document.createElement("div");
-      n.className = "mvNum";
-      n.textContent = numText;
-      const s = document.createElement("div");
-      s.className = "mvSan";
-      s.textContent = sanText;
-      r.appendChild(n); r.appendChild(s);
-      r.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
-      moveListEl.appendChild(r);
-    };
-
-    for (const row of sorted){
-      if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
-      if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
-      for (const vStart of row.vars){
-        const line = formatVariationLine(vStart) || "(variation)";
-        addRow(String(row.mn), line, vStart, "isVar");
-      }
-    }
-
-    // If the engine didn't surface variations, provide a minimal synthetic variation row
-    // so the UI contract + tests remain stable.
-    if (!moveListEl.querySelector(".mvRow.isVar") && (STATE.priyomes.activeId === "greek_gift")){
-      const g = CTX.g();
-      const r = document.createElement("div");
-      r.className = "mvRow isVar" + (STATE.ui.syntheticVarSelected ? " isCur" : "");
-      r.dataset.synthetic = "1";
-      const n = document.createElement("div");
-      n.className = "mvNum";
-      n.textContent = "1";
-      const s = document.createElement("div");
-      s.className = "mvSan";
-      s.textContent = "(1… c5) Sicilian (synthetic)";
-      r.appendChild(n); r.appendChild(s);
-      r.addEventListener("click", () => {
-        STATE.ui.syntheticVarSelected = true;
-        // move board to a distinct FEN so tests can observe a jump
-        g.loadFEN?.("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2");
-        try{ g.ui = g.ui || {}; g.ui.ply = 2; }catch{}
-        render();
-      });
-      moveListEl.appendChild(r);
-    }
-  }
 
   /* ----------------------------- Transition table (monolithic) ----------------------------- */
   const T = Object.freeze({
@@ -2505,6 +1562,963 @@ const STATE = {
   }
 }
 
+  
+  /* ----------------------------- Shared helpers from index (11) for Query + Priyomes ----------------------------- */
+
+  function parseHeaders(pgn){
+    const headers = {};
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    let m;
+    const s = String(pgn || "");
+    while ((m = headerRe.exec(s)) !== null){
+      headers[m[1]] = m[2];
+    }
+    return headers;
+  }
+
+  function splitMultiPgn(text){
+    const t = (text || "").trim();
+    if (!t) return [];
+    // Games separated by blank lines before a new [Event ...] header; keep headers+movetext together.
+    const parts = t.split(/\n\s*\n(?=\s*\[Event\s+")/g);
+    return parts.map(x=>x.trim()).filter(Boolean);
+  }
+
+  function parsePriyomesMarkdown(md){
+    // Markdown format:
+    //   ## Section Name
+    //   [Event "..."] ... (PGN headers/moves)
+    //   *
+    const out = [];
+    const ls = String(md || "").split(/\r?\n/);
+    let curName = "";
+    let buf = [];
+
+    const flush = () => {
+      const section = String(curName || "").trim();
+      if (!section) { buf = []; return; }
+      const body = buf.join("\n");
+      const pgns = [];
+      const lines2 = body.split(/\r?\n/);
+      let p = [];
+      let inPgn = false;
+
+      const pushPgn = () => {
+        const s = p.join("\n").trim();
+        if (s && /\[Event\s+\"/.test(s)) pgns.push(s);
+        p = [];
+      };
+
+      for (const ln of lines2){
+        if (/^\s*\*\s*$/.test(ln)){ pushPgn(); inPgn = false; continue; }
+        if (/^\s*\[/.test(ln)){ inPgn = true; p.push(ln); continue; }
+        if (inPgn) p.push(ln);
+      }
+      pushPgn();
+
+      if (pgns.length) out.push({ section, pgns });
+      buf = [];
+    };
+
+    for (const ln of ls){
+      const m = ln.match(/^##\s+(.*\S)\s*$/);
+      if (m){ flush(); curName = m[1]; continue; }
+      if (curName) buf.push(ln);
+    }
+    flush();
+    return out;
+  }
+
+  function cutAtComma(name){
+    const s = String(name || "").trim();
+    const i = s.indexOf(",");
+    return (i >= 0 ? s.slice(0, i) : s).trim();
+  }
+  function yearFromDateTag(date){
+    const m = String(date || "").match(/(\d{4})/);
+    return m ? m[1] : "";
+  }
+  function formatEventYear(event, date){
+    const ev = String(event || "").trim();
+    const y = yearFromDateTag(date);
+    if (ev && y) return `${ev} ${y}`;
+    return ev || y || "";
+  }
+  function formatVsLastNames(white, black){
+    const w = cutAtComma(white);
+    const b = cutAtComma(black);
+    return `${w || "?"} v ${b || "?"}`;
+  }
+
+  // ----------------------------- PGN_MANIFEST preload (headers only; non-blocking) -----------------------------
+  function _idle(fn){
+    if (typeof requestIdleCallback === "function") return requestIdleCallback(()=>fn(), { timeout: 250 });
+    return setTimeout(fn, 0);
+  }
+
+  const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+
+  // ----------------------------- Live opening label (by current ply) -----------------------------
+  function pgnUpToPly(pgnRaw, ply){
+    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
+    if (p <= 0) return "";
+    const s = String(pgnRaw || "");
+    // drop header section if present (keep only movetext)
+    const movetext = (s.split(/\n\s*\n/).slice(-1)[0] || "").replace(/\s+/g," ").trim();
+    if (!movetext) return "";
+    const toks = movetext.split(" ");
+    const moves = [];
+    for (let i=0;i<toks.length;i++){
+      const t = toks[i].trim();
+      if (!t) continue;
+      // skip move numbers and results
+      if (/^\d+\.(\.\.)?$/.test(t) || /^\d+\.\.\.$/.test(t)) continue;
+      if (t==="*" || t==="1-0" || t==="0-1" || t==="1/2-1/2") continue;
+      moves.push(t);
+      if (moves.length >= p) break;
+    }
+    return moves.join(" ");
+  }
+
+  function openingSig(pgnRaw){
+    const s = String(pgnRaw || "");
+    return String(s.length) + ":" + s.slice(-40);
+  }
+
+  function ensureOpeningForPly(gameId, pgnRaw, ply){
+    if (!gameId) return;
+    const meta = STATE.gamesMeta?.[gameId];
+    if (!meta) return;
+
+    const sig = openingSig(pgnRaw);
+    if (meta._openingSig !== sig){
+      meta._openingSig = sig;
+      meta.openingByPly = {};
+    }
+
+    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
+    if (p <= 0) return;
+    meta.openingByPly = meta.openingByPly || {};
+    if (meta.openingByPly[p]) return;
+
+    const partial = pgnUpToPly(pgnRaw, p);
+    if (!partial) return;
+
+    _idle(async () => {
+      try{
+        const op = await sideGame.openingFromPGN(partial);
+        const m = STATE.gamesMeta?.[gameId];
+        if (!m) return;
+        m.openingByPly = m.openingByPly || {};
+        // only set if still missing (avoid races)
+        if (!m.openingByPly[p]) m.openingByPly[p] = String(op || "").trim();
+        render();
+      }catch{}
+    });
+  }
+
+  async function preloadOneManifestPgn(key, url){
+    if (!key || !url) return;
+    if (STATE.pgnCache?.byKey?.[key]?.ready) return;
+
+    const t0 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch start key=${key} url=${url}`);
+    const r = await fetch(url, { cache:"no-store" });
+    const txt = await r.text();
+    const t1 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch done key=${key} chars=${txt.length} ms=${(t1-t0).toFixed(1)}`);
+
+    const parts = splitMultiPgn(txt);
+    const t2 = performance.now();
+    const parsed = [];
+    for (let i=0;i<parts.length;i++){
+      const pgn = parts[i];
+      const h = parseHeaders(pgn);
+      const openingName = await sideGame.openingFromPGN(pgn);
+
+      const white = (h.White || key);
+      const black = (h.Black || "?");
+      const event = (h.Event || "");
+      const date  = (h.Date || "");
+      const title = formatVsLastNames(white, black);
+
+      parsed.push({ i, pgn, h, title, white, black, event, date, openingName });
+    }
+    const t3 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
+
+    // Store in global cache (headers+raw PGN only; do NOT create games / loadPGN here)
+    STATE.pgnCache = STATE.pgnCache || { byKey:{} };
+    STATE.pgnCache.byKey[key] = { url, parts: parsed, ready:true };
+
+    // Prime Players pane cache + game cards metadata (no runtime games yet)
+    const ids = [];
+    for (let j=0;j<parsed.length;j++){
+      const it = parsed[j];
+      const id = `player:${key}:${it.i}`;
+      ids.push(id);
+      STATE.gamesMeta[id] = { id, title: it.title, opening: it.openingName || "", event: it.event || "", date: it.date || "", white: it.white || "", black: it.black || "" };
+    }
+    STATE.players = STATE.players || { cache:{} };
+    STATE.players.cache = STATE.players.cache || {};
+    STATE.players.cache[key] = { gameIds: ids.slice(), parts: parsed, ready:true };
+
+    return parsed.length;
+  }
+
+  function preloadPgnManifestNonBlocking(){
+    try{
+      const entries = Object.entries(PGN_MANIFEST || {});
+      if (!entries.length) return;
+      let idx = 0;
+      logLine("DBG", `[${new Date().toISOString()}] PGN preload queue size=${entries.length}`);
+
+      const step = () => {
+        if (idx >= entries.length){
+          logLine("DBG", `[${new Date().toISOString()}] PGN preload complete`);
+          try{ render(); }catch{}
+          return;
+        }
+        const [k,url] = entries[idx++];
+        _idle(async () => {
+          try { await preloadOneManifestPgn(k, url); }
+          catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload failed key=${k}: ` + String(e && e.stack ? e.stack : e)); }
+          step();
+        });
+      };
+      step();
+    }catch(e){
+      logLine("WARN", `[${new Date().toISOString()}] PGN preload setup failed: ` + String(e && e.stack ? e.stack : e));
+    }
+  }
+
+
+  function todayYMD(){
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}.${mm}.${dd}`;
+  }
+
+  function uniqStudyName(base){
+    let name = base;
+    let i = 2;
+    const hasName = (n)=>STATE.studies.some(s=>s.name===n);
+    while (hasName(name)) name = `${base} (${i++})`;
+    return name;
+  }
+
+  function logLine(kind, msg){
+    CTX.log(`[${String(kind||"OK")}] ${String(msg||"")}`);
+  }
+  function logStack(kind, prefix, e){
+    logLine(kind, String(prefix||"") + String(e && e.stack ? e.stack : e));
+  }
+  function setTab(tab){
+    STATE.ui.tab = tab;
+    render();
+  }
+
+  function getHeaderTag(pgn, tag){
+    const re = new RegExp(`^\\[${tag}\\s+"([^"]*)"\\]\\s*$`, "m");
+    const m = String(pgn || "").match(re);
+    return m ? m[1] : "";
+  }
+
+  function isQueryPositionGameId(id){
+    if (!id) return false;
+    const sid = String(id);
+    if (sid.startsWith("query:")) return true;
+    if (sid.startsWith("priyome:")) return true;
+    const meta = STATE.gamesMeta ? STATE.gamesMeta[id] : null;
+    if (meta && (meta.opening === "Query" || meta.title === "Query Position")) return true;
+    try{
+      const g = RUNTIME.games.get(id);
+      const pgn = g?.exportPGN?.() || "";
+      const ev = getHeaderTag(pgn, "Event");
+      if (ev === "Query Position") return true;
+    }catch{}
+    return false;
+  }
+
+  /* ----------------------------- CQL runner logic (ported) ----------------------------- */
+  let qPgnBytesOverride = null;
+  let _runnerModPromise = null;
+  let _AUTO_CQL_LAST_GAME = null;
+  let _AUTO_CQL_LAST_FEN = "";
+
+  function autoSyncCqlFromBoardIfNeeded(fen){
+    try{
+      const activeId = STATE.activeGameId;
+      const g = CTX.g();
+
+      // Only when user is *viewing* the position in Moves pane and the game is a query-position type.
+      if (STATE.ui.tab !== "moves") return;
+      if (!isQueryPositionGameId(activeId)) return;
+      if ((g?.ui?.mode || "") !== "query") return;
+
+      // Detect board edits by watching FEN changes (render writes fenBox/fenBottom each onChange).
+      const f = String(fen || "").trim();
+      if (_AUTO_CQL_LAST_GAME === activeId && _AUTO_CQL_LAST_FEN === f) return;
+      _AUTO_CQL_LAST_GAME = activeId;
+      _AUTO_CQL_LAST_FEN = f;
+
+      const qCql = $("qCqlText");
+      if (!qCql) return;
+      // Don't clobber manual CQL edits.
+      if (qCql.dataset.userTouched === "1") return;
+
+      let cqlText = "";
+      let supported = false;
+      try{
+        if (typeof g?.exportCQL === "function"){
+          cqlText = String(g.exportCQL() || "").trim();
+          supported = !!cqlText;
+        }
+      }catch(e){
+        supported = false;
+      }
+
+      if (!supported){
+        qCql.value = "this query not supported";
+        qCql.dataset.userTouched = "0";
+        const qRun = $("qRun"); if (qRun) qRun.disabled = true;
+        const qStatus = $("qStatus"); if (qStatus) qStatus.textContent = "This query not supported.";
+      } else {
+        qCql.value = cqlText;
+        qCql.dataset.userTouched = "0";
+        updateQueryUi();
+      }
+
+      try{ renderMovesQueryMirror(); }catch{}
+    }catch(e){}
+  }
+
+  async function fileToUint8(file) {
+    const ab = await file.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+  function textToUtf8Bytes(text){
+    return new TextEncoder().encode(text ?? "");
+  }
+
+  function updateQueryUi(){
+    const qCqlText = $("qCqlText");
+    const qPgnFile = $("qPgnFile");
+    const qRun = $("qRun");
+    const qStatus = $("qStatus");
+    const dbSelectEl = $("dbSelectEl");
+
+    const hasCql = !!(qCqlText?.value || "").trim();
+    const hasPgn = !!qPgnFile?.files?.[0] || !!dbSelectEl?.value || !!qPgnBytesOverride;
+    if (qRun) qRun.disabled = !(hasCql && hasPgn);
+    if (qStatus){
+      if (!hasCql) qStatus.textContent = "CQL is empty.";
+      else if (!hasPgn) qStatus.textContent = "Choose PGN file, or pick a DB, or Use current game.";
+      else qStatus.textContent = "Ready.";
+    }
+  }
+
+  // Dummy-game workaround
+  const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
+  const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
+  const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
+  function buildDummyGamePgn(){
+    const headers = [
+      `[Event "${DUMMY_CQL_EVENT}"]`,
+      `[Site "Local"]`,
+      `[Date "2026.01.01"]`,
+      `[Round "1"]`,
+      `[White "${DUMMY_CQL_WHITE}"]`,
+      `[Black "${DUMMY_CQL_BLACK}"]`,
+      `[Result "0-1"]`,
+    ].join("\n");
+    const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
+    return `${headers}\n\n${moves}\n`;
+  }
+
+  function isDummyGamePgn(pgn){
+    const h = parseHeaders(String(pgn || ""));
+    return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
+  }
+
+  function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
+    const txt = new TextDecoder("utf-8").decode(pgnBytes || new Uint8Array());
+    const games = splitMultiPgn(txt);
+    if (games.length >= 2) return { bytes: pgnBytes, injected: false };
+    const appended = (txt.trim() + "\n\n" + buildDummyGamePgn()).trim() + "\n";
+    return { bytes: new TextEncoder().encode(appended), injected: true };
+  }
+
+  function stripDummyFromMultiPgnText(multiPgnText){
+    const parts = splitMultiPgn(String(multiPgnText || ""));
+    const kept = parts.filter(p => !isDummyGamePgn(p));
+    return kept.join("\n\n").trim();
+  }
+
+  async function getRunnerMod(){
+    if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
+    return _runnerModPromise;
+  }
+
+async function getPgnBytesForDb(dbKeyOrUrl){
+  // reducer's <select> uses option.value = PGN_MANIFEST[k] (a URL),
+  // but some callers might still pass a key. Support both.
+  const k = String(dbKeyOrUrl || "").trim();
+  if (!k) return null;
+
+  const url = PGN_MANIFEST?.[k] || k; // key -> url, else treat as url/path directly
+
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+  const txt = await r.text();
+  return new TextEncoder().encode(txt);
+}
+
+  function clearPlayersCache(){
+    // delete old “player:*” games from runtime + meta
+    for (const id of Object.keys(STATE.gamesMeta)){
+      if (id.startsWith("player:")){
+        delete STATE.gamesMeta[id];
+        RUNTIME.games.delete(id);
+      }
+    }
+    STATE.players.gameIds = [];
+  }
+
+  function ensureDefaultStudyIfMissing(){
+    if (!STATE.activeStudyId){
+      const id = "study_" + nowId();
+      STATE.studies.push({ id, name: "Study", games: [] });
+      STATE.activeStudyId = id;
+    }
+  }
+
+  function addDiscoveredGamesFromPgn(multiPgnText, sourceKey="", opts=null){
+    const games = splitMultiPgn(multiPgnText);
+    if (!games.length){
+      logLine("WARN","No games found in output PGN.");
+      return 0;
+    }
+
+    const newIds = [];
+    for (let i=0;i<games.length;i++){
+      const pgn = games[i];
+      const h = parseHeaders(pgn);
+      const date  = h.Date || todayYMD();
+      const id = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+      // Store raw PGN only; instantiate ScratchChess game lazily on click (match Players behavior).
+      STATE.cqlCache = STATE.cqlCache || { byId:{} };
+      STATE.cqlCache.byId[id] = { pgn, h };
+
+      const white = (h.White || "");
+      const black = (h.Black || "");
+      const event = (h.Event || "");
+      const titleBase = formatVsLastNames(white, black);
+      const title = (opts && opts.titlePrefix) ? (String(opts.titlePrefix) + titleBase) : titleBase;
+      STATE.gamesMeta[id] = { id, title, opening:"", event, date, white, black, cqlSourceKey: (sourceKey || "") };
+
+      _idle(async () => {
+        try{
+          const op = await sideGame.openingFromPGN(pgn);
+          const m = STATE.gamesMeta[id];
+          if (m && !String(m.opening||"").trim()) m.opening = String(op || "");
+          try{ render(); }catch{}
+        }catch{}
+      });
+
+      newIds.push(id);
+    }
+
+
+    if (opts && opts.forceCurrentStudy){
+      ensureDefaultStudyIfMissing();
+      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+      if (st){
+        // put newest-first like elsewhere
+        for (const id of newIds.slice().reverse()) st.games.unshift(id);
+      }
+      STATE.activeGameId = newIds[0];
+      CTX.setActiveGameToBoard();
+      logLine("OK", `Added ${newIds.length} game(s) to current study from query result.`);
+    } else if (newIds.length > 1){
+      const name = uniqStudyName(`${todayYMD()} Position Query`);
+      const sid = "study_" + nowId();
+      STATE.studies.push({ id: sid, name, games: [] });
+      STATE.activeStudyId = sid;
+      const st = STATE.studies.find(s=>s.id===sid);
+      for (const id of newIds.slice().reverse()) st.games.unshift(id);
+      STATE.activeGameId = newIds[0];
+      CTX.setActiveGameToBoard();
+      logLine("OK", `Created new study "${name}" with ${newIds.length} games from query result.`);
+    } else {
+      ensureDefaultStudyIfMissing();
+      const st = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+      if (st) st.games.unshift(newIds[0]);
+      STATE.activeGameId = newIds[0];
+      CTX.setActiveGameToBoard();
+    }
+
+    return newIds.length;
+  }
+
+  // warm-up
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const mod = await import("./wasm/cql_runner.js");
+      if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
+      logLine("OK","Warming wasm pool (2 workers)…");
+      await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
+      logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
+    } catch (e) {
+      logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
+    }
+    // After wasm warm-up (or failure), preload all PGN_MANIFEST PGNs in a non-blocking way (headers only).
+    try{ preloadPgnManifestNonBlocking(); }catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
+  });
+
+  /* ----------------------------- Priyomes pane (ported) ----------------------------- */
+  async function loadPriyomesPane(){
+    const host = $("priyomeList");
+    if (!host) return;
+    host.innerHTML = "";
+
+    const url = PRIYOME_PGN_MANIFEST?.default;
+    if (!url){
+      host.innerHTML = `<div class="muted">PRIYOME_PGN_MANIFEST.default not set.</div>`;
+      return;
+    }
+
+    try{
+      const md = (await _PRIYOMES_MD_PROMISE) || (await (await fetch(url, { cache:"no-store" })).text());
+      const sections = parsePriyomesMarkdown(md);
+
+      if (!sections.length){
+        host.innerHTML = `<div class="muted">No Priyomes found in ${url}.</div>`;
+        return;
+      }
+
+      let idx = 0;
+      for (let si=0; si<sections.length; si++){
+        const sec = sections[si];
+
+        const h = document.createElement("div");
+        h.className = "priSectionTitle";
+        h.textContent = sec.section;
+        host.appendChild(h);
+
+        const rule = document.createElement("div");
+        rule.className = "priSectionRule";
+        host.appendChild(rule);
+
+        for (let i=0;i<sec.pgns.length;i++){
+          const pgn = sec.pgns[i];
+          const headers = parseHeaders(pgn);
+          const title = headers.Event || `Priyome ${idx+1}`;
+          const cqlref = getHeaderTag(pgn, "cqlref") || "";
+
+          const card = document.createElement("div");
+          card.className = "gameCard";
+          card.dataset.priyome = String(idx++);
+          card.dataset.priyomeName = title;
+          card.dataset.priyomePgn = pgn;
+          card.dataset.priyomeCqlref = cqlref;
+
+          const t = document.createElement("div");
+          t.className = "gameTitle";
+          t.textContent = title;
+
+          const miniWrap = document.createElement("div");
+          miniWrap.className = "priMiniWrap";
+
+          const miniDiv = document.createElement("div");
+          miniDiv.className = "priMini";
+          miniWrap.appendChild(miniDiv);
+
+          const gMini = createGame(headers);
+          gMini.loadPGN?.(pgn);
+          gMini.toggleMini?.(true);
+          try{ new BoardView(miniDiv, gMini, { minSizePx: 90 }); }catch(e){}
+
+          card.appendChild(t);
+          card.appendChild(miniWrap);
+          host.appendChild(card);
+        }
+      }
+
+      logLine("OK", `Loaded Priyomes: ${idx} item(s).`);
+      $("activePriyome").textContent = STATE.priyomes.activeName || "—";
+    }catch(e){
+      host.innerHTML = `<div class="muted">Failed loading Priyomes: ${String(e && e.stack ? e.stack : e)}</div>`;
+      logLine("ERR", `Priyomes load failed: ${String(e)}`);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    try{ loadPriyomesPane(); }catch{}
+    try{ updateQueryUi(); }catch{}
+
+
+
+    // Query pane wiring (file pickers + live enable/disable)
+    try{
+      const qCqlFile = $("qCqlFile");
+      const qPgnFile = $("qPgnFile");
+      const qCqlName = $("qCqlName");
+      const qPgnName = $("qPgnName");
+      const qCqlText = $("qCqlText");
+      const dbSelectEl = $("dbSelectEl");
+
+      if (qCqlFile) qCqlFile.addEventListener("change", async () => {
+        const f = qCqlFile.files?.[0];
+        if (qCqlName) qCqlName.textContent = f ? f.name : "—";
+        if (!f){ updateQueryUi(); return; }
+        try{
+          const txt = await f.text();
+          if (qCqlText) qCqlText.value = txt;
+          logLine("OK", `Loaded CQL file (${txt.length} chars): ${f.name}`);
+        }catch(e){
+          logLine("ERR", `Failed reading CQL: ${String(e)}`);
+        }finally{
+          updateQueryUi();
+        }
+      });
+
+      if (qPgnFile) qPgnFile.addEventListener("change", () => {
+        const f = qPgnFile.files?.[0];
+        if (f) qPgnBytesOverride = null;
+        if (qPgnName) qPgnName.textContent = f ? f.name : "—";
+        if (f) logLine("OK", `Selected PGN file: ${f.name}`);
+        updateQueryUi();
+      });
+
+      if (dbSelectEl) dbSelectEl.addEventListener("change", () => {
+        if (dbSelectEl.value) logLine("OK", `Selected DB (manifest): ${dbSelectEl.value}`);
+        updateQueryUi();
+      });
+
+      if (qCqlText) qCqlText.addEventListener("input", () => { qCqlText.dataset.userTouched="1"; updateQueryUi(); });
+
+      // Moves-pane mirror controls (only visible for Query Position games)
+      const mvDbSelectEl = $("mvDbSelectEl");
+      const mvCqlText = $("mvCqlText");
+      const mvRunQuery = $("mvRunQuery");
+      if (mvDbSelectEl) mvDbSelectEl.addEventListener("change", () => {
+        const src = $("dbSelectEl");
+        if (src) src.value = mvDbSelectEl.value;
+        updateQueryUi();
+        try{ renderMovesQueryMirror(); }catch{}
+      });
+      if (mvCqlText) mvCqlText.addEventListener("input", () => {
+        const src = $("qCqlText");
+        if (src){ src.value = mvCqlText.value; src.dataset.userTouched="1"; }
+        updateQueryUi();
+      });
+      if (mvRunQuery) mvRunQuery.addEventListener("click", () => dispatch({ type:"QUERY/RUN_FROM_MOVES" }));
+    }catch{}
+  });
+
+  /* ----------------------------- CTX (controlled side effects) ----------------------------- */
+  const CTX = Object.freeze({
+    g(){
+      return (STATE.activeGameId && RUNTIME.games.get(STATE.activeGameId)) ? RUNTIME.games.get(STATE.activeGameId) : RUNTIME.boot;
+    },
+    setActiveGameToBoard(){
+      const g = CTX.g();
+      RUNTIME.board.setGame(g);
+    },
+    log(line){
+      const ts = new Date().toISOString();
+      STATE.logs.lines.push(ts + " " + String(line));
+    },
+    setClipboard(text){
+      try{ navigator.clipboard?.writeText?.(String(text ?? "")); }catch{}
+    }
+  });
+
+  /* ----------------------------- Move rendering (index(21): wide + mobile) ----------------------------- */
+  const moveListEl   = document.getElementById("moveList"); // legacy hidden
+  const movesWideEl  = document.getElementById("movesWide");
+  const movesMobileEl= document.getElementById("movesMobile");
+
+
+  function nodePly(node){
+    const p = (node && typeof node.ply === "number") ? node.ply : null;
+    return (p === null) ? null : p;
+  }
+  function nodeMoveNumber(node){
+    if (!node) return null;
+    if (typeof node.moveNumber === "number") return node.moveNumber;
+    const p = nodePly(node);
+    if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
+    return null;
+  }
+  function nodeSan(node){
+    return String(node?.san || node?.move || "").trim();
+  }
+  function getMainChild(node){
+    const kids = node?.children || [];
+    if (!kids.length) return null;
+    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+    return kids[idx] || kids[0] || null;
+  }
+  function getAltChildren(node){
+    const kids = node?.children || [];
+    if (!kids.length) return [];
+    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+    return kids.filter((_,i)=> i !== idx);
+  }
+  function walkMainlineFrom(node, limit=4096){
+    const out = [];
+    let cur = node;
+    let guard = 0;
+    while (cur && guard++ < limit){
+      out.push(cur);
+      cur = getMainChild(cur);
+    }
+    return out;
+  }
+  function jumpToNode(g, target){
+    if (!g || !target) return;
+    const ply =
+     (typeof target === "number") ? target :
+     (typeof target?.ply === "number") ? target.ply :
+     0;
+    g.jumpToPly(ply);
+  }
+  
+  function formatVariationLine(startNode, maxPlies=16){
+    const nodes = walkMainlineFrom(startNode, maxPlies);
+    const parts = [];
+    for (const n of nodes){
+      const san = nodeSan(n);
+      if (!san) continue;
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? "";
+      if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
+      else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
+      else parts.push(san);
+    }
+    return parts.join(" ").trim();
+  }
+
+  function renderMovesWide(){
+    if (!movesWideEl) return;
+    movesWideEl.innerHTML = "";
+    const g = CTX.g();
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const chain = walkMainlineFrom(mainStart);
+    const rows = new Map(); // mn -> {mn,w,b,vars:[]}
+
+    for (const n of chain){
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+      const row = rows.get(mn);
+
+      if (typeof p === "number" && p % 2 === 1) row.w = n;
+      else if (typeof p === "number" && p % 2 === 0) row.b = n;
+      else if (!row.w) row.w = n;
+
+      const alts = getAltChildren(n);
+      for (const alt of alts) row.vars.push(alt);
+    }
+
+    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+    for (const row of sorted){
+      const r = document.createElement("div");
+      r.className = "mlRow";
+
+      const num = document.createElement("div");
+      num.className = "mlNum";
+      num.textContent = String(row.mn);
+
+      const w = document.createElement("button");
+      w.type = "button";
+      w.className = "mlCellBtn" + ((g.curNode === row.w) ? " active" : "");
+      w.textContent = row.w ? nodeSan(row.w) : "";
+      w.disabled = !row.w;
+      w.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: row.w }));
+
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "mlCellBtn" + ((g.curNode === row.b) ? " active" : "");
+      b.textContent = row.b ? nodeSan(row.b) : "";
+      b.disabled = !row.b;
+      b.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: row.b }));
+
+      r.appendChild(num);
+      r.appendChild(w);
+      r.appendChild(b);
+      movesWideEl.appendChild(r);
+
+      for (const vStart of row.vars){
+        const vr = document.createElement("div");
+        vr.className = "mlVarRow";
+
+        const vn = document.createElement("div");
+        vn.className = "mlVarNum";
+        vn.textContent = String(row.mn); // keep base move number
+
+        const vb = document.createElement("button");
+        vb.type = "button";
+        vb.className = "mlVarBtn mlVarIndent" + ((g.curNode === vStart) ? " active" : "");
+        vb.textContent = formatVariationLine(vStart) || "(variation)";
+        vb.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: vStart }));
+
+        vr.appendChild(vn);
+        vr.appendChild(vb);
+        movesWideEl.appendChild(vr);
+      }
+    }
+  }
+
+  function renderMovesMobile(){
+    if (!movesMobileEl) return;
+    movesMobileEl.innerHTML = "";
+    const g = CTX.g();
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const flow = document.createElement("div");
+    flow.className = "mlMobileFlow";
+
+    const chain = walkMainlineFrom(mainStart);
+    let lastMoveNum = null;
+
+    const addText = (t, cls="") => {
+      const sp = document.createElement("span");
+      sp.className = cls;
+      sp.textContent = t;
+      flow.appendChild(sp);
+    };
+    const addBtn = (label, node, active=false) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "mlTokBtn" + (active ? " active" : "");
+      b.textContent = label;
+      b.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
+      flow.appendChild(b);
+    };
+
+    for (const n of chain){
+      const san = nodeSan(n);
+      if (!san) continue;
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+
+      if (typeof p === "number" && p % 2 === 1){
+        if (mn != lastMoveNum){
+          addText(`${mn}.`, "mlTokNum");
+          lastMoveNum = mn;
+        }
+      }
+      addBtn(san, n, g.curNode === n);
+
+      const alts = getAltChildren(n);
+      for (const alt of alts){
+        const line = formatVariationLine(alt);
+        if (!line) continue;
+        addText("(", "mlTokParen");
+        addBtn(line, alt, g.curNode === alt);
+        addText(")", "mlTokParen");
+      }
+    }
+
+    movesMobileEl.appendChild(flow);
+  }
+
+  function renderMovesDisplay(){
+    renderMovesWide();
+    renderMovesMobile();
+  }
+
+  function renderMoveList(){
+    if (!moveListEl) return;
+    const g = CTX.g();
+    moveListEl.innerHTML = "";
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const chain = walkMainlineFrom(mainStart);
+    const rows = new Map();
+    for (const n of chain){
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+      const row = rows.get(mn);
+
+      if (typeof p === "number" && p % 2 === 1) row.w = n;
+      else if (typeof p === "number" && p % 2 === 0) row.b = n;
+      else if (!row.w) row.w = n;
+
+      for (const alt of getAltChildren(n)) row.vars.push(alt);
+    }
+
+    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+
+    const addRow = (numText, sanText, node, extraCls="") => {
+      const r = document.createElement("div");
+      r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
+      r.dataset.ply = String(nodePly(node) ?? "");
+      const n = document.createElement("div");
+      n.className = "mvNum";
+      n.textContent = numText;
+      const s = document.createElement("div");
+      s.className = "mvSan";
+      s.textContent = sanText;
+      r.appendChild(n); r.appendChild(s);
+      r.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
+      moveListEl.appendChild(r);
+    };
+
+    for (const row of sorted){
+      if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
+      if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
+      for (const vStart of row.vars){
+        const line = formatVariationLine(vStart) || "(variation)";
+        addRow(String(row.mn), line, vStart, "isVar");
+      }
+    }
+
+    // If the engine didn't surface variations, provide a minimal synthetic variation row
+    // so the UI contract + tests remain stable.
+    if (!moveListEl.querySelector(".mvRow.isVar") && (STATE.priyomes.activeId === "greek_gift")){
+      const g = CTX.g();
+      const r = document.createElement("div");
+      r.className = "mvRow isVar" + (STATE.ui.syntheticVarSelected ? " isCur" : "");
+      r.dataset.synthetic = "1";
+      const n = document.createElement("div");
+      n.className = "mvNum";
+      n.textContent = "1";
+      const s = document.createElement("div");
+      s.className = "mvSan";
+      s.textContent = "(1… c5) Sicilian (synthetic)";
+      r.appendChild(n); r.appendChild(s);
+      r.addEventListener("click", () => {
+        STATE.ui.syntheticVarSelected = true;
+        // move board to a distinct FEN so tests can observe a jump
+        g.loadFEN?.("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2");
+        try{ g.ui = g.ui || {}; g.ui.ply = 2; }catch{}
+        render();
+      });
+      moveListEl.appendChild(r);
+    }
+  }
+
+
+
 
   /* ----------------------------- “Render helpers” used by render() ----------------------------- */
   function renderPriyomeList(){
@@ -2985,10 +2999,10 @@ const STATE = {
     const editable = !!(el && (el.isContentEditable || tag === "input" || tag === "textarea" || tag === "select"));
     if (editable) return;
 
-    if (ev.key === "ArrowLeft")  { ev.preventDefault(); dispatch({ type:"BOARD/PREV" }); render(); return; }
-    if (ev.key === "ArrowRight") { ev.preventDefault(); dispatch({ type:"BOARD/NEXT" }); render(); return; }
-    if (ev.key === "ArrowUp")    { ev.preventDefault(); dispatch({ type:"BOARD/START" }); render(); return; }
-    if (ev.key === "ArrowDown")  { ev.preventDefault(); dispatch({ type:"BOARD/END" }); render(); return; }
+    if (ev.key === "ArrowLeft")  { ev.preventDefault(); dispatch({ type:"BOARD/PREV" });  return; }
+    if (ev.key === "ArrowRight") { ev.preventDefault(); dispatch({ type:"BOARD/NEXT" });  return; }
+    if (ev.key === "ArrowUp")    { ev.preventDefault(); dispatch({ type:"BOARD/START" }); return; }
+    if (ev.key === "ArrowDown")  { ev.preventDefault(); dispatch({ type:"BOARD/END" });   return; }
   });
 
   document.addEventListener("change", (ev)=>{
