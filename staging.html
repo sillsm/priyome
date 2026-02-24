@@ -2694,8 +2694,18 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       for (const id of (STATE.players.gameIds || [])){
         const meta = STATE.gamesMeta[id];
         if (!meta) continue;
+
+        // Regression fix: eagerly behave like the card was clicked, so opening details
+        // appear without requiring a click. This triggers ScratchChess instantiation
+        // + background opening computation (openingFromPGN) via ensureGameLoaded.
+        if (!String(meta.opening || "").trim()){
+          try{ RUNTIME.ensureGameLoaded(id); }catch{}
+        }
+
         const d = document.createElement("div");
         d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+
+
         d.dataset.playerGameId = id;
         const vs = formatVsLastNames(meta.white || "", meta.black || "");
         const open = String(meta.opening || "").trim();
