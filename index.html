@@ -144,7 +144,7 @@
 }
 #pane-priyomes .priMini{
   width:100%;
-  height:170px;
+  height:115px;
 }
 
   .playersGrid{
@@ -467,6 +467,10 @@
       <textarea id="pgnBox" readonly style="display:none"></textarea>
 
       <div class="row" style="gap:8px; flex-wrap:wrap">
+        <span class="pill"><b id="openingUnderBoard">—</b></span>
+      </div>
+
+      <div class="row" style="gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px">
         <button class="btn" id="btnPrev" type="button">Prev</button>
         <button class="btn" id="btnNext" type="button">Next</button>
         <span class="pill">Ply: <b id="navMeta">0</b></span>
@@ -783,6 +787,65 @@
 
   const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
 
+  // ----------------------------- Live opening label (by current ply) -----------------------------
+  function pgnUpToPly(pgnRaw, ply){
+    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
+    if (p <= 0) return "";
+    const s = String(pgnRaw || "");
+    // drop header section if present (keep only movetext)
+    const movetext = (s.split(/\n\s*\n/).slice(-1)[0] || "").replace(/\s+/g," ").trim();
+    if (!movetext) return "";
+    const toks = movetext.split(" ");
+    const moves = [];
+    for (let i=0;i<toks.length;i++){
+      const t = toks[i].trim();
+      if (!t) continue;
+      // skip move numbers and results
+      if (/^\d+\.(\.\.)?$/.test(t) || /^\d+\.\.\.$/.test(t)) continue;
+      if (t==="*" || t==="1-0" || t==="0-1" || t==="1/2-1/2") continue;
+      moves.push(t);
+      if (moves.length >= p) break;
+    }
+    return moves.join(" ");
+  }
+
+  function openingSig(pgnRaw){
+    const s = String(pgnRaw || "");
+    return String(s.length) + ":" + s.slice(-40);
+  }
+
+  function ensureOpeningForPly(gameId, pgnRaw, ply){
+    if (!gameId) return;
+    const meta = STATE.gamesMeta?.[gameId];
+    if (!meta) return;
+
+    const sig = openingSig(pgnRaw);
+    if (meta._openingSig !== sig){
+      meta._openingSig = sig;
+      meta.openingByPly = {};
+    }
+
+    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
+    if (p <= 0) return;
+    meta.openingByPly = meta.openingByPly || {};
+    if (meta.openingByPly[p]) return;
+
+    const partial = pgnUpToPly(pgnRaw, p);
+    if (!partial) return;
+
+    _idle(async () => {
+      try{
+        const op = await sideGame.openingFromPGN(partial);
+        const m = STATE.gamesMeta?.[gameId];
+        if (!m) return;
+        m.openingByPly = m.openingByPly || {};
+        // only set if still missing (avoid races)
+        if (!m.openingByPly[p]) m.openingByPly[p] = String(op || "").trim();
+        render();
+      }catch{}
+    });
+  }
+
   async function preloadOneManifestPgn(key, url){
     if (!key || !url) return;
     if (STATE.pgnCache?.byKey?.[key]?.ready) return;
@@ -1073,20 +1136,32 @@ async function getPgnBytesForDb(dbKeyOrUrl){
     for (let i=0;i<games.length;i++){
       const pgn = games[i];
       const h = parseHeaders(pgn);
-      const baseTitle = h.Event ? h.Event : `Discovered Game ${i+1}`;
-      const title = (opts && opts.titlePrefix) ? (String(opts.titlePrefix) + baseTitle) : baseTitle;
       const date  = h.Date || todayYMD();
       const id = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
-      const g = createGame(h);
-      g.loadPGN?.(pgn);
-      // tag for query->use current behavior
-      try{ g.cqlText = ""; g.cqlSourceKey = sourceKey; }catch{}
-      RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
-      STATE.gamesMeta[id] = { id, title, opening: sourceKey ? `CQL: ${sourceKey}` : "CQL result" };
+
+      // Store raw PGN only; instantiate ScratchChess game lazily on click (match Players behavior).
+      STATE.cqlCache = STATE.cqlCache || { byId:{} };
+      STATE.cqlCache.byId[id] = { pgn, h };
+
+      const white = (h.White || "");
+      const black = (h.Black || "");
+      const event = (h.Event || "");
+      const titleBase = formatVsLastNames(white, black);
+      const title = (opts && opts.titlePrefix) ? (String(opts.titlePrefix) + titleBase) : titleBase;
+      STATE.gamesMeta[id] = { id, title, opening:"", event, date, white, black, cqlSourceKey: (sourceKey || "") };
+
+      _idle(async () => {
+        try{
+          const op = await sideGame.openingFromPGN(pgn);
+          const m = STATE.gamesMeta[id];
+          if (m && !String(m.opening||"").trim()) m.opening = String(op || "");
+          try{ render(); }catch{}
+        }catch{}
+      });
 
       newIds.push(id);
     }
+
 
     if (opts && opts.forceCurrentStudy){
       ensureDefaultStudyIfMissing();
@@ -1296,9 +1371,14 @@ const STATE = {
       // key -> { url, parts:[{i,pgn,h,title}], ready:true }
       byKey: {},
     },
+    cqlCache: {
+      // id -> { pgn, h }
+      byId: {},
+    },
     studies: [],          // [{id,name,games:[gameId]}]
     gamesMeta: {},        // gameId -> {id,title}
     activeStudyId: null,
+
     activeGameId: null,
     priyomes: {
       activeId: null,
@@ -1804,11 +1884,40 @@ const STATE = {
         S.ui.tab = "errors";
       }
     },
-    "GAME/SET": (S,A) => {
-      S.activeGameId = A.id;
+    "GAME/SET": async (S,A) => {
+      const id = String(A.id || "");
+      if (!id) return;
+
+      // Lazy instantiate ScratchChess game + loadPGN for CQL results on click (match Players).
+      if (!RUNTIME.games.has(id) && id.startsWith("cql:")){
+        try{
+          const it = S.cqlCache?.byId?.[id] || null;
+          if (it && it.pgn){
+            const g = createGame(it.h || {});
+            g.loadPGN?.(it.pgn);
+            try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
+            RUNTIME.games.set(id, g);
+            attachOnChange(id, g);
+            // Ensure opening name comes from ScratchChess helper
+            try{
+              const meta = S.gamesMeta?.[id];
+              if (meta && !String(meta.opening||"").trim()){
+                meta.opening = String(await sideGame.openingFromPGN(it.pgn) || "");
+              }
+            }catch{}
+          } else {
+            logLine("WARN", `[${new Date().toISOString()}] CQL: missing cached PGN for id=${id}`);
+          }
+        }catch(e){
+          logStack("WARN", `[${new Date().toISOString()}] CQL: lazy loadPGN failed id=${id}: `, e);
+        }
+      }
+
+      S.activeGameId = id;
       S.ui.syntheticVarSelected = false;
       CTX.setActiveGameToBoard();
     },
+
 
     /* ---------- ScratchChess navigation ---------- */
     "BOARD/PREV": () => {
@@ -2310,15 +2419,33 @@ const STATE = {
         const d = document.createElement("div");
         d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
         d.dataset.gameId = id;
-        d.innerHTML = `<div><b>${meta.title}</b><div class="small">${id}</div></div><div class="small">select</div>`;
+        const vs = (meta.white || meta.black) ? formatVsLastNames(meta.white || "", meta.black || "") : (meta.title || "");
+        const open = String(meta.opening || "").trim();
+        const evy  = formatEventYear(meta.event || "", meta.date || "");
+        d.innerHTML = `<div><b>${vs}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
         host.appendChild(d);
       }
     }
+
     const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
     $("gamePill").textContent = meta ? meta.title : "—";
+    const oub = $("openingUnderBoard");
+    if (oub){
+      const g0 = CTX.g();
+      const ply = (g0?.ui?.ply ?? 0);
+      const basePgnRaw0 = (g0?.exportPGN?.() || "").trim();
+      const pgnRaw0 = withMarksPgnRaw(basePgnRaw0, STATE.activeGameId);
+
+      ensureOpeningForPly(STATE.activeGameId, pgnRaw0, ply);
+
+      const live = meta?.openingByPly?.[ply] ? String(meta.openingByPly[ply]).trim() : "";
+      oub.textContent = (ply > 0 && live) ? live : "—";
+    }
     $("gameName").textContent = STATE.activeGameId || "—";
 
     // priyomes
+
+
     $("activePriyome").textContent = STATE.priyomes.activeName || "—";
     renderPriyomeList(); // small & safe; still inside render pipeline
 
