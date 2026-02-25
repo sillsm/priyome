@@ -715,8 +715,8 @@
   RUNTIME.gameLoads = new Map();   // id -> Promise
   RUNTIME.priyomeLoads = new Map(); // key -> Promise
 
-  RUNTIME.syncBoard = function syncBoard(){
-    try{ CTX.setActiveGameToBoard(); }catch{}
+  RUNTIME.syncBoard = function syncBoard(gameId=null){
+    try{ CTX.setActiveGameToBoard(gameId); }catch{}
   };
 
   RUNTIME.loadPlayer = async function loadPlayer(key){
@@ -1263,7 +1263,7 @@
 
       S.activeGameId = id;
       S.ui.syntheticVarSelected = false;
-      CTX.setActiveGameToBoard();
+      CTX.setActiveGameToBoard(id);
     },
 
 
@@ -1296,6 +1296,18 @@
       jumpToNode(g, A.node);
       try{ if (A?.node && typeof A.node.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = A.node.ply; } }catch{}
     },
+
+    "SYNVAR/SELECT": (S,A) => {
+      S.ui.syntheticVarSelected = true;
+      const g = CTX.g();
+      try{ if (A?.fen) g.loadFEN?.(String(A.fen)); }catch{}
+      try{
+        const ply = (typeof A?.ply === "number") ? A.ply : parseInt(A?.ply,10) || 0;
+        g.ui = g.ui || {};
+        g.ui.ply = ply;
+      }catch{}
+    },
+
 
     /* ---------- Setup / reset / flip ---------- */
     "BOARD/FLIP": () => { RUNTIME.board.flip?.(); },
@@ -2285,11 +2297,12 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
   /* ----------------------------- CTX (controlled side effects) ----------------------------- */
   const CTX = Object.freeze({
-    g(){
-      return (STATE.activeGameId && RUNTIME.games.get(STATE.activeGameId)) ? RUNTIME.games.get(STATE.activeGameId) : RUNTIME.boot;
+    g(gameId=null){
+      const id = (gameId == null) ? STATE.activeGameId : String(gameId || "");
+      return (id && RUNTIME.games.get(id)) ? RUNTIME.games.get(id) : RUNTIME.boot;
     },
-    setActiveGameToBoard(){
-      const g = CTX.g();
+    setActiveGameToBoard(gameId=null){
+      const g = CTX.g(gameId);
       RUNTIME.board.setGame(g);
     },
     log(line){
@@ -2569,11 +2582,11 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       s.textContent = "(1… c5) Sicilian (synthetic)";
       r.appendChild(n); r.appendChild(s);
       r.addEventListener("click", () => {
-        STATE.ui.syntheticVarSelected = true;
-        // move board to a distinct FEN so tests can observe a jump
-        g.loadFEN?.("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2");
-        try{ g.ui = g.ui || {}; g.ui.ply = 2; }catch{}
-        render();
+        dispatch({
+          type:"SYNVAR/SELECT",
+          fen:"rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+          ply:2
+        });
       });
       moveListEl.appendChild(r);
     }
