@@ -656,12 +656,28 @@
     fen_test: "./pgn/default games.pgn",
     alignment_examples: "./pgn/alignment_examples.pgn",
   };
-  const PGN_MANIFEST = { Fischer: "./pgn/Fischer.pgn", 
-                         Karpov: "./pgn/Karpov.pgn" 
+  const PGN_MANIFEST = { Anand:  "./pgn/Anand.pgn",
+                         Capablanca: "./pgn/Capablanca.pgn",
+                         Carlsen: "./pgn/Carlsen.pgn",
+                         Fischer: "./pgn/Fischer.pgn", 
+                         Karpov: "./pgn/Karpov.pgn",
+                         Kasparov: "./pgn/Kasparov.pgn",
+                         Nakamura: "./pgn/Nakamura.pgn",
+                         Petrosian: "./pgn/Petrosian.pgn",
+                         Polgar: "./pgn/PolgarJ.pgn",
+                         Tal:       "./pgn/Tal.pgn"
                        };
   const PLAYER_IMAGE = {
     Fischer: "./third_party/images/fischer.jpeg",
     Karpov: "./third_party/images/karpov.jpg",
+    Anand:  "./third_party/images/anand.jpg",
+    Capablanca:  "./third_party/images/capablanca.jpeg",
+    Carlsen: "./third_party/images/carlsen.jpeg",
+    Polgar: "./third_party/images/jpolgar.jpeg",
+    Kasparov: "./third_party/images/kasparov.webp",
+    Nakamura: "./third_party/images/nakamura.jpg",
+    Petrosian: "./third_party/images/petrosian.jpg",
+    Tal: "./third_party/images/tal.jpg"
   };
   const PRIYOME_PGN_MANIFEST = { default: "./priyomes.md" };
 
@@ -708,6 +724,11 @@
     games: new Map(),   // id -> ScratchChess game instance
     board: null,        // BoardView
     boot: null,         // boot game
+
+    // Heavy, non-serializable caches (keep OUT of STATE for tab-switch performance)
+    playerPartsByKey: new Map(), // key -> [{i,pgn,h,title,white,black,event,date,opening}]
+    pgnCacheByKey: new Map(),    // key -> { url, parts:[...], ready:true } (manifest preload)
+    cqlById: new Map(),          // id  -> { pgn, h, sourceKey }
   };
 
   /* ----------------------------- RUNTIME side effects ----------------------------- */
@@ -760,7 +781,26 @@
           }catch{}
         }
 
-        dispatch({ type:"PLAYER/OK", key, url, parts });
+        // Store heavy PGN + parsed headers/openings in RUNTIME (NOT in STATE).
+        RUNTIME.playerPartsByKey.set(key, parts);
+
+        // Only send lightweight ids + metadata through the reducer.
+        const ids = parts.map(it => `player:${key}:${it.i}`);
+        const metaById = {};
+        for (const it of parts){
+          const id = `player:${key}:${it.i}`;
+          metaById[id] = {
+            id,
+            title: it.title,
+            opening: String(it.opening||""),
+            event: it.event||"",
+            date: it.date||"",
+            white: it.white||"",
+            black: it.black||""
+          };
+        }
+
+        dispatch({ type:"PLAYER/OK", key, url, ids, metaById });
       }catch(e){
         logStack("ERR", `Players load failed (${key}): `, e);
         dispatch({ type:"PLAYER/ERR", key, err:String(e?.message || e) });
@@ -789,12 +829,13 @@
         if (m){
           const key = m[1];
           const idx = parseInt(m[2],10) || 0;
-          src = STATE.players.cache?.[key]?.parts?.[idx] || STATE.pgnCache?.byKey?.[key]?.parts?.[idx] || null;
+          const arr = RUNTIME.playerPartsByKey.get(key);
+          src = (arr && arr[idx]) ? arr[idx] : null;
         }
 
         // cql game id
         if (!src && id.startsWith("cql:")){
-          src = STATE.cqlCache?.byId?.[id] || null;
+          src = RUNTIME.cqlById.get(id) || null;
         }
 
         // generic stored source
@@ -1001,7 +1042,18 @@
                   await Promise.allSettled(jobs);
                 }catch{}
               }
-              dispatch({ type:"CQL/OK", items, sourceKey });
+
+              // Store heavy PGNs in RUNTIME (NOT in STATE) so the app stays responsive after big queries.
+              try{
+                for (const it of items){
+                  if (!it || !it.id) continue;
+                  RUNTIME.cqlById.set(it.id, { pgn: it.pgn, h: it.h, sourceKey: String(sourceKey||"") });
+                }
+              }catch{}
+
+              // Send only lightweight results through the reducer.
+              const lite = items.map(it => ({ id: it.id, meta: it.meta }));
+              dispatch({ type:"CQL/OK", items: lite, sourceKey });
             }
           }catch(e){
             dispatch({ type:"CQL/ERR", err:String(e?.message || e) });
@@ -1035,14 +1087,7 @@
       gameIds: [],            // loaded game ids for selected player
       cache: {},             // key -> { gameIds:[...], loaded:true, count:n }
     },
-    pgnCache: {
-      // key -> { url, parts:[{i,pgn,h,title}], ready:true }
-      byKey: {},
-    },
-    cqlCache: {
-      // id -> { pgn, h }
-      byId: {},
-    },
+    // NOTE: heavy PGN + CQL caches live in RUNTIME (not STATE) to keep cloning/render fast.
     studies: [],          // [{id,name,games:[gameId]}]
     gamesMeta: {},        // gameId -> {id,title}
     activeStudyId: null,
@@ -1124,18 +1169,15 @@
     },
     "PLAYER/OK": (S,A) => {
       const key = String(A.key || "");
-      const parts = Array.isArray(A.parts) ? A.parts : [];
-
-      S.pgnCache = S.pgnCache || { byKey:{} };
-      S.pgnCache.byKey[key] = { url: String(A.url||""), parts, ready:true };
-
-      const ids = parts.map(it => `player:${key}:${it.i}`);
+      const ids = Array.isArray(A.ids) ? A.ids : [];
+      const metaById = (A.metaById && typeof A.metaById === "object") ? A.metaById : {};
       S.players.cache = S.players.cache || {};
-      S.players.cache[key] = { gameIds: ids.slice(), parts, ready:true };
+      S.players.cache[key] = { gameIds: ids.slice(), ready:true, url: String(A.url||"") };
 
-      for (const it of parts){
-        const id = `player:${key}:${it.i}`;
-        S.gamesMeta[id] = { id, title: it.title, opening: String(it.opening||""), event: it.event||"", date: it.date||"", white: it.white||"", black: it.black||"" };
+      // Fill lightweight metadata for list rendering.
+      for (const id of ids){
+        const m = metaById[id];
+        if (m) S.gamesMeta[id] = m;
       }
 
       S.status.playersByKey[key] = { state:"OK", err:"" };
@@ -1233,7 +1275,7 @@
       // Lazy instantiate ScratchChess game + loadPGN for CQL results on click (match Players).
       if (!RUNTIME.games.has(id) && id.startsWith("cql:")){
         try{
-          const it = S.cqlCache?.byId?.[id] || null;
+          const it = RUNTIME.cqlById.get(id) || null;
           if (it && it.pgn){
             const g = createGame(it.h || {});
             g.loadPGN?.(it.pgn);
@@ -1447,9 +1489,8 @@
 
       for (const it of items){
         const id = it.id;
-        S.cqlCache = S.cqlCache || { byId:{} };
-        S.cqlCache.byId[id] = { pgn: it.pgn, h: it.h };
-        S.gamesMeta[id] = it.meta;
+        if (!id) continue;
+        if (it.meta) S.gamesMeta[id] = it.meta;
       }
 
       ensureDefaultStudyIfMissing();
@@ -1824,7 +1865,7 @@
 
   async function preloadOneManifestPgn(key, url){
     if (!key || !url) return;
-    if (STATE.pgnCache?.byKey?.[key]?.ready) return;
+    if (RUNTIME.pgnCacheByKey.get(key)?.ready) return;
 
     const t0 = performance.now();
     logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch start key=${key} url=${url}`);
@@ -1852,24 +1893,26 @@
     const t3 = performance.now();
     logLine("DBG", `[${new Date().toISOString()}] PGN preload parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
 
-    // Store in global cache (headers+raw PGN only; do NOT create games / loadPGN here)
-    STATE.pgnCache = STATE.pgnCache || { byKey:{} };
-    STATE.pgnCache.byKey[key] = { url, parts: parsed, ready:true };
+    // Store heavy PGN + parsed headers in RUNTIME only.
+    RUNTIME.pgnCacheByKey.set(key, { url, parts: parsed, ready:true });
+    RUNTIME.playerPartsByKey.set(key, parsed.map(it => ({
+      i: it.i, pgn: it.pgn, h: it.h, title: it.title,
+      white: it.white, black: it.black, event: it.event, date: it.date,
+      opening: String(it.openingName||"")
+    })));
 
-    // Prime Players pane cache + game cards metadata (no runtime games yet)
-    const ids = [];
-    for (let j=0;j<parsed.length;j++){
-      const it = parsed[j];
+    // Prime Players pane cache + game cards metadata via reducer (lightweight only).
+    const ids = parsed.map(it => `player:${key}:${it.i}`);
+    const metaById = {};
+    for (const it of parsed){
       const id = `player:${key}:${it.i}`;
-      ids.push(id);
-      STATE.gamesMeta[id] = { id, title: it.title, opening: it.openingName || "", event: it.event || "", date: it.date || "", white: it.white || "", black: it.black || "" };
+      metaById[id] = { id, title: it.title, opening: String(it.openingName||""), event: it.event||"", date: it.date||"", white: it.white||"", black: it.black||"" };
     }
-    STATE.players = STATE.players || { cache:{} };
-    STATE.players.cache = STATE.players.cache || {};
-    STATE.players.cache[key] = { gameIds: ids.slice(), parts: parsed, ready:true };
+    dispatch({ type:"PLAYER/OK", key, url, ids, metaById });
 
     return parsed.length;
   }
+
 
   function preloadPgnManifestNonBlocking(){
     try{
