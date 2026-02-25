@@ -724,6 +724,11 @@
     games: new Map(),   // id -> ScratchChess game instance
     board: null,        // BoardView
     boot: null,         // boot game
+
+    // Heavy, non-serializable caches (keep OUT of STATE for tab-switch performance)
+    playerPartsByKey: new Map(), // key -> [{i,pgn,h,title,white,black,event,date,opening}]
+    pgnCacheByKey: new Map(),    // key -> { url, parts:[...], ready:true } (manifest preload)
+    cqlById: new Map(),          // id  -> { pgn, h, sourceKey }
   };
 
   /* ----------------------------- RUNTIME side effects ----------------------------- */
@@ -776,7 +781,26 @@
           }catch{}
         }
 
-        dispatch({ type:"PLAYER/OK", key, url, parts });
+        // Store heavy PGN + parsed headers/openings in RUNTIME (NOT in STATE).
+        RUNTIME.playerPartsByKey.set(key, parts);
+
+        // Only send lightweight ids + metadata through the reducer.
+        const ids = parts.map(it => `player:${key}:${it.i}`);
+        const metaById = {};
+        for (const it of parts){
+          const id = `player:${key}:${it.i}`;
+          metaById[id] = {
+            id,
+            title: it.title,
+            opening: String(it.opening||""),
+            event: it.event||"",
+            date: it.date||"",
+            white: it.white||"",
+            black: it.black||""
+          };
+        }
+
+        dispatch({ type:"PLAYER/OK", key, url, ids, metaById });
       }catch(e){
         logStack("ERR", `Players load failed (${key}): `, e);
         dispatch({ type:"PLAYER/ERR", key, err:String(e?.message || e) });
@@ -805,12 +829,13 @@
         if (m){
           const key = m[1];
           const idx = parseInt(m[2],10) || 0;
-          src = STATE.players.cache?.[key]?.parts?.[idx] || STATE.pgnCache?.byKey?.[key]?.parts?.[idx] || null;
+          const arr = RUNTIME.playerPartsByKey.get(key);
+          src = (arr && arr[idx]) ? arr[idx] : null;
         }
 
         // cql game id
         if (!src && id.startsWith("cql:")){
-          src = STATE.cqlCache?.byId?.[id] || null;
+          src = RUNTIME.cqlById.get(id) || null;
         }
 
         // generic stored source
@@ -1017,7 +1042,18 @@
                   await Promise.allSettled(jobs);
                 }catch{}
               }
-              dispatch({ type:"CQL/OK", items, sourceKey });
+
+              // Store heavy PGNs in RUNTIME (NOT in STATE) so the app stays responsive after big queries.
+              try{
+                for (const it of items){
+                  if (!it || !it.id) continue;
+                  RUNTIME.cqlById.set(it.id, { pgn: it.pgn, h: it.h, sourceKey: String(sourceKey||"") });
+                }
+              }catch{}
+
+              // Send only lightweight results through the reducer.
+              const lite = items.map(it => ({ id: it.id, meta: it.meta }));
+              dispatch({ type:"CQL/OK", items: lite, sourceKey });
             }
           }catch(e){
             dispatch({ type:"CQL/ERR", err:String(e?.message || e) });
@@ -1046,19 +1082,9 @@
       syntheticVarSelected: false,
     },
     players: {
-      mode: "grid",           // "grid" | "list"
       selectedKey: null,      // e.g. "Fischer"
-      gameIds: [],            // loaded game ids for selected player
-      cache: {},             // key -> { gameIds:[...], loaded:true, count:n }
     },
-    pgnCache: {
-      // key -> { url, parts:[{i,pgn,h,title}], ready:true }
-      byKey: {},
-    },
-    cqlCache: {
-      // id -> { pgn, h }
-      byId: {},
-    },
+    // NOTE: heavy PGN + CQL caches live in RUNTIME (not STATE) to keep cloning/render fast.
     studies: [],          // [{id,name,games:[gameId]}]
     gamesMeta: {},        // gameId -> {id,title}
     activeStudyId: null,
@@ -1086,6 +1112,15 @@
       cql: { state:"IDLE", text:"", err:"" },
     },
   };
+  /* ----------------------------- Debug hooks for STATE and RUNTIME ----------------------------- */
+  
+  if (typeof window !== "undefined") {
+  window.__appDebug = {
+    get STATE() { return STATE; },
+    get RUNTIME() { return RUNTIME; },
+    dispatch,
+  };
+}
 
   /* ----------------------------- Transition table (monolithic) ----------------------------- */
   const T = Object.freeze({
@@ -1101,10 +1136,7 @@
       S.ui.tab = "players";
     },
     "PLAYERS/BACK": (S) => {
-      S.players.mode = "grid";
       S.players.selectedKey = null;
-      S.players.gameIds = [];
-      // NOTE: do not clear S.players.cache; keep loaded games for session
     },
     "PLAYERS/SELECT": (S,A) => {
       const key = String(A.key || "");
@@ -1117,56 +1149,25 @@
         return;
       }
 
-      S.players.mode = "list";
       S.players.selectedKey = key;
 
-      // cache hit: keep games loaded & processed for this session
-      const cached = S.players.cache?.[key];
-      if (cached && Array.isArray(cached.gameIds) && cached.gameIds.length){
-        S.players.gameIds = cached.gameIds.slice();
-        return;
-      }
-      S.players.gameIds = [];
-      S.status.playersByKey[key] = { state:"LOADING", err:"" };
+      // Only show LOADING if selection happened during boot (opt-in via A.boot).
+      if (A && A.boot) S.status.playersByKey[key] = { state:"LOADING", err:"" };
     },
     "PLAYER/LOADING": (S,A) => {
       const key = String(A.key || "");
       if (!key) return;
-      S.status.playersByKey[key] = { state:"LOADING", err:"" };
-      if (S.players.selectedKey === key){
-        S.players.mode = "list";
-        S.players.gameIds = [];
-      }
+      // Only reflect LOADING in state if this was a boot-triggered selection.
+      if (A && A.boot) S.status.playersByKey[key] = { state:"LOADING", err:"" };
     },
     "PLAYER/OK": (S,A) => {
       const key = String(A.key || "");
-      const parts = Array.isArray(A.parts) ? A.parts : [];
-
-      S.pgnCache = S.pgnCache || { byKey:{} };
-      S.pgnCache.byKey[key] = { url: String(A.url||""), parts, ready:true };
-
-      const ids = parts.map(it => `player:${key}:${it.i}`);
-      S.players.cache = S.players.cache || {};
-      S.players.cache[key] = { gameIds: ids.slice(), parts, ready:true };
-
-      for (const it of parts){
-        const id = `player:${key}:${it.i}`;
-        S.gamesMeta[id] = { id, title: it.title, opening: String(it.opening||""), event: it.event||"", date: it.date||"", white: it.white||"", black: it.black||"" };
-      }
-
       S.status.playersByKey[key] = { state:"OK", err:"" };
-      if (S.players.selectedKey === key){
-        S.players.mode = "list";
-        S.players.gameIds = ids.slice();
-      }
     },
 
     "PLAYER/ERR": (S,A) => {
       const key = String(A.key || "");
       S.status.playersByKey[key] = { state:"ERR", err:String(A.err||"error") };
-      if (S.players.selectedKey === key){
-        S.players.gameIds = [];
-      }
       S.ui.tab = "errors";
     },
     "PLAYERS/GAME_SET": (S,A) => {
@@ -1175,6 +1176,28 @@
       if (!id) return;
       S.activeGameId = id;
       S.ui.syntheticVarSelected = false;
+
+      // Keep ONLY per-selected-game metadata in STATE; bulk player data stays in RUNTIME.
+      try{
+        const m = /^player:([^:]+):(\d+)$/.exec(id);
+        if (m){
+          const key = m[1];
+          const idx = parseInt(m[2],10) || 0;
+          const arr = RUNTIME.playerPartsByKey.get(key);
+          const it = (arr && arr[idx]) ? arr[idx] : null;
+          if (it){
+            S.gamesMeta[id] = {
+              id,
+              title: it.title || "",
+              opening: String(it.opening||""),
+              event: it.event||"",
+              date: it.date||"",
+              white: it.white||"",
+              black: it.black||""
+            };
+          }
+        }
+      }catch{}
     },
     "GAME/LOADING": (S,A) => {
       const id = String(A.id || "");
@@ -1249,7 +1272,7 @@
       // Lazy instantiate ScratchChess game + loadPGN for CQL results on click (match Players).
       if (!RUNTIME.games.has(id) && id.startsWith("cql:")){
         try{
-          const it = S.cqlCache?.byId?.[id] || null;
+          const it = RUNTIME.cqlById.get(id) || null;
           if (it && it.pgn){
             const g = createGame(it.h || {});
             g.loadPGN?.(it.pgn);
@@ -1463,9 +1486,8 @@
 
       for (const it of items){
         const id = it.id;
-        S.cqlCache = S.cqlCache || { byId:{} };
-        S.cqlCache.byId[id] = { pgn: it.pgn, h: it.h };
-        S.gamesMeta[id] = it.meta;
+        if (!id) continue;
+        if (it.meta) S.gamesMeta[id] = it.meta;
       }
 
       ensureDefaultStudyIfMissing();
@@ -1840,7 +1862,7 @@
 
   async function preloadOneManifestPgn(key, url){
     if (!key || !url) return;
-    if (STATE.pgnCache?.byKey?.[key]?.ready) return;
+    if (RUNTIME.pgnCacheByKey.get(key)?.ready) return;
 
     const t0 = performance.now();
     logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch start key=${key} url=${url}`);
@@ -1868,24 +1890,26 @@
     const t3 = performance.now();
     logLine("DBG", `[${new Date().toISOString()}] PGN preload parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
 
-    // Store in global cache (headers+raw PGN only; do NOT create games / loadPGN here)
-    STATE.pgnCache = STATE.pgnCache || { byKey:{} };
-    STATE.pgnCache.byKey[key] = { url, parts: parsed, ready:true };
+    // Store heavy PGN + parsed headers in RUNTIME only.
+    RUNTIME.pgnCacheByKey.set(key, { url, parts: parsed, ready:true });
+    RUNTIME.playerPartsByKey.set(key, parsed.map(it => ({
+      i: it.i, pgn: it.pgn, h: it.h, title: it.title,
+      white: it.white, black: it.black, event: it.event, date: it.date,
+      opening: String(it.openingName||"")
+    })));
 
-    // Prime Players pane cache + game cards metadata (no runtime games yet)
-    const ids = [];
-    for (let j=0;j<parsed.length;j++){
-      const it = parsed[j];
+    // Prime Players pane cache + game cards metadata via reducer (lightweight only).
+    const ids = parsed.map(it => `player:${key}:${it.i}`);
+    const metaById = {};
+    for (const it of parsed){
       const id = `player:${key}:${it.i}`;
-      ids.push(id);
-      STATE.gamesMeta[id] = { id, title: it.title, opening: it.openingName || "", event: it.event || "", date: it.date || "", white: it.white || "", black: it.black || "" };
+      metaById[id] = { id, title: it.title, opening: String(it.openingName||""), event: it.event||"", date: it.date||"", white: it.white||"", black: it.black||"" };
     }
-    STATE.players = STATE.players || { cache:{} };
-    STATE.players.cache = STATE.players.cache || {};
-    STATE.players.cache[key] = { gameIds: ids.slice(), parts: parsed, ready:true };
+    dispatch({ type:"PLAYER/OK", key, url, ids, metaById });
 
     return parsed.length;
   }
+
 
   function preloadPgnManifestNonBlocking(){
     try{
@@ -2700,7 +2724,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     const gamesWrap = $("playersGamesWrap");
     const gamesHost = $("playersGameList");
 
-    const mode = STATE.players.mode;
+    const mode = STATE.players.selectedKey ? "list" : "grid";
 
     pane.classList.toggle("listMode", mode === "list");
 
@@ -2740,34 +2764,34 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     // list mode
     const key = STATE.players.selectedKey || "—";
     if (title) title.textContent = key;
+    const parts = (key && RUNTIME.playerPartsByKey.get(key)) ? RUNTIME.playerPartsByKey.get(key) : [];
     if (hint){
       const st = STATE.status?.playersByKey?.[key];
       if (st?.state === "LOADING") hint.textContent = "LOADING…";
       else if (st?.state === "ERR") hint.textContent = `ERR: ${st.err || "error"}`;
-      else hint.textContent = `${STATE.players.gameIds.length} game(s)`;
+      else hint.textContent = `${parts.length} game(s)`;
     }
     if (gamesWrap) gamesWrap.style.display = "";
     if (grid) grid.innerHTML = "";
 
     if (gamesHost){
       gamesHost.innerHTML = "";
-      for (const id of (STATE.players.gameIds || [])){
-        const meta = STATE.gamesMeta[id];
-        if (!meta) continue;
+      for (let i=0;i<parts.length;i++){
+        const it = parts[i];
+        const id = `player:${key}:${it.i ?? i}`;
 
         const d = document.createElement("div");
         d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
 
-
-
         d.dataset.playerGameId = id;
-        const vs = formatVsLastNames(meta.white || "", meta.black || "");
-        const open = String(meta.opening || "").trim();
-        const evy  = formatEventYear(meta.event || "", meta.date || "");
-        d.innerHTML = `<div><b>${vs || meta.title || ""}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
+        const vs = formatVsLastNames(it.white || "", it.black || "");
+        const open = String(it.opening || "").trim();
+        const evy  = formatEventYear(it.event || "", it.date || "");
+        const fallbackTitle = String(it.title || "");
+        d.innerHTML = `<div><b>${vs || fallbackTitle || ""}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
         gamesHost.appendChild(d);
       }
-      if (!STATE.players.gameIds.length){
+      if (!parts.length){
         const st = STATE.status?.playersByKey?.[key];
         if (st?.state === "LOADING") gamesHost.innerHTML = `<div class="muted">LOADING…</div>`;
         else if (st?.state === "ERR") gamesHost.innerHTML = `<div class="muted">ERR: ${st.err || "error"}</div>`;
@@ -2779,6 +2803,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
     if (back) back.hidden = false;
   }
+
 
   /* ----------------------------- Parsing helpers (kept small & deterministic) ----------------------------- */
 
