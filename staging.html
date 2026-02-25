@@ -1226,7 +1226,7 @@
         S.ui.tab = "errors";
       }
     },
-    "GAME/SET": async (S,A) => {
+    "GAME/SET": (S,A) => {
       const id = String(A.id || "");
       if (!id) return;
 
@@ -1240,14 +1240,20 @@
             try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
             RUNTIME.games.set(id, g);
             attachOnChange(id, g);
-            // Ensure opening name comes from ScratchChess helper
+            // Ensure opening name is present (compute async so reducer stays sync).
             try{
               const meta = S.gamesMeta?.[id];
               if (meta && !String(meta.opening||"").trim()){
-                meta.opening = String(await sideGame.openingFromPGN(it.pgn) || "");
+                _idle(async ()=>{
+                  try{
+                    const op = await sideGame.openingFromPGN(it.pgn);
+                    dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
+                  }catch{}
+                });
               }
             }catch{}
           } else {
+
             logLine("WARN", `[${new Date().toISOString()}] CQL: missing cached PGN for id=${id}`);
           }
         }catch(e){
