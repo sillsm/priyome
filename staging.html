@@ -816,11 +816,19 @@
   RUNTIME.ensureGameLoaded = async function ensureGameLoaded(id){
     id = String(id||"");
     if (!id) return;
-    if (RUNTIME.games.has(id)) return RUNTIME.games.get(id);
+    if (RUNTIME.games.has(id)) {
+      const g = RUNTIME.games.get(id);
+      // Important: when switching back to a previously-loaded game, re-bind it to the board.
+      if (STATE.activeGameId === id){
+        RUNTIME.syncBoard(id);
+      }
+      return g;
+    }
     if (RUNTIME.gameLoads.has(id)) return RUNTIME.gameLoads.get(id);
 
     const p = (async ()=>{
       dispatch({ type:"GAME/LOADING", id });
+
       try{
         let src = null;
 
