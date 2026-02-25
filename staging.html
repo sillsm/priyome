@@ -743,23 +743,24 @@
           const event = (h.Event || "");
           const date  = (h.Date || "");
           const title = formatVsLastNames(white, black) || (event || `Game ${i+1}`);
-          parts.push({ i, pgn, h, title, white, black, event, date });
+          parts.push({ i, pgn, h, title, white, black, event, date, opening:"" });
         }
 
-        dispatch({ type:"PLAYER/OK", key, url, parts });
-        // Fill in opening names asynchronously (parallelized; avoids click-to-populate + much faster).
-        _idle(async ()=>{
+        // Compute openings up-front (parallel) so the list renders with openings immediately,
+        // and we avoid dispatching hundreds of GAME/OPENING_OK actions that can thrash render/scroll.
+        if (parts.length){
           try{
             const jobs = parts.map(async (it) => {
-              const id = `player:${key}:${it.i}`;
-              const meta = STATE.gamesMeta?.[id];
-              if (meta && String(meta.opening||"").trim()) return;
-              const op = await sideGame.openingFromPGN(it.pgn);
-              dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
+              try{
+                const op = await sideGame.openingFromPGN(it.pgn);
+                it.opening = String(op||"");
+              }catch{}
             });
             await Promise.allSettled(jobs);
           }catch{}
-        });
+        }
+
+        dispatch({ type:"PLAYER/OK", key, url, parts });
       }catch(e){
         logStack("ERR", `Players load failed (${key}): `, e);
         dispatch({ type:"PLAYER/ERR", key, err:String(e?.message || e) });
@@ -1134,7 +1135,7 @@
 
       for (const it of parts){
         const id = `player:${key}:${it.i}`;
-        S.gamesMeta[id] = { id, title: it.title, opening:"", event: it.event||"", date: it.date||"", white: it.white||"", black: it.black||"" };
+        S.gamesMeta[id] = { id, title: it.title, opening: String(it.opening||""), event: it.event||"", date: it.date||"", white: it.white||"", black: it.black||"" };
       }
 
       S.status.playersByKey[key] = { state:"OK", err:"" };
@@ -1143,6 +1144,7 @@
         S.players.gameIds = ids.slice();
       }
     },
+
     "PLAYER/ERR": (S,A) => {
       const key = String(A.key || "");
       S.status.playersByKey[key] = { state:"ERR", err:String(A.err||"error") };
