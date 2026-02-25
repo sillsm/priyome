@@ -747,19 +747,17 @@
         }
 
         dispatch({ type:"PLAYER/OK", key, url, parts });
-        // Fill in opening names asynchronously (so lists show openings without extra clicks).
+        // Fill in opening names asynchronously (parallelized; avoids click-to-populate + much faster).
         _idle(async ()=>{
           try{
-            for (const it of parts){
+            const jobs = parts.map(async (it) => {
               const id = `player:${key}:${it.i}`;
-              // Avoid recompute if already present.
               const meta = STATE.gamesMeta?.[id];
-              if (meta && String(meta.opening||"").trim()) continue;
-              try{
-                const op = await sideGame.openingFromPGN(it.pgn);
-                dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
-              }catch{}
-            }
+              if (meta && String(meta.opening||"").trim()) return;
+              const op = await sideGame.openingFromPGN(it.pgn);
+              dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
+            });
+            await Promise.allSettled(jobs);
           }catch{}
         });
       }catch(e){
@@ -970,7 +968,7 @@
       });
 
       await new Promise((resolve) => {
-        const unsub = job.subscribe((j) => {
+          const unsub = job.subscribe(async (j) => {
           const st = j.status ? j.status() : { busy:0, total:1 };
           dispatch({ type:"CQL/STATUS", text: `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "") });
 
@@ -992,21 +990,17 @@
               }
 
               const items = outPgnText && outPgnText.trim() ? prepareCqlItems(outPgnText, sourceKey) : [];
+              // Compute openings up-front (parallel) so result lists include opening names immediately.
+              if (items.length){
+                try{
+                  const jobs = items.map(async (it) => {
+                    const op = await sideGame.openingFromPGN(it.pgn);
+                    it.meta.opening = String(op||"");
+                  });
+                  await Promise.allSettled(jobs);
+                }catch{}
+              }
               dispatch({ type:"CQL/OK", items, sourceKey });
-                // Fill in openings asynchronously so result lists show openings immediately.
-                _idle(async ()=>{
-                  try{
-                    for (const it of items){
-                      const id = it.id;
-                      const meta = STATE.gamesMeta?.[id];
-                      if (meta && String(meta.opening||"").trim()) continue;
-                      try{
-                        const op = await sideGame.openingFromPGN(it.pgn);
-                        dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
-                      }catch{}
-                    }
-                  }catch{}
-                });
             }
           }catch(e){
             dispatch({ type:"CQL/ERR", err:String(e?.message || e) });
@@ -3147,10 +3141,10 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     }    
     if (t && t.id==="gameSelect"){
       dispatch({ type:"GAME/SET", id: t.value });
-      dispatch({ type:"GAME/SET", id: t.value });
       if (t.value) RUNTIME.ensureGameLoaded(t.value);
      }
   });
+
 </script>
 </body>
 </html>
