@@ -1082,10 +1082,7 @@
       syntheticVarSelected: false,
     },
     players: {
-      mode: "grid",           // "grid" | "list"
       selectedKey: null,      // e.g. "Fischer"
-      gameIds: [],            // loaded game ids for selected player
-      cache: {},             // key -> { gameIds:[...], loaded:true, count:n }
     },
     // NOTE: heavy PGN + CQL caches live in RUNTIME (not STATE) to keep cloning/render fast.
     studies: [],          // [{id,name,games:[gameId]}]
@@ -1139,10 +1136,7 @@
       S.ui.tab = "players";
     },
     "PLAYERS/BACK": (S) => {
-      S.players.mode = "grid";
       S.players.selectedKey = null;
-      S.players.gameIds = [];
-      // NOTE: do not clear S.players.cache; keep loaded games for session
     },
     "PLAYERS/SELECT": (S,A) => {
       const key = String(A.key || "");
@@ -1155,53 +1149,25 @@
         return;
       }
 
-      S.players.mode = "list";
       S.players.selectedKey = key;
 
-      // cache hit: keep games loaded & processed for this session
-      const cached = S.players.cache?.[key];
-      if (cached && Array.isArray(cached.gameIds) && cached.gameIds.length){
-        S.players.gameIds = cached.gameIds.slice();
-        return;
-      }
-      S.players.gameIds = [];
-      S.status.playersByKey[key] = { state:"LOADING", err:"" };
+      // Only show LOADING if selection happened during boot (opt-in via A.boot).
+      if (A && A.boot) S.status.playersByKey[key] = { state:"LOADING", err:"" };
     },
     "PLAYER/LOADING": (S,A) => {
       const key = String(A.key || "");
       if (!key) return;
-      S.status.playersByKey[key] = { state:"LOADING", err:"" };
-      if (S.players.selectedKey === key){
-        S.players.mode = "list";
-        S.players.gameIds = [];
-      }
+      // Only reflect LOADING in state if this was a boot-triggered selection.
+      if (A && A.boot) S.status.playersByKey[key] = { state:"LOADING", err:"" };
     },
     "PLAYER/OK": (S,A) => {
       const key = String(A.key || "");
-      const ids = Array.isArray(A.ids) ? A.ids : [];
-      const metaById = (A.metaById && typeof A.metaById === "object") ? A.metaById : {};
-      S.players.cache = S.players.cache || {};
-      S.players.cache[key] = { gameIds: ids.slice(), ready:true, url: String(A.url||"") };
-
-      // Fill lightweight metadata for list rendering.
-      for (const id of ids){
-        const m = metaById[id];
-        if (m) S.gamesMeta[id] = m;
-      }
-
       S.status.playersByKey[key] = { state:"OK", err:"" };
-      if (S.players.selectedKey === key){
-        S.players.mode = "list";
-        S.players.gameIds = ids.slice();
-      }
     },
 
     "PLAYER/ERR": (S,A) => {
       const key = String(A.key || "");
       S.status.playersByKey[key] = { state:"ERR", err:String(A.err||"error") };
-      if (S.players.selectedKey === key){
-        S.players.gameIds = [];
-      }
       S.ui.tab = "errors";
     },
     "PLAYERS/GAME_SET": (S,A) => {
@@ -1210,6 +1176,28 @@
       if (!id) return;
       S.activeGameId = id;
       S.ui.syntheticVarSelected = false;
+
+      // Keep ONLY per-selected-game metadata in STATE; bulk player data stays in RUNTIME.
+      try{
+        const m = /^player:([^:]+):(\d+)$/.exec(id);
+        if (m){
+          const key = m[1];
+          const idx = parseInt(m[2],10) || 0;
+          const arr = RUNTIME.playerPartsByKey.get(key);
+          const it = (arr && arr[idx]) ? arr[idx] : null;
+          if (it){
+            S.gamesMeta[id] = {
+              id,
+              title: it.title || "",
+              opening: String(it.opening||""),
+              event: it.event||"",
+              date: it.date||"",
+              white: it.white||"",
+              black: it.black||""
+            };
+          }
+        }
+      }catch{}
     },
     "GAME/LOADING": (S,A) => {
       const id = String(A.id || "");
@@ -2736,7 +2724,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     const gamesWrap = $("playersGamesWrap");
     const gamesHost = $("playersGameList");
 
-    const mode = STATE.players.mode;
+    const mode = STATE.players.selectedKey ? "list" : "grid";
 
     pane.classList.toggle("listMode", mode === "list");
 
@@ -2776,34 +2764,34 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     // list mode
     const key = STATE.players.selectedKey || "—";
     if (title) title.textContent = key;
+    const parts = (key && RUNTIME.playerPartsByKey.get(key)) ? RUNTIME.playerPartsByKey.get(key) : [];
     if (hint){
       const st = STATE.status?.playersByKey?.[key];
       if (st?.state === "LOADING") hint.textContent = "LOADING…";
       else if (st?.state === "ERR") hint.textContent = `ERR: ${st.err || "error"}`;
-      else hint.textContent = `${STATE.players.gameIds.length} game(s)`;
+      else hint.textContent = `${parts.length} game(s)`;
     }
     if (gamesWrap) gamesWrap.style.display = "";
     if (grid) grid.innerHTML = "";
 
     if (gamesHost){
       gamesHost.innerHTML = "";
-      for (const id of (STATE.players.gameIds || [])){
-        const meta = STATE.gamesMeta[id];
-        if (!meta) continue;
+      for (let i=0;i<parts.length;i++){
+        const it = parts[i];
+        const id = `player:${key}:${it.i ?? i}`;
 
         const d = document.createElement("div");
         d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
 
-
-
         d.dataset.playerGameId = id;
-        const vs = formatVsLastNames(meta.white || "", meta.black || "");
-        const open = String(meta.opening || "").trim();
-        const evy  = formatEventYear(meta.event || "", meta.date || "");
-        d.innerHTML = `<div><b>${vs || meta.title || ""}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
+        const vs = formatVsLastNames(it.white || "", it.black || "");
+        const open = String(it.opening || "").trim();
+        const evy  = formatEventYear(it.event || "", it.date || "");
+        const fallbackTitle = String(it.title || "");
+        d.innerHTML = `<div><b>${vs || fallbackTitle || ""}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
         gamesHost.appendChild(d);
       }
-      if (!STATE.players.gameIds.length){
+      if (!parts.length){
         const st = STATE.status?.playersByKey?.[key];
         if (st?.state === "LOADING") gamesHost.innerHTML = `<div class="muted">LOADING…</div>`;
         else if (st?.state === "ERR") gamesHost.innerHTML = `<div class="muted">ERR: ${st.err || "error"}</div>`;
@@ -2815,6 +2803,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
     if (back) back.hidden = false;
   }
+
 
   /* ----------------------------- Parsing helpers (kept small & deterministic) ----------------------------- */
 
