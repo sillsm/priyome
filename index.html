@@ -729,6 +729,15 @@
     playerPartsByKey: new Map(), // key -> [{i,pgn,h,title,white,black,event,date,opening}]
     pgnCacheByKey: new Map(),    // key -> { url, parts:[...], ready:true } (manifest preload)
     cqlById: new Map(),          // id  -> { pgn, h, sourceKey }
+
+    // Players pane DOM cache (avoid rebuilding huge lists on every tab switch)
+    playersDomCache: {
+      key: "",
+      len: 0,
+      lastActiveId: "",
+      nodesById: new Map(), // id -> element
+      host: null,
+    },
   };
 
   /* ----------------------------- RUNTIME side effects ----------------------------- */
@@ -816,11 +825,19 @@
   RUNTIME.ensureGameLoaded = async function ensureGameLoaded(id){
     id = String(id||"");
     if (!id) return;
-    if (RUNTIME.games.has(id)) return RUNTIME.games.get(id);
+    if (RUNTIME.games.has(id)) {
+      const g = RUNTIME.games.get(id);
+      // Important: when switching back to a previously-loaded game, re-bind it to the board.
+      if (STATE.activeGameId === id){
+        RUNTIME.syncBoard(id);
+      }
+      return g;
+    }
     if (RUNTIME.gameLoads.has(id)) return RUNTIME.gameLoads.get(id);
 
     const p = (async ()=>{
       dispatch({ type:"GAME/LOADING", id });
+
       try{
         let src = null;
 
@@ -2775,22 +2792,48 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     if (grid) grid.innerHTML = "";
 
     if (gamesHost){
-      gamesHost.innerHTML = "";
-      for (let i=0;i<parts.length;i++){
-        const it = parts[i];
-        const id = `player:${key}:${it.i ?? i}`;
+      const cache = RUNTIME.playersDomCache || (RUNTIME.playersDomCache = { key:"", len:0, lastActiveId:"", nodesById:new Map(), host:null });
+      const sameList = (cache.host === gamesHost && cache.key === key && cache.len === parts.length && parts.length > 0);
 
-        const d = document.createElement("div");
-        d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+      if (!sameList){
+        gamesHost.innerHTML = "";
+        cache.nodesById = new Map();
+        cache.host = gamesHost;
+        cache.key = key;
+        cache.len = parts.length;
+        cache.lastActiveId = "";
 
-        d.dataset.playerGameId = id;
-        const vs = formatVsLastNames(it.white || "", it.black || "");
-        const open = String(it.opening || "").trim();
-        const evy  = formatEventYear(it.event || "", it.date || "");
-        const fallbackTitle = String(it.title || "");
-        d.innerHTML = `<div><b>${vs || fallbackTitle || ""}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
-        gamesHost.appendChild(d);
+        for (let i=0;i<parts.length;i++){
+          const it = parts[i];
+          const id = `player:${key}:${it.i ?? i}`;
+
+          const d = document.createElement("div");
+          d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+
+          d.dataset.playerGameId = id;
+          const vs = formatVsLastNames(it.white || "", it.black || "");
+          const open = String(it.opening || "").trim();
+          const evy  = formatEventYear(it.event || "", it.date || "");
+          const fallbackTitle = String(it.title || "");
+          d.innerHTML = `<div><b>${vs || fallbackTitle || ""}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
+          gamesHost.appendChild(d);
+          cache.nodesById.set(id, d);
+        }
       }
+
+      // Always keep the "active" highlight in sync without rebuilding the list.
+      try{
+        const prev = cache.lastActiveId;
+        const next = String(STATE.activeGameId || "");
+        if (prev !== next){
+          const a = cache.nodesById.get(prev);
+          const b = cache.nodesById.get(next);
+          if (a) a.classList.remove("active");
+          if (b) b.classList.add("active");
+          cache.lastActiveId = next;
+        }
+      }catch{}
+
       if (!parts.length){
         const st = STATE.status?.playersByKey?.[key];
         if (st?.state === "LOADING") gamesHost.innerHTML = `<div class="muted">LOADING…</div>`;
@@ -2800,6 +2843,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
 
     }
+
 
     if (back) back.hidden = false;
   }
