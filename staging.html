@@ -267,6 +267,26 @@
     border-left:2px solid rgba(15,23,42,.10);
   }
 
+  #pane-openings .openMiniWrap{
+    border:1px solid rgba(15,23,42,.08);
+    border-radius:12px;
+    overflow:hidden;
+    background:#fff;
+    margin-top:6px;
+  }
+  #pane-openings .openMini{
+    width:100%;
+    height:115px;
+  }
+  #pane-openings .openMoves{
+    font-size:11px;
+    color:var(--muted);
+    font-family:var(--mono);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
   .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
   .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
   .toolRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -2991,7 +3011,13 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       backBtn.textContent = showAll ? "Filtered" : "All";
       backBtn.style.opacity = (showAll || hasPrefix) ? "1" : "0";
       backBtn.style.pointerEvents = (showAll || hasPrefix) ? "auto" : "none";
-      backBtn.onclick = () => dispatch({ type: showAll ? "OPENINGS/SHOW_FILTERED" : "OPENINGS/SHOW_ALL" });
+      backBtn.onclick = () => {
+        if (hasPrefix){
+          dispatch({ type:"OPENINGS/BOARD_PREFIX", sig:"", text:"(start position)" });
+        } else {
+          dispatch({ type: showAll ? "OPENINGS/SHOW_FILTERED" : "OPENINGS/SHOW_ALL" });
+        }
+      };
     }
 
     const cacheKey = `${showAll ? "ALL" : "FILTER"}|${sig}|${expanded}`;
@@ -3010,6 +3036,34 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
       const prefixTokens = curSig ? curSig.split("\u001f").filter(Boolean) : [];
       const visible = curShowAll ? entries : entries.filter(e => isPrefixMatch(prefixTokens, e.tokens));
+
+      const movesTextFromTokens = (tokens, limit=16) => {
+        const a = (tokens || []).slice(0, limit).join(" ").trim();
+        const more = (tokens && tokens.length > limit) ? " …" : "";
+        return (a + more).trim();
+      };
+      const commonPrefixTokens = (items) => {
+        if (!items || !items.length) return [];
+        let pref = (items[0].tokens || []).slice();
+        for (let i=1;i<items.length;i++){
+          const t = items[i].tokens || [];
+          let j=0;
+          for (; j<pref.length && j<t.length; j++){
+            if (String(pref[j]) !== String(t[j])) break;
+          }
+          pref = pref.slice(0, j);
+          if (!pref.length) break;
+        }
+        return pref;
+      };
+      const setMiniBoard = (el, pgn) => {
+        try{
+          const gMini = createGame(parseHeaders(pgn));
+          gMini.loadPGN?.(pgn);
+          gMini.toggleMini?.(true);
+          new BoardView(el, gMini, { minSizePx: 90 });
+        }catch(e){}
+      };
 
       host.innerHTML = "";
       const groups = new Map();
@@ -3046,16 +3100,19 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
           const card = document.createElement("div");
           card.className = "openCard";
-          card.innerHTML = `<div class="openTitle"></div><div class="openSub"></div>`;
+          card.innerHTML = `<div class="openTitle"></div><div class="openSub"></div><div class="openMoves"></div><div class="openMiniWrap"><div class="openMini"></div></div>`;
           card.querySelector(".openTitle").textContent = pk;
+
+          const prefToks = commonPrefixTokens(kids);
+          const prefSig = prefToks.join("\u001f");
           card.querySelector(".openSub").textContent = `${kids.length} line${kids.length===1?"":"s"} • ${parent.eco || ""}`;
+          card.querySelector(".openMoves").textContent = prefToks.length ? movesTextFromTokens(prefToks) : "(start position)";
+
+          const miniEl = card.querySelector(".openMini");
+          setMiniBoard(miniEl, parent.pgn);
+
           card.addEventListener("click", () => {
-            if (kids.length <= 1){
-              dispatch({ type:"OPENINGS/LOAD_PGN", title: parent.name, pgn: parent.pgn });
-              try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
-            } else {
-              dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
-            }
+            dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: prefSig, text: prefToks.length ? movesTextFromTokens(prefToks, 24) : "(start position)" });
           });
           host.appendChild(card);
 
@@ -3063,17 +3120,24 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
             for (const child of kids){
               const c = document.createElement("div");
               c.className = "openCard openChild";
-              c.innerHTML = `<div class="openTitle"></div><div class="openSub"></div>`;
+              c.innerHTML = `<div class="openTitle"></div><div class="openSub"></div><div class="openMoves"></div><div class="openMiniWrap"><div class="openMini"></div></div>`;
               c.querySelector(".openTitle").textContent = child.name;
               c.querySelector(".openSub").textContent = child.eco || "";
+
+              const childSig = (child.tokens || []).join("\u001f");
+              c.querySelector(".openMoves").textContent = movesTextFromTokens(child.tokens);
+
+              const miniEl = c.querySelector(".openMini");
+              setMiniBoard(miniEl, child.pgn);
+
               c.addEventListener("click", (ev) => {
                 ev.stopPropagation();
-                dispatch({ type:"OPENINGS/LOAD_PGN", title: child.name, pgn: child.pgn });
-                try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
+                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: childSig, text: movesTextFromTokens(child.tokens, 24) });
               });
               host.appendChild(c);
             }
           }
+
         }
       }
 
