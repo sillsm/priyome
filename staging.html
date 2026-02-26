@@ -836,6 +836,7 @@
       loadPromise: null,
       entries: [], // [{eco,name,pgn,tokens,parentKey}]
       domCache: { sig: "", host: null },
+      minis: new Map(),
     },
   };
 
@@ -3056,14 +3057,33 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
         }
         return pref;
       };
-      const setMiniBoard = (el, pgn) => {
+      const setMiniBoard = (el, sigKey, pgn) => {
+        // Cache mini board DOM + ScratchChess objects by opening id (sigKey).
+        // This avoids recreating 1000+ Game/BoardView instances on every render.
+        const k = String(sigKey || "");
+        if (k && RUNTIME.openings && RUNTIME.openings.minis && RUNTIME.openings.minis.has(k)) {
+          const cached = RUNTIME.openings.minis.get(k);
+          el.innerHTML = "";
+          el.appendChild(cached.root);
+          if (cached.view && typeof cached.view.resize === "function") cached.view.resize();
+          return;
+        }
+
         try{
+          const root = document.createElement("div");
           const gMini = createGame(parseHeaders(pgn));
           gMini.loadPGN?.(pgn);
           gMini.toggleMini?.(true);
-          new BoardView(el, gMini, { minSizePx: 90 });
+          const view = new BoardView(root, gMini, { minSizePx: 90 });
+          if (k && RUNTIME.openings && RUNTIME.openings.minis) {
+            RUNTIME.openings.minis.set(k, { root, view });
+          }
+          el.innerHTML = "";
+          el.appendChild(root);
         }catch(e){}
       };
+
+
 
       host.innerHTML = "";
       const groups = new Map();
@@ -3109,7 +3129,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
           card.querySelector(".openMoves").textContent = prefToks.length ? movesTextFromTokens(prefToks) : "(start position)";
 
           const miniEl = card.querySelector(".openMini");
-          setMiniBoard(miniEl, parent.pgn);
+          setMiniBoard(miniEl, prefSig, parent.pgn);
 
           card.addEventListener("click", () => {
             dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: prefSig, text: prefToks.length ? movesTextFromTokens(prefToks, 24) : "(start position)" });
@@ -3128,7 +3148,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
               c.querySelector(".openMoves").textContent = movesTextFromTokens(child.tokens);
 
               const miniEl = c.querySelector(".openMini");
-              setMiniBoard(miniEl, child.pgn);
+              setMiniBoard(miniEl, childSig, child.pgn);
 
               c.addEventListener("click", (ev) => {
                 ev.stopPropagation();
