@@ -208,6 +208,65 @@
   #pane-players.listMode:hover .playersBack{
     opacity:1;
   }
+
+  /* --- Openings pane --- */
+  #pane-openings .openingsTop{
+    position:sticky;
+    top:0;
+    background:linear-gradient(180deg,#fff,#fbfcff);
+    border-bottom:1px solid var(--border);
+    padding:10px 10px;
+    z-index:2;
+  }
+  #pane-openings .openingsTop .row{ justify-content:space-between; }
+  #pane-openings .openingsPrefix{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--muted);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:100%;
+  }
+  #pane-openings .openingsBack{
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:999px;
+    padding:6px 10px;
+    cursor:pointer;
+    box-shadow: 0 10px 20px rgba(15,23,42,.10);
+  }
+  #pane-openings .openGroupTitle{
+    margin:12px 2px 6px;
+    font-weight:900;
+    font-size:12px;
+    letter-spacing:.2px;
+  }
+  #pane-openings .openGroupRule{
+    height:2px;
+    background:var(--border);
+    border-radius:999px;
+    margin:0 2px 10px;
+  }
+  #pane-openings .openCard{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 10px;
+    cursor:pointer;
+    background:#fff;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  #pane-openings .openCard:hover{ background:#f7f9ff; }
+  #pane-openings .openTitle{ font-weight:900; font-size:13px; }
+  #pane-openings .openSub{ font-size:12px; color:var(--muted); }
+  #pane-openings .openChild{
+    margin-left:14px;
+    padding-left:10px;
+    border-left:2px solid rgba(15,23,42,.10);
+  }
+
   .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
   .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
   .toolRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -455,6 +514,7 @@
       <button class="tabBtn active" data-tab="moves">Moves</button>
       <button class="tabBtn" data-tab="games">Games</button>
       <button class="tabBtn" data-tab="priyomes">Priyomes</button>
+      <button class="tabBtn" data-tab="openings">Openings</button>
       <button class="tabBtn" data-tab="query">Query</button>
       <button class="tabBtn" data-tab="evals">Evals</button>
       <button class="tabBtn" data-tab="players">Players</button>
@@ -532,6 +592,18 @@
         <span class="pill">Active: <b id="activePriyome">—</b></span>
       </div>
       <div class="list" id="priyomeList"></div>
+    </div>
+
+
+    <div class="pane" id="pane-openings">
+      <div class="openingsTop">
+        <div class="row" style="gap:8px; align-items:center">
+          <div class="label">Openings</div>
+          <button class="openingsBack" id="openingsBack" type="button" title="Show all openings">All</button>
+        </div>
+        <div class="openingsPrefix" id="openingsPrefix">(start position)</div>
+      </div>
+      <div class="list" id="openingsList"></div>
     </div>
 
     <div class="pane" id="pane-query">
@@ -737,6 +809,13 @@
       lastActiveId: "",
       nodesById: new Map(), // id -> element
       host: null,
+    },
+
+    openings: {
+      loaded: false,
+      loadPromise: null,
+      entries: [], // [{eco,name,pgn,tokens,parentKey}]
+      domCache: { sig: "", host: null },
     },
   };
 
@@ -1101,6 +1180,12 @@
     players: {
       selectedKey: null,      // e.g. "Fischer"
     },
+    openings: {
+      showAll: false,
+      prefixSig: "",
+      prefixText: "(start position)",
+      expandedParent: "",
+    },
     // NOTE: heavy PGN + CQL caches live in RUNTIME (not STATE) to keep cloning/render fast.
     studies: [],          // [{id,name,games:[gameId]}]
     gamesMeta: {},        // gameId -> {id,title}
@@ -1147,6 +1232,39 @@
     },
     "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
     "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
+
+     "OPENINGS/OPEN": (S) => { S.ui.tab = "openings"; },
+    "OPENINGS/SHOW_ALL": (S) => { S.openings.showAll = true; },
+    "OPENINGS/SHOW_FILTERED": (S) => { S.openings.showAll = false; },
+    "OPENINGS/BOARD_PREFIX": (S,A) => {
+      const sig = String(A.sig || "");
+     const text = String(A.text || "(start position)");
+      const changed = (sig !== String(S.openings.prefixSig || ""));
+      S.openings.prefixSig = sig;
+      S.openings.prefixText = text;
+      if (changed){
+        S.openings.showAll = false;
+        S.openings.expandedParent = "";
+      }
+  },
+    "OPENINGS/EXPAND": (S,A) => {
+      const k = String(A.parentKey || "");
+      if (!k) return;
+      S.openings.expandedParent = (S.openings.expandedParent === k) ? "" : k;
+    },
+    "OPENINGS/LOAD_PGN": (S,A) => {
+      const pgn = String(A.pgn || "");
+      if (!pgn) return;
+      const title = String(A.title || "Opening");
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
+      g.loadPGN?.(pgn);
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      T["GAME/ADD"](S, { id, title });
+      S.activeGameId = id;
+      S.ui.tab = "moves";
+    },
 
     /* ---------- Players ---------- */
     "PLAYERS/OPEN": (S) => {
@@ -1673,6 +1791,9 @@
 
     // evals list
     renderEvalsLists();  // same
+
+     // openings
+    renderOpeningsPane();
 
     // players
     renderPlayersPane();
@@ -2729,9 +2850,247 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     }
   }
 
-  function renderPlayersPane(){
+  /* ----------------------------- Openings pane ----------------------------- */
+  const ECO_GROUPS = [
+    { key:"A00-A39", title:"A00–A39 Flank openings", re:/^A(0[0-9]|[12][0-9]|3[0-9])$/ },
+    { key:"A40-A99", title:"A40–A99 1.d4/1.c4/1.Nf3 systems", re:/^A([4-9][0-9])$/ },
+    { key:"B00-B99", title:"B00–B99 Semi-open games (except French)", re:/^B([0-9]{2})$/ },
+    { key:"C00-C19", title:"C00–C19 French Defence", re:/^C(0[0-9]|1[0-9])$/ },
+    { key:"C20-C99", title:"C20–C99 Open games", re:/^C([2-9][0-9])$/ },
+    { key:"D00-D69", title:"D00–D69 Closed & semi-closed games", re:/^D(0[0-9]|[1-5][0-9]|6[0-9])$/ },
+    { key:"D70-D99", title:"D70–D99 Neo-Indian defences", re:/^D(7[0-9]|8[0-9]|9[0-9])$/ },
+    { key:"E00-E99", title:"E00–E99 Indian defences", re:/^E([0-9]{2})$/ },
+  ];
+
+  function ecoGroupFor(eco){
+    const e = String(eco||"").trim().toUpperCase();
+    for (const g of ECO_GROUPS){ if (g.re.test(e)) return g; }
+    const L = e[0] || "?";
+    return { key:L, title:`${L} (Other)`, re:/.*/ };
+  }
+
+  function sanitizePgnLike(txt){
+    let s = String(txt||"");
+    s = s.replace(/\[[^\]]*\]\s*/g, " ");
+    s = s.replace(/\{[^}]*\}/g, " ").replace(/;[^\n]*/g, " ");
+    s = s.replace(/\([^\)]*\)/g, " ");
+    s = s.replace(/\$\d+/g, " ");
+    return s;
+  }
+  function sanTokensFromPgnLike(txt){
+    const s = sanitizePgnLike(txt);
+    const raw = s.split(/\s+/).filter(Boolean);
+    const out = [];
+    for (let t of raw){
+      if (/^\d+\.(\.\.)?$/.test(t)) continue;
+      if (t === "*" || t === "1-0" || t === "0-1" || t === "1/2-1/2") continue;
+      t = t.replace(/^\d+\.\.\./, "").replace(/^\d+\./, "");
+      if (!t) continue;
+      out.push(t);
+    }
+    return out;
+  }
+  function tokensSig(tokens){
+    return tokens.map(x=>String(x||"").trim()).filter(Boolean).join("\u001f");
+  }
+  function tokensToPrefixText(tokens){
+    const out = [];
+    for (let i=0;i<tokens.length;i++){
+      const mn = Math.floor(i/2)+1;
+      if (i%2===0) out.push(`${mn}. ${tokens[i]}`);
+      else out.push(tokens[i]);
+    }
+    return out.join(" ").trim();
+  }
+  function getCurrentPrefixInfo(g){
+    try{
+      const toks = [];
+      let n = g?.curNode;
+      while (n && n !== g.root){
+        const san = nodeSan(n);
+        if (san) toks.push(san);
+        n = n.parent;
+      }
+      toks.reverse();
+      const sig = tokensSig(toks);
+      const text = toks.length ? tokensToPrefixText(toks) : "(start position)";
+      return { tokens:toks, sig, text };
+    }catch{
+      return { tokens:[], sig:"", text:"(start position)" };
+    }
+  }
+  async function ensureOpeningsLoaded(){
+    const O = RUNTIME.openings;
+    if (O.loaded && Array.isArray(O.entries) && O.entries.length) return O.entries;
+    if (O.loadPromise) return O.loadPromise;
+
+    O.loadPromise = (async ()=>{
+      const baseDir = "./third_party/liopenings";
+      const letters = ["a","b","c","d","e"];
+      const all = [];
+
+      for (const L of letters){
+        const url = `${baseDir}/${L}.tsv`;
+        const r = await fetch(url, { cache:"no-store" });
+        if (!r.ok) throw new Error(`Openings: HTTP ${r.status} loading ${url}`);
+        const t = await r.text();
+        const lines = t.split(/\r?\n/).filter(Boolean);
+        const start = (lines[0] && lines[0].toLowerCase().includes("eco")) ? 1 : 0;
+        for (let i=start;i<lines.length;i++){
+          const parts = lines[i].split("\t");
+          if (parts.length < 3) continue;
+          const eco = String(parts[0]||"").trim();
+          const name = String(parts[1]||"").trim();
+          const pgn = parts.slice(2).join("\t").trim();
+          if (!eco || !name || !pgn) continue;
+          const tokens = sanTokensFromPgnLike(pgn);
+          if (!tokens.length) continue;
+          const parentKey = String(name.split(",")[0] || name).trim();
+          all.push({ eco, name, pgn, tokens, parentKey });
+        }
+      }
+      all.sort((a,b) => (a.eco||"").localeCompare(b.eco||"") || (a.name||"").localeCompare(b.name||""));
+      O.entries = all;
+      O.loaded = true;
+      return all;
+    })().catch((e)=>{
+      logLine("ERR", "Openings load failed: " + String(e?.message || e));
+      O.entries = [];
+      O.loaded = true;
+      return [];
+    });
+
+    return O.loadPromise;
+  }
+  function isPrefixMatch(prefixTokens, entryTokens){
+    if (!prefixTokens || !prefixTokens.length) return true;
+    if (!entryTokens || entryTokens.length < prefixTokens.length) return false;
+    for (let i=0;i<prefixTokens.length;i++){
+      if (String(entryTokens[i]) !== String(prefixTokens[i])) return false;
+    }
+    return true;
+  }
+
+  function renderOpeningsPane(){
+    const pane = $("pane-openings");
+    if (!pane) return;
+    const host = $("openingsList");
+    const prefixEl = $("openingsPrefix");
+    const backBtn = $("openingsBack");
+    if (!host) return;
+
+    const showAll = !!STATE.openings?.showAll;
+    const sig = String(STATE.openings?.prefixSig || "");
+    const expanded = String(STATE.openings?.expandedParent || "");
+    const prefixText = String(STATE.openings?.prefixText || "(start position)");
+
+    if (prefixEl) prefixEl.textContent = prefixText;
+
+    if (backBtn){
+      const hasPrefix = !!sig;
+      backBtn.textContent = showAll ? "Filtered" : "All";
+      backBtn.style.opacity = (showAll || hasPrefix) ? "1" : "0";
+      backBtn.style.pointerEvents = (showAll || hasPrefix) ? "auto" : "none";
+      backBtn.onclick = () => dispatch({ type: showAll ? "OPENINGS/SHOW_FILTERED" : "OPENINGS/SHOW_ALL" });
+    }
+
+    const cacheKey = `${showAll ? "ALL" : "FILTER"}|${sig}|${expanded}`;
+    if (RUNTIME.openings.domCache.host === host && RUNTIME.openings.domCache.sig === cacheKey) return;
+
+    RUNTIME.openings.domCache.host = host;
+    RUNTIME.openings.domCache.sig = cacheKey;
+    host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">Loading openings…</div>";
+
+    ensureOpeningsLoaded().then((entries)=>{
+      const curShowAll = !!STATE.openings?.showAll;
+      const curSig = String(STATE.openings?.prefixSig || "");
+      const curExpanded = String(STATE.openings?.expandedParent || "");
+      const curKey = `${curShowAll ? "ALL" : "FILTER"}|${curSig}|${curExpanded}`;
+      if (RUNTIME.openings.domCache.sig !== curKey) return;
+
+      const prefixTokens = curSig ? curSig.split("\u001f").filter(Boolean) : [];
+      const visible = curShowAll ? entries : entries.filter(e => isPrefixMatch(prefixTokens, e.tokens));
+
+      host.innerHTML = "";
+      const groups = new Map();
+      for (const e of visible){
+        const g = ecoGroupFor(e.eco);
+        if (!groups.has(g.key)) groups.set(g.key, { title:g.title, items:[] });
+        groups.get(g.key).items.push(e);
+      }
+
+      for (const g of ECO_GROUPS){
+        const bucket = groups.get(g.key);
+        if (!bucket || !bucket.items.length) continue;
+
+        const h = document.createElement("div");
+        h.className = "openGroupTitle";
+        h.textContent = bucket.title;
+        host.appendChild(h);
+
+        const rule = document.createElement("div");
+        rule.className = "openGroupRule";
+        host.appendChild(rule);
+
+        const byParent = new Map();
+        for (const it of bucket.items){
+          const k = it.parentKey || it.name;
+          if (!byParent.has(k)) byParent.set(k, []);
+          byParent.get(k).push(it);
+        }
+
+        const parents = Array.from(byParent.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+        for (const pk of parents){
+          const kids = byParent.get(pk) || [];
+          const parent = kids[0];
+
+          const card = document.createElement("div");
+          card.className = "openCard";
+          card.innerHTML = `<div class="openTitle"></div><div class="openSub"></div>`;
+          card.querySelector(".openTitle").textContent = pk;
+          card.querySelector(".openSub").textContent = `${kids.length} line${kids.length===1?"":"s"} • ${parent.eco || ""}`;
+          card.addEventListener("click", () => {
+            if (kids.length <= 1){
+              dispatch({ type:"OPENINGS/LOAD_PGN", title: parent.name, pgn: parent.pgn });
+              try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
+            } else {
+              dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
+            }
+          });
+          host.appendChild(card);
+
+          if (kids.length > 1 && String(curExpanded) === String(pk)){
+            for (const child of kids){
+              const c = document.createElement("div");
+              c.className = "openCard openChild";
+              c.innerHTML = `<div class="openTitle"></div><div class="openSub"></div>`;
+              c.querySelector(".openTitle").textContent = child.name;
+              c.querySelector(".openSub").textContent = child.eco || "";
+              c.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                dispatch({ type:"OPENINGS/LOAD_PGN", title: child.name, pgn: child.pgn });
+                try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
+              });
+              host.appendChild(c);
+            }
+          }
+        }
+      }
+
+      if (!visible.length){
+        host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">No openings match this position prefix.</div>";
+      }
+    }).catch(()=>{});
+  }
+
+function renderPlayersPane(){
     const pane = $("pane-players");
     if (!pane) return;
+
+
+
+
+
 
     const title = $("playersTitle");
     const hint  = $("playersHint");
@@ -2883,14 +3242,27 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
   }
 
-  function attachOnChange(id, g){
-    try{
-      g?.onChange?.(() => {
-        // only render if this is active (or if nothing selected yet)
-        if (!STATE.activeGameId || STATE.activeGameId === id) render();
-      });
-    }catch{}
-  }
+ function attachOnChange(id, g){
+     try{
+       g?.onChange?.(() => {
+         // only render if this is active (or if nothing selected yet)
+        if (!STATE.activeGameId || STATE.activeGameId === id){
+          try{
+            const pref = getCurrentPrefixInfo(g);
+            if (pref){
+              const prevSig = String(STATE.openings?.prefixSig || "");
+              const prevTxt = String(STATE.openings?.prefixText || "");
+              if (pref.sig !== prevSig || pref.text !== prevTxt){
+                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: pref.sig, text: pref.text });
+                return; // dispatch triggers render
+              }
+            }
+          }catch{}
+          render();
+        }
+       });
+     }catch{}
+   }
 
   function makeGameFromFEN(title, fen){
     const id = nowId();
