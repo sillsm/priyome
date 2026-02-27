@@ -253,6 +253,10 @@
     border-radius:12px;
     padding:10px 10px;
     cursor:pointer;
+  /* Big list performance: skip rendering offscreen opening cards */
+  content-visibility:auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 180px 120px;
     background:#fff;
     display:flex;
     flex-direction:column;
@@ -1249,7 +1253,14 @@
   const T = Object.freeze({
     /* ---------- UI ---------- */
     "UI/TAB": (S,A) => {
-      S.ui.tab = A.tab;
+      const tab = String(A.tab || "moves");
+      S.ui.tab = tab;
+      // When entering Openings, optionally accept a fresh prefix from runtime
+      // so we don't keep invalidating the openings cache while browsing other tabs.
+      if (tab === "openings" && typeof A.openingsPrefixSig === "string"){
+        S.openings.prefixSig = A.openingsPrefixSig;
+        S.openings.prefixText = String(A.openingsPrefixText || "");
+      }
     },
     "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
     "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
@@ -1281,7 +1292,6 @@
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
       g.loadPGN?.(pgn);
       RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
       T["GAME/ADD"](S, { id, title });
       S.activeGameId = id;
       S.ui.tab = "moves";
@@ -3525,7 +3535,17 @@ function renderPlayersPane(){
 
     // tabs
     const tab = t.closest?.(".tabBtn");
-    if (tab) return dispatch({ type:"UI/TAB", tab: tab.getAttribute("data-tab") });
+    if (tab){
+      const next = tab.getAttribute("data-tab");
+      if (next === "openings"){
+        const pref = getCurrentPrefixInfo(CTX.g());
+        return dispatch({ type:"UI/TAB", tab: next, openingsPrefixSig: pref.sig, openingsPrefixText: pref.text });
+      }
+      return dispatch({ type:"UI/TAB", tab: next });
+    }
+
+
+
 
     // menu
     if (t.closest?.("#btnHamburger")) return dispatch({ type:"UI/MENU_TOGGLE" });
