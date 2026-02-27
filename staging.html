@@ -253,10 +253,6 @@
     border-radius:12px;
     padding:10px 10px;
     cursor:pointer;
-  /* Big list performance: skip rendering offscreen opening cards */
-  content-visibility:auto;
-  contain: layout paint style;
-  contain-intrinsic-size: 180px 120px;
     background:#fff;
     display:flex;
     flex-direction:column;
@@ -271,25 +267,15 @@
     border-left:2px solid rgba(15,23,42,.10);
   }
 
+  /* --- Openings mini boards (pooled) --- */
+  #pane-openings .openMiniDock{ margin-top:6px; }
   #pane-openings .openMiniWrap{
     border:1px solid rgba(15,23,42,.08);
     border-radius:12px;
     overflow:hidden;
     background:#fff;
-    margin-top:6px;
   }
-  #pane-openings .openMini{
-    width:100%;
-    height:115px;
-  }
-  #pane-openings .openMoves{
-    font-size:11px;
-    color:var(--muted);
-    font-family:var(--mono);
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
+  #pane-openings .openMini{ width:100%; height:115px; }
 
   .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
   .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
@@ -840,8 +826,16 @@
       loadPromise: null,
       entries: [], // [{eco,name,pgn,tokens,parentKey}]
       domCache: { sig: "", host: null },
-      minis: new Map(),
-      pendingExpandParentKey: "",
+      mini: {
+        warmed: false,
+        poolSize: 40,
+        slots: [],      // [{ g, wrap }]
+        idxToSlot: new Map(), // idx -> slotIndex
+        slotToIdx: new Map(), // slotIndex -> idx
+        cards: [],      // [{ idx, pgn, dock }]
+        observer: null,
+        lastSig: "",
+      },
     },
   };
 
@@ -1254,14 +1248,7 @@
   const T = Object.freeze({
     /* ---------- UI ---------- */
     "UI/TAB": (S,A) => {
-      const tab = String(A.tab || "moves");
-      S.ui.tab = tab;
-      // When entering Openings, optionally accept a fresh prefix from runtime
-      // so we don't keep invalidating the openings cache while browsing other tabs.
-      if (tab === "openings" && typeof A.openingsPrefixSig === "string"){
-        S.openings.prefixSig = A.openingsPrefixSig;
-        S.openings.prefixText = String(A.openingsPrefixText || "");
-      }
+      S.ui.tab = A.tab;
     },
     "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
     "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
@@ -1277,7 +1264,7 @@
       S.openings.prefixText = text;
       if (changed){
         S.openings.showAll = false;
-        S.openings.expandedParent = A.parentKey ? String(A.parentKey) : "";
+        S.openings.expandedParent = "";
       }
   },
     "OPENINGS/EXPAND": (S,A) => {
@@ -1287,36 +1274,19 @@
     },
     "OPENINGS/LOAD_PGN": (S,A) => {
       const pgn = String(A.pgn || "");
-      if (!pgn.trim()) return;
-    
-      // Remember which parent to expand after the board sync triggers OPENINGS/BOARD_PREFIX.
-      RUNTIME.openings.pendingExpandParentKey = String(A.parentKey || "");
-    
-      // Reuse a single explorer game object/id (avoid recreating 1000+ games and bloating STATE).
-      const id = "opening:explorer";
-      if (!CTX.games.has(id)){
-        CTX.games.set(id, createGame({ Event:"Opening Explorer", Site:"Local", Date:"2026.02.26", Round:"1", White:"White", Black:"Black" }));
-      }
-      const g = CTX.games.get(id);
-      g.loadPGN(pgn);
+      if (!pgn) return;
+      const title = String(A.title || "Opening");
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
+      g.loadPGN?.(pgn);
+      RUNTIME.games.set(id, g);
+      attachOnChange(id, g);
+      T["GAME/ADD"](S, { id, title });
       S.activeGameId = id;
-      CTX.setActiveGameToBoard(id);
-    
-      // Prepare CQL from the opening line (ASCII path syntax) for the Query pane.
-      try{
-        const toks = sanTokensFromPgnLike(pgn);
-        const cql = cqlFromOpeningTokens(toks);
-        S.status.cql.text = cql;
-        S.status.cql.err = "";
-        const el = document.getElementById("qCqlText");
-        if (el) el.value = cql;
-        const st = document.getElementById("qStatus");
-        if (st) st.textContent = "CQL ready (from opening line)";
-      }catch(e){
-        S.status.cql.text = "";
-        S.status.cql.err = "Could not build CQL for this opening.";
-      }
+      S.ui.tab = "moves";
     },
+
+    /* ---------- Players ---------- */
     "PLAYERS/OPEN": (S) => {
       S.ui.tab = "players";
     },
@@ -1843,9 +1813,7 @@
     renderEvalsLists();  // same
 
      // openings
-     if (STATE.ui.tab === "openings") {
-       renderOpeningsPane();
-     }
+    renderOpeningsPane();
 
     // players
     renderPlayersPane();
@@ -2954,33 +2922,6 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     }
     return out.join(" ").trim();
   }
-
-  function sanToCqlDash(san){
-    let s = String(san||"").trim();
-    if (!s) return "";
-    // Strip check/mate markers; keep promotions.
-    s = s.replace(/[+#]+$/g, "");
-    if (s === "O-O" || s === "0-0") return "O-O";
-    if (s === "O-O-O" || s === "0-0-0") return "O-O-O";
-    // Extract destination square (last file/rank in the token).
-    const m = /([a-h][1-8])(=?[QRBN])?$/i.exec(s);
-    if (!m) return s;
-    const dst = m[1].toLowerCase();
-    const promo = m[2] ? m[2].toUpperCase() : "";
-    const capture = s.includes("x");
-    // Piece letter (KQRBN) or pawn.
-    const p0 = s[0];
-    const isPiece = /[KQRBN]/.test(p0);
-    const piece = isPiece ? p0 : "P";
-    const op = capture ? "x" : "--";
-    return promo ? `${piece}${op}${dst}${promo}` : `${piece}${op}${dst}`;
-  }
-  function cqlFromOpeningTokens(tokens){
-    const t = (tokens||[]).map(s=>String(s||"").trim()).filter(Boolean);
-    const moves = t.map(sanToCqlDash).filter(Boolean);
-    return `cql(quiet)\n{\npath\n  ${moves.join("\n  ")}\n}`;
-  }
-
   function getCurrentPrefixInfo(g){
     try{
       const toks = [];
@@ -3050,6 +2991,114 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     return true;
   }
 
+  function warmOpeningsMiniPool(){
+    const O = RUNTIME.openings;
+    const M = O.mini;
+    if (M.warmed) return;
+    M.warmed = true;
+    M.slots = [];
+    try{ M.idxToSlot = new Map(); M.slotToIdx = new Map(); }catch{}
+    for (let i=0;i<M.poolSize;i++){
+      const g = createGame({ Event:`OpeningMini:${i+1}`, Site:"Local", Date:(typeof todayYMD==="function"?todayYMD():"2026.02.27"), Round:"1", White:"", Black:"", Result:"*" });
+      try{ g.toggleMini?.(true); }catch{}
+      const wrap = document.createElement("div");
+      wrap.className = "openMiniWrap";
+      const inner = document.createElement("div");
+      inner.className = "openMini";
+      wrap.appendChild(inner);
+      try{ new BoardView(inner, g, { minSizePx: 90 }); }catch(e){}
+      M.slots.push({ g, wrap });
+    }
+  }
+
+  function openingsMiniEvictSlot(slotIndex){
+    const M = RUNTIME.openings.mini;
+    if (!M) return;
+    const idx = M.slotToIdx.get(slotIndex);
+    if (typeof idx === "number"){
+      M.idxToSlot.delete(idx);
+      M.slotToIdx.delete(slotIndex);
+    }
+    try{
+      const slot = M.slots[slotIndex];
+      if (slot && slot.wrap && slot.wrap.parentNode) slot.wrap.parentNode.removeChild(slot.wrap);
+    }catch{}
+  }
+
+  function openingsMiniEnsureAround(centerIdx){
+    const M = RUNTIME.openings.mini;
+    if (!M || !M.warmed) return;
+    const cards = M.cards || [];
+    if (!cards.length) return;
+
+    // Pool size is 40; interpret "prior 20 and next 20" as 40 total around the visible item.
+    const start = Math.max(0, centerIdx - 20);
+    const end   = Math.min(cards.length - 1, centerIdx + 19);
+
+    const desired = new Set();
+    for (let i=start;i<=end;i++) desired.add(i);
+
+    // Evict anything out of range.
+    for (const [idx, slot] of Array.from(M.idxToSlot.entries())){
+      if (!desired.has(idx)) openingsMiniEvictSlot(slot);
+    }
+
+    // Ensure desired indices are assigned to a slot and docked into the DOM.
+    for (let idx=start; idx<=end; idx++){
+      if (M.idxToSlot.has(idx)) continue;
+
+      // Find a free slot, otherwise evict something far away from center.
+      let slotIndex = -1;
+      for (let s=0;s<M.slots.length;s++){ if (!M.slotToIdx.has(s)){ slotIndex = s; break; } }
+      if (slotIndex < 0){
+        let worst = null;
+        for (const [curIdx, s] of Array.from(M.idxToSlot.entries())){
+          const dist = Math.abs((curIdx||0) - centerIdx);
+          if (!worst || dist > worst.dist) worst = { idx: curIdx, slot: s, dist };
+        }
+        if (worst){ openingsMiniEvictSlot(worst.slot); slotIndex = worst.slot; }
+      }
+      if (slotIndex < 0) break;
+
+      const slot = M.slots[slotIndex];
+      const card = cards[idx];
+      const pgn  = String(card?.pgn || "");
+      const dock = card?.dock || null;
+      if (!dock || !pgn) continue;
+
+      M.idxToSlot.set(idx, slotIndex);
+      M.slotToIdx.set(slotIndex, idx);
+
+      try{ dock.innerHTML = ""; dock.appendChild(slot.wrap); }catch{}
+      try{ slot.g.loadPGN?.(pgn); }catch{}
+      try{ slot.g.toggleMini?.(true); }catch{}
+    }
+  }
+
+  function installOpeningsMiniObserver(paneEl){
+    const M = RUNTIME.openings.mini;
+    if (!M || !M.warmed || !paneEl) return;
+    try{ if (M.observer) M.observer.disconnect(); }catch{}
+
+    M.observer = new IntersectionObserver((entries)=>{
+      let best = null;
+      for (const e of entries){
+        if (!e.isIntersecting) continue;
+        const idx = parseInt(e.target?.dataset?.openIdx, 10);
+        if (!Number.isFinite(idx)) continue;
+        const score = e.intersectionRatio || 0;
+        if (!best || score > best.score) best = { idx, score };
+      }
+      if (!best) return;
+      openingsMiniEnsureAround(best.idx);
+    }, { root: paneEl, threshold: [0.01, 0.1, 0.25] });
+
+    try{
+      const cards = Array.from(paneEl.querySelectorAll("[data-open-idx]"));
+      for (const el of cards) M.observer.observe(el);
+    }catch{}
+  }
+
   function renderOpeningsPane(){
     const pane = $("pane-openings");
     if (!pane) return;
@@ -3062,21 +3111,15 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     const sig = String(STATE.openings?.prefixSig || "");
     const expanded = String(STATE.openings?.expandedParent || "");
     const prefixText = String(STATE.openings?.prefixText || "(start position)");
-    const isExplorer = (STATE.activeGameId === "opening:explorer");
-    if (prefixEl) prefixEl.textContent = (isExplorer ? `Opening Explorer — ${prefixText}` : prefixText);
+
+    if (prefixEl) prefixEl.textContent = prefixText;
 
     if (backBtn){
       const hasPrefix = !!sig;
       backBtn.textContent = showAll ? "Filtered" : "All";
       backBtn.style.opacity = (showAll || hasPrefix) ? "1" : "0";
       backBtn.style.pointerEvents = (showAll || hasPrefix) ? "auto" : "none";
-      backBtn.onclick = () => {
-        if (hasPrefix){
-          dispatch({ type:"OPENINGS/BOARD_PREFIX", sig:"", text:"(start position)" });
-        } else {
-          dispatch({ type: showAll ? "OPENINGS/SHOW_FILTERED" : "OPENINGS/SHOW_ALL" });
-        }
-      };
+      backBtn.onclick = () => dispatch({ type: showAll ? "OPENINGS/SHOW_FILTERED" : "OPENINGS/SHOW_ALL" });
     }
 
     const cacheKey = `${showAll ? "ALL" : "FILTER"}|${sig}|${expanded}`;
@@ -3096,52 +3139,10 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       const prefixTokens = curSig ? curSig.split("\u001f").filter(Boolean) : [];
       const visible = curShowAll ? entries : entries.filter(e => isPrefixMatch(prefixTokens, e.tokens));
 
-      const movesTextFromTokens = (tokens, limit=16) => {
-        const a = (tokens || []).slice(0, limit).join(" ").trim();
-        const more = (tokens && tokens.length > limit) ? " …" : "";
-        return (a + more).trim();
-      };
-      const commonPrefixTokens = (items) => {
-        if (!items || !items.length) return [];
-        let pref = (items[0].tokens || []).slice();
-        for (let i=1;i<items.length;i++){
-          const t = items[i].tokens || [];
-          let j=0;
-          for (; j<pref.length && j<t.length; j++){
-            if (String(pref[j]) !== String(t[j])) break;
-          }
-          pref = pref.slice(0, j);
-          if (!pref.length) break;
-        }
-        return pref;
-      };
-      const setMiniBoard = (el, sigKey, pgn) => {
-        // Cache mini board DOM + ScratchChess objects by opening id (sigKey).
-        // This avoids recreating 1000+ Game/BoardView instances on every render.
-        const k = String(sigKey || "");
-        if (k && RUNTIME.openings && RUNTIME.openings.minis && RUNTIME.openings.minis.has(k)) {
-          const cached = RUNTIME.openings.minis.get(k);
-          el.innerHTML = "";
-          el.appendChild(cached.root);
-          if (cached.view && typeof cached.view.resize === "function") cached.view.resize();
-          return;
-        }
-
-        try{
-          const root = document.createElement("div");
-          const gMini = createGame(parseHeaders(pgn));
-          gMini.loadPGN?.(pgn);
-          gMini.toggleMini?.(true);
-          const view = new BoardView(root, gMini, { minSizePx: 90 });
-          if (k && RUNTIME.openings && RUNTIME.openings.minis) {
-            RUNTIME.openings.minis.set(k, { root, view });
-          }
-          el.innerHTML = "";
-          el.appendChild(root);
-        }catch(e){}
-      };
-
-
+      // Mini-board pool: constant-memory preview window around what's in view.
+      try{ warmOpeningsMiniPool(); }catch{}
+      try{ RUNTIME.openings.mini.cards = []; }catch{}
+      let _leafIdx = 0;
 
       host.innerHTML = "";
       const groups = new Map();
@@ -3178,54 +3179,72 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
           const card = document.createElement("div");
           card.className = "openCard";
-          card.innerHTML = `<div class="openTitle"></div><div class="openSub"></div><div class="openMoves"></div><div class="openMiniWrap"><div class="openMini"></div></div>`;
+          card.innerHTML = `<div class="openTitle"></div><div class="openSub"></div>`;
           card.querySelector(".openTitle").textContent = pk;
-
-          const prefToks = commonPrefixTokens(kids);
-          const prefSig = prefToks.join("\u001f");
           card.querySelector(".openSub").textContent = `${kids.length} line${kids.length===1?"":"s"} • ${parent.eco || ""}`;
-          card.querySelector(".openMoves").textContent = prefToks.length ? movesTextFromTokens(prefToks) : "(start position)";
-
-          const miniEl = card.querySelector(".openMini");
-          setMiniBoard(miniEl, prefSig, parent.pgn);
-
-          host.appendChild(card);
+          if (kids.length <= 1){
+            const dock = document.createElement("div");
+            dock.className = "openMiniDock";
+            card.appendChild(dock);
+            const idx = _leafIdx++;
+            card.dataset.openIdx = String(idx);
+            card.dataset.openPgn = String(parent.pgn || "");
+            try{ RUNTIME.openings.mini.cards[idx] = { idx, pgn: String(parent.pgn||""), dock }; }catch{}
+          }
           card.addEventListener("click", () => {
-            if (curExpanded !== pk) dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
-            dispatch({ type:"OPENINGS/LOAD_PGN", pgn: (prefToks.length ? (movesTextFromTokens(prefToks, 24) + " *") : "*"), sig: prefSig, name: pk, parentKey: pk });
+            if (kids.length <= 1){
+              dispatch({ type:"OPENINGS/LOAD_PGN", title: parent.name, pgn: parent.pgn });
+              try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
+            } else {
+              dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
+            }
           });
-          if (kids.length>1 && curExpanded===pk){
+          host.appendChild(card);
 
+          if (kids.length > 1 && String(curExpanded) === String(pk)){
             for (const child of kids){
               const c = document.createElement("div");
               c.className = "openCard openChild";
-
-              c.innerHTML = `<div class="openTitle"></div><div class="openSub"></div><div class="openMoves"></div><div class="openMiniWrap"><div class="openMini"></div></div>`;
+              c.innerHTML = `<div class="openTitle"></div><div class="openSub"></div>`;
               c.querySelector(".openTitle").textContent = child.name;
               c.querySelector(".openSub").textContent = child.eco || "";
-
-              const childSig = (child.tokens || []).join("\u001f");
-              c.querySelector(".openMoves").textContent = movesTextFromTokens(child.tokens);
-
-              const miniEl = c.querySelector(".openMini");
-              setMiniBoard(miniEl, childSig, child.pgn);
-
+              {
+                const dock = document.createElement("div");
+                dock.className = "openMiniDock";
+                c.appendChild(dock);
+                const idx = _leafIdx++;
+                c.dataset.openIdx = String(idx);
+                c.dataset.openPgn = String(child.pgn || "");
+                try{ RUNTIME.openings.mini.cards[idx] = { idx, pgn: String(child.pgn||""), dock }; }catch{}
+              }
               c.addEventListener("click", (ev) => {
                 ev.stopPropagation();
-                dispatch({ type:"OPENINGS/LOAD_PGN", pgn: child.pgn, sig: childSig, name: child.name, parentKey: pk });
+                dispatch({ type:"OPENINGS/LOAD_PGN", title: child.name, pgn: child.pgn });
+                try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
               });
               host.appendChild(c);
             }
           }
-
         }
       }
+
+      try{
+        const M = RUNTIME.openings.mini;
+        const sigNow = curKey + "|" + String(_leafIdx);
+        if (M && M.warmed && M.lastSig !== sigNow){
+          M.lastSig = sigNow;
+          installOpeningsMiniObserver(pane);
+          // Prime the window near the top so the first scroll feels instant.
+          openingsMiniEnsureAround(Math.min(20, Math.max(0, _leafIdx-1)));
+        }
+      }catch{}
 
       if (!visible.length){
         host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">No openings match this position prefix.</div>";
       }
     }).catch(()=>{});
   }
+
 
 function renderPlayersPane(){
     const pane = $("pane-players");
@@ -3397,12 +3416,10 @@ function renderPlayersPane(){
               const prevSig = String(STATE.openings?.prefixSig || "");
               const prevTxt = String(STATE.openings?.prefixText || "");
               if (pref.sig !== prevSig || pref.text !== prevTxt){
-                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: pref.sig, text: pref.text, parentKey: RUNTIME.openings.pendingExpandParentKey });
-                RUNTIME.openings.pendingExpandParentKey = "";
+                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: pref.sig, text: pref.text });
                 return; // dispatch triggers render
               }
             }
-
           }catch{}
           render();
         }
@@ -3585,17 +3602,7 @@ function renderPlayersPane(){
 
     // tabs
     const tab = t.closest?.(".tabBtn");
-    if (tab){
-      const next = tab.getAttribute("data-tab");
-      if (next === "openings"){
-        const pref = getCurrentPrefixInfo(CTX.g());
-        return dispatch({ type:"UI/TAB", tab: next, openingsPrefixSig: pref.sig, openingsPrefixText: pref.text });
-      }
-      return dispatch({ type:"UI/TAB", tab: next });
-    }
-
-
-
+    if (tab) return dispatch({ type:"UI/TAB", tab: tab.getAttribute("data-tab") });
 
     // menu
     if (t.closest?.("#btnHamburger")) return dispatch({ type:"UI/MENU_TOGGLE" });
