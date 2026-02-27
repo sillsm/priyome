@@ -839,6 +839,15 @@
         cards: [],      // [{ idx, pgn, dock }]
         observer: null,
         lastSig: "",
+        pendingLoads: [],
+        idleHandle: 0,
+        loadToken: 0,
+        lastCenterIdx: -1,
+        fastScrolling: false,
+        _scrollRAF: 0,
+        _lastScrollTop: 0,
+        _lastScrollT: 0,
+        _scrollEndTO: 0,
       },
     },
   };
@@ -3036,6 +3045,20 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
     const pool = Math.max(1, parseInt(M.poolSize, 10) || 100);
 
+    // Bump token when the center changes so stale idle-load jobs are ignored.
+    if (M.lastCenterIdx !== centerIdx){
+      M.lastCenterIdx = centerIdx;
+      M.loadToken = (M.loadToken || 0) + 1;
+      try{ M.pendingLoads = []; }catch{}
+      try{
+        if (M.idleHandle){
+          if (typeof cancelIdleCallback === "function") cancelIdleCallback(M.idleHandle);
+          else clearTimeout(M.idleHandle);
+        }
+      }catch{}
+      M.idleHandle = 0;
+    }
+
     // Primary window: 40 cards around the current in-view item (20 before, 19 after, + current).
     const primaryStart = Math.max(0, centerIdx - 20);
     const primaryEnd   = Math.min(cards.length - 1, centerIdx + 19);
@@ -3097,9 +3120,65 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       M.slotToIdx.set(slotIndex, idx);
 
       try{ dock.innerHTML = ""; dock.appendChild(slot.wrap); }catch{}
-      try{ slot.g.loadPGN?.(pgn); }catch{}
-      try{ slot.g.toggleMini?.(true); }catch{}
+
+      // Load PGNs in a prioritized way: closest cards load immediately; the rest load during idle time.
+      const token = (M.loadToken || 0);
+      const dist = Math.abs((idx||0) - (centerIdx||0));
+      const immediateDist = M.fastScrolling ? 2 : 6;
+      if (dist <= immediateDist){
+        try{ slot.g.loadPGN?.(pgn); }catch{}
+        try{ slot.g.toggleMini?.(true); }catch{}
+      } else {
+        try{
+          if (!Array.isArray(M.pendingLoads)) M.pendingLoads = [];
+          M.pendingLoads.push({ token, slot, pgn });
+        }catch{}
+      }
     }
+
+    // Kick idle work (fills in the rest after the critical visible ones).
+    try{ openingsMiniPumpPending(); }catch{}
+  }
+
+  function openingsMiniPumpPending(){
+    const M = RUNTIME.openings.mini;
+    if (!M || !M.warmed) return;
+    if (!Array.isArray(M.pendingLoads) || !M.pendingLoads.length) return;
+    if (M._pumpRunning) return;
+    M._pumpRunning = true;
+    const token = (M.loadToken || 0);
+
+    const step = (deadline) => {
+      try{
+        if (!M || (M.loadToken || 0) !== token){ M._pumpRunning = false; return; }
+        let budget = 10;
+        try{ budget = Math.max(2, Math.floor((deadline && typeof deadline.timeRemaining==="function") ? deadline.timeRemaining() : 8)); }catch{}
+        let did = 0;
+        while (M.pendingLoads.length && did < 10 && budget > 1){
+          const job = M.pendingLoads.shift();
+          if (!job || job.token !== token) continue;
+          try{ job.slot.g.loadPGN?.(job.pgn); }catch{}
+          try{ job.slot.g.toggleMini?.(true); }catch{}
+          did++;
+          budget--;
+        }
+      }catch{}
+
+      if (M.pendingLoads.length){
+        try{
+          if (typeof requestIdleCallback === "function") M.idleHandle = requestIdleCallback(step, { timeout: 120 });
+          else M.idleHandle = setTimeout(()=>step({ timeRemaining: ()=>8 }), 16);
+        }catch{ M.idleHandle = 0; M._pumpRunning = false; }
+      } else {
+        M.idleHandle = 0;
+        M._pumpRunning = false;
+      }
+    };
+
+    try{
+      if (typeof requestIdleCallback === "function") M.idleHandle = requestIdleCallback(step, { timeout: 120 });
+      else M.idleHandle = setTimeout(()=>step({ timeRemaining: ()=>8 }), 16);
+    }catch{ M.idleHandle = 0; M._pumpRunning = false; }
   }
 
   function updateOpeningsExpanded(paneEl, expandedKey){
@@ -3136,6 +3215,55 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       const cards = Array.from(paneEl.querySelectorAll("[data-open-idx]"));
       for (const el of cards) M.observer.observe(el);
     }catch{}
+
+    // Scroll-driven "infinite list" feel:
+    // - Use elementFromPoint at the pane midpoint to find the card in view (O(1))
+    // - Throttle to rAF
+    // - Detect fast scroll and defer most loadPGN work to idle time
+    try{
+      paneEl.onscroll = null;
+    }catch{}
+
+    const onScroll = () => {
+      try{
+        const now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+        const top = paneEl.scrollTop || 0;
+        const dt = Math.max(1, now - (M._lastScrollT || now));
+        const dy = Math.abs(top - (M._lastScrollTop || top));
+        const v = dy / dt; // px/ms
+        M.fastScrolling = (v > 2.0); // ~2000px/s
+        M._lastScrollT = now;
+        M._lastScrollTop = top;
+
+        if (M._scrollEndTO) clearTimeout(M._scrollEndTO);
+        M._scrollEndTO = setTimeout(()=>{
+          M.fastScrolling = false;
+          try{
+            const r = paneEl.getBoundingClientRect();
+            const el = document.elementFromPoint(r.left + Math.min(40, r.width*0.25), r.top + r.height*0.5);
+            const card = el && el.closest ? el.closest("[data-open-idx]") : null;
+            const idx = card ? parseInt(card.dataset.openIdx,10) : NaN;
+            if (Number.isFinite(idx)) openingsMiniEnsureAround(idx, paneEl);
+          }catch{}
+        }, 120);
+
+        if (M._scrollRAF) return;
+        M._scrollRAF = requestAnimationFrame(()=>{
+          M._scrollRAF = 0;
+          try{
+            const r = paneEl.getBoundingClientRect();
+            const el = document.elementFromPoint(r.left + Math.min(40, r.width*0.25), r.top + r.height*0.5);
+            const card = el && el.closest ? el.closest("[data-open-idx]") : null;
+            const idx = card ? parseInt(card.dataset.openIdx,10) : NaN;
+            if (Number.isFinite(idx)) openingsMiniEnsureAround(idx, paneEl);
+          }catch{}
+        });
+      }catch{}
+    };
+
+    try{ paneEl.addEventListener("scroll", onScroll, { passive:true }); }catch{ try{ paneEl.onscroll = onScroll; }catch{} }
+    // Run once so jump-to-bottom (scrollTop set programmatically) still primes quickly.
+    try{ onScroll(); }catch{}
   }
 
   function renderOpeningsPane(){
