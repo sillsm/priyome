@@ -1288,30 +1288,34 @@
     "OPENINGS/LOAD_PGN": (S,A) => {
       const pgn = String(A.pgn || "");
       if (!pgn.trim()) return;
-
+    
       // Remember which parent to expand after the board sync triggers OPENINGS/BOARD_PREFIX.
       RUNTIME.openings.pendingExpandParentKey = String(A.parentKey || "");
-
-      // Load into main board as a normal game (local), but drive the Query UI like priyomes.
-      const title = String(A.name || "Opening Explorer").trim() || "Opening Explorer";
-      const g = createGame({ Event:"Opening Explorer", Site:"Local", Date:"2026.02.26", Round:"1", White:title, Black:"" });
+    
+      // Reuse a single explorer game object/id (avoid recreating 1000+ games and bloating STATE).
+      const id = "opening:explorer";
+      if (!CTX.games.has(id)){
+        CTX.games.set(id, createGame({ Event:"Opening Explorer", Site:"Local", Date:"2026.02.26", Round:"1", White:"White", Black:"Black" }));
+      }
+      const g = CTX.games.get(id);
       g.loadPGN(pgn);
-      const id = "opening:" + (A.sig ? String(A.sig) : String(Date.now()));
-      CTX.games.set(id, g);
-      S.games.list.push({ id, title });
-      S.games.activeGameId = id;
-
-      // Prepare CQL from the opening line (ASCII path syntax).
+      S.activeGameId = id;
+      CTX.setActiveGameToBoard(id);
+    
+      // Prepare CQL from the opening line (ASCII path syntax) for the Query pane.
       try{
         const toks = sanTokensFromPgnLike(pgn);
-        S.status.cql.text = cqlFromOpeningTokens(toks);
+        const cql = cqlFromOpeningTokens(toks);
+        S.status.cql.text = cql;
         S.status.cql.err = "";
+        const el = document.getElementById("qCqlText");
+        if (el) el.value = cql;
+        const st = document.getElementById("qStatus");
+        if (st) st.textContent = "CQL ready (from opening line)";
       }catch(e){
         S.status.cql.text = "";
         S.status.cql.err = "Could not build CQL for this opening.";
       }
-      S.query.selectedName = `Opening Explorer: ${title}`;
-      S.ui.tab = "query";
     },
     "PLAYERS/OPEN": (S) => {
       S.ui.tab = "players";
@@ -3058,8 +3062,8 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     const sig = String(STATE.openings?.prefixSig || "");
     const expanded = String(STATE.openings?.expandedParent || "");
     const prefixText = String(STATE.openings?.prefixText || "(start position)");
-
-    if (prefixEl) prefixEl.textContent = prefixText;
+    const isExplorer = (STATE.activeGameId === "opening:explorer");
+    if (prefixEl) prefixEl.textContent = (isExplorer ? `Opening Explorer — ${prefixText}` : prefixText);
 
     if (backBtn){
       const hasPrefix = !!sig;
@@ -3186,14 +3190,14 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
           setMiniBoard(miniEl, prefSig, parent.pgn);
 
           card.addEventListener("click", () => {
+            if (curExpanded !== pk) dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
             dispatch({ type:"OPENINGS/LOAD_PGN", pgn: (prefToks.length ? (movesTextFromTokens(prefToks, 24) + " *") : "*"), sig: prefSig, name: pk, parentKey: pk });
           });
-          host.appendChild(card);
-
-          if (kids.length > 1 && String(curExpanded) === String(pk)){
+          if (kids.length>1 && curExpanded===pk){
             for (const child of kids){
               const c = document.createElement("div");
               c.className = "openCard openChild";
+
               c.innerHTML = `<div class="openTitle"></div><div class="openSub"></div><div class="openMoves"></div><div class="openMiniWrap"><div class="openMini"></div></div>`;
               c.querySelector(".openTitle").textContent = child.name;
               c.querySelector(".openSub").textContent = child.eco || "";
