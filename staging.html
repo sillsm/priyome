@@ -841,6 +841,7 @@
       entries: [], // [{eco,name,pgn,tokens,parentKey}]
       domCache: { sig: "", host: null },
       minis: new Map(),
+      pendingExpandParentKey: "",
     },
   };
 
@@ -1276,7 +1277,7 @@
       S.openings.prefixText = text;
       if (changed){
         S.openings.showAll = false;
-        S.openings.expandedParent = "";
+        S.openings.expandedParent = A.parentKey ? String(A.parentKey) : "";
       }
   },
     "OPENINGS/EXPAND": (S,A) => {
@@ -1286,18 +1287,32 @@
     },
     "OPENINGS/LOAD_PGN": (S,A) => {
       const pgn = String(A.pgn || "");
-      if (!pgn) return;
-      const title = String(A.title || "Opening");
-      const id = nowId();
-      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
-      g.loadPGN?.(pgn);
-      RUNTIME.games.set(id, g);
-      T["GAME/ADD"](S, { id, title });
-      S.activeGameId = id;
-      S.ui.tab = "moves";
-    },
+      if (!pgn.trim()) return;
 
-    /* ---------- Players ---------- */
+      // Remember which parent to expand after the board sync triggers OPENINGS/BOARD_PREFIX.
+      RUNTIME.openings.pendingExpandParentKey = String(A.parentKey || "");
+
+      // Load into main board as a normal game (local), but drive the Query UI like priyomes.
+      const title = String(A.name || "Opening Explorer").trim() || "Opening Explorer";
+      const g = createGame({ Event:"Opening Explorer", Site:"Local", Date:"2026.02.26", Round:"1", White:title, Black:"" });
+      g.loadPGN(pgn);
+      const id = "opening:" + (A.sig ? String(A.sig) : String(Date.now()));
+      CTX.games.set(id, g);
+      S.games.list.push({ id, title });
+      S.games.activeGameId = id;
+
+      // Prepare CQL from the opening line (ASCII path syntax).
+      try{
+        const toks = sanTokensFromPgnLike(pgn);
+        S.status.cql.text = cqlFromOpeningTokens(toks);
+        S.status.cql.err = "";
+      }catch(e){
+        S.status.cql.text = "";
+        S.status.cql.err = "Could not build CQL for this opening.";
+      }
+      S.query.selectedName = `Opening Explorer: ${title}`;
+      S.ui.tab = "query";
+    },
     "PLAYERS/OPEN": (S) => {
       S.ui.tab = "players";
     },
@@ -2935,6 +2950,33 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     }
     return out.join(" ").trim();
   }
+
+  function sanToCqlDash(san){
+    let s = String(san||"").trim();
+    if (!s) return "";
+    // Strip check/mate markers; keep promotions.
+    s = s.replace(/[+#]+$/g, "");
+    if (s === "O-O" || s === "0-0") return "O-O";
+    if (s === "O-O-O" || s === "0-0-0") return "O-O-O";
+    // Extract destination square (last file/rank in the token).
+    const m = /([a-h][1-8])(=?[QRBN])?$/i.exec(s);
+    if (!m) return s;
+    const dst = m[1].toLowerCase();
+    const promo = m[2] ? m[2].toUpperCase() : "";
+    const capture = s.includes("x");
+    // Piece letter (KQRBN) or pawn.
+    const p0 = s[0];
+    const isPiece = /[KQRBN]/.test(p0);
+    const piece = isPiece ? p0 : "P";
+    const op = capture ? "x" : "--";
+    return promo ? `${piece}${op}${dst}${promo}` : `${piece}${op}${dst}`;
+  }
+  function cqlFromOpeningTokens(tokens){
+    const t = (tokens||[]).map(s=>String(s||"").trim()).filter(Boolean);
+    const moves = t.map(sanToCqlDash).filter(Boolean);
+    return `cql(quiet)\n{\npath\n  ${moves.join("\n  ")}\n}`;
+  }
+
   function getCurrentPrefixInfo(g){
     try{
       const toks = [];
@@ -3144,7 +3186,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
           setMiniBoard(miniEl, prefSig, parent.pgn);
 
           card.addEventListener("click", () => {
-            dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: prefSig, text: prefToks.length ? movesTextFromTokens(prefToks, 24) : "(start position)" });
+            dispatch({ type:"OPENINGS/LOAD_PGN", pgn: (prefToks.length ? (movesTextFromTokens(prefToks, 24) + " *") : "*"), sig: prefSig, name: pk, parentKey: pk });
           });
           host.appendChild(card);
 
@@ -3164,7 +3206,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
               c.addEventListener("click", (ev) => {
                 ev.stopPropagation();
-                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: childSig, text: movesTextFromTokens(child.tokens, 24) });
+                dispatch({ type:"OPENINGS/LOAD_PGN", pgn: child.pgn, sig: childSig, name: child.name, parentKey: pk });
               });
               host.appendChild(c);
             }
@@ -3349,10 +3391,12 @@ function renderPlayersPane(){
               const prevSig = String(STATE.openings?.prefixSig || "");
               const prevTxt = String(STATE.openings?.prefixText || "");
               if (pref.sig !== prevSig || pref.text !== prevTxt){
-                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: pref.sig, text: pref.text });
+                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: pref.sig, text: pref.text, parentKey: RUNTIME.openings.pendingExpandParentKey });
+                RUNTIME.openings.pendingExpandParentKey = "";
                 return; // dispatch triggers render
               }
             }
+
           }catch{}
           render();
         }
