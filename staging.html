@@ -267,6 +267,10 @@
     border-left:2px solid rgba(15,23,42,.10);
   }
 
+  /* --- Openings expand/collapse (smooth) --- */
+  #pane-openings .openKids{ overflow:hidden; max-height:0; transition:max-height .18s ease; }
+  #pane-openings .openKids.open{ max-height:2600px; }
+
   /* --- Openings mini boards (pooled) --- */
   #pane-openings .openMiniDock{ margin-top:6px; }
   #pane-openings .openMiniWrap{
@@ -828,7 +832,7 @@
       domCache: { sig: "", host: null },
       mini: {
         warmed: false,
-        poolSize: 40,
+        poolSize: 100,
         slots: [],      // [{ g, wrap }]
         idxToSlot: new Map(), // idx -> slotIndex
         slotToIdx: new Map(), // slotIndex -> idx
@@ -3024,27 +3028,50 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       if (slot && slot.wrap && slot.wrap.parentNode) slot.wrap.parentNode.removeChild(slot.wrap);
     }catch{}
   }
-
-  function openingsMiniEnsureAround(centerIdx){
+  function openingsMiniEnsureAround(centerIdx, paneEl){
     const M = RUNTIME.openings.mini;
     if (!M || !M.warmed) return;
     const cards = M.cards || [];
     if (!cards.length) return;
 
-    // Pool size is 40; interpret "prior 20 and next 20" as 40 total around the visible item.
-    const start = Math.max(0, centerIdx - 20);
-    const end   = Math.min(cards.length - 1, centerIdx + 19);
+    const pool = Math.max(1, parseInt(M.poolSize, 10) || 100);
+
+    // Primary window: 40 cards around the current in-view item (20 before, 19 after, + current).
+    const primaryStart = Math.max(0, centerIdx - 20);
+    const primaryEnd   = Math.min(cards.length - 1, centerIdx + 19);
 
     const desired = new Set();
-    for (let i=start;i<=end;i++) desired.add(i);
+    for (let i=primaryStart;i<=primaryEnd;i++) desired.add(i);
 
-    // Evict anything out of range.
+    // Secondary window: fill remaining capacity with other cards currently visible in the pane
+    // (this makes expanding sublists feel instant).
+    const remaining = Math.max(0, pool - desired.size);
+    if (remaining > 0 && paneEl){
+      try{
+        const top = paneEl.scrollTop;
+        const bottom = top + paneEl.clientHeight;
+        const els = Array.from(paneEl.querySelectorAll("[data-open-idx]"));
+        let added = 0;
+        for (const el of els){
+          if (added >= remaining) break;
+          const idx = parseInt(el.dataset.openIdx, 10);
+          if (!Number.isFinite(idx) || desired.has(idx)) continue;
+          const y = el.offsetTop;
+          const h = el.offsetHeight || 1;
+          if (y + h < top || y > bottom) continue;
+          desired.add(idx);
+          added++;
+        }
+      }catch{}
+    }
+
+    // Evict anything out of desired set.
     for (const [idx, slot] of Array.from(M.idxToSlot.entries())){
       if (!desired.has(idx)) openingsMiniEvictSlot(slot);
     }
 
     // Ensure desired indices are assigned to a slot and docked into the DOM.
-    for (let idx=start; idx<=end; idx++){
+    for (const idx of Array.from(desired.values())){
       if (M.idxToSlot.has(idx)) continue;
 
       // Find a free slot, otherwise evict something far away from center.
@@ -3075,6 +3102,18 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     }
   }
 
+  function updateOpeningsExpanded(paneEl, expandedKey){
+    if (!paneEl) return;
+    const exp = String(expandedKey || "");
+    try{
+      const wraps = Array.from(paneEl.querySelectorAll(".openKids"));
+      for (const w of wraps){
+        const k = String(w.dataset.openKidsOf || "");
+        w.classList.toggle("open", !!exp && k === exp);
+      }
+    }catch{}
+  }
+
   function installOpeningsMiniObserver(paneEl){
     const M = RUNTIME.openings.mini;
     if (!M || !M.warmed || !paneEl) return;
@@ -3090,7 +3129,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
         if (!best || score > best.score) best = { idx, score };
       }
       if (!best) return;
-      openingsMiniEnsureAround(best.idx);
+      openingsMiniEnsureAround(best.idx, paneEl);
     }, { root: paneEl, threshold: [0.01, 0.1, 0.25] });
 
     try{
@@ -3122,8 +3161,12 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       backBtn.onclick = () => dispatch({ type: showAll ? "OPENINGS/SHOW_FILTERED" : "OPENINGS/SHOW_ALL" });
     }
 
-    const cacheKey = `${showAll ? "ALL" : "FILTER"}|${sig}|${expanded}`;
-    if (RUNTIME.openings.domCache.host === host && RUNTIME.openings.domCache.sig === cacheKey) return;
+    const cacheKey = `${showAll ? "ALL" : "FILTER"}|${sig}`;
+    if (RUNTIME.openings.domCache.host === host && RUNTIME.openings.domCache.sig === cacheKey){
+      // Fast-path: no need to rebuild list; just toggle expanded sublist.
+      try{ updateOpeningsExpanded(pane, expanded); }catch{}
+      return;
+    }
 
     RUNTIME.openings.domCache.host = host;
     RUNTIME.openings.domCache.sig = cacheKey;
@@ -3133,7 +3176,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       const curShowAll = !!STATE.openings?.showAll;
       const curSig = String(STATE.openings?.prefixSig || "");
       const curExpanded = String(STATE.openings?.expandedParent || "");
-      const curKey = `${curShowAll ? "ALL" : "FILTER"}|${curSig}|${curExpanded}`;
+      const curKey = `${curShowAll ? "ALL" : "FILTER"}|${curSig}`;
       if (RUNTIME.openings.domCache.sig !== curKey) return;
 
       const prefixTokens = curSig ? curSig.split("\u001f").filter(Boolean) : [];
@@ -3201,7 +3244,11 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
           });
           host.appendChild(card);
 
-          if (kids.length > 1 && String(curExpanded) === String(pk)){
+          const kidsWrap = document.createElement("div");
+          kidsWrap.className = "openKids" + ((String(curExpanded) === String(pk)) ? " open" : "");
+          kidsWrap.dataset.openKidsOf = pk;
+
+          if (kids.length > 1){
             for (const child of kids){
               const c = document.createElement("div");
               c.className = "openCard openChild";
@@ -3222,9 +3269,11 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
                 dispatch({ type:"OPENINGS/LOAD_PGN", title: child.name, pgn: child.pgn });
                 try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
               });
-              host.appendChild(c);
+              kidsWrap.appendChild(c);
             }
           }
+
+          host.appendChild(kidsWrap);
         }
       }
 
@@ -3234,14 +3283,16 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
         if (M && M.warmed && M.lastSig !== sigNow){
           M.lastSig = sigNow;
           installOpeningsMiniObserver(pane);
+          try{ updateOpeningsExpanded(pane, curExpanded); }catch{}
           // Prime the window near the top so the first scroll feels instant.
-          openingsMiniEnsureAround(Math.min(20, Math.max(0, _leafIdx-1)));
+          openingsMiniEnsureAround(Math.min(20, Math.max(0, _leafIdx-1)), pane);
         }
       }catch{}
 
       if (!visible.length){
         host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">No openings match this position prefix.</div>";
       }
+
     }).catch(()=>{});
   }
 
