@@ -268,7 +268,7 @@
   }
 
   /* --- Openings expand/collapse (smooth) --- */
-  #pane-openings .openKids{ overflow:hidden; max-height:0; transition:max-height .18s ease; }
+  #pane-openings .openKids{ overflow:hidden; max-height:0; transition:max-height .18s ease; will-change:max-height; }
   #pane-openings .openKids.open{ max-height:2600px; }
 
   /* --- Openings mini boards (pooled) --- */
@@ -3070,20 +3070,25 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     // (this makes expanding sublists feel instant).
     const remaining = Math.max(0, pool - desired.size);
     if (remaining > 0 && paneEl){
+      // IMPORTANT: do NOT scan the whole DOM list here (can be thousands of nodes).
+      // Sample a handful of points in the viewport and grab nearby cards (O(1)ish).
       try{
-        const top = paneEl.scrollTop;
-        const bottom = top + paneEl.clientHeight;
-        const els = Array.from(paneEl.querySelectorAll("[data-open-idx]"));
-        let added = 0;
-        for (const el of els){
-          if (added >= remaining) break;
-          const idx = parseInt(el.dataset.openIdx, 10);
-          if (!Number.isFinite(idx) || desired.has(idx)) continue;
-          const y = el.offsetTop;
-          const h = el.offsetHeight || 1;
-          if (y + h < top || y > bottom) continue;
+        const r = paneEl.getBoundingClientRect();
+        const x = r.left + Math.min(40, r.width*0.25);
+        const seen = new Set();
+        const samples = 14;
+        for (let s=0; s<samples && desired.size < pool; s++){
+          const y = r.top + ((s + 0.5) / samples) * r.height;
+          const el = document.elementFromPoint(x, y);
+          const card = el && el.closest ? el.closest("[data-open-idx]") : null;
+          if (!card) continue;
+          const idx = parseInt(card.dataset.openIdx, 10);
+          if (!Number.isFinite(idx) || desired.has(idx) || seen.has(idx)) continue;
+          seen.add(idx);
           desired.add(idx);
-          added++;
+          // Also opportunistically add neighbors so expanding feels instant.
+          if (desired.size < pool && idx-1 >= 0) desired.add(idx-1);
+          if (desired.size < pool && idx+1 < cards.length) desired.add(idx+1);
         }
       }catch{}
     }
@@ -3184,13 +3189,62 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
   function updateOpeningsExpanded(paneEl, expandedKey){
     if (!paneEl) return;
     const exp = String(expandedKey || "");
-    try{
-      const wraps = Array.from(paneEl.querySelectorAll(".openKids"));
-      for (const w of wraps){
-        const k = String(w.dataset.openKidsOf || "");
-        w.classList.toggle("open", !!exp && k === exp);
-      }
-    }catch{}
+    const prev = String(paneEl.__openingsExpandedKey || "");
+    if (prev === exp) return;
+    paneEl.__openingsExpandedKey = exp;
+
+    const esc = (s) => {
+      try{
+        if (window.CSS && typeof CSS.escape === "function") return CSS.escape(String(s));
+      }catch{}
+      return String(s).replace(/"/g, '\\"');
+    };
+    const getWrap = (k) => {
+      if (!k) return null;
+      try{ return paneEl.querySelector(`.openKids[data-open-kids-of="${esc(k)}"]`); }catch{ return null; }
+    };
+
+    const closeWrap = (w) => {
+      if (!w) return;
+      // Evict pooled mini slots inside collapsed subtree to avoid heavy close/layout work.
+      try{
+        const M = RUNTIME.openings?.mini;
+        if (M && M.idxToSlot && typeof M.idxToSlot.get === "function"){
+          const els = Array.from(w.querySelectorAll("[data-open-idx]"));
+          for (const el of els){
+            const idx = parseInt(el.dataset.openIdx, 10);
+            if (!Number.isFinite(idx)) continue;
+            const slot = M.idxToSlot.get(idx);
+            if (typeof slot === "number") openingsMiniEvictSlot(slot);
+          }
+        }
+      }catch{}
+
+      try{ w.style.maxHeight = (w.scrollHeight || 0) + "px"; }catch{}
+      w.classList.remove("open");
+      // Next frame, animate to 0px (inline) so the close is smooth and cheap.
+      try{ requestAnimationFrame(()=>{ try{ w.style.maxHeight = "0px"; }catch{} }); }catch{}
+    };
+
+    const openWrap = (w) => {
+      if (!w) return;
+      w.classList.add("open");
+      // Set maxHeight to the true height so we don't animate from 2600px.
+      try{ w.style.maxHeight = (w.scrollHeight || 0) + "px"; }catch{}
+      // After transition, clear inline maxHeight so future kids changes don't fight us.
+      try{
+        const onEnd = (ev) => {
+          if (ev && ev.target !== w) return;
+          w.removeEventListener("transitionend", onEnd);
+          try{ w.style.maxHeight = ""; }catch{}
+        };
+        w.addEventListener("transitionend", onEnd);
+      }catch{}
+    };
+
+    // Only touch the two relevant wrappers (prev + new).
+    closeWrap(getWrap(prev));
+    if (exp) openWrap(getWrap(exp));
   }
 
   function installOpeningsMiniObserver(paneEl){
