@@ -3135,25 +3135,63 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
         });
         host.appendChild(card);
 
-        if (kids.length > 1 && String(curExpanded) === String(pk)){
-          for (const child of kids){
-            const c = document.createElement("div");
-            c.className = "openCard openChild";
-            c.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
-            c.querySelector(".openTitle").textContent = child.name;
-            c.querySelector(".openMoves").textContent = moveLineFromPgn(child.pgn);
-            c.querySelector(".openSub").textContent = child.eco || "";
-            c.addEventListener("click", (ev) => {
+        const exp = String(curExpanded || "");
+        const groupExpanded = (kids.length > 1) && (exp === String(pk) || exp.startsWith(String(pk) + "::"));
+        if (groupExpanded){
+          // Within a preferred group, preserve the "natural" clustering from the tables via parentKey.
+          const byParent = new Map();
+          for (const it of kids){
+            const k = it.parentKey || it.name;
+            if (!byParent.has(k)) byParent.set(k, []);
+            byParent.get(k).push(it);
+          }
+
+          const parents = Array.from(byParent.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+          for (const pk2 of parents){
+            const kk = byParent.get(pk2) || [];
+            if (!kk.length) continue;
+            const p0 = kk[0];
+            const subKey = `${pk}::${pk2}`;
+
+            const pc = document.createElement("div");
+            pc.className = "openCard openChild";
+            pc.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+            pc.querySelector(".openTitle").textContent = pk2;
+            pc.querySelector(".openMoves").textContent = moveLineFromPgn(p0.pgn);
+            pc.querySelector(".openSub").textContent = `${kk.length} line${kk.length===1?"":"s"} • ${p0.eco || ""}`;
+            pc.addEventListener("click", (ev) => {
               ev.stopPropagation();
-              RUNTIME.loadOpeningPgn({ title: child.name, pgn: child.pgn });
+              if (kk.length <= 1){
+                RUNTIME.loadOpeningPgn({ title: p0.name, pgn: p0.pgn });
+              } else {
+                dispatch({ type:"OPENINGS/EXPAND", parentKey: subKey });
+              }
             });
-            host.appendChild(c);
+            host.appendChild(pc);
+
+            if (kk.length > 1 && String(curExpanded) === String(subKey)){
+              for (const child of kk){
+                const c = document.createElement("div");
+                c.className = "openCard openChild";
+                c.style.marginLeft = "28px";
+                c.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+                c.querySelector(".openTitle").textContent = child.name;
+                c.querySelector(".openMoves").textContent = moveLineFromPgn(child.pgn);
+                c.querySelector(".openSub").textContent = child.eco || "";
+                c.addEventListener("click", (ev) => {
+                  ev.stopPropagation();
+                  RUNTIME.loadOpeningPgn({ title: child.name, pgn: child.pgn });
+                });
+                host.appendChild(c);
+              }
+            }
           }
         }
       };
       for (const g of OPENINGS_PREFERRED_GROUPS){
         const kids = [];
         for (const e of visible){
+
           if (claimed.has(e)) continue;
           if (isPrefixMatchCI(g.prefixLower, e.tokens)) kids.push(e);
         }
