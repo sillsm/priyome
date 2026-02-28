@@ -1002,19 +1002,34 @@
     const openingName = String(payload?.title || "Opening").trim() || "Opening";
     const headers = parseHeaders(pgn || "");
     const id = `opening:${Date.now()}:${nowId()}`;
-    const toks = sanTokensFromPgnLike(pgn);
-    const moveSeq = toks.join(" ").trim();
-    const cqlText = `cql(quiet)
-{
-line --> { ${moveSeq} }
-}`;
     dispatch({
       type:"OPENINGS/OK",
-      game: { id, title:"Opening Explorer", opening: openingName, pgn, headers, cqlText }
+      game: { id, title:"Opening Explorer", opening: openingName, pgn, headers }
     });
+
+    // Opening click flow:
+    // 1) load board
+    // 2) export FEN
+    // 3) build CQL using fen "..."
+    // 4) switch to query mode (shared logic)
+    await RUNTIME.ensureGameLoaded(id);
+    RUNTIME.syncBoard(id);
+
+    let fenFull = "";
+    try{
+      const g = RUNTIME.games.get(id);
+      fenFull = String(g?.exportFEN?.() || "").trim();
+    }catch{}
+    const fenPieces = String((fenFull.split(" ")[0] || "").trim());
+    const cqlText = `cql(quiet)
+{
+fen "${fenPieces}"
+}`;
+
     await RUNTIME.activateGameForQuery(id, cqlText);
     dispatch({ type:"UI/TAB", tab:"moves" });
   };
+
 
   RUNTIME.loadPriyome = async function loadPriyome(payload){
     const priyomeId = String(payload?.id || "");
