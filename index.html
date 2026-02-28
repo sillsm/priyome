@@ -261,6 +261,7 @@
   #pane-openings .openCard:hover{ background:#f7f9ff; }
   #pane-openings .openTitle{ font-weight:900; font-size:13px; }
   #pane-openings .openSub{ font-size:12px; color:var(--muted); }
+  #pane-openings .openMoves{ font-size:12px; color:rgba(0,0,0,.35); font-family:var(--mono); white-space:normal; word-break:break-word; line-height:1.25; }
   #pane-openings .openChild{
     margin-left:14px;
     padding-left:10px;
@@ -596,12 +597,8 @@
 
 
     <div class="pane" id="pane-openings">
-      <div class="openingsTop">
-        <div class="row" style="gap:8px; align-items:center">
-          <div class="label">Openings</div>
-          <button class="openingsBack" id="openingsBack" type="button" title="Show all openings">All</button>
-        </div>
-        <div class="openingsPrefix" id="openingsPrefix">(start position)</div>
+      <div class="row" style="gap:8px; justify-content:flex-end; margin-bottom:8px">
+        <button class="openingsBack" id="openingsBack" type="button" title="Show all openings">All</button>
       </div>
       <div class="list" id="openingsList"></div>
     </div>
@@ -979,6 +976,61 @@
   };
 
 
+  // Shared: load an already-created logical game id onto the board, enable query mode,
+  // mirror query controls, and refresh the UI. Used by both Priyomes and Openings clicks.
+  RUNTIME.activateGameForQuery = async function activateGameForQuery(id, cqlText){
+    id = String(id||"");
+    if (!id) return;
+    await RUNTIME.ensureGameLoaded(id);
+    try{
+      const g = RUNTIME.games.get(id);
+      if (g){
+        try{ g.setMode?.("query"); }catch{}
+        if (typeof cqlText === "string"){
+          try{ g.cqlText = cqlText; }catch{}
+        }
+      }
+    }catch{}
+    RUNTIME.syncBoard(id);
+    dispatch({ type:"QUERY/USE_CURRENT" });
+    dispatch({ type:"UI/REFRESH" });
+  };
+
+  RUNTIME.loadOpeningPgn = async function loadOpeningPgn(payload){
+    const pgn = String(payload?.pgn || "");
+    if (!pgn) return;
+    const openingName = String(payload?.title || "Opening").trim() || "Opening";
+    const headers = parseHeaders(pgn || "");
+    const id = `opening:${Date.now()}:${nowId()}`;
+    dispatch({
+      type:"OPENINGS/OK",
+      game: { id, title:"Opening Explorer", opening: openingName, pgn, headers }
+    });
+
+    // Opening click flow:
+    // 1) load board
+    // 2) export FEN
+    // 3) build CQL using fen "..."
+    // 4) switch to query mode (shared logic)
+    await RUNTIME.ensureGameLoaded(id);
+    RUNTIME.syncBoard(id);
+
+    let fenFull = "";
+    try{
+      const g = RUNTIME.games.get(id);
+      fenFull = String(g?.exportFEN?.() || "").trim();
+    }catch{}
+    const fenPieces = String((fenFull.split(" ")[0] || "").trim());
+    const cqlText = `cql(quiet)
+{
+fen "${fenPieces}"
+}`;
+
+    await RUNTIME.activateGameForQuery(id, cqlText);
+    dispatch({ type:"UI/TAB", tab:"moves" });
+  };
+
+
   RUNTIME.loadPriyome = async function loadPriyome(payload){
     const priyomeId = String(payload?.id || "");
     const name = String(payload?.name || "").trim();
@@ -1018,20 +1070,8 @@
           game: { id, title, opening:"Priyome", pgn, headers, cqlText }
         });
 
-        // Instantiate the ScratchChess game + load the board.
-        await RUNTIME.ensureGameLoaded(id);
-        try{
-          const g = RUNTIME.games.get(id);
-          if (g){
-            try{ g.setMode?.("query"); }catch{}
-            try{ g.cqlText = cqlText; }catch{}
-          }
-        }catch{}
-
-        RUNTIME.syncBoard();
-        // Populate query pane from the new current game.
-        dispatch({ type:"QUERY/USE_CURRENT" });
-        dispatch({ type:"UI/REFRESH" });
+        // Instantiate the ScratchChess game + load the board (shared logic).
+        await RUNTIME.activateGameForQuery(id, cqlText);
 
       }catch(e){
         logStack("ERR","Failed to load Priyome to board: ", e);
@@ -1263,6 +1303,24 @@
       attachOnChange(id, g);
       T["GAME/ADD"](S, { id, title });
       S.activeGameId = id;
+      S.ui.tab = "moves";
+    },
+    "OPENINGS/OK": (S,A) => {
+      const g = (A && A.game) ? A.game : {};
+      const id = String(g.id || nowId());
+      const pgn = String(g.pgn || "");
+      if (!pgn) return;
+      const h = g.headers || parseHeaders(pgn);
+      S.pgnSource.byId[id] = { pgn, h };
+      T["GAME/ADD"](S, { id, title: String(g.title || "Opening Explorer") });
+      S.gamesMeta[id] = Object.assign({}, S.gamesMeta[id] || { id }, {
+        title: String(g.title || "Opening Explorer"),
+        opening: String(g.opening || ""),
+        event: String(h.Event || ""),
+        date: String(h.Date || ""),
+        white: String(h.White || ""),
+        black: String(h.Black || "")
+      });
       S.ui.tab = "moves";
     },
 
@@ -2114,11 +2172,13 @@
     const sid = String(id);
     if (sid.startsWith("query:")) return true;
     if (sid.startsWith("priyome:")) return true;
+    if (sid.startsWith("opening:")) return true;
     const meta = STATE.gamesMeta ? STATE.gamesMeta[id] : null;
     if (meta && (meta.opening === "Query" || meta.title === "Query Position")) return true;
     try{
       const g = RUNTIME.games.get(id);
       const pgn = g?.exportPGN?.() || "";
+
       const ev = getHeaderTag(pgn, "Event");
       if (ev === "Query Position") return true;
     }catch{}
@@ -2975,16 +3035,24 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     const pane = $("pane-openings");
     if (!pane) return;
     const host = $("openingsList");
-    const prefixEl = $("openingsPrefix");
     const backBtn = $("openingsBack");
     if (!host) return;
 
     const showAll = !!STATE.openings?.showAll;
     const sig = String(STATE.openings?.prefixSig || "");
     const expanded = String(STATE.openings?.expandedParent || "");
-    const prefixText = String(STATE.openings?.prefixText || "(start position)");
 
-    if (prefixEl) prefixEl.textContent = prefixText;
+    const moveLineFromPgn = (pgn) => {
+      // Grey "1. e4 e5 ..." line shown on each opening card.
+      let s = String(pgn || "");
+      s = s.replace(/^\s*\[[^\]]+\]\s*$/gm, "");
+      s = s.replace(/\{[^}]*\}/g, " ");
+      s = s.replace(/;[^\n]*/g, " ");
+      for (let i=0;i<6;i++) s = s.replace(/\([^()]*\)/g, " ");
+      s = s.replace(/\b(1-0|0-1|1\/2-1\/2|\*)\b/g, " ");
+      s = s.replace(/\s+/g, " ").trim();
+      return s;
+    };
 
     if (backBtn){
       const hasPrefix = !!sig;
@@ -3046,13 +3114,13 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
           const card = document.createElement("div");
           card.className = "openCard";
-          card.innerHTML = `<div class="openTitle"></div><div class="openSub"></div>`;
+          card.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
           card.querySelector(".openTitle").textContent = pk;
+          card.querySelector(".openMoves").textContent = moveLineFromPgn(parent.pgn);
           card.querySelector(".openSub").textContent = `${kids.length} line${kids.length===1?"":"s"} • ${parent.eco || ""}`;
           card.addEventListener("click", () => {
             if (kids.length <= 1){
-              dispatch({ type:"OPENINGS/LOAD_PGN", title: parent.name, pgn: parent.pgn });
-              try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
+              RUNTIME.loadOpeningPgn({ title: parent.name, pgn: parent.pgn });
             } else {
               dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
             }
@@ -3063,19 +3131,20 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
             for (const child of kids){
               const c = document.createElement("div");
               c.className = "openCard openChild";
-              c.innerHTML = `<div class="openTitle"></div><div class="openSub"></div>`;
+              c.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
               c.querySelector(".openTitle").textContent = child.name;
+              c.querySelector(".openMoves").textContent = moveLineFromPgn(child.pgn);
               c.querySelector(".openSub").textContent = child.eco || "";
               c.addEventListener("click", (ev) => {
                 ev.stopPropagation();
-                dispatch({ type:"OPENINGS/LOAD_PGN", title: child.name, pgn: child.pgn });
-                try{ RUNTIME.syncBoard(STATE.activeGameId); }catch{}
+                RUNTIME.loadOpeningPgn({ title: child.name, pgn: child.pgn });
               });
               host.appendChild(c);
             }
           }
         }
       }
+
 
       if (!visible.length){
         host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">No openings match this position prefix.</div>";
