@@ -597,9 +597,10 @@
 
 
     <div class="pane" id="pane-openings">
+      <div class="row" style="gap:8px; justify-content:flex-end; margin-bottom:8px">
+        <button class="openingsBack" id="openingsBack" type="button" title="Show all openings">All</button>
+      </div>
       <div class="list" id="openingsList"></div>
-      <div class="label" style="margin-top:12px">CQL</div>
-      <textarea id="openingsCqlText" placeholder="cql()"></textarea>
     </div>
 
     <div class="pane" id="pane-query">
@@ -1012,6 +1013,7 @@ line --> { ${moveSeq} }
       game: { id, title:"Opening Explorer", opening: openingName, pgn, headers, cqlText }
     });
     await RUNTIME.activateGameForQuery(id, cqlText);
+    dispatch({ type:"UI/TAB", tab:"moves" });
   };
 
   RUNTIME.loadPriyome = async function loadPriyome(payload){
@@ -1204,6 +1206,9 @@ line --> { ${moveSeq} }
       selectedKey: null,      // e.g. "Fischer"
     },
     openings: {
+      showAll: false,
+      prefixSig: "",
+      prefixText: "(start position)",
       expandedParent: "",
     },
     // NOTE: heavy PGN + CQL caches live in RUNTIME (not STATE) to keep cloning/render fast.
@@ -1254,6 +1259,19 @@ line --> { ${moveSeq} }
     "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
 
      "OPENINGS/OPEN": (S) => { S.ui.tab = "openings"; },
+    "OPENINGS/SHOW_ALL": (S) => { S.openings.showAll = true; },
+    "OPENINGS/SHOW_FILTERED": (S) => { S.openings.showAll = false; },
+    "OPENINGS/BOARD_PREFIX": (S,A) => {
+      const sig = String(A.sig || "");
+     const text = String(A.text || "(start position)");
+      const changed = (sig !== String(S.openings.prefixSig || ""));
+      S.openings.prefixSig = sig;
+      S.openings.prefixText = text;
+      if (changed){
+        S.openings.showAll = false;
+        S.openings.expandedParent = "";
+      }
+  },
     "OPENINGS/EXPAND": (S,A) => {
       const k = String(A.parentKey || "");
       if (!k) return;
@@ -2139,11 +2157,13 @@ line --> { ${moveSeq} }
     const sid = String(id);
     if (sid.startsWith("query:")) return true;
     if (sid.startsWith("priyome:")) return true;
+    if (sid.startsWith("opening:")) return true;
     const meta = STATE.gamesMeta ? STATE.gamesMeta[id] : null;
     if (meta && (meta.opening === "Query" || meta.title === "Query Position")) return true;
     try{
       const g = RUNTIME.games.get(id);
       const pgn = g?.exportPGN?.() || "";
+
       const ev = getHeaderTag(pgn, "Event");
       if (ev === "Query Position") return true;
     }catch{}
@@ -2987,16 +3007,25 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
     return O.loadPromise;
   }
+  function isPrefixMatch(prefixTokens, entryTokens){
+    if (!prefixTokens || !prefixTokens.length) return true;
+    if (!entryTokens || entryTokens.length < prefixTokens.length) return false;
+    for (let i=0;i<prefixTokens.length;i++){
+      if (String(entryTokens[i]) !== String(prefixTokens[i])) return false;
+    }
+    return true;
+  }
+
   function renderOpeningsPane(){
     const pane = $("pane-openings");
     if (!pane) return;
     const host = $("openingsList");
+    const backBtn = $("openingsBack");
     if (!host) return;
 
+    const showAll = !!STATE.openings?.showAll;
+    const sig = String(STATE.openings?.prefixSig || "");
     const expanded = String(STATE.openings?.expandedParent || "");
-    const qCql = $("qCqlText");
-    const oCql = $("openingsCqlText");
-    if (oCql && qCql && oCql.value !== qCql.value) oCql.value = qCql.value;
 
     const moveLineFromPgn = (pgn) => {
       // Grey "1. e4 e5 ..." line shown on each opening card.
@@ -3010,7 +3039,15 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       return s;
     };
 
-    const cacheKey = `OPEN|${expanded}`;
+    if (backBtn){
+      const hasPrefix = !!sig;
+      backBtn.textContent = showAll ? "Filtered" : "All";
+      backBtn.style.opacity = (showAll || hasPrefix) ? "1" : "0";
+      backBtn.style.pointerEvents = (showAll || hasPrefix) ? "auto" : "none";
+      backBtn.onclick = () => dispatch({ type: showAll ? "OPENINGS/SHOW_FILTERED" : "OPENINGS/SHOW_ALL" });
+    }
+
+    const cacheKey = `${showAll ? "ALL" : "FILTER"}|${sig}|${expanded}`;
     if (RUNTIME.openings.domCache.host === host && RUNTIME.openings.domCache.sig === cacheKey) return;
 
     RUNTIME.openings.domCache.host = host;
@@ -3018,11 +3055,14 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">Loading openings…</div>";
 
     ensureOpeningsLoaded().then((entries)=>{
+      const curShowAll = !!STATE.openings?.showAll;
+      const curSig = String(STATE.openings?.prefixSig || "");
       const curExpanded = String(STATE.openings?.expandedParent || "");
-      const curKey = `OPEN|${curExpanded}`;
+      const curKey = `${curShowAll ? "ALL" : "FILTER"}|${curSig}|${curExpanded}`;
       if (RUNTIME.openings.domCache.sig !== curKey) return;
 
-      const visible = entries;
+      const prefixTokens = curSig ? curSig.split("\u001f").filter(Boolean) : [];
+      const visible = curShowAll ? entries : entries.filter(e => isPrefixMatch(prefixTokens, e.tokens));
 
       host.innerHTML = "";
       const groups = new Map();
@@ -3092,7 +3132,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
 
       if (!visible.length){
-        host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">No openings loaded.</div>";
+        host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">No openings match this position prefix.</div>";
       }
     }).catch(()=>{});
   }
@@ -3260,7 +3300,18 @@ function renderPlayersPane(){
      try{
        g?.onChange?.(() => {
          // only render if this is active (or if nothing selected yet)
-         if (!STATE.activeGameId || STATE.activeGameId === id){
+        if (!STATE.activeGameId || STATE.activeGameId === id){
+          try{
+            const pref = getCurrentPrefixInfo(g);
+            if (pref){
+              const prevSig = String(STATE.openings?.prefixSig || "");
+              const prevTxt = String(STATE.openings?.prefixText || "");
+              if (pref.sig !== prevSig || pref.text !== prevTxt){
+                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: pref.sig, text: pref.text });
+                return; // dispatch triggers render
+              }
+            }
+          }catch{}
           render();
         }
        });
