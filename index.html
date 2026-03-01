@@ -3031,6 +3031,39 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     return true;
   }
 
+  // Preferred high-level grouping for the Openings pane.
+  // Order matters: earlier prefixes "claim" matching openings; later, shorter prefixes can mop up leftovers.
+  // Anything in ECO group "A" is rendered last (see ecoList below).
+  const OPENINGS_PREFERRED_GROUPS = [
+    { name:"Sicilian",          seq:"1. e4 c5" },
+    { name:"Ruy Lopez",         seq:"1. e4 e5 2. nf3 nc6 3. Bb5" },
+    { name:"Caro–Kann",         seq:"1. e4 c6" },
+    { name:"Italian Game",      seq:"1. e4 e5 2. nf3 nc6 3. Bc4" },
+    { name:"French Defense",    seq:"1. e4 e6" },
+    { name:"Slav",              seq:"1. d4 d5 2. c4 c6" },
+    { name:"Queen's Indian",    seq:"1. d4 Nf6" },
+    { name:"Other e4 openings", seq:"1. e4" },
+    { name:"Other d4 openings", seq:"1. d4" },
+  ].map(g => {
+    const s = String(g.seq||"").replace(/\s+/g," ").trim();
+    const toks = s
+      .split(" ")
+      .map(t=>t.trim())
+      .filter(Boolean)
+      .filter(t => !/^\d+\.(\.\.)?$/.test(t) && !/^\d+\.\.\.$/.test(t))
+      .map(t => t.replace(/[!?+#]+$/g,""))
+      .map(t => t.toLowerCase());
+    return { name:g.name, prefixLower:toks };
+  });
+  function isPrefixMatchCI(prefixLower, entryTokens){
+    if (!prefixLower || !prefixLower.length) return true;
+    if (!entryTokens || entryTokens.length < prefixLower.length) return false;
+    for (let i=0;i<prefixLower.length;i++){
+      if (String(entryTokens[i]||"").toLowerCase() !== String(prefixLower[i]||"").toLowerCase()) return false;
+    }
+    return true;
+  }
+
   function renderOpeningsPane(){
     const pane = $("pane-openings");
     if (!pane) return;
@@ -3080,14 +3113,104 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       const visible = curShowAll ? entries : entries.filter(e => isPrefixMatch(prefixTokens, e.tokens));
 
       host.innerHTML = "";
+      // First, render preferred high-level groups (claiming matches in order).
+      const claimed = new Set();
+      const renderGroupCard = (title, kids) => {
+        if (!kids || !kids.length) return;
+        const parent = kids[0];
+        const pk = String(title || parent?.name || "");
+
+        const card = document.createElement("div");
+        card.className = "openCard";
+        card.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+        card.querySelector(".openTitle").textContent = pk;
+        card.querySelector(".openMoves").textContent = moveLineFromPgn(parent.pgn);
+        card.querySelector(".openSub").textContent = `${kids.length} line${kids.length===1?"":"s"}`;
+        card.addEventListener("click", () => {
+          if (kids.length <= 1){
+            RUNTIME.loadOpeningPgn({ title: parent.name, pgn: parent.pgn });
+          } else {
+            dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
+          }
+        });
+        host.appendChild(card);
+
+        const exp = String(curExpanded || "");
+        const groupExpanded = (kids.length > 1) && (exp === String(pk) || exp.startsWith(String(pk) + "::"));
+        if (groupExpanded){
+          // Within a preferred group, preserve the "natural" clustering from the tables via parentKey.
+          const byParent = new Map();
+          for (const it of kids){
+            const k = it.parentKey || it.name;
+            if (!byParent.has(k)) byParent.set(k, []);
+            byParent.get(k).push(it);
+          }
+
+          const parents = Array.from(byParent.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+          for (const pk2 of parents){
+            const kk = byParent.get(pk2) || [];
+            if (!kk.length) continue;
+            const p0 = kk[0];
+            const subKey = `${pk}::${pk2}`;
+
+            const pc = document.createElement("div");
+            pc.className = "openCard openChild";
+            pc.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+            pc.querySelector(".openTitle").textContent = pk2;
+            pc.querySelector(".openMoves").textContent = moveLineFromPgn(p0.pgn);
+            pc.querySelector(".openSub").textContent = `${kk.length} line${kk.length===1?"":"s"} • ${p0.eco || ""}`;
+            pc.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              if (kk.length <= 1){
+                RUNTIME.loadOpeningPgn({ title: p0.name, pgn: p0.pgn });
+              } else {
+                dispatch({ type:"OPENINGS/EXPAND", parentKey: subKey });
+              }
+            });
+            host.appendChild(pc);
+
+            if (kk.length > 1 && String(curExpanded) === String(subKey)){
+              for (const child of kk){
+                const c = document.createElement("div");
+                c.className = "openCard openChild";
+                c.style.marginLeft = "28px";
+                c.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+                c.querySelector(".openTitle").textContent = child.name;
+                c.querySelector(".openMoves").textContent = moveLineFromPgn(child.pgn);
+                c.querySelector(".openSub").textContent = child.eco || "";
+                c.addEventListener("click", (ev) => {
+                  ev.stopPropagation();
+                  RUNTIME.loadOpeningPgn({ title: child.name, pgn: child.pgn });
+                });
+                host.appendChild(c);
+              }
+            }
+          }
+        }
+      };
+      for (const g of OPENINGS_PREFERRED_GROUPS){
+        const kids = [];
+        for (const e of visible){
+
+          if (claimed.has(e)) continue;
+          if (isPrefixMatchCI(g.prefixLower, e.tokens)) kids.push(e);
+        }
+        if (kids.length){
+          for (const k of kids) claimed.add(k);
+          renderGroupCard(g.name, kids);
+        }
+      }
+
       const groups = new Map();
       for (const e of visible){
+        if (claimed.has(e)) continue;
         const g = ecoGroupFor(e.eco);
         if (!groups.has(g.key)) groups.set(g.key, { title:g.title, items:[] });
         groups.get(g.key).items.push(e);
       }
 
-      for (const g of ECO_GROUPS){
+      const ecoList = ECO_GROUPS.filter(x=>x.key!=="A").concat(ECO_GROUPS.filter(x=>x.key==="A"));
+      for (const g of ecoList){
         const bucket = groups.get(g.key);
         if (!bucket || !bucket.items.length) continue;
 
@@ -3099,6 +3222,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
         const rule = document.createElement("div");
         rule.className = "openGroupRule";
         host.appendChild(rule);
+
 
         const byParent = new Map();
         for (const it of bucket.items){
