@@ -2366,5 +2366,6 @@ Game.prototype.loadOpeningTables = async function (opts) {
 };
 
 Game.prototype.openingFromPGN = async function (pgnText, opts) {
-  return await openingFromPGN(pgnText, opts || {});
+   const pgnObj = (typeof pgnText === "string") ? parsePgnFastInto(pgnText) : (pgnText || null);
+   return await openingFromPGN(pgnObj, opts || {});
 };
