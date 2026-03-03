@@ -943,8 +943,6 @@
         const g = createGame(h || {});
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
-
         dispatch({ type:"GAME/OK", id });
 
         if (STATE.activeGameId === id){
@@ -1300,7 +1298,6 @@ fen "${fenPieces}"
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
       g.loadPGN?.(pgn);
       RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
       T["GAME/ADD"](S, { id, title });
       S.activeGameId = id;
       S.ui.tab = "moves";
@@ -1448,7 +1445,6 @@ fen "${fenPieces}"
         while (g.curNode && g.curNode !== g.root){ g.prevMove?.(); }
 
         RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
 
         T["GAME/ADD"](S, { id, title:"Query Position" });
         S.ui.tab = "moves";
@@ -1471,7 +1467,6 @@ fen "${fenPieces}"
             g.loadPGN?.(it.pgn);
             try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
             RUNTIME.games.set(id, g);
-            attachOnChange(id, g);
             // Ensure opening name is present (compute async so reducer stays sync).
             try{
               const meta = S.gamesMeta?.[id];
@@ -1581,7 +1576,6 @@ fen "${fenPieces}"
         const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
         T["GAME/ADD"](S, { id, title:"Imported" });
       }
       S.ui.importOpen = false;
@@ -2212,16 +2206,21 @@ fen "${fenPieces}"
       // Don't clobber manual CQL edits.
       if (qCql.dataset.userTouched === "1") return;
 
-      let cqlText = "";
-      let supported = false;
-      try{
-        if (typeof g?.exportCQL === "function"){
-          cqlText = String(g.exportCQL() || "").trim();
-          supported = !!cqlText;
-        }
-      }catch(e){
-        supported = false;
-      }
+let cqlText = "";
+let supported = false;
+
+try {
+  if (g?.cqlText?.trim()) {
+    cqlText = g.cqlText.trim();
+  } else if (typeof g?.exportCQL === "function") {
+    cqlText = (g.exportCQL() || "").trim();
+  }
+
+  supported = !!cqlText;
+
+} catch (e) {
+  supported = false;
+}
 
       if (!supported){
         qCql.value = "this query not supported";
@@ -3435,34 +3434,11 @@ function renderPlayersPane(){
     return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
   }
 
- function attachOnChange(id, g){
-     try{
-       g?.onChange?.(() => {
-         // only render if this is active (or if nothing selected yet)
-        if (!STATE.activeGameId || STATE.activeGameId === id){
-          try{
-            const pref = getCurrentPrefixInfo(g);
-            if (pref){
-              const prevSig = String(STATE.openings?.prefixSig || "");
-              const prevTxt = String(STATE.openings?.prefixText || "");
-              if (pref.sig !== prevSig || pref.text !== prevTxt){
-                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: pref.sig, text: pref.text });
-                return; // dispatch triggers render
-              }
-            }
-          }catch{}
-          render();
-        }
-       });
-     }catch{}
-   }
-
   function makeGameFromFEN(title, fen){
     const id = nowId();
     const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
     g.loadFEN?.(fen);
     RUNTIME.games.set(id, g);
-    attachOnChange(id, g);
     STATE.gamesMeta[id] = { id, title: title || id };
     return { id, g };
   }
@@ -3477,7 +3453,6 @@ function renderPlayersPane(){
 
     // mount board view
     RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
-    attachOnChange("boot", boot);
 
     // expose helper for test runner
     window.__getSquareCenter = (sq) => {
@@ -3593,7 +3568,6 @@ function renderPlayersPane(){
         const g = createGame(h);
         g.loadPGN?.(pgn);
         RUNTIME.games.set(gid, g);
-        attachOnChange(gid, g);
 
         const title = h.Event || h.White || `Game ${i + 1}`;
         STATE.gamesMeta[gid] = { id: gid, title };
@@ -3725,7 +3699,7 @@ function renderPlayersPane(){
       g.setInitialSetup?.();
       g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n *`);
       RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
+
       return dispatch({ type:"GAME/ADD", id, title:id });
     }
     // draw query
@@ -3766,18 +3740,6 @@ function renderPlayersPane(){
       RUNTIME.runCqlFromUi();
       return;
     }
-
-
-
-
-
-
-
-
-
-
-
-
 
     if (t.closest?.("#mvRunQuery")){
       dispatch({ type:"QUERY/USE_CURRENT" });
