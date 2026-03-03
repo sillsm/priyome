@@ -943,8 +943,6 @@
         const g = createGame(h || {});
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
-
         dispatch({ type:"GAME/OK", id });
 
         if (STATE.activeGameId === id){
@@ -1300,7 +1298,6 @@ fen "${fenPieces}"
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
       g.loadPGN?.(pgn);
       RUNTIME.games.set(id, g);
-      attachOnChange(id, g);
       T["GAME/ADD"](S, { id, title });
       S.activeGameId = id;
       S.ui.tab = "moves";
@@ -1448,7 +1445,6 @@ fen "${fenPieces}"
         while (g.curNode && g.curNode !== g.root){ g.prevMove?.(); }
 
         RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
 
         T["GAME/ADD"](S, { id, title:"Query Position" });
         S.ui.tab = "moves";
@@ -1471,7 +1467,6 @@ fen "${fenPieces}"
             g.loadPGN?.(it.pgn);
             try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
             RUNTIME.games.set(id, g);
-            attachOnChange(id, g);
             // Ensure opening name is present (compute async so reducer stays sync).
             try{
               const meta = S.gamesMeta?.[id];
@@ -1581,7 +1576,6 @@ fen "${fenPieces}"
         const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
-        attachOnChange(id, g);
         T["GAME/ADD"](S, { id, title:"Imported" });
       }
       S.ui.importOpen = false;
@@ -3439,29 +3433,6 @@ function renderPlayersPane(){
     if (!t) return [];
     return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
   }
-
- function attachOnChange(id, g){
-     return; // trying to remove this
-     try{
-       g?.onChange?.(() => {
-         // only render if this is active (or if nothing selected yet)
-        if (!STATE.activeGameId || STATE.activeGameId === id){
-          try{
-            const pref = getCurrentPrefixInfo(g);
-            if (pref){
-              const prevSig = String(STATE.openings?.prefixSig || "");
-              const prevTxt = String(STATE.openings?.prefixText || "");
-              if (pref.sig !== prevSig || pref.text !== prevTxt){
-                dispatch({ type:"OPENINGS/BOARD_PREFIX", sig: pref.sig, text: pref.text });
-                return; // dispatch triggers render
-              }
-            }
-          }catch{}
-          render();
-        }
-       });
-     }catch{}
-   }
 
   function makeGameFromFEN(title, fen){
     const id = nowId();
