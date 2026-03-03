@@ -2212,19 +2212,21 @@ fen "${fenPieces}"
       // Don't clobber manual CQL edits.
       if (qCql.dataset.userTouched === "1") return;
 
-      let cqlText = "";
-      let supported = false;
-       try{
-        // If the game provided a canonical CQL (e.g. Openings click generates fen "…"), prefer it.
-        if (g && g.cqlText && String(g.cqlText).trim()){
-          cqlText = String(g.cqlText).trim();
-          supported = !!cqlText;
-        } else if (typeof g?.exportCQL === "function"){
-           cqlText = String(g.exportCQL() || "").trim();
-           supported = !!cqlText;
-         } catch(e){
-        supported = false;
-      }
+let cqlText = "";
+let supported = false;
+
+try {
+  if (g?.cqlText?.trim()) {
+    cqlText = g.cqlText.trim();
+  } else if (typeof g?.exportCQL === "function") {
+    cqlText = (g.exportCQL() || "").trim();
+  }
+
+  supported = !!cqlText;
+
+} catch (e) {
+  supported = false;
+}
 
       if (!supported){
         qCql.value = "this query not supported";
