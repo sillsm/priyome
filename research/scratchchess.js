@@ -38,9 +38,13 @@
 // - Your HTML should only provide containers and wire buttons to exported methods.
 // =======================================================
 
-const PIECE_BASE =
-  "https://koblenski.github.io/javascript/chessboardjs-0.3.0/img/chesspieces/wikipedia/";
-const pieceSrc = (code) => PIECE_BASE + code + ".png"; // wP, bQ, etc.
+const PIECE_BASE = "https://commons.wikimedia.org/wiki/Special:FilePath/Chess_";
+// Wikimedia pattern: Chess_[piece][l|d]t45.svg  (piece in {k,q,r,b,n,p}; l=white/light, d=black/dark)
+const pieceSrc = (code) => {
+  const color = code[0] === "w" ? "l" : "d";     // w->l, b->d
+  const piece = String(code[1] || "p").toLowerCase(); // P->p, K->k, etc.
+  return PIECE_BASE + piece + color + "t45.svg"; // e.g. Chess_kdt45.svg, Chess_plt45.svg
+};
 
 const files = "abcdefgh";
 const idx = (f, r) => (7 - r) * 8 + f; // a8=0
