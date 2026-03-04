@@ -1917,50 +1917,99 @@ fen "${fenPieces}"
     return parts.map(x=>x.trim()).filter(Boolean);
   }
 
-  function parsePriyomesMarkdown(md){
-    // Markdown format:
-    //   ## Section Name
-    //   [Event "..."] ... (PGN headers/moves)
-    //   *
-    const out = [];
-    const ls = String(md || "").split(/\r?\n/);
-    let curName = "";
-    let buf = [];
+function parsePriyomesMarkdown(md){
+  const lines = String(md || "").split(/\r?\n/);
 
-    const flush = () => {
-      const section = String(curName || "").trim();
-      if (!section) { buf = []; return; }
-      const body = buf.join("\n");
-      const pgns = [];
-      const lines2 = body.split(/\r?\n/);
-      let p = [];
-      let inPgn = false;
-
-      const pushPgn = () => {
-        const s = p.join("\n").trim();
-        if (s && /\[Event\s+\"/.test(s)) pgns.push(s);
-        p = [];
-      };
-
-      for (const ln of lines2){
-        if (/^\s*\*\s*$/.test(ln)){ pushPgn(); inPgn = false; continue; }
-        if (/^\s*\[/.test(ln)){ inPgn = true; p.push(ln); continue; }
-        if (inPgn) p.push(ln);
-      }
-      pushPgn();
-
-      if (pgns.length) out.push({ section, pgns });
-      buf = [];
+  // Parse PGN blocks from some accumulated text.
+  // Blocks are separated by a line containing only "*".
+  // We only keep blocks that look like PGN (contain [Event ").
+  const parsePgns = (text) => {
+    const blocks = [];
+    let cur = [];
+    const push = () => {
+      const s = cur.join("\n").trim();
+      if (s && /\[Event\s+\"/.test(s)) blocks.push(s);
+      cur = [];
     };
-
-    for (const ln of ls){
-      const m = ln.match(/^##\s+(.*\S)\s*$/);
-      if (m){ flush(); curName = m[1]; continue; }
-      if (curName) buf.push(ln);
+    for (const ln of String(text || "").split(/\r?\n/)){
+      if (/^\s*\*\s*$/.test(ln)) { push(); continue; }
+      cur.push(ln);
     }
-    flush();
-    return out;
+    push();
+    return blocks;
+  };
+
+  const out = [];
+  let curSection = "";
+  let cards = [];
+
+  let curCard2 = null;          // {name, pgns, subcards:[]}
+  let buf2 = [];                // lines belonging to ## card (not inside ###)
+  let curCard3 = null;          // {name, pgns}
+  let buf3 = [];                // lines belonging to ### subcard
+
+  const flushCard3 = () => {
+    if (!curCard3) { buf3 = []; return; }
+    const pgns = parsePgns(buf3.join("\n"));
+    if (pgns.length) curCard3.pgns = pgns;
+    if (curCard2 && curCard3.pgns && curCard3.pgns.length){
+      curCard2.subcards.push(curCard3);
+    }
+    curCard3 = null;
+    buf3 = [];
+  };
+
+  const flushCard2 = () => {
+    flushCard3();
+    if (!curCard2) { buf2 = []; return; }
+    const pgns = parsePgns(buf2.join("\n"));
+    if (pgns.length) curCard2.pgns = pgns;
+
+    // Only keep cards that have content (either own PGNs or subcards)
+    if ((curCard2.pgns && curCard2.pgns.length) || (curCard2.subcards && curCard2.subcards.length)){
+      cards.push(curCard2);
+    }
+    curCard2 = null;
+    buf2 = [];
+  };
+
+  const flushSection = () => {
+    flushCard2();
+    const section = String(curSection || "").trim();
+    if (section && cards.length) out.push({ section, cards });
+    cards = [];
+  };
+
+  for (const ln of lines){
+    let m;
+
+    if ((m = ln.match(/^#\s+(.*\S)\s*$/))){
+      flushSection();
+      curSection = m[1];
+      continue;
+    }
+
+    if ((m = ln.match(/^##\s+(.*\S)\s*$/))){
+      flushCard2();
+      curCard2 = { name: m[1], pgns: [], subcards: [] };
+      continue;
+    }
+
+    if ((m = ln.match(/^###\s+(.*\S)\s*$/))){
+      flushCard3();
+      // If someone starts with ### without a ##, we ignore it gracefully.
+      if (curCard2) curCard3 = { name: m[1], pgns: [] };
+      continue;
+    }
+
+    // Accumulate content into the most specific active buffer
+    if (curCard3) buf3.push(ln);
+    else if (curCard2) buf2.push(ln);
   }
+
+  flushSection();
+  return out;
+}
 
   function cutAtComma(name){
     const s = String(name || "").trim();
