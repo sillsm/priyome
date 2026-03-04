@@ -1057,18 +1057,22 @@ exportCQL() {
     return pgn.trim();
   }
 
-  loadPGN(pgnText) {
-    const text = String(pgnText || "").replace(/\r/g, "");
-    const tagRe = /^\s*\[([A-Za-z0-9_]+)\s+\"([^\"]*)\"\]\s*$/gm;
+  loadPGN(pgnOrObj) {
+    // Prefer PGNObject. If a raw string is provided, parse it via parsePgnFastInto().
+    const pgnObj = (typeof pgnOrObj === "string") ? parsePgnFastInto(pgnOrObj) : (pgnOrObj || null);
+    if (!pgnObj) return;
+
+    // Build a simple tag map (last write wins) from ordered headers.
     const parsedTags = {};
-    let m;
-    while ((m = tagRe.exec(text)) !== null) {
-      const k = m[1], v = m[2];
-      parsedTags[k] = v;
+    for (const kv of (pgnObj.headers || [])) {
+      if (!kv || kv.length < 2) continue;
+      const k = String(kv[0] || "");
+      const v = String(kv[1] || "");
+      if (k) parsedTags[k] = v;
     }
 
-    const fenTagMatch = text.match(/^\s*\[FEN\s+"([^"]+)"\]\s*$/m);
-    if (fenTagMatch) this.loadFEN(fenTagMatch[1]);
+    const fen = parsedTags.FEN || parsedTags.Fen || parsedTags.fen || "";
+    if (fen) this.loadFEN(fen);
     else this.initializePosition();
 
     // Re-apply PGN headers *after* loadFEN/initializePosition so we don't clobber tags like Result.
@@ -1076,47 +1080,18 @@ exportCQL() {
       if (this.tags[k] != null) this.tags[k] = v;
     }
 
-    // keep variations (parentheses) so we can build the move tree.
-    let t = text;
-
-    // keep only csl/cal comments (replace with __CMT_i__ tokens)
-    const comments = [];
-    t = t.replace(/\{([^}]*)\}/g, (_, inner) => {
-      const keep = [];
-      const csl = inner.match(/\[%csl\s+([^\]]+)\]/);
-      const cal = inner.match(/\[%cal\s+([^\]]+)\]/);
-      if (csl) keep.push("%csl " + csl[1].trim());
-      if (cal) keep.push("%cal " + cal[1].trim());
-      if (!keep.length) return " ";
-      comments.push(keep.join(" | "));
-      return ` __CMT_${comments.length - 1}__ `;
-    });
-
-    // remove tag pairs from movetext, NAGs; keep parentheses.
-    t = t.replace(/^\s*\[[^\]]*\]\s*$/gm, " ");
-    t = t.replace(/\$\d+/g, " ");
-
-    // Some PGNs omit the space after move numbers (e.g., "1.e4" or "14...Nf6").
-    // Split those so tokenization doesn't treat "2.Nf3" as a pawn move to f3.
-    t = t.replace(/(\d+)\.\.\.([^\s(])/g, "$1... $2");
-    t = t.replace(/(\d+)\.([^\s\.\(])/g, "$1. $2");
-    t = t.replace(/\s+/g, " ").trim();
-
-    // Tokenize including parentheses and comment placeholders.
-    const tokens = (t.match(/\(|\)|__CMT_\d+__|[^\s()]+/g) || []).map(s=>s.trim()).filter(Boolean);
-
+    const tokens = Array.isArray(pgnObj.moves) ? pgnObj.moves : [];
     let i = 0;
-    const isMoveNum = (tok) => /^\d+\.(?:\.\.)?$/.test(tok) || /^\d+\.\.\.$/.test(tok);
 
     const parseSeq = () => {
       while (i < tokens.length) {
         const tok = tokens[i++];
 
-        if (tok === ")") return;
+        if (!tok) continue;
+        if (tok.type === "rparen") return;
 
-        if (tok === "(") {
-          // Variation: in PGN, a variation generally branches from the position *before* the last move.
-          // That corresponds to curNode.parent (or root if already at root).
+        if (tok.type === "lparen") {
+          // Variation branches from the position before the last move.
           const savedNode = this.curNode;
           const savedSnap = snapshotFrom(this.state);
 
@@ -1127,68 +1102,38 @@ exportCQL() {
 
           parseSeq();
 
-          // restore to where we were
           restoreInto(this.state, savedSnap);
           this.curNode = savedNode;
           continue;
         }
 
-        if (isMoveNum(tok)) continue;
+        if (tok.type === "moveNumber" || tok.type === "nag") continue;
 
-        if (/^(__CMT_\d+__)$/i.test(tok)) {
-        const id = +tok.match(/__CMT_(\d+)__/i)[1];
-        const payload = comments[id] || "";
-        const parts = payload.split("|").map((s) => s.trim());
-        const mks = this.curNode.marks;
-        for (const part of parts) {
-          if (part.startsWith("%csl ")) {
-            const list = part.slice(5).split(",").map((s) => s.trim()).filter(Boolean);
-            for (const it of list) {
-              const c = it[0];
-              const sq = it.slice(1);
-              if (/^[RBYG]$/.test(c) && /^[a-h][1-8]$/.test(sq)) mks.sqMarks.set(sq, c);
-            }
-          } else if (part.startsWith("%cal ")) {
-            const list = part.slice(5).split(",").map((s) => s.trim()).filter(Boolean);
-            for (const it of list) {
-              const c = it[0];
-              const from = it.slice(1, 3);
-              const to = it.slice(3, 5);
-              if (/^[RBYG]$/.test(c) && /^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)) {
-                const key = `${c}:${from}-${to}`;
-                const j = mks.arrows.findIndex((a) => `${a.color}:${a.from}-${a.to}` === key);
-                if (j < 0) mks.arrows.push({ from, to, color: c });
-              }
-            }
-          }
-        }
-        continue;
+        if (tok.type === "result") {
+          const r = String(tok.value || "");
+          if (r) this.tags.Result = r;
+          continue;
         }
 
-      if (tok === "1-0" || tok === "0-1" || tok === "1/2-1/2" || tok === "*") {
-        this.tags.Result = tok;
-        continue;
-      }
+        if (tok.type !== "san") continue;
+        const sanTok = String(tok.value || "").trim();
+        if (!sanTok) continue;
 
-      const mv = this._sanToMove(tok);
-      if (!mv) break;
-      const uci = sqName(mv.from) + sqName(mv.to) + (mv.promo ? mv.promo.toLowerCase() : "");
-      const ok = this.makeMoveUCI(uci);
-      if (!ok) break;
-      if (this.state.pendingPromotion) this.resolvePendingPromotion(mv.promo || "Q");
+        const mv = this._sanToMove(sanTok);
+        if (!mv) break;
+        const uci = sqName(mv.from) + sqName(mv.to) + (mv.promo ? mv.promo.toLowerCase() : "");
+        const ok = this.makeMoveUCI(uci);
+        if (!ok) break;
+        if (this.state.pendingPromotion) this.resolvePendingPromotion(mv.promo || "Q");
 
-      // ensure fenAfter exists (makeMoveUCI should set it, but keep safe)
-      if (this.curNode && !this.curNode.fenAfter) this.curNode.fenAfter = this.exportFEN();
+        if (this.curNode && !this.curNode.fenAfter) this.curNode.fenAfter = this.exportFEN();
       }
     };
 
     parseSeq();
     this._rebuildMainlineFenCache();
-
     this._emit();
   }
-
-
 
   _sanToMove(san) {
     const clean = String(san).replace(/[+#]$/g, "").trim();
@@ -2056,83 +2001,219 @@ function binInsertSorted(arr, s) {
 }
 
 /**
- * Remove PGN headers, comments, variations, NAGs, move numbers, results.
- * Return SAN-ish tokens in play order, without trying to validate legality.
+ * Minimal PGN preload object + fast one-pass forward parser.
+ * PGNObject shape:
+ *   {
+ *     headers: Array<[string,string]>,          // ordered, duplicates preserved
+ *     moves: Array<{type:string, value?:string, ply?:number}>,
+ *     comments: Array<{ply:number, text:string}>
+ *   }
+ *
+ * NOTE: This is intentionally shallow (no legality, no SAN validation, no tree).
  */
-export function extractSanTokensFromPGN(pgnText) {
-  if (!pgnText) return [];
+export function makePGNObject() {
+  return { headers: [], moves: [], comments: [] };
+}
 
-  let s = String(pgnText);
+// Split "1.e4" / "14...Nf6" tokens into [moveNumber, san] cheaply.
+// Returns null if not a glued move-number token.
+function splitGluedMoveNumber(tok) {
+  if (!tok) return null;
+  let j = 0;
+  const n = tok.length;
+  while (j < n) {
+    const c = tok.charCodeAt(j);
+    if (c < 48 || c > 57) break;
+    j++;
+  }
+  if (j === 0 || j >= n || tok[j] !== ".") return null;
 
-  // Drop PGN tag-pairs
-  s = s.replace(/\[[^\]]*\]\s*/g, " ");
+  // count dots
+  let k = j;
+  while (k < n && tok[k] === ".") k++;
+  const dots = k - j;
+  if (dots !== 1 && dots !== 3) return null;
 
-  // Drop brace comments
-  s = s.replace(/\{[^}]*\}/g, " ");
+  const moveNum = tok.slice(0, k); // "12." or "12..."
+  const rest = tok.slice(k);
+  if (!rest) return { moveNum, rest: "" };
+  return { moveNum, rest };
+}
 
-  // Drop semicolon comments to end-of-line
-  s = s.replace(/;[^\n\r]*/g, " ");
+export function parsePgnFastInto(pgnText, out = makePGNObject()) {
+  // reset out in-place (caller can reuse objects to reduce GC)
+  out.headers.length = 0;
+  out.moves.length = 0;
+  out.comments.length = 0;
 
-  // Drop numeric annotation glyphs like $1 $14
-  s = s.replace(/\$\d+/g, " ");
+  const s = String(pgnText ?? "");
+  const n = s.length;
 
-  // Drop variations (...) using a simple stack scan
-  // (Robust enough for typical PGN; avoids catastrophic regex on nested parens.)
-  {
-    let out = "";
-    let depth = 0;
-    for (let i = 0; i < s.length; i++) {
-      const ch = s[i];
-      if (ch === "(") { depth++; continue; }
-      if (ch === ")") { if (depth > 0) depth--; continue; }
-      if (depth === 0) out += ch;
+  let i = 0;
+  let ply = 0;
+
+  const ws = (c) => c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f";
+  const skip = () => { while (i < n && ws(s[i])) i++; };
+
+  const readUntil = (ch) => { const a = i; while (i < n && s[i] !== ch) i++; return s.slice(a, i); };
+  const readToken = () => {
+    const a = i;
+    while (i < n) {
+      const c = s[i];
+      if (ws(c) || c === "{" || c === "}" || c === "(" || c === ")" || c === ";" || c === "[" || c === "]") break;
+      i++;
     }
-    s = out;
+    return s.slice(a, i);
+};
+
+Game.prototype.__parsePgnFastIntoAndStore = function (pgnText) {
+  const o = parsePgnFastInto(pgnText);
+  this._lastPGNObject = o;
+
+  // Compute a tiny "report" for table-driven tests (so tests don't depend on object equality).
+  const map = {};
+  for (const kv of (o.headers || [])) {
+    if (kv && kv.length >= 2) map[String(kv[0] || "")] = String(kv[1] || "");
   }
 
-  // Normalize whitespace
-  s = s.replace(/[\r\n\t]+/g, " ").trim();
+  // Mainline SAN tokens (variations ignored) using the same extractor the opening index uses.
+  const mainline = extractSanTokensFromPGN(o);
 
-  // Remove move numbers: "1." or "23..." or "4.Nxd4"
-  s = s.replace(/\b\d+\.(?:\.\.)?/g, " ");
+  const firstComment = (o.comments && o.comments.length) ? `${o.comments[0].ply}:${o.comments[0].text}` : "";
 
-  // Remove results
-  s = s.replace(/\b1-0\b|\b0-1\b|\b1\/2-1\/2\b|\*/g, " ");
+  this._lastParse = {
+    headerEvent: map.Event || "",
+    headerSite: map.Site || "",
+    sanCount: mainline.length,
+    firstSans: mainline.slice(0, 8).join(" "),
+    firstComment,
+  };
+  return true;
+};
 
-  // Split into tokens
-  const raw = s.split(/\s+/).filter(Boolean);
+  // ---- Headers at top: [Key "Value"] ----
+  for (;;) {
+    skip();
+    if (s[i] !== "[") break;
+    i++; skip();
 
-  // Clean tokens (strip trailing annotation punctuation; normalize castle zeros)
+    const k0 = i;
+    while (i < n) {
+      const c = s[i];
+      if (ws(c) || c === "]" || c === '"') break;
+      i++;
+    }
+    const key = s.slice(k0, i);
+    skip();
+
+    let val = "";
+    if (s[i] === '"') {
+      i++;
+      let buf = "";
+      while (i < n) {
+        const c = s[i++];
+        if (c === '"') break;
+        if (c === "\\" && i < n) buf += s[i++]; // simple \" and \\
+        else buf += c;
+      }
+      val = buf;
+    }
+
+    while (i < n && s[i] !== "]") i++;
+    if (s[i] === "]") i++;
+
+    out.headers.push([key, val]);
+  }
+
+  // ---- Movetext tokenization + comments ----
+  while (i < n) {
+    skip();
+    if (i >= n) break;
+
+    const c = s[i];
+
+    if (c === "{") {
+      i++;
+      const text = readUntil("}");
+      if (s[i] === "}") i++;
+      out.comments.push({ ply, text: text.trim() });
+      continue;
+    }
+
+    if (c === ";") {
+      i++;
+      const a = i;
+      while (i < n && s[i] !== "\n" && s[i] !== "\r") i++;
+      out.comments.push({ ply, text: s.slice(a, i).trim() });
+      continue;
+    }
+
+    if (c === "(") { i++; out.moves.push({ type: "lparen", ply }); continue; }
+    if (c === ")") { i++; out.moves.push({ type: "rparen", ply }); continue; }
+
+    const tok = readToken();
+    if (!tok) { i++; continue; }
+
+    // Glued move numbers like "1.e4" or "14...Nf6"
+    const glued = splitGluedMoveNumber(tok);
+    if (glued && glued.moveNum) {
+      out.moves.push({ type: "moveNumber", value: glued.moveNum });
+      if (glued.rest) {
+        const rest = glued.rest;
+        if (rest === "1-0" || rest === "0-1" || rest === "1/2-1/2" || rest === "*") {
+          out.moves.push({ type: "result", value: rest, ply });
+        } else if (rest[0] === "$") {
+          out.moves.push({ type: "nag", value: rest, ply });
+        } else {
+          out.moves.push({ type: "san", value: rest, ply });
+          ply++;
+        }
+      }
+      continue;
+    }
+
+    if (tok === "1-0" || tok === "0-1" || tok === "1/2-1/2" || tok === "*") {
+      out.moves.push({ type: "result", value: tok, ply });
+      continue;
+    }
+
+    if (tok.endsWith(".")) {
+      let j = 0;
+      while (j < tok.length) {
+        const cc = tok.charCodeAt(j);
+        if (cc < 48 || cc > 57) break;
+        j++;
+      }
+      if (j > 0) { out.moves.push({ type: "moveNumber", value: tok }); continue; }
+    }
+
+    if (tok[0] === "$") { out.moves.push({ type: "nag", value: tok, ply }); continue; }
+
+    out.moves.push({ type: "san", value: tok, ply });
+    ply++;
+  }
+
+  return out;
+}
+
+export function extractSanTokensFromPGN(pgnObj) {
+  if (!pgnObj || !pgnObj.moves) return [];
   const toks = [];
-  for (let t of raw) {
-    // Some PGNs have "..." tokens or stray punctuation
-    t = t.replace(/^\.+/, "").replace(/\.+$/, "");
+  let depth = 0;
+  for (const t of pgnObj.moves) {
     if (!t) continue;
-
-    // Normalize castling written with zeros
-    if (t === "0-0") t = "O-O";
-    if (t === "0-0-0") t = "O-O-O";
-
-    // Drop check/mate/annotation suffixes: + # ! ? !!
-    // (If your TSV includes +/#, remove this line.)
-    t = t.replace(/[!?+#]+$/g, "");
-
-    // Remove leading "..." (rare tokenization artifacts)
-    t = t.replace(/^\.\.\./, "");
-
-    // Skip pure move-number artifacts
-    if (/^\d+$/.test(t)) continue;
-
-    // Skip empties / ellipses
-    if (t === "..." || t === ".") continue;
-
-    t = canonSanToken(t);    
-    if (!t) continue;
-    toks.push(t);
+    if (t.type === "lparen") { depth++; continue; }
+    if (t.type === "rparen") { if (depth > 0) depth--; continue; }
+    if (depth !== 0) continue;
+    if (t.type !== "san") continue;
+    let v = canonSanToken(t.value);
+    if (!v) continue;
+    toks.push(v);
   }
-
   return toks;
 }
+
+
 
 /** Compute bag key from already-sorted arrays */
 function makeKey(whiteSorted, blackSorted) {
@@ -2144,7 +2225,7 @@ function makeKey(whiteSorted, blackSorted) {
  * into SAN tokens. This uses the same extractor as full PGN text.
  */
 function extractSanTokensFromTsvPgnCell(pgnCell) {
-  return extractSanTokensFromPGN(pgnCell);
+  return extractSanTokensFromPGN(parsePgnFastInto(pgnCell));
 }
 
 /**
@@ -2246,14 +2327,14 @@ async function waitForOpeningsReady(timeoutMs = 2000) {
  * - Incrementally build sorted bags for White/Black
  * - After each ply, lookup key; keep the deepest hit; return best name (or "")
  */
-async function openingFromPGN(pgnText, { maxPlies = 32, index = null, timeoutMs = 2000 } = {}) {
+async function openingFromPGN(pgnObj, { maxPlies = 32, index = null, timeoutMs = 2000 } = {}) {
   // Default to the module index. If it isn't ready yet, wait briefly (and/or kick off load).
   if (!index) {
     await waitForOpeningsReady(timeoutMs);
     index = OPENING_INDEX;
   }
   if (!index || index.size === 0) return "";
-  const moves = extractSanTokensFromPGN(pgnText);
+  const moves = extractSanTokensFromPGN(pgnObj);
   if (!moves.length) return "";
 
   const wSorted = [];
@@ -2285,5 +2366,6 @@ Game.prototype.loadOpeningTables = async function (opts) {
 };
 
 Game.prototype.openingFromPGN = async function (pgnText, opts) {
-  return await openingFromPGN(pgnText, opts || {});
+   const pgnObj = (typeof pgnText === "string") ? parsePgnFastInto(pgnText) : (pgnText || null);
+   return await openingFromPGN(pgnObj, opts || {});
 };
