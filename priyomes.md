@@ -4,6 +4,7 @@
 [Event "Carlsbad Structure"]
 [SetUp "1"]
 [FEN "8/pp3ppp/2p5/3p4/3P4/4P3/PP3PPP/8 w - - 0 1"]
+
 *
 
 ### White's Queenside Minority Attack (a4 + b5)
@@ -11,6 +12,7 @@
 [Event "Minority Attack (a4 + b5)"]
 [SetUp "1"]
 [FEN "8/pp3ppp/2p5/1P1p4/P2P4/4P3/PP3PPP/8 w - - 0 1"]
+
 *
 
 ## Isolated Queen Pawn (IQP)
