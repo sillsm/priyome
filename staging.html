@@ -2456,7 +2456,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
       const md = (await _PRIYOMES_MD_PROMISE) || (await (await fetch(url, { cache:"no-store" })).text());
       const sections = parsePriyomesMarkdown(md);
 
-      if (!sections.length){
+      if (!sections.length || !sections.some(s => s && s.cards && s.cards.length)){
         host.innerHTML = `<div class="muted">No Priyomes found in ${url}.</div>`;
         return;
       }
@@ -2474,38 +2474,55 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
         rule.className = "priSectionRule";
         host.appendChild(rule);
 
-        for (let i=0;i<sec.pgns.length;i++){
-          const pgn = sec.pgns[i];
-          const headers = parseHeaders(pgn);
-          const title = headers.Event || `Priyome ${idx+1}`;
-          const cqlref = getHeaderTag(pgn, "cqlref") || "";
+        for (let ci=0; ci<(sec.cards ? sec.cards.length : 0); ci++){
+          const c = sec.cards[ci];
 
-          const card = document.createElement("div");
-          card.className = "gameCard";
-          card.dataset.priyome = String(idx++);
-          card.dataset.priyomeName = title;
-          card.dataset.priyomePgn = pgn;
-          card.dataset.priyomeCqlref = cqlref;
+          const renderCardFromPgn = (pgn, titleOverride, indentLevel) => {
+            const headers = parseHeaders(pgn);
+            const title = titleOverride || headers.Event || `Priyome ${idx+1}`;
+            const cqlref = getHeaderTag(pgn, "cqlref") || "";
 
-          const t = document.createElement("div");
-          t.className = "gameTitle";
-          t.textContent = title;
+            const card = document.createElement("div");
+            card.className = "gameCard";
+            if (indentLevel) card.style.marginLeft = (indentLevel * 16) + "px";
+            card.dataset.priyome = String(idx++);
+            card.dataset.priyomeName = title;
+            card.dataset.priyomePgn = pgn;
+            card.dataset.priyomeCqlref = cqlref;
 
-          const miniWrap = document.createElement("div");
-          miniWrap.className = "priMiniWrap";
+            const t = document.createElement("div");
+            t.className = "gameTitle";
+            t.textContent = title;
 
-          const miniDiv = document.createElement("div");
-          miniDiv.className = "priMini";
-          miniWrap.appendChild(miniDiv);
+            const miniWrap = document.createElement("div");
+            miniWrap.className = "priMiniWrap";
 
-          const gMini = createGame(headers);
-          gMini.loadPGN?.(pgn);
-          gMini.toggleMini?.(true);
-          try{ new BoardView(miniDiv, gMini, { minSizePx: 90 }); }catch(e){}
+            const miniDiv = document.createElement("div");
+            miniDiv.className = "priMini";
+            miniWrap.appendChild(miniDiv);
 
-          card.appendChild(t);
-          card.appendChild(miniWrap);
-          host.appendChild(card);
+            const gMini = createGame(headers);
+            gMini.loadPGN?.(pgn);
+            gMini.toggleMini?.(true);
+            try{ new BoardView(miniDiv, gMini, { minSizePx: 90 }); }catch(e){}
+
+            card.appendChild(t);
+            card.appendChild(miniWrap);
+            host.appendChild(card);
+          };
+
+          // Render PGNs directly under ##
+          for (let i=0; i<(c.pgns ? c.pgns.length : 0); i++){
+            renderCardFromPgn(c.pgns[i], c.name, 0);
+          }
+
+          // Render ### subcards indented under their ##
+          for (let si2=0; si2<(c.subcards ? c.subcards.length : 0); si2++){
+            const sc = c.subcards[si2];
+            for (let j=0; j<(sc.pgns ? sc.pgns.length : 0); j++){
+              renderCardFromPgn(sc.pgns[j], sc.name, 1);
+            }
+          }
         }
       }
 
