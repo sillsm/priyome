@@ -11,7 +11,7 @@
 
 [Event "Minority Attack (a4 + b5)"]
 [SetUp "1"]
-[FEN "8/pp3ppp/2p5/1P1p4/P2P4/4P3/PP3PPP/8 w - - 0 1"]
+[FEN "8/8/8/1P6/P7/8/8/8 w - - 0 1"]
 
 *
 
