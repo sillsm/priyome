@@ -84,6 +84,27 @@
     color:var(--muted);
   }
   .tabBtn.active{ background:#e8efff; border-color:#c7d6ff; color:#18327a; }
+
+  /* ---------------- Navigation row (Lichess-ish) ---------------- */
+  .navRow{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; flex-wrap:wrap; }
+  .navBtn{
+    font-size:22px;
+    line-height:1;
+    padding:10px 12px;
+    border-radius:14px;
+    min-width:44px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:700;
+  }
+  .navRowMobile{ display:none; width:100%; justify-content:space-between; gap:8px; margin:0 0 8px 0; }
+  .navRowMobile .navBtn{ flex:1; min-width:0; }
+  @media (max-width: 720px){
+    .navRowWide{ display:none; }
+    .tabs{ flex-wrap:wrap; }
+    .navRowMobile{ display:flex; }
+  }
   .pane{ display:none; padding:12px; overflow:auto; min-height:0; flex:1; }
   .pane.active{ display:block; }
   textarea{
@@ -487,14 +508,7 @@
 <div class="layout">
   <div class="card" id="boardCard">
     <div class="cardHeader">
-      <div class="actions">
-        <button class="btn" id="btnFlip" type="button">Flip</button>
-        <button class="btn" id="btnReset" type="button">Reset</button>
-        <button class="btn" id="btnSetup" type="button">Setup</button>
-        <button class="btn" id="btnImportPgn" type="button">Import PGN</button>
-        <button class="btn" id="btnExportGame" type="button">Export Game PGN</button>
-        <button class="btn" id="btnExportStudy" type="button">Export Study PGN</button>
-      </div>
+      <div class="actions"></div>
       <div class="small" id="toolStatus">—</div>
     </div>
 
@@ -512,6 +526,13 @@
 
   <div class="card">
     <div class="tabs">
+      <div class="navRow navRowMobile">
+        <button class="btn navBtn" id="btnNavStartM" type="button" title="To start">⇤</button>
+        <button class="btn navBtn" id="btnNavPrevM" type="button" title="Back one ply">←</button>
+        <button class="btn navBtn" id="btnNavFlipM" type="button" title="Flip board">⟳</button>
+        <button class="btn navBtn" id="btnNavNextM" type="button" title="Forward one ply">→</button>
+        <button class="btn navBtn" id="btnNavEndM" type="button" title="To end">⇥</button>
+      </div>
       <button class="tabBtn active" data-tab="moves">Moves</button>
       <button class="tabBtn" data-tab="games">Games</button>
       <button class="tabBtn" data-tab="priyomes">Priyomes</button>
@@ -531,10 +552,13 @@
         <span class="pill"><b id="openingUnderBoard">—</b></span>
       </div>
 
-      <div class="row" style="gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px">
-        <button class="btn" id="btnPrev" type="button">Prev</button>
-        <button class="btn" id="btnNext" type="button">Next</button>
-        <span class="pill">Ply: <b id="navMeta">0</b></span>
+      <div class="navRow navRowWide">
+        <button class="btn navBtn" id="btnNavStart" type="button" title="To start">⇤</button>
+        <button class="btn navBtn" id="btnNavPrev" type="button" title="Back one ply">←</button>
+        <button class="btn navBtn" id="btnNavFlip" type="button" title="Flip board">⟳</button>
+        <button class="btn navBtn" id="btnNavNext" type="button" title="Forward one ply">→</button>
+        <button class="btn navBtn" id="btnNavEnd" type="button" title="To end">⇥</button>
+        <span class="pill" style="margin-left:4px"><b id="navMeta">0</b></span>
       </div>
 
       <div id="moveList" class="moveList" aria-label="Move list"></div>
@@ -681,7 +705,14 @@
     </div>
 
     <div class="rightTools" id="rightTools">
-      <div class="toolRow" id="drawModeRow">
+  <div class="row" style="gap:8px; flex-wrap:wrap; margin-top:6px">
+      <button class="btn" id="btnReset" type="button">Reset</button>
+      <button class="btn" id="btnSetup" type="button">Setup</button>
+      <button class="btn" id="btnImportPgn" type="button">Import PGN</button>
+      <button class="btn" id="btnExportGame" type="button">Export Game PGN</button>
+      <button class="btn" id="btnExportStudy" type="button">Export Study PGN</button>
+    </div>
+<div class="toolRow" id="drawModeRow">
         <button class="smallBtn" id="btnModeArrows2" type="button">Arrows</button>
         <button class="smallBtn" id="btnModeSquares2" type="button">Squares</button>
         <button class="smallBtn" id="btnClearMarks2" type="button">Clear</button>
@@ -1537,7 +1568,12 @@ fen "${fenPieces}"
 
 
     /* ---------- Setup / reset / flip ---------- */
-    "BOARD/FLIP": () => { RUNTIME.board.flip?.(); },
+    "BOARD/FLIP": () => {
+      const g = CTX.g();
+      try{ g.toggleFlip?.(); }catch{}
+      // Fallback (older games) just in case.
+      if (!g?.toggleFlip) { try{ RUNTIME.board.flip?.(); }catch{} }
+    },
     "BOARD/RESET": () => {
       const g = CTX.g();
       const wasSetup = !!g.ui?.setup;
@@ -1828,7 +1864,25 @@ fen "${fenPieces}"
       const live = meta?.openingByPly?.[ply] ? String(meta.openingByPly[ply]).trim() : "";
       oub.textContent = (ply > 0 && live) ? live : "—";
     }
-    $("gameName").textContent = STATE.activeGameId || "—";
+    const activeId = String(STATE.activeGameId || "");
+    const kind = activeId.split(":")[0] || "";
+    let topLabel = "—";
+    if (meta){
+      if (kind === "priyome"){
+        const t = String(meta.title || meta.name || "Priyome").trim() || "Priyome";
+        topLabel = `Priyome: ${t}`;
+      } else if (kind === "opening"){
+        const t = String(meta.opening || meta.title || "Opening").trim() || "Opening";
+        topLabel = `Opening: ${t}`;
+      } else if (meta.white || meta.black){
+        topLabel = formatVsLastNames(meta.white, meta.black);
+      } else if (meta.title){
+        topLabel = String(meta.title);
+      } else {
+        topLabel = activeId || "—";
+      }
+    }
+    $("gameName").textContent = topLabel;
 
     // priyomes
 
@@ -3745,13 +3799,15 @@ function renderPlayersPane(){
     }
 
     // board header buttons
-    if (t.closest?.("#btnFlip")) return dispatch({ type:"BOARD/FLIP" });
     if (t.closest?.("#btnReset")) return dispatch({ type:"BOARD/RESET" });
     if (t.closest?.("#btnSetup")) return dispatch({ type:"BOARD/SETUP_TOGGLE" });
 
     // moves
-    if (t.closest?.("#btnPrev")) return dispatch({ type:"BOARD/PREV" });
-    if (t.closest?.("#btnNext")) return dispatch({ type:"BOARD/NEXT" });
+    if (t.closest?.("#btnNavStart") || t.closest?.("#btnNavStartM")) return dispatch({ type:"BOARD/START" });
+    if (t.closest?.("#btnNavPrev")  || t.closest?.("#btnNavPrevM"))  return dispatch({ type:"BOARD/PREV" });
+    if (t.closest?.("#btnNavFlip")  || t.closest?.("#btnNavFlipM"))  return dispatch({ type:"BOARD/FLIP" });
+    if (t.closest?.("#btnNavNext")  || t.closest?.("#btnNavNextM"))  return dispatch({ type:"BOARD/NEXT" });
+    if (t.closest?.("#btnNavEnd")   || t.closest?.("#btnNavEndM"))   return dispatch({ type:"BOARD/END" });
 
     // setup strip
     if (t.closest?.("#btnSetupClear")) return dispatch({ type:"BOARD/SETUP_CLEAR" });
