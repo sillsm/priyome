@@ -83,6 +83,7 @@ function makeNode(parent = null) {
     fenAfter: null, // cached FEN after this node's move (root is initial position)
     ply: 0,
     marks: { sqMarks: new Map(), arrows: [] },
+    comments: [],
   };
 }
 
@@ -998,9 +999,57 @@ exportCQL() {
     const out = [];
     if (csl.length) out.push(`[%csl ${csl.join(",")}]`);
     if (cal.length) out.push(`[%cal ${cal.join(",")}]`);
+
+    const texts = (node.comments || []).map((t) => String(t || "").trim()).filter(Boolean);
+    for (const t of texts) out.push(t);
+
     if (!out.length) return "";
     return "{ " + out.join(" ") + " }";
   }
+
+  _applyCommentToNode(node, rawText) {
+    if (!node) return;
+    const text = String(rawText || "");
+    if (!text.trim()) return;
+
+    let rest = text;
+
+    // Lichess-style square highlights: [%csl Ra1,Gb2]
+    rest = rest.replace(/\[%csl\s+([^\]]+)\]/g, (_m, inner) => {
+      const parts = String(inner || "").split(/\s*,\s*/).map((x) => x.trim()).filter(Boolean);
+      for (const p of parts) {
+        if (p.length < 3) continue;
+        const c = p[0];
+        const sq = p.slice(1, 3);
+        if (!/^[RGBY]$/.test(c)) continue;
+        if (!/^[a-h][1-8]$/.test(sq)) continue;
+        node.marks.sqMarks.set(sq, c);
+      }
+      return "";
+    });
+
+    // Lichess-style arrows: [%cal Ge2e4,Rb1b8]
+    rest = rest.replace(/\[%cal\s+([^\]]+)\]/g, (_m, inner) => {
+      const parts = String(inner || "").split(/\s*,\s*/).map((x) => x.trim()).filter(Boolean);
+      for (const p of parts) {
+        if (p.length < 5) continue;
+        const c = p[0];
+        const from = p.slice(1, 3);
+        const to = p.slice(3, 5);
+        if (!/^[RGBY]$/.test(c)) continue;
+        if (!/^[a-h][1-8]$/.test(from) || !/^[a-h][1-8]$/.test(to)) continue;
+        node.marks.arrows.push({ color: c, from, to });
+      }
+      return "";
+    });
+
+    const cleaned = rest.replace(/\s+/g, " ").trim();
+    if (cleaned) {
+      if (!node.comments) node.comments = [];
+      node.comments.push(cleaned);
+    }
+  }
+
 
   exportPGN() {
     const tags = [
@@ -1087,6 +1136,23 @@ exportCQL() {
     const tokens = Array.isArray(pgnObj.moves) ? pgnObj.moves : [];
     let i = 0;
 
+    // Comments are stored separately in PGNObject as {ply,text}. ply counts SAN tokens in token-stream order.
+    const commentByPly = new Map();
+    for (const c of (pgnObj.comments || [])) {
+      if (!c) continue;
+      const plyN = (c.ply == null) ? 0 : +c.ply;
+      const t = String(c.text || "").trim();
+      if (!t) continue;
+      if (!commentByPly.has(plyN)) commentByPly.set(plyN, []);
+      commentByPly.get(plyN).push(t);
+    }
+
+    let tokenPly = 0;
+    const rootComments = commentByPly.get(0);
+    if (rootComments && rootComments.length) {
+      for (const t of rootComments) this._applyCommentToNode(this.root, t);
+    }
+
     const parseSeq = () => {
       while (i < tokens.length) {
         const tok = tokens[i++];
@@ -1131,6 +1197,12 @@ exportCQL() {
         if (this.state.pendingPromotion) this.resolvePendingPromotion(mv.promo || "Q");
 
         if (this.curNode && !this.curNode.fenAfter) this.curNode.fenAfter = this.exportFEN();
+
+        tokenPly++;
+        const cs = commentByPly.get(tokenPly);
+        if (cs && cs.length) {
+          for (const t of cs) this._applyCommentToNode(this.curNode, t);
+        }
       }
     };
 
