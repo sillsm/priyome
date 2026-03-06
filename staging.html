@@ -66,8 +66,38 @@
  #boardHost{width:100%; height:100%; display:flex; align-items:center; justify-content:center;}
   /* ensure ScratchChess root shell centers within host and is largest square possible */
   #boardHost .sc-shell{margin:auto; max-width:100%; max-height:100%;}
-  .sparesRow{ border-top:1px solid var(--border); padding:10px 12px; display:flex; align-items:center; gap:10px; }
-  #sparesHost{ flex:1; min-height:44px; }
+  .sparesRow{ border-top:0; padding:0; display:flex; align-items:center; gap:0; }
+  #sparesHost{ flex:1; min-height:0; padding:0; }
+
+  /* --- Board nameplates (top/bottom, flip-aware) --- */
+  .boardNames{ display:flex; flex-direction:column; gap:2px; padding:8px 12px 0; }
+  .boardNameLine{ font-weight:900; font-size:14px; letter-spacing:.15px; }
+  .boardNameBottom{ color:rgba(15,23,42,.70); font-weight:800; }
+
+  /* --- Docked navigation row (always visible) --- */
+  .navRowDock, .navRowBoard{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+    padding:10px 12px;
+    border-top:1px solid var(--border);
+    background:#fff;
+    margin-top:0;
+  }
+  .navRowDock .navBtn, .navRowBoard .navBtn{
+    flex:1;
+    min-width:0;
+    font-size:22px;
+    padding:12px 0;
+    border-radius:16px;
+    box-shadow: 0 10px 22px rgba(15,23,42,.10);
+  }
+  .navRowBoard{ display:none; }
+  @media (max-width: 980px){
+    .navRowDock{ display:none; }
+    .navRowBoard{ display:flex; }
+    .boardNames{ padding:6px 12px 0; }
+  }
   .tabs{
     display:flex; gap:8px; flex-wrap:wrap;
     padding:10px 12px;
@@ -495,7 +525,6 @@
   </div>
   <div class="row">
     <span class="pill">Study: <b id="studyPill">—</b></span>
-    <span class="pill">Game: <b id="gamePill">—</b></span>
     <span class="pill">ID: <b id="gameName">—</b></span>
   </div>
 </div>
@@ -512,27 +541,29 @@
       <div class="small" id="toolStatus">—</div>
     </div>
 
+    <div class="boardNames" id="boardNames">
+      <div class="boardNameLine" id="boardNameTop">—</div>
+      <div class="boardNameLine boardNameBottom" id="boardNameBottom">—</div>
+    </div>
     <div class="boardArea">
       <div class="boardWrap">
         <div id="boardHost"></div>
       </div>
-      <div class="sparesRow" id="setupStrip" hidden>
-        <button class="smallBtn" id="btnSetupInitial" type="button">Initial</button>
-        <button class="smallBtn" id="btnSetupClear" type="button">Clear</button>
+      <div class="sparesRow" id="setupStrip">
         <div id="sparesHost"></div>
+      </div>
+      <div class="navRow navRowBoard" id="navRowBoard">
+        <button class="btn navBtn" id="btnNavStartB" type="button" title="To start">⇤</button>
+        <button class="btn navBtn" id="btnNavPrevB" type="button" title="Back one ply">←</button>
+        <button class="btn navBtn" id="btnNavFlipB" type="button" title="Flip board">⟳</button>
+        <button class="btn navBtn" id="btnNavNextB" type="button" title="Forward one ply">→</button>
+        <button class="btn navBtn" id="btnNavEndB" type="button" title="To end">⇥</button>
       </div>
     </div>
   </div>
 
   <div class="card">
     <div class="tabs">
-      <div class="navRow navRowMobile">
-        <button class="btn navBtn" id="btnNavStartM" type="button" title="To start">⇤</button>
-        <button class="btn navBtn" id="btnNavPrevM" type="button" title="Back one ply">←</button>
-        <button class="btn navBtn" id="btnNavFlipM" type="button" title="Flip board">⟳</button>
-        <button class="btn navBtn" id="btnNavNextM" type="button" title="Forward one ply">→</button>
-        <button class="btn navBtn" id="btnNavEndM" type="button" title="To end">⇥</button>
-      </div>
       <button class="tabBtn active" data-tab="moves">Moves</button>
       <button class="tabBtn" data-tab="games">Games</button>
       <button class="tabBtn" data-tab="priyomes">Priyomes</button>
@@ -552,14 +583,7 @@
         <span class="pill"><b id="openingUnderBoard">—</b></span>
       </div>
 
-      <div class="navRow navRowWide">
-        <button class="btn navBtn" id="btnNavStart" type="button" title="To start">⇤</button>
-        <button class="btn navBtn" id="btnNavPrev" type="button" title="Back one ply">←</button>
-        <button class="btn navBtn" id="btnNavFlip" type="button" title="Flip board">⟳</button>
-        <button class="btn navBtn" id="btnNavNext" type="button" title="Forward one ply">→</button>
-        <button class="btn navBtn" id="btnNavEnd" type="button" title="To end">⇥</button>
-        <span class="pill" style="margin-left:4px"><b id="navMeta">0</b></span>
-      </div>
+      <span class="pill" style="display:none"><b id="navMeta">0</b></span>
 
       <div id="moveList" class="moveList" aria-label="Move list"></div>
       <div class="movesWide"><div class="mlWrap" id="movesWide"></div></div>
@@ -724,8 +748,15 @@
         <button class="smallBtn" id="btnPigB" title="Blue" type="button">🔵</button>
         <button class="smallBtn" id="btnPigY" title="Yellow" type="button">🟡</button>
       </div>
-    </div>
+      </div>
 
+    <div class="navRow navRowDock" id="navRowDock">
+      <button class="btn navBtn" id="btnNavStartD" type="button" title="To start">⇤</button>
+      <button class="btn navBtn" id="btnNavPrevD" type="button" title="Back one ply">←</button>
+      <button class="btn navBtn" id="btnNavFlipD" type="button" title="Flip board">⟳</button>
+      <button class="btn navBtn" id="btnNavNextD" type="button" title="Forward one ply">→</button>
+      <button class="btn navBtn" id="btnNavEndD" type="button" title="To end">⇥</button>
+    </div>
   </div>
 </div>
 
@@ -1571,6 +1602,7 @@ fen "${fenPieces}"
     "BOARD/FLIP": () => {
       const g = CTX.g();
       try{ g.toggleFlip?.(); }catch{}
+      try{ g.ui = g.ui || {}; g.ui._flipped = !g.ui._flipped; }catch{}
       // Fallback (older games) just in case.
       if (!g?.toggleFlip) { try{ RUNTIME.board.flip?.(); }catch{} }
     },
@@ -1851,7 +1883,32 @@ fen "${fenPieces}"
     }
 
     const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
-    $("gamePill").textContent = meta ? meta.title : "—";
+    // Board nameplates (top/bottom), flip-aware
+    try{
+      const g0 = CTX.g();
+      const topEl = $("boardNameTop");
+      const botEl = $("boardNameBottom");
+      if (topEl && botEl){
+        const id0 = String(STATE.activeGameId || "");
+        const kind0 = id0.split(":")[0] || "";
+        if (kind0 === "priyome"){
+          const t = String(meta?.title || meta?.name || "Priyome").trim() || "Priyome";
+          topEl.textContent = `Priyome: ${t}`;
+          botEl.textContent = "";
+        } else if (kind0 === "opening"){
+          const t = String(meta?.opening || meta?.title || "Opening").trim() || "Opening";
+          topEl.textContent = `Opening: ${t}`;
+          botEl.textContent = "";
+        } else {
+          const last = (s)=>{ s=String(s||"").trim(); if (!s) return ""; const p=s.split(/\s+/).filter(Boolean); return p.length ? p[p.length-1] : s; };
+          const w = last(meta?.white || "");
+          const b = last(meta?.black || "");
+          const flipped = !!g0?.ui?._flipped;
+          topEl.textContent = flipped ? (w || "—") : (b || "—");
+          botEl.textContent = flipped ? (b || "") : (w || "");
+        }
+      }
+    }catch{}
     const oub = $("openingUnderBoard");
     if (oub){
       const g0 = CTX.g();
@@ -3803,11 +3860,11 @@ function renderPlayersPane(){
     if (t.closest?.("#btnSetup")) return dispatch({ type:"BOARD/SETUP_TOGGLE" });
 
     // moves
-    if (t.closest?.("#btnNavStart") || t.closest?.("#btnNavStartM")) return dispatch({ type:"BOARD/START" });
-    if (t.closest?.("#btnNavPrev")  || t.closest?.("#btnNavPrevM"))  return dispatch({ type:"BOARD/PREV" });
-    if (t.closest?.("#btnNavFlip")  || t.closest?.("#btnNavFlipM"))  return dispatch({ type:"BOARD/FLIP" });
-    if (t.closest?.("#btnNavNext")  || t.closest?.("#btnNavNextM"))  return dispatch({ type:"BOARD/NEXT" });
-    if (t.closest?.("#btnNavEnd")   || t.closest?.("#btnNavEndM"))   return dispatch({ type:"BOARD/END" });
+    if (t.closest?.("#btnNavStartB") || t.closest?.("#btnNavStartD")) return dispatch({ type:"BOARD/START" });
+    if (t.closest?.("#btnNavPrevB")  || t.closest?.("#btnNavPrevD"))  return dispatch({ type:"BOARD/PREV" });
+    if (t.closest?.("#btnNavFlipB")  || t.closest?.("#btnNavFlipD"))  return dispatch({ type:"BOARD/FLIP" });
+    if (t.closest?.("#btnNavNextB")  || t.closest?.("#btnNavNextD"))  return dispatch({ type:"BOARD/NEXT" });
+    if (t.closest?.("#btnNavEndB")   || t.closest?.("#btnNavEndD"))   return dispatch({ type:"BOARD/END" });
 
     // setup strip
     if (t.closest?.("#btnSetupClear")) return dispatch({ type:"BOARD/SETUP_CLEAR" });
