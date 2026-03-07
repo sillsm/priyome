@@ -106,6 +106,94 @@ function restoreInto(state, snap) {
   state.fullmove = snap.fullmove;
 }
 
+function cqlPieceLinesFromFen(fen) {
+  const parts = String(fen || "").trim().split(/\s+/);
+  const placement = parts[0] || "8/8/8/8/8/8/8/8";
+  const board = Array(64).fill(null);
+  const map = { p: "p", n: "n", b: "b", r: "r", q: "q", k: "k" };
+  let i = 0;
+
+  for (const ch of placement) {
+    if (ch === "/") continue;
+    if (ch >= "1" && ch <= "8") i += ch.charCodeAt(0) - 48;
+    else board[i++] = makePieceFromLetter(ch);
+  }
+  const whitePawns = [];
+  const blackPawns = [];
+  const whiteOthers = [];
+  const blackOthers = [];
+  const kings = [];
+
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const bi = idx(f, r);
+      const p = board[bi];
+      if (!p) continue;
+      let L = map[p.type] || "?";
+      if (p.color === "w") L = L.toUpperCase();
+      const tok = L + sqName(bi);
+      if (p.type === "k") {
+        kings.push(tok);
+      } else if (p.type === "p" && p.color === "w") {
+        whitePawns.push(tok);
+      } else if (p.type === "p" && p.color === "b") {
+        blackPawns.push(tok);
+      } else if (p.color === "w") {
+        whiteOthers.push(tok);
+      } else {
+        blackOthers.push(tok);
+      }
+    }
+  }
+
+  const out = [];
+  
+  if (whitePawns.length) out.push(whitePawns.join(" "));
+  for (const tok of whiteOthers) out.push(tok);
+  if (blackPawns.length) out.push(blackPawns.join(" "));
+  for (const tok of blackOthers) out.push(tok);
+
+  kings.sort((a, b) => {
+    const ak = a[0] === "k" ? 0 : 1;
+    const bk = b[0] === "k" ? 0 : 1;
+    return ak - bk;
+  });
+  for (const k of kings) out.push(k);
+
+  return out;
+}
+
+function pgnHeaderValue(pgnObj, key) {
+  for (const kv of (pgnObj && pgnObj.headers) || []) {
+    if (!kv || kv.length < 2) continue;
+    if (String(kv[0] || "") === key) return String(kv[1] || "");
+  }
+  return "";
+}
+
+function buildMultipleConditionCQLFromPGNs(pgnTexts) {
+  const out = ["cql(quiet)", "{", "  initial"];
+
+  for (const pgnText of pgnTexts) {
+    const pgnObj = (typeof pgnText === "string") ? parsePgnFastInto(pgnText) : (pgnText || null);
+    if (!pgnObj) continue;
+
+    const label = pgnHeaderValue(pgnObj, "Event");
+    const fen = pgnHeaderValue(pgnObj, "FEN") || pgnHeaderValue(pgnObj, "Fen") || pgnHeaderValue(pgnObj, "fen");
+    const lines = cqlPieceLinesFromFen(fen);
+
+    out.push("");
+    out.push("  // " + label);
+    out.push("  find quiet {");
+    for (const line of lines) out.push("    " + line);
+    out.push("    comment(" + JSON.stringify(label) + ")");
+    out.push("  }");
+  }
+
+  out.push("}");
+  return out.join("\n");
+}
+
 export class Game {
   constructor(opts = {}) {
     this._listeners = new Set();
@@ -1277,6 +1365,10 @@ exportCQL() {
     return { from: cand[0], to: toIdx, promo };
   }
 }
+
+Game.prototype.MultipleConditionCQL = function (...games) {
+  return buildMultipleConditionCQLFromPGNs(games);
+};
 
 export function createGame(opts) {
   //Kick off opening-table loading in the background (once per module).
