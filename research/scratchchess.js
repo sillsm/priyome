@@ -118,9 +118,10 @@ function cqlPieceLinesFromFen(fen) {
     if (ch >= "1" && ch <= "8") i += ch.charCodeAt(0) - 48;
     else board[i++] = makePieceFromLetter(ch);
   }
-
-  const whiteByRank = new Map();
-  const blackNonKings = [];
+  const whitePawns = [];
+  const blackPawns = [];
+  const whiteOthers = [];
+  const blackOthers = [];
   const kings = [];
 
   for (let r = 0; r < 8; r++) {
@@ -131,30 +132,26 @@ function cqlPieceLinesFromFen(fen) {
       let L = map[p.type] || "?";
       if (p.color === "w") L = L.toUpperCase();
       const tok = L + sqName(bi);
-
       if (p.type === "k") {
         kings.push(tok);
+      } else if (p.type === "p" && p.color === "w") {
+        whitePawns.push(tok);
+      } else if (p.type === "p" && p.color === "b") {
+        blackPawns.push(tok);
       } else if (p.color === "w") {
-        if (!whiteByRank.has(r)) whiteByRank.set(r, []);
-        whiteByRank.get(r).push(tok);
+        whiteOthers.push(tok);
       } else {
-        blackNonKings.push(tok);
+        blackOthers.push(tok);
       }
     }
   }
 
   const out = [];
-
-  const whiteRanks = Array.from(whiteByRank.keys()).sort((a, b) => a - b);
-  if (whiteRanks.length && blackNonKings.length) {
-    for (const r of whiteRanks) out.push(whiteByRank.get(r).join(" "));
-  } else if (whiteRanks.length) {
-    const merged = [];
-    for (const r of whiteRanks) merged.push(...whiteByRank.get(r));
-    out.push(merged.join(" "));
-  }
-
-  if (blackNonKings.length) out.push(blackNonKings.join(" "));
+  
+  if (whitePawns.length) out.push(whitePawns.join(" "));
+  for (const tok of whiteOthers) out.push(tok);
+  if (blackPawns.length) out.push(blackPawns.join(" "));
+  for (const tok of blackOthers) out.push(tok);
 
   kings.sort((a, b) => {
     const ak = a[0] === "k" ? 0 : 1;
