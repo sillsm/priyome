@@ -1090,6 +1090,7 @@ fen "${fenPieces}"
     const priyomeId = String(payload?.id || "");
     const name = String(payload?.name || "").trim();
     const pgn = String(payload?.pgn || "");
+    const parentPgn = String(payload?.parentPgn || "");
     const cqlref0 = String(payload?.cqlref || "").trim();
     const cqlref = cqlref0 || getHeaderTag(pgn, "cqlref") || "";
 
@@ -1104,7 +1105,13 @@ fen "${fenPieces}"
         const title = name || headers.Event || headers.White || "Priyome";
         let cqlText = "";
 
-        if (cqlref){
+        if (parentPgn){
+          try{
+            cqlText = String(sideGame.MultipleConditionCQL?.(pgn, parentPgn) || "").trim();
+          }catch(e){
+            logLine("WARN", `Could not build MultipleConditionCQL for "${title}" (${String(e)})`);
+          }
+        } else if (cqlref){
           try{
             const r = await fetch(`./cql/${cqlref}.cql`, { cache:"no-store" });
             if (r.ok) cqlText = await r.text();
@@ -2582,7 +2589,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
         for (let ci=0; ci<(sec.cards ? sec.cards.length : 0); ci++){
           const c = sec.cards[ci];
 
-          const renderCardFromPgn = (pgn, titleOverride, indentLevel) => {
+          const renderCardFromPgn = (pgn, titleOverride, indentLevel, parentPgn="") => {
             const headers = parseHeaders(pgn);
             const title = titleOverride || headers.Event || `Priyome ${idx+1}`;
             const cqlref = getHeaderTag(pgn, "cqlref") || "";
@@ -2593,6 +2600,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
             card.dataset.priyome = String(idx++);
             card.dataset.priyomeName = title;
             card.dataset.priyomePgn = pgn;
+            card.dataset.priyomeParentPgn = parentPgn || "";
             card.dataset.priyomeCqlref = cqlref;
 
             const t = document.createElement("div");
@@ -2625,7 +2633,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
           for (let si2=0; si2<(c.subcards ? c.subcards.length : 0); si2++){
             const sc = c.subcards[si2];
             for (let j=0; j<(sc.pgns ? sc.pgns.length : 0); j++){
-              renderCardFromPgn(sc.pgns[j], sc.name, 1);
+              renderCardFromPgn(sc.pgns[j], sc.name, 1, (c.pgns && c.pgns[0]) ? c.pgns[0] : "");
             }
           }
         }
@@ -3794,6 +3802,7 @@ function renderPlayersPane(){
         id: pc.dataset.priyome,
         name: pc.dataset.priyomeName,
         pgn: pc.dataset.priyomePgn,
+        parentPgn: pc.dataset.priyomeParentPgn,
         cqlref: pc.dataset.priyomeCqlref
       });
       return;
