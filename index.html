@@ -1914,13 +1914,10 @@ fen "${fenPieces}"
     if (oub){
       const g0 = CTX.g();
       const ply = (g0?.ui?.ply ?? 0);
-      const basePgnRaw0 = (g0?.exportPGN?.() || "").trim();
-      const pgnRaw0 = withMarksPgnRaw(basePgnRaw0, STATE.activeGameId);
-
-      ensureOpeningForPly(STATE.activeGameId, pgnRaw0, ply);
+      ensureOpeningForPly(STATE.activeGameId, ply);
 
       const live = meta?.openingByPly?.[ply] ? String(meta.openingByPly[ply]).trim() : "";
-      oub.textContent = (ply > 0 && live) ? live : "—";
+      oub.textContent = live || "—";
     }
     const activeId = String(STATE.activeGameId || "");
     const kind = activeId.split(":")[0] || "";
@@ -2153,59 +2150,25 @@ function parsePriyomesMarkdown(md){
   const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
 
   // ----------------------------- Live opening label (by current ply) -----------------------------
-  function pgnUpToPly(pgnRaw, ply){
-    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
-    if (p <= 0) return "";
-    const s = String(pgnRaw || "");
-    // drop header section if present (keep only movetext)
-    const movetext = (s.split(/\n\s*\n/).slice(-1)[0] || "").replace(/\s+/g," ").trim();
-    if (!movetext) return "";
-    const toks = movetext.split(" ");
-    const moves = [];
-    for (let i=0;i<toks.length;i++){
-      const t = toks[i].trim();
-      if (!t) continue;
-      // skip move numbers and results
-      if (/^\d+\.(\.\.)?$/.test(t) || /^\d+\.\.\.$/.test(t)) continue;
-      if (t==="*" || t==="1-0" || t==="0-1" || t==="1/2-1/2") continue;
-      moves.push(t);
-      if (moves.length >= p) break;
-    }
-    return moves.join(" ");
-  }
-
-  function openingSig(pgnRaw){
-    const s = String(pgnRaw || "");
-    return String(s.length) + ":" + s.slice(-40);
-  }
-
-  function ensureOpeningForPly(gameId, pgnRaw, ply){
+  function ensureOpeningForPly(gameId, ply){
     if (!gameId) return;
     const meta = STATE.gamesMeta?.[gameId];
     if (!meta) return;
-
-    const sig = openingSig(pgnRaw);
-    if (meta._openingSig !== sig){
-      meta._openingSig = sig;
-      meta.openingByPly = {};
-    }
-
     const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
-    if (p <= 0) return;
     meta.openingByPly = meta.openingByPly || {};
     if (meta.openingByPly[p]) return;
-
-    const partial = pgnUpToPly(pgnRaw, p);
-    if (!partial) return;
+    const g = RUNTIME.games.get(gameId) || ((STATE.activeGameId === gameId) ? CTX.g() : null);
+    if (!g || typeof g.getOpening !== "function") return;
 
     _idle(async () => {
       try{
-        const op = await sideGame.openingFromPGN(partial);
+        const op = await g.getOpening(p);
         const m = STATE.gamesMeta?.[gameId];
         if (!m) return;
         m.openingByPly = m.openingByPly || {};
         // only set if still missing (avoid races)
         if (!m.openingByPly[p]) m.openingByPly[p] = String(op || "").trim();
+        if (p === 0 && !m.openingByPly[1] && m.openingByPly[0]) m.openingByPly[1] = m.openingByPly[0];
         render();
       }catch{}
     });
