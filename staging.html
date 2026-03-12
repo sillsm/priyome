@@ -1007,16 +1007,16 @@
           dispatch({ type:"UI/REFRESH" });
         }
 
-        // background opening fill-in
-        _idle(async ()=>{
-          try{
-            const meta = STATE.gamesMeta?.[id];
-            if (meta && !String(meta.opening||"").trim()){
-              const op = await sideGame.openingFromPGN(pgn);
-              dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
+        try{
+          const meta = STATE.gamesMeta?.[id];
+          if (meta){
+            seedOpeningCacheFromGame(id, g);
+            if (!String(meta.opening||"").trim()) {
+              const op0 = g.getOpening?.(0) || g.getOpening?.(1) || "";
+              if (op0) meta.opening = String(op0);
             }
-          }catch{}
-        });
+          }
+        }catch{}
 
         return g;
       }catch(e){
@@ -1531,16 +1531,13 @@ fen "${fenPieces}"
             g.loadPGN?.(it.pgn);
             try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
             RUNTIME.games.set(id, g);
-            // Ensure opening name is present (compute async so reducer stays sync).
             try{
               const meta = S.gamesMeta?.[id];
-              if (meta && !String(meta.opening||"").trim()){
-                _idle(async ()=>{
-                  try{
-                    const op = await sideGame.openingFromPGN(it.pgn);
-                    dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
-                  }catch{}
-                });
+              if (meta){
+                seedOpeningCacheFromGame(id, g);
+                if (!String(meta.opening||"").trim()){
+                  meta.opening = String(g.getOpening?.(0) || g.getOpening?.(1) || "");
+                }
               }
             }catch{}
           } else {
@@ -1914,14 +1911,12 @@ fen "${fenPieces}"
     if (oub){
       const g0 = CTX.g();
       const ply = (g0?.ui?.ply ?? 0);
-      const prevText = String(oub.textContent || "").trim();
       ensureOpeningForPly(STATE.activeGameId, ply);
 
       const byPly = meta?.openingByPly || null;
       const hasLive = !!(byPly && Object.prototype.hasOwnProperty.call(byPly, ply));
       const live = hasLive ? String(byPly[ply] || "").trim() : "";
-      const pending = !!(meta?._openingPendingByPly && meta._openingPendingByPly[ply]);
-      oub.textContent = hasLive ? (live || "—") : ((pending && prevText) ? prevText : "—");
+      oub.textContent = live || "—";
     }
     const activeId = String(STATE.activeGameId || "");
     const kind = activeId.split(":")[0] || "";
@@ -2154,36 +2149,42 @@ function parsePriyomesMarkdown(md){
   const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
 
   // ----------------------------- Live opening label (by current ply) -----------------------------
+  function seedOpeningCacheFromGame(gameId, g){
+    if (!gameId || !g) return;
+    const meta = STATE.gamesMeta?.[gameId];
+    if (!meta) return;
+    meta.openingByPly = meta.openingByPly || {};
+    const arr = Array.isArray(g.mainlineOpenings) ? g.mainlineOpenings : [];
+    for (let i = 0; i < arr.length; i++){
+      if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, i) && arr[i] != null) {
+        meta.openingByPly[i] = String(arr[i] || "").trim();
+      }
+    }
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 0)) {
+      meta.openingByPly[0] = String(g.getOpening?.(0) || g.getOpening?.(1) || "").trim();
+    }
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 1)) {
+      meta.openingByPly[1] = String(g.getOpening?.(1) || meta.openingByPly[0] || "").trim();
+    }
+    if (!String(meta.opening || "").trim()) {
+      meta.opening = String(meta.openingByPly[0] || meta.openingByPly[1] || "").trim();
+    }
+  }
+
   function ensureOpeningForPly(gameId, ply){
     if (!gameId) return;
     const meta = STATE.gamesMeta?.[gameId];
     if (!meta) return;
     const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
-    meta.openingByPly = meta.openingByPly || {};
-    if (Object.prototype.hasOwnProperty.call(meta.openingByPly, p)) return;
-    meta._openingPendingByPly = meta._openingPendingByPly || {};
-    if (meta._openingPendingByPly[p]) return;
     const g = RUNTIME.games.get(gameId) || ((STATE.activeGameId === gameId) ? CTX.g() : null);
     if (!g || typeof g.getOpening !== "function") return;
-    meta._openingPendingByPly[p] = true;
-
-    _idle(async () => {
-      try{
-        const op = await g.getOpening(p);
-        const m = STATE.gamesMeta?.[gameId];
-        if (!m) return;
-        m.openingByPly = m.openingByPly || {};
-        m._openingPendingByPly = m._openingPendingByPly || {};
-        // cache terminal misses too, so empty-string results do not loop forever
-        if (!Object.prototype.hasOwnProperty.call(m.openingByPly, p)) m.openingByPly[p] = String(op || "").trim();
-        if (p === 0 && !Object.prototype.hasOwnProperty.call(m.openingByPly, 1)) m.openingByPly[1] = String(m.openingByPly[0] || "").trim();
-        delete m._openingPendingByPly[p];
-        render();
-      }catch{
-        const m = STATE.gamesMeta?.[gameId];
-        if (m?._openingPendingByPly) delete m._openingPendingByPly[p];
-      }
-    });
+    seedOpeningCacheFromGame(gameId, g);
+    meta.openingByPly = meta.openingByPly || {};
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, p)) {
+      meta.openingByPly[p] = String(g.getOpening(p) || "").trim();
+    }
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 0)) meta.openingByPly[0] = String(g.getOpening(0) || g.getOpening(1) || "").trim();
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 1)) meta.openingByPly[1] = String(g.getOpening(1) || meta.openingByPly[0] || "").trim();
   }
 
   async function preloadOneManifestPgn(key, url){
