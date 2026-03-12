@@ -81,10 +81,19 @@ function makeNode(parent = null) {
     moveInfo: null,
     snapBefore: null,
     fenAfter: null, // cached FEN after this node's move (root is initial position)
+    pgnAfter: "",   // cached mainline movetext prefix through this ply
+    openingAfter: null, // cached opening name through this ply
     ply: 0,
     marks: { sqMarks: new Map(), arrows: [] },
     comments: [],
   };
+}
+
+function appendSANToPrefix(prefix, san, ply) {
+  const moveNo = Math.floor((ply + 1) / 2);
+  const head = (ply % 2 === 1) ? `${moveNo}. ${san}` : `${moveNo}... ${san}`;
+  const base = String(prefix || "").trim();
+  return base ? `${base} ${head}` : head;
 }
 
 function snapshotFrom(state) {
@@ -233,6 +242,7 @@ export class Game {
     this.curNode = this.root;
     this.initialSnap = null;
     this.mainlineFens = [];
+    this.mainlineOpenings = [];
     this._pendingPromotion = null;
 
     this.initializePosition();
@@ -257,15 +267,19 @@ export class Game {
   _rebuildMainlineFenCache() {
     // mainlineFens[ply] = FEN after that ply's move (ply 0 = root position)
     const out = [];
+    const openings = [];
     let n = this.root;
     if (n && n.fenAfter) out[0] = n.fenAfter;
+    if (n) openings[0] = n.openingAfter;
     while (n && n.children && n.children.length) {
       const c = n.children[n.mainChildIndex] || n.children[0];
       if (!c) break;
       if (c.fenAfter) out[c.ply] = c.fenAfter;
+      openings[c.ply] = c.openingAfter;
       n = c;
     }
     this.mainlineFens = out;
+    this.mainlineOpenings = openings;
   }
 
   clearBoard() {
@@ -886,6 +900,7 @@ export class Game {
     node.snapBefore = snapBefore;
     node.ply = parent.ply + 1;
     node.fenAfter = this.exportFEN();
+    node.pgnAfter = appendSANToPrefix(parent.pgnAfter, san, node.ply);
 
     parent.children.push(node);
     if (parent.children.length === 1) parent.mainChildIndex = 0;
@@ -963,6 +978,27 @@ export class Game {
     this.state.pendingPromotion = null;
     this._emit();
     return true;
+  }
+
+  _mainlineNodeAtPly(n) {
+    const target = Math.max(0, Math.floor(+n || 0));
+    let node = this.root;
+    while (node && node.ply < target) {
+      if (!node.children.length) break;
+      node = node.children[node.mainChildIndex] || node.children[0];
+    }
+    return node || this.root;
+  }
+
+  async getOpening(ply = null, opts = {}) {
+    let target = (ply == null) ? this.curNode.ply : Math.max(0, Math.floor(+ply || 0));
+    let node = this._mainlineNodeAtPly(target);
+    if ((!node || node === this.root) && this.root.children.length) node = this.root.children[this.root.mainChildIndex] || this.root.children[0];
+    if (!node || !node.pgnAfter) return "";
+    if (node.openingAfter != null) return node.openingAfter;
+    node.openingAfter = await openingFromPGN(node.pgnAfter, opts || {});
+    if (this.mainlineOpenings) this.mainlineOpenings[node.ply] = node.openingAfter;
+    return node.openingAfter;
   }
 
   deleteMoveFromHere() {
@@ -1285,6 +1321,10 @@ exportCQL() {
         if (this.state.pendingPromotion) this.resolvePendingPromotion(mv.promo || "Q");
 
         if (this.curNode && !this.curNode.fenAfter) this.curNode.fenAfter = this.exportFEN();
+        if (this.curNode && !this.curNode.pgnAfter) {
+          const parent = this.curNode.parent || this.root;
+          this.curNode.pgnAfter = appendSANToPrefix(parent.pgnAfter, this.curNode.san || sanTok, this.curNode.ply);
+        }
 
         tokenPly++;
         const cs = commentByPly.get(tokenPly);
@@ -2497,6 +2537,7 @@ async function waitForOpeningsReady(timeoutMs = 2000) {
  */
 async function openingFromPGN(pgnObj, { maxPlies = 32, index = null, timeoutMs = 2000 } = {}) {
   // Default to the module index. If it isn't ready yet, wait briefly (and/or kick off load).
+  if (typeof pgnObj === "string") pgnObj = parsePgnFastInto(pgnObj);
   if (!index) {
     await waitForOpeningsReady(timeoutMs);
     index = OPENING_INDEX;
