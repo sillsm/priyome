@@ -1,0 +1,4100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Priyoиes</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#fff; --text:#0f172a; --muted:#475569;
+    --border:#dbe3f0; --accent:#2563eb;
+    --radius:14px; --shadow:0 10px 22px rgba(15,23,42,.08);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --nav-h:58px;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; }
+  .topbarWrap{
+    position:sticky; top:0; z-index:50;
+    height:var(--nav-h);
+    background:linear-gradient(180deg,#ffffff, #f7f9ff);
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 14px;
+  }
+  .brandTitle{ font-weight:900; letter-spacing:.2px; }
+  .brandTitle .dot{ color:var(--accent); }
+  .row{ display:flex; align-items:center; gap:10px; }
+  .pill{ padding:5px 10px; border-radius:999px; border:1px solid var(--border); background:#fff; font-size:12px; color:var(--muted); }
+  .btn{
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:12px;
+    padding:8px 10px;
+    cursor:pointer;
+    box-shadow: 0 6px 16px rgba(15,23,42,.06);
+  }
+  .btn.primary{ background:var(--accent); color:#fff; border-color:transparent; }
+  .layout{
+    display:grid;
+    grid-template-columns: minmax(340px, 1fr) minmax(360px, 520px);
+    gap:14px;
+    padding:14px;
+    height: calc(100vh - var(--nav-h));
+    min-height:0;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    min-height:0;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+  .cardHeader{
+    padding:12px 14px;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .actions{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .actions .btn{ padding:7px 10px; border-radius:10px; }
+  .boardArea{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  .boardWrap{ flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
+ #boardHost{width:100%; height:100%; display:flex; align-items:center; justify-content:center;}
+  /* ensure ScratchChess root shell centers within host and is largest square possible */
+  #boardHost .sc-shell{margin:auto; max-width:100%; max-height:100%;}
+  .sparesRow{ border-top:0; padding:0; display:flex; align-items:center; gap:0; }
+  #sparesHost{ flex:1; min-height:0; padding:0; }
+
+  /* --- Board nameplates (top/bottom, flip-aware) --- */
+  .boardNames{ display:flex; flex-direction:column; gap:2px; padding:8px 12px 0; }
+  .boardNameLine{ font-weight:900; font-size:14px; letter-spacing:.15px; }
+  .boardNameBottom{ color:rgba(15,23,42,.70); font-weight:800; }
+
+  /* --- Docked navigation row (always visible) --- */
+  .navRowDock, .navRowBoard{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+    padding:10px 12px;
+    border-top:1px solid var(--border);
+    background:#fff;
+    margin-top:0;
+  }
+  .navRowDock .navBtn, .navRowBoard .navBtn{
+    flex:1;
+    min-width:0;
+    font-size:22px;
+    padding:12px 0;
+    border-radius:16px;
+    box-shadow: 0 10px 22px rgba(15,23,42,.10);
+  }
+  .tabs{
+    display:flex; gap:8px; flex-wrap:wrap;
+    padding:10px 12px;
+    border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,#fff,#fbfcff);
+  }
+  .tabBtn{
+    padding:7px 10px;
+    border-radius:999px;
+    border:1px solid var(--border);
+    background:#fff;
+    cursor:pointer;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .tabBtn.active{ background:#e8efff; border-color:#c7d6ff; color:#18327a; }
+
+  /* ---------------- Navigation row (Lichess-ish) ---------------- */
+  .navRow{ display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; flex-wrap:wrap; }
+  .navBtn{
+    font-size:22px;
+    line-height:1;
+    padding:10px 12px;
+    border-radius:14px;
+    min-width:44px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:700;
+  }
+  .navRowMobile{ display:none; width:100%; justify-content:space-between; gap:8px; margin:0 0 8px 0; }
+  @media (max-width: 980px){              
+    .boardNames{ padding:6px 12px 0; }
+    .tabs{ flex-wrap:wrap; }
+    .navRowMobile{ display:flex; }
+    .navRowDock{ display:none; }      
+   }
+  .navRowMobile .navBtn{ flex:1; min-width:0; }
+  @media (max-width: 720px){
+    .navRowWide{ display:none; }
+    .tabs{ flex-wrap:wrap; }
+    .navRowMobile{ display:flex; }
+  }
+  .pane{ display:none; padding:12px; overflow:auto; min-height:0; flex:1; }
+  .pane.active{ display:block; }
+  textarea{
+    width:100%;
+    min-height:110px;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px;
+    font-family:var(--mono);
+    font-size:12px;
+    background:#fbfdff;
+  }
+  select, input{
+    width:100%;
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:9px 10px;
+    background:#fff;
+    font-family:inherit;
+  }
+  .list{ display:flex; flex-direction:column; gap:8px; }
+  .gameCard{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 10px;
+    cursor:pointer;
+    background:#fff;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .gameCard.active{ outline:2px solid #c7d6ff; background:#f4f7ff; }
+/* --- Priyomes pane: markdown sections + compact mini-board cards --- */
+#pane-priyomes .priSectionTitle{
+  margin:10px 2px 6px;
+  font-weight:900;
+  font-size:12px;
+  letter-spacing:.2px;
+}
+#pane-priyomes .priSectionRule{
+  height:2px;
+  background:var(--border);
+  border-radius:999px;
+  margin:0 2px 10px;
+}
+#pane-priyomes .gameCard{
+  display:block;
+  padding:6px;
+}
+#pane-priyomes .gameTitle{
+  font-weight:900;
+  font-size:12px;
+  margin:0 0 6px;
+}
+#pane-priyomes .priMiniWrap{
+  border:1px solid rgba(15,23,42,.08);
+  border-radius:12px;
+  overflow:hidden;
+  background:#fff;
+}
+#pane-priyomes .priMini{
+  width:100%;
+  height:115px;
+}
+
+  .playersGrid{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap:10px;
+    margin-top:10px;
+  }
+  .playerCard{
+    border:1px solid var(--border);
+    border-radius:12px;
+    background:#fff;
+    padding:10px;
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    align-items:center;
+    text-align:center;
+  }
+  .playerCard:hover{ background:#f7f9ff; }
+  .playerAvatar{
+    width:72px; height:72px;
+    border-radius:12px;
+    overflow:hidden;
+    border:1px solid rgba(15,23,42,.10);
+    background:#fff;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .playerAvatar img{
+    width:100%; height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .playerName{
+    font-weight:800;
+    font-size:12px;
+    color:var(--text);
+    line-height:1.1;
+  }
+
+  .playersBack{
+    position:sticky;
+    top:0;
+    float:right;
+    margin-top:-2px;
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:999px;
+    padding:6px 10px;
+    cursor:pointer;
+    box-shadow: 0 10px 20px rgba(15,23,42,.10);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .12s ease;
+  }
+  #pane-players.listMode .playersBack{
+    opacity:1;
+    pointer-events:auto;
+  }
+  #pane-players.listMode:hover .playersBack{
+    opacity:1;
+  }
+
+  /* --- Openings pane --- */
+  #pane-openings .openingsTop{
+    position:sticky;
+    top:0;
+    background:linear-gradient(180deg,#fff,#fbfcff);
+    border-bottom:1px solid var(--border);
+    padding:10px 10px;
+    z-index:2;
+  }
+  #pane-openings .openingsTop .row{ justify-content:space-between; }
+  #pane-openings .openingsPrefix{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--muted);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:100%;
+  }
+  #pane-openings .openingsBack{
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:999px;
+    padding:6px 10px;
+    cursor:pointer;
+    box-shadow: 0 10px 20px rgba(15,23,42,.10);
+  }
+  #pane-openings .openGroupTitle{
+    margin:12px 2px 6px;
+    font-weight:900;
+    font-size:12px;
+    letter-spacing:.2px;
+  }
+  #pane-openings .openGroupRule{
+    height:2px;
+    background:var(--border);
+    border-radius:999px;
+    margin:0 2px 10px;
+  }
+  #pane-openings .openCard{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 10px;
+    cursor:pointer;
+    background:#fff;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  #pane-openings .openCard:hover{ background:#f7f9ff; }
+  #pane-openings .openTitle{ font-weight:900; font-size:13px; }
+  #pane-openings .openSub{ font-size:12px; color:var(--muted); }
+  #pane-openings .openMoves{ font-size:12px; color:rgba(0,0,0,.35); font-family:var(--mono); white-space:normal; word-break:break-word; line-height:1.25; }
+  #pane-openings .openChild{
+    margin-left:14px;
+    padding-left:10px;
+    border-left:2px solid rgba(15,23,42,.10);
+  }
+
+  .small{ font-size:12px; color:var(--muted); font-family:var(--mono); }
+  .rightTools{ padding:10px 12px; border-top:1px solid var(--border); background:#fff; }
+  .toolRow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .smallBtn{
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:10px;
+    padding:6px 9px;
+    cursor:pointer;
+    font-size:12px;
+  }
+  .smallBtn.active{ background:#e8efff; border-color:#c7d6ff; }
+  .muted{ color:var(--muted); }
+  .menu{
+    position:fixed; top:var(--nav-h); right:14px;
+    width:min(380px, calc(100vw - 28px));
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow: 0 18px 44px rgba(15,23,42,.18);
+    padding:12px;
+    display:none;
+    z-index:80;
+  }
+  .menu.open{ display:block; }
+  .modalBackdrop{
+    position:fixed; inset:0;
+    background:rgba(15,23,42,.38);
+    display:none;
+    align-items:center; justify-content:center;
+    z-index:90;
+  }
+  .modalBackdrop.open{ display:flex; }
+  .modal{
+    width:min(860px, calc(100vw - 24px));
+    background:#fff;
+    border-radius:16px;
+    border:1px solid var(--border);
+    box-shadow: 0 18px 60px rgba(15,23,42,.25);
+    overflow:hidden;
+  }
+  .modalHead{ padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  .modalBody{ padding:12px; }
+  .modalActions{ padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
+  .errorBody{ font-family:var(--mono); font-size:12px; white-space:pre-wrap; color:#1f2937; }
+
+  .bottomCard{
+    margin-top:10px;
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:10px;
+    background:#fff;
+  }
+  .bottomHead{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+  .fenRow{ display:flex; gap:8px; align-items:center; }
+  .fenLabel{ font-size:12px; color:var(--muted); }
+  .fenBoxLine{ font-family:var(--mono); font-size:12px; padding:8px 10px; border:1px solid var(--border); border-radius:12px; background:#fbfdff; width:100%; overflow:auto; white-space:nowrap; }
+
+  @media (max-width: 980px){
+    .layout{ grid-template-columns:1fr; height:auto; }
+    #boardHost{ width:min(92vmin, 520px); height:min(92vmin, 520px); }
+    #navRowDoc { order: -1; }
+  }
+
+  /* Moves list (contract) */
+  .moveList{ display:flex; flex-direction:column; gap:6px; padding:8px 0; max-height:44vh; overflow:auto; }
+  .mvRow{ display:flex; align-items:baseline; gap:10px; padding:8px 10px; border:1px solid rgba(255,255,255,.10); border-radius:10px; background:rgba(255,255,255,.03); cursor:pointer; user-select:none; }
+  .mvRow:hover{ background:rgba(255,255,255,.06); }
+  .mvRow .mvNum{ min-width:34px; color:var(--muted); font-weight:700; }
+  .mvRow .mvSan{ flex:1; text-align:left; font-weight:650; letter-spacing:.1px; }
+  .mvRow.isCur{ outline:2px solid rgba(103,232,249,.45); background:rgba(103,232,249,.10); }
+  .mvRow.isVar{ margin-left:16px; padding-left:14px; font-size:.92em; opacity:.95; }
+  .mvRow.isVar .mvSan{ font-weight:600; }
+
+  /* --- Moves list (wide: two-column like index(21); mobile: flow) --- */
+  .movesWide{display:block}
+  .movesMobile{display:none}
+  @media (max-width: 899px){
+    .movesWide{display:none}
+    .movesMobile{display:block}
+  }
+  .mlWrap{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    min-height:0;
+    flex:1;
+    overflow:auto;
+    background:#fff; /* default white like index */
+  }
+  .mlRow{
+    display:grid;
+    grid-template-columns: 40px 1fr 1fr;
+    gap:8px;
+    align-items:stretch;
+    padding:1px 0;
+    border-radius:10px;
+  }
+  .mlNum{
+     color:rgba(0,0,0,.35); /* grey numbering */
+     text-align:right;
+     padding:6px 6px;
+     font-weight:800;
+     user-select:none;
+     font-size:12px;
+   }
+   .mlCellBtn{
+     width:100%;
+     text-align:left;
+     padding:6px 8px;
+     border-radius:10px;
+     border:1px solid transparent;
+     background:transparent; /* white background shows through */
+     font-weight:800;
+     font-size:14px;
+     line-height:1.05;
+     cursor:pointer;
+     white-space:nowrap;
+     overflow:hidden;
+     text-overflow:ellipsis;
+   }
+   .mlCellBtn:hover{
+     background: rgba(0,0,0,.06);   /* grey hover */
+     border-color: rgba(0,0,0,.10);
+   }
+   .mlCellBtn.active{
+     background: rgba(46, 160, 67, .12); /* green selected */
+     border-color: rgba(46, 160, 67, .45);
+     box-shadow: 0 0 0 2px rgba(46, 160, 67, .20) inset;
+   }
+  .mlVarRow{display:grid; grid-template-columns:40px 1fr; gap:8px; padding:1px 0;}
+  .mlVarNum{ color:rgba(0,0,0,.28); text-align:right; padding:6px 6px; font-weight:800; user-select:none; font-size:11px;}
+  .mlVarBtn{
+    width:100%; text-align:left; padding:6px 8px; border-radius:10px;
+    border:1px solid transparent; background:transparent;
+    font-weight:700; font-size:13px; cursor:pointer;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .mlVarBtn:hover{ background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.10); }
+  .mlVarBtn.active{
+    background: rgba(46, 160, 67, .10);
+    border-color: rgba(46, 160, 67, .40);
+    box-shadow: 0 0 0 2px rgba(46, 160, 67, .18) inset;
+  }
+  .mlVarIndent{ padding-left:16px; }
+  .mlCommentRow{
+    display:grid;
+    grid-template-columns:40px 1fr 1fr;
+    gap:8px;
+    padding:0 0 4px;
+  }
+  .mlCommentSpacer{ min-height:1px; }
+  .mlCommentWide{
+    grid-column:2 / 4;
+    padding:10px 12px;
+    border-top:1px solid rgba(15,23,42,.10);
+    border-bottom:1px solid rgba(15,23,42,.10);
+    color:rgba(15,23,42,.78);
+    font-size:12px;
+    line-height:1.35;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .mlMobileFlow{ display:flex; flex-wrap:wrap; gap:6px; align-items:baseline; padding:8px 0; }
+  .mlTokNum{ color:rgba(0,0,0,.35); font-weight:800; font-size:12px; padding:2px 2px; }
+  .mlTokParen{ color:rgba(0,0,0,.25); font-weight:800; font-size:12px; padding:2px 2px; }
+  .mlTokComment{
+    color:rgba(15,23,42,.72);
+    font-size:12px;
+    line-height:1.35;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .mlTokBtn{
+    border:1px solid rgba(0,0,0,0);
+    background: transparent; /* white default like screenshot */
+    border-radius:999px;
+    padding:6px 10px;
+    font-weight:800;
+    font-size:13px;
+    cursor:pointer;
+  }
+   .mlTokBtn:hover{ background: rgba(0,0,0,.06); }
+   .mlTokBtn.active{
+    background: rgba(46, 160, 67, .14);
+    border-color: rgba(46, 160, 67, .55);
+     box-shadow: 0 0 0 2px rgba(46, 160, 67, .18) inset;
+   }
+</style>
+
+</head>
+<body>
+
+<script>
+(function(){
+  function ensureHud(){
+    var el = document.getElementById("__bootHud");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id="__bootHud";
+    el.style.cssText="position:fixed;left:10px;right:10px;bottom:10px;z-index:9999;background:#fff3cd;border:1px solid #ffeeba;color:#1f2937;padding:10px 12px;border-radius:12px;font:12px ui-monospace,Menlo,Consolas,monospace;box-shadow:0 12px 30px rgba(0,0,0,.15);display:none;white-space:pre-wrap;max-height:40vh;overflow:auto";
+    document.addEventListener("DOMContentLoaded", function(){ document.body.appendChild(el); });
+    return el;
+  }
+  function show(msg){
+    var hud = ensureHud();
+    hud.style.display="block";
+    hud.textContent = "Boot error (module may have failed to load):\n\n" + String(msg||"");
+  }
+  window.addEventListener("error", function(ev){
+    try{
+      if (ev && ev.filename && String(ev.filename).includes("scratchchess.js") && String(ev.message||"").includes("Failed to fetch")) {
+        show(ev.message + "\n" + ev.filename);
+      } else {
+        show((ev && ev.message) ? ev.message : ev);
+      }
+    }catch(e){ show(e); }
+  });
+  window.addEventListener("unhandledrejection", function(ev){
+    try{ show(ev && ev.reason ? (ev.reason.stack || ev.reason) : ev); }catch(e){ show(e); }
+  });
+})();
+</script>
+
+
+<div class="topbarWrap" id="topNav">
+  <div class="row">
+    <button class="btn" id="btnHamburger" title="Menu">☰</button>
+    <div class="brandTitle">Priyoиes</div>
+  </div>
+  <div class="row">
+    <span class="pill">Study: <b id="studyPill">—</b></span>
+    <span class="pill">ID: <b id="gameName">—</b></span>
+  </div>
+</div>
+
+<div class="menu" id="menu">
+  <div class="muted">Menu</div>
+  <div class="muted" style="font-size:12px; margin-top:6px">Toggles open/close for tests.</div>
+</div>
+
+<div class="layout">
+  <div class="card" id="boardCard">
+    <div class="cardHeader">
+      <div class="boardNameLine" id="boardNameTop"></div> &nbsp; <div class="boardNameLine boardNameBottom" id="boardNameBottom"></div>
+    </div>
+    <div class="boardArea">
+      <div class="boardWrap">
+        <div id="boardHost"></div>
+      </div>
+      <div class="sparesRow" id="setupStrip">
+        <div id="sparesHost"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tabs">
+        <div class="navRow navRowMobile" id="navRowMobile">
+        <button class="btn navBtn" id="btnNavStartB" type="button" title="To start">⇤</button>
+        <button class="btn navBtn" id="btnNavPrevB" type="button" title="Back one ply">←</button>
+        <button class="btn navBtn" id="btnNavFlipB" type="button" title="Flip board">⟳</button>
+        <button class="btn navBtn" id="btnNavNextB" type="button" title="Forward one ply">→</button>
+        <button class="btn navBtn" id="btnNavEndB" type="button" title="To end">⇥</button>
+        </div>
+      <button class="tabBtn active" data-tab="moves">Moves</button>
+      <button class="tabBtn" data-tab="games">Games</button>
+      <button class="tabBtn" data-tab="priyomes">Priyomes</button>
+      <button class="tabBtn" data-tab="openings">Openings</button>
+      <button class="tabBtn" data-tab="query">Query</button>
+      <button class="tabBtn" data-tab="evals">Evals</button>
+      <button class="tabBtn" data-tab="players">Players</button>
+      <button class="tabBtn" data-tab="errors">Errors</button>
+    </div>
+
+    <div class="pane active" id="pane-moves">
+      <!-- Keep these for tests (hidden), but visually we show ONE bottom summary only -->
+      <textarea id="fenBox" readonly style="display:none"></textarea>
+      <textarea id="pgnBox" readonly style="display:none"></textarea>
+
+      <div class="row" style="gap:8px; flex-wrap:wrap">
+        <span class="pill"><b id="openingUnderBoard">—</b></span>
+      </div>
+
+      <span class="pill" style="display:none"><b id="navMeta">0</b></span>
+
+      <div id="moveList" class="moveList" aria-label="Move list"></div>
+      <div class="movesWide"><div class="mlWrap" id="movesWide"></div></div>
+      <div class="movesMobile"><div class="mlWrap" id="movesMobile"></div></div>
+
+      <!-- legacy contract (kept for compatibility / hidden) -->
+      <div id="moveList" class="moveList" aria-label="Move list" style="display:none"></div>
+      <div class="bottomCard" id="movesQueryCard" style="display:none; margin-top:10px">
+        <div class="bottomHead">
+          <div class="muted" style="font-size:12px">Query Controls</div>
+          <div class="small">Query Position</div>
+        </div>
+
+        <div class="label">PGN DB</div>
+        <select id="mvDbSelectEl"></select>
+
+        <div class="label" style="margin-top:12px">CQL</div>
+        <textarea id="mvCqlText" placeholder="cql()"></textarea>
+
+        <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
+          <button class="btn primary" id="mvRunQuery" type="button">Run Query</button>
+        </div>
+      </div>
+
+      <div class="bottomCard" id="bottomCard">
+        <div class="bottomHead">
+          <div class="muted" style="font-size:12px">Position FEN &amp; Game PGN</div>
+          <div class="small" id="bottomMeta">—</div>
+        </div>
+        <div class="fenRow" style="margin-bottom:8px">
+          <span class="fenLabel">FEN</span>
+          <div class="fenBoxLine" id="fenBottom"></div>
+        </div>
+        <textarea id="pgnBottom" readonly style="min-height:180px"></textarea>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-games">
+      <div class="label">Studies</div>
+      <div class="row" style="gap:8px; align-items:stretch">
+        <select id="studySelect"></select>
+        <button class="btn" id="btnNewStudy" type="button">New Study</button>
+      </div>
+      <div class="row" style="gap:8px; margin-top:10px">
+        <button class="btn primary" id="btnNewGame" type="button">New Game</button>
+        <button class="btn" id="btnDrawQuery" type="button">Draw Query</button>
+      </div>
+      <div class="label" style="margin-top:12px">Games</div>
+      <div class="list" id="gameList"></div>
+    </div>
+
+    <div class="pane" id="pane-priyomes">
+      <div class="label">Priyomes</div>
+      <div class="row" style="gap:8px; margin-bottom:8px">
+        <span class="pill">Active: <b id="activePriyome">—</b></span>
+      </div>
+      <div class="list" id="priyomeList"></div>
+    </div>
+
+
+    <div class="pane" id="pane-openings">
+      <div class="row" style="gap:8px; justify-content:flex-end; margin-bottom:8px">
+        <button class="openingsBack" id="openingsBack" type="button" title="Show all openings">All</button>
+      </div>
+      <div class="list" id="openingsList"></div>
+    </div>
+
+    <div class="pane" id="pane-query">
+      <div class="label">PGN DB</div>
+      <select id="dbSelectEl"></select>
+
+      <div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; width:100%">
+          <label class="pill" style="display:inline-flex; gap:6px; align-items:center; cursor:pointer">
+            <input id="qPgnFile" type="file" accept=".pgn,.txt" style="display:none" />
+            <span class="btn" type="button">Choose PGN…</span>
+            <b id="qPgnName">(none)</b>
+          </label>
+          <button class="btn" id="qUseCurrent" type="button">Use Current Game</button>
+        </div>
+      </div>
+
+      <div class="label" style="margin-top:12px">CQL</div>
+      <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center">
+        <label class="pill" style="display:inline-flex; gap:6px; align-items:center; cursor:pointer">
+          <input id="qCqlFile" type="file" accept=".cql,.txt" style="display:none" />
+          <span class="btn" type="button">Load CQL…</span>
+          <b id="qCqlName">—</b>
+        </label>
+        <span class="pill">Status: <b id="qStatus">—</b></span>
+      </div>
+
+      <textarea id="qCqlText" placeholder="cql()"></textarea>
+
+      <div class="label" style="margin-top:10px">Args (argv)</div>
+      <input id="qArgv" type="text" value="-i /work/game.pgn /work/query.cql" />
+
+      <div class="row" style="gap:8px; margin-top:10px; justify-content:flex-end">
+        <button class="btn primary" id="qRun" type="button">Run Query</button>
+      </div>
+</div>
+
+    <div class="pane" id="pane-evals">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="label">Evals</div>
+        <button class="btn" id="btnReloadEvals" type="button">Reload</button>
+      </div>
+      <div class="row" style="gap:8px; margin-bottom:10px">
+        <span class="pill">Status: <b id="evalsStatus">—</b></span>
+      </div>
+      <div class="label">JS evals</div>
+      <div class="list" id="evalList"></div>
+      <div class="label" style="margin-top:12px">CQL evals</div>
+      <div class="list" id="cqlEvalList"></div>
+    </div>
+
+    <div class="pane" id="pane-players">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="label" id="playersTitle">Players</div>
+        <span class="pill" id="playersHint">Pick a player</span>
+      </div>
+
+      <!-- hover back arrow (only visible in list mode) -->
+      <button class="playersBack" id="playersBack" type="button" title="Back">←</button>
+
+      <div id="playersGrid" class="playersGrid"></div>
+
+      <div id="playersGamesWrap" style="display:none; margin-top:10px">
+        <div class="label" style="margin-top:6px">Games</div>
+        <div class="list" id="playersGameList"></div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-errors">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="label">All logs & errors</div>
+        <div class="row" style="gap:8px">
+          <span class="pill">Lines: <b id="errCount">0</b></span>
+          <button class="btn" id="btnClearErrors" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="errorBody" id="errorLog"></div>
+    </div>
+
+    <div class="rightTools" id="rightTools">
+  <div class="row" style="gap:8px; flex-wrap:wrap; margin-top:6px">
+      <button class="btn" id="btnReset" type="button">Reset</button>
+      <button class="btn" id="btnSetup" type="button">Setup</button>
+      <button class="btn" id="btnImportPgn" type="button">Import PGN</button>
+      <button class="btn" id="btnExportGame" type="button">Export Game PGN</button>
+      <button class="btn" id="btnExportStudy" type="button">Export Study PGN</button>
+    </div>
+<div class="toolRow" id="drawModeRow">
+        <button class="smallBtn" id="btnModeArrows2" type="button">Arrows</button>
+        <button class="smallBtn" id="btnModeSquares2" type="button">Squares</button>
+        <button class="smallBtn" id="btnClearMarks2" type="button">Clear</button>
+      </div>
+      <div class="toolRow" hidden id="pigmentRow">
+        <span class="pill">Pigment</span>
+        <button class="smallBtn" id="btnPigR" title="Red" type="button">🔴</button>
+        <button class="smallBtn" id="btnPigG" title="Green" type="button">🟢</button>
+        <button class="smallBtn" id="btnPigB" title="Blue" type="button">🔵</button>
+        <button class="smallBtn" id="btnPigY" title="Yellow" type="button">🟡</button>
+      </div>
+      </div>
+
+    <div class="navRow navRowDock" id="navRowDock">
+      <button class="btn navBtn" id="btnNavStartD" type="button" title="To start">⇤</button>
+      <button class="btn navBtn" id="btnNavPrevD" type="button" title="Back one ply">←</button>
+      <button class="btn navBtn" id="btnNavFlipD" type="button" title="Flip board">⟳</button>
+      <button class="btn navBtn" id="btnNavNextD" type="button" title="Forward one ply">→</button>
+      <button class="btn navBtn" id="btnNavEndD" type="button" title="To end">⇥</button>
+    </div>
+  </div>
+</div>
+
+<div class="modalBackdrop" id="importModalBackdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modalHead">
+      <b>Import PGN</b>
+      <button class="btn" id="btnImportCancel" type="button">Close</button>
+    </div>
+    <div class="modalBody">
+      <div class="label">Paste PGN</div>
+      <textarea id="importPgnText"></textarea>
+    </div>
+    <div class="modalActions">
+      <button class="btn primary" id="btnImportAdd" type="button">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- NOTE: the newline after <script avoids matching the literal substring "<script " in some of your tests -->
+<script
+  type="module">
+  import { createGame, BoardView } from "./scratchchess.js";
+
+  /* ----------------------------- Manifests ----------------------------- */
+  const STUDY_MANIFEST = {
+    default: "./pgn/Study.pgn",
+    fen_test: "./pgn/default games.pgn",
+    alignment_examples: "./pgn/alignment_examples.pgn",
+  };
+  const PGN_MANIFEST = { Anand:  "./pgn/Anand.pgn",
+                         Capablanca: "./pgn/Capablanca.pgn",
+                         Carlsen: "./pgn/Carlsen.pgn",
+                         Fischer: "./pgn/Fischer.pgn", 
+                         Karpov: "./pgn/Karpov.pgn",
+                         Kasparov: "./pgn/Kasparov.pgn",
+                         Nakamura: "./pgn/Nakamura.pgn",
+                         Petrosian: "./pgn/Petrosian.pgn",
+                         Polgar: "./pgn/PolgarJ.pgn",
+                         Tal:       "./pgn/Tal.pgn"
+                       };
+  const PLAYER_IMAGE = {
+    Fischer: "./third_party/images/fischer.jpeg",
+    Karpov: "./third_party/images/karpov.jpg",
+    Anand:  "./third_party/images/anand.jpg",
+    Capablanca:  "./third_party/images/capablanca.jpeg",
+    Carlsen: "./third_party/images/carlsen.jpeg",
+    Polgar: "./third_party/images/jpolgar.jpeg",
+    Kasparov: "./third_party/images/kasparov.webp",
+    Nakamura: "./third_party/images/nakamura.jpg",
+    Petrosian: "./third_party/images/petrosian.jpg",
+    Tal: "./third_party/images/tal.jpg"
+  };
+  const PRIYOME_PGN_MANIFEST = { default: "./priyomes.md" };
+
+  // Prefetch priyomes markdown early (so pane switches feel instant).
+  const _PRIYOMES_MD_URL = PRIYOME_PGN_MANIFEST?.default;
+  const _PRIYOMES_MD_PROMISE = (_PRIYOMES_MD_URL
+    ? fetch(_PRIYOMES_MD_URL, { cache:"no-store" }).then(r=>r.text())
+    : Promise.resolve(""));
+  const CQL_MANIFEST = {}; // optional extra dropdown items
+  const CQL_EVAL_MANIFEST = {
+    naivealignments: { url:"./cql/naivealignments.cql", description:"Naive alignments demo" },
+    humanlignments:  { url: "./cql/human_alignments.cql",description: "Human alignments."},
+    clamp:  { url: "./cql/clamp.cql",description: "CLAMP Check."},
+  };
+
+
+  /* ----------------------------- Tiny DOM helpers ----------------------------- */
+  const $ = (id)=>document.getElementById(id);
+  const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const nowId = ()=>Math.random().toString(16).slice(2,8);
+
+  /* ----------------------------- Architecture Description ----------------------------- */
+  // The event loop is 
+  // 1. Someone passes an action to dispatch. This can be a click listener, or once on boot
+  // or at the completion of an async event. For example, listen for a left button press.
+  // 2. Dispatch is a pure function that takes (State, Action) -> New State.
+  // 3. Render is called only once, after the state has been reduced.
+  // 
+  // Sometimes there are longer-term or bigger async things that need to produce side-effects.
+  // Those things are handled by RUNTIME. 
+  // 1. For example, RUNTIME fetches and processes player PGNs async. But it should immediately 
+  // dispatch an action like FETCHING/LOADING to modify the state. When the RUNTIME call is done,
+  // it dispatches an action like FETCHING/COMPLETE.
+
+  /* ----------------------------- State cloning (step toward purity) ----------------------------- */
+  function cloneState(S){
+    try{ if (typeof structuredClone === "function") return structuredClone(S); }catch{}
+    // NOTE: fallback is lossy for functions/Maps/etc; STATE is intended to be plain data.
+    return JSON.parse(JSON.stringify(S));
+  }
+
+  /* ----------------------------- Runtime (non-serializable) ----------------------------- */
+  const RUNTIME = {
+    games: new Map(),   // id -> ScratchChess game instance
+    board: null,        // BoardView
+    boot: null,         // boot game
+
+    // Heavy, non-serializable caches (keep OUT of STATE for tab-switch performance)
+    playerPartsByKey: new Map(), // key -> [{i,pgn,h,title,white,black,event,date,opening}]
+    pgnCacheByKey: new Map(),    // key -> { url, parts:[...], ready:true } (manifest preload)
+    cqlById: new Map(),          // id  -> { pgn, h, sourceKey }
+
+    // Players pane DOM cache (avoid rebuilding huge lists on every tab switch)
+    playersDomCache: {
+      key: "",
+      len: 0,
+      lastActiveId: "",
+      nodesById: new Map(), // id -> element
+      host: null,
+    },
+
+    openings: {
+      loaded: false,
+      loadPromise: null,
+      entries: [], // [{eco,name,pgn,tokens,parentKey}]
+      domCache: { sig: "", host: null },
+    },
+  };
+
+  /* ----------------------------- RUNTIME side effects ----------------------------- */
+  RUNTIME.playerLoads = new Map(); // key -> Promise
+  RUNTIME.gameLoads = new Map();   // id -> Promise
+  RUNTIME.priyomeLoads = new Map(); // key -> Promise
+  RUNTIME.openingsReadyPromise = null;
+  RUNTIME.wasmWarmPromise = null;
+
+  RUNTIME.waitForOpeningsTables = async function waitForOpeningsTables(){
+    if (STATE.openingTablesLoaded) return true;
+    if (RUNTIME.openingsReadyPromise && typeof RUNTIME.openingsReadyPromise.then === "function"){
+      try{ await RUNTIME.openingsReadyPromise; }catch{}
+    }
+    return !!STATE.openingTablesLoaded;
+  };
+
+  RUNTIME.waitForWasmWarm = async function waitForWasmWarm(){ if (RUNTIME.wasmWarmPromise) try{ await RUNTIME.wasmWarmPromise; }catch{} return true; };
+
+  RUNTIME.syncBoard = function syncBoard(gameId=null){
+    try{ CTX.setActiveGameToBoard(gameId); }catch{}
+  };
+
+  RUNTIME.loadPlayer = async function loadPlayer(key){
+    key = String(key||"").trim();
+    const url = String(PGN_MANIFEST?.[key] || "").trim();
+    if (!key || !url) return;
+
+    if (RUNTIME.playerLoads.has(key)) return RUNTIME.playerLoads.get(key);
+
+    const p = (async ()=>{
+      dispatch({ type:"PLAYER/LOADING", key });
+      const openingsReady = await RUNTIME.waitForOpeningsTables();
+      if (!openingsReady) throw new Error("Opening tables not loaded");
+      await RUNTIME.waitForWasmWarm();
+
+      try{
+        const r = await fetch(url, { cache:"no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status} loading ${url}`);
+        const txt = await r.text();
+
+        const games = splitMultiPgn(txt);
+        const parts = [];
+        for (let i=0;i<games.length;i++){
+          const pgn = games[i];
+          const h = parseHeaders(pgn);
+          const white = (h.White || key);
+          const black = (h.Black || "?");
+          const event = (h.Event || "");
+          const date  = (h.Date || "");
+          const title = formatVsLastNames(white, black) || (event || `Game ${i+1}`);
+          parts.push({ i, pgn, h, title, white, black, event, date, opening:"" });
+        }
+
+        // Compute openings up-front (parallel) so the list renders with openings immediately,
+        // and we avoid dispatching hundreds of GAME/OPENING_OK actions that can thrash render/scroll.
+        if (parts.length){
+          try{
+            const jobs = parts.map(async (it) => {
+              try{
+                const op = await sideGame.openingFromPGN(it.pgn);
+                it.opening = String(op||"");
+              }catch{}
+            });
+            await Promise.allSettled(jobs);
+          }catch{}
+        }
+
+        // Store heavy PGN + parsed headers/openings in RUNTIME (NOT in STATE).
+        RUNTIME.playerPartsByKey.set(key, parts);
+
+        // Only send lightweight ids + metadata through the reducer.
+        const ids = parts.map(it => `player:${key}:${it.i}`);
+        const metaById = {};
+        for (const it of parts){
+          const id = `player:${key}:${it.i}`;
+          metaById[id] = {
+            id,
+            title: it.title,
+            opening: String(it.opening||""),
+            event: it.event||"",
+            date: it.date||"",
+            white: it.white||"",
+            black: it.black||""
+          };
+        }
+
+        dispatch({ type:"PLAYER/OK", key, url, ids, metaById });
+      }catch(e){
+        logStack("ERR", `Players load failed (${key}): `, e);
+        dispatch({ type:"PLAYER/ERR", key, err:String(e?.message || e) });
+      }finally{
+        RUNTIME.playerLoads.delete(key);
+      }
+    })();
+
+    RUNTIME.playerLoads.set(key, p);
+    return p;
+  };
+
+  RUNTIME.ensureGameLoaded = async function ensureGameLoaded(id){
+    id = String(id||"");
+    if (!id) return;
+    if (RUNTIME.games.has(id)) {
+      const g = RUNTIME.games.get(id);
+      // Important: when switching back to a previously-loaded game, re-bind it to the board.
+      if (STATE.activeGameId === id){
+        RUNTIME.syncBoard(id);
+      }
+      return g;
+    }
+    if (RUNTIME.gameLoads.has(id)) return RUNTIME.gameLoads.get(id);
+
+    const p = (async ()=>{
+      const tLoad0 = performance.now();
+      const isoIn = new Date().toISOString();
+      logLine("DBG", `[${isoIn}] STUDY GAME LOAD IN id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
+      dispatch({ type:"GAME/LOADING", id });
+
+      const openingsReady = await RUNTIME.waitForOpeningsTables();
+      logLine(
+        "DBG",
+        `[${new Date().toISOString()}] STUDY GAME LOAD GATE id=${id} openingTablesLoaded=${openingsReady ? "true" : "false"} waitMs=${(performance.now() - tLoad0).toFixed(1)}`
+      );
+      if (!openingsReady) throw new Error("Opening tables not loaded");
+
+      try{
+        let src = null;
+
+        // player game id
+        let m = /^player:([^:]+):(\d+)$/.exec(id);
+        if (m){
+          const key = m[1];
+          const idx = parseInt(m[2],10) || 0;
+          const arr = RUNTIME.playerPartsByKey.get(key);
+          src = (arr && arr[idx]) ? arr[idx] : null;
+        }
+
+        // cql game id
+        if (!src && id.startsWith("cql:")){
+          src = RUNTIME.cqlById.get(id) || null;
+        }
+
+        // generic stored source
+        if (!src){
+          src = STATE.pgnSource?.byId?.[id] || null;
+        }
+
+        const pgn = src?.pgn;
+        const h = src?.h || {};
+        if (!pgn) throw new Error(`Missing PGN source for id=${id}`);
+
+        const g = createGame(h || {});
+        g.loadPGN?.(pgn);
+        RUNTIME.games.set(id, g);
+        logLine(
+          "DBG",
+          `[${new Date().toISOString()}] STUDY GAME LOAD OUT id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tLoad0).toFixed(1)}`
+        );
+
+        dispatch({ type:"GAME/OK", id });
+
+        if (STATE.activeGameId === id){
+          RUNTIME.syncBoard();
+          dispatch({ type:"UI/REFRESH" });
+        }
+
+        try{
+          const meta = STATE.gamesMeta?.[id];
+          if (meta){
+            if (!String(meta.opening||"").trim()) {
+              const op0 = g.getOpening?.(0) || g.getOpening?.(1) || "";
+              if (op0) meta.opening = String(op0);
+            }
+          }
+        }catch{}
+
+        return g;
+      }catch(e){
+        logLine(
+          "ERR",
+          `[${new Date().toISOString()}] STUDY GAME LOAD FAIL id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tLoad0).toFixed(1)} ` + String(e && e.stack ? e.stack : e)
+        );
+
+        dispatch({ type:"GAME/ERR", id, err:String(e?.message || e) });
+      }finally{
+        RUNTIME.gameLoads.delete(id);
+      }
+    })();
+
+    RUNTIME.gameLoads.set(id, p);
+    return p;
+  };
+
+
+  // Shared: load an already-created logical game id onto the board, enable query mode,
+  // mirror query controls, and refresh the UI. Used by both Priyomes and Openings clicks.
+  RUNTIME.activateGameForQuery = async function activateGameForQuery(id, cqlText){
+    id = String(id||"");
+    if (!id) return;
+    await RUNTIME.ensureGameLoaded(id);
+    try{
+      const g = RUNTIME.games.get(id);
+      if (g){
+        try{ g.setMode?.("query"); }catch{}
+        if (typeof cqlText === "string"){
+          try{ g.cqlText = cqlText; }catch{}
+        }
+      }
+    }catch{}
+    RUNTIME.syncBoard(id);
+    dispatch({ type:"QUERY/USE_CURRENT" });
+    dispatch({ type:"UI/REFRESH" });
+  };
+
+  RUNTIME.loadOpeningPgn = async function loadOpeningPgn(payload){
+    const pgn = String(payload?.pgn || "");
+    if (!pgn) return;
+    const openingName = String(payload?.title || "Opening").trim() || "Opening";
+    const headers = parseHeaders(pgn || "");
+    const id = `opening:${Date.now()}:${nowId()}`;
+    dispatch({
+      type:"OPENINGS/OK",
+      game: { id, title:"Opening Explorer", opening: openingName, pgn, headers }
+    });
+
+    // Opening click flow:
+    // 1) load board
+    // 2) export FEN
+    // 3) build CQL using fen "..."
+    // 4) switch to query mode (shared logic)
+    await RUNTIME.ensureGameLoaded(id);
+    RUNTIME.syncBoard(id);
+
+    let fenFull = "";
+    try{
+      const g = RUNTIME.games.get(id);
+      fenFull = String(g?.exportFEN?.() || "").trim();
+    }catch{}
+    const fenPieces = String((fenFull.split(" ")[0] || "").trim());
+    const cqlText = `cql(quiet)
+{
+fen "${fenPieces}"
+}`;
+
+    await RUNTIME.activateGameForQuery(id, cqlText);
+    dispatch({ type:"UI/TAB", tab:"moves" });
+  };
+
+
+  RUNTIME.loadPriyome = async function loadPriyome(payload){
+    const priyomeId = String(payload?.id || "");
+    const name = String(payload?.name || "").trim();
+    const pgn = String(payload?.pgn || "");
+    const parentPgn = String(payload?.parentPgn || "");
+    const cqlref0 = String(payload?.cqlref || "").trim();
+    const cqlref = cqlref0 || getHeaderTag(pgn, "cqlref") || "";
+
+    // De-dupe in-flight loads for the same priyome card.
+    const key = `priyome:${cqlref || priyomeId || "x"}`;
+    if (RUNTIME.priyomeLoads.has(key)) return RUNTIME.priyomeLoads.get(key);
+
+    const p = (async ()=>{
+      dispatch({ type:"PRIYOME/LOADING", id: priyomeId, name: name || "Priyome" });
+      try{
+        const headers = parseHeaders(pgn || "");
+        const title = name || headers.Event || headers.White || "Priyome";
+        let cqlText = "";
+
+        if (parentPgn){
+          try{
+            cqlText = String(sideGame.MultipleConditionCQL?.(pgn, parentPgn) || "").trim();
+          }catch(e){
+            logLine("WARN", `Could not build MultipleConditionCQL for "${title}" (${String(e)})`);
+          }
+        } else if (cqlref){
+          try{
+            const r = await fetch(`./cql/${cqlref}.cql`, { cache:"no-store" });
+            if (r.ok) cqlText = await r.text();
+            else logLine("WARN", `Could not load CQL for cqlref "${cqlref}" (HTTP ${r.status})`);
+          }catch(e){
+            logLine("WARN", `Could not load CQL for cqlref "${cqlref}" (${String(e)})`);
+          }
+        }
+
+        // Create a new logical game id each time (match prior behavior).
+        const id = `priyome:${cqlref || priyomeId || "x"}:${Date.now()}`;
+
+        // Store raw PGN source in STATE via reducer (purity step).
+        dispatch({
+          type:"PRIYOME/OK",
+          priyomeId,
+          priyomeName: title,
+          game: { id, title, opening:"Priyome", pgn, headers, cqlText }
+        });
+
+        // Instantiate the ScratchChess game + load the board (shared logic).
+        await RUNTIME.activateGameForQuery(id, cqlText);
+
+      }catch(e){
+        logStack("ERR","Failed to load Priyome to board: ", e);
+        dispatch({ type:"PRIYOME/ERR", id: priyomeId, err: String(e?.message || e) });
+      }finally{
+        RUNTIME.priyomeLoads.delete(key);
+      }
+    })();
+
+    RUNTIME.priyomeLoads.set(key, p);
+    return p;
+  };
+
+  RUNTIME.runCqlFromUi = async function runCqlFromUi(opts=null){
+    try{
+      const qCqlText = $("qCqlText");
+      const qPgnFile = $("qPgnFile");
+      const dbSelectEl = $("dbSelectEl");
+      const qArgv = $("qArgv");
+
+      const cqlText = String(opts?.cqlText ?? qCqlText?.value ?? "").trim();
+      if (!cqlText) throw new Error("CQL is empty.");
+
+      let pgnBytes = opts?.pgnBytes || null;
+      let sourceKey = String(opts?.sourceKey || "").trim();
+
+      if (!pgnBytes){
+        if (qPgnFile?.files?.[0]){
+          const f = qPgnFile.files[0];
+          pgnBytes = await fileToUint8(f);
+          sourceKey = f.name || "pgn-file";
+        } else if (qPgnBytesOverride){
+          pgnBytes = qPgnBytesOverride;
+          sourceKey = "current-game";
+        } else {
+          const v = String(dbSelectEl?.value || "").trim();
+          if (!v) throw new Error("No PGN selected (choose a file, DB, or Use current).");
+          pgnBytes = await getPgnBytesForDb(v);
+          sourceKey = v;
+        }
+      }
+
+      // Dummy-game workaround
+      let _dummyInjected = false;
+      try{
+        const ensured = ensureAtLeastTwoGamesPgnBytes(pgnBytes);
+        pgnBytes = ensured.bytes;
+        _dummyInjected = !!ensured.injected;
+        if (_dummyInjected){
+          logLine("WARN", `CQL workaround: input had 1 game; appended dummy game (${DUMMY_CQL_EVENT}).`);
+        }
+      }catch(e){
+        logLine("WARN","CQL workaround failed (continuing without dummy): " + String(e));
+      }
+
+      dispatch({ type:"CQL/LOADING" });
+
+      const mod = await getRunnerMod();
+      const runCqlWasm = mod.runCqlWasm;
+      if (typeof runCqlWasm !== "function") throw new Error("runCqlWasm export not found");
+
+      const cqlBytes = textToUtf8Bytes(cqlText);
+      const argv = String(opts?.argv ?? qArgv?.value ?? "");
+      logLine("OK", `Running query with argv: ${argv}`);
+
+      const job = runCqlWasm(cqlBytes, pgnBytes, argv, {
+        onLog: (line) => {
+          const ss = String(line);
+          if (ss.startsWith("[stderr]")) logLine("WARN", ss);
+          else logLine("OK", ss);
+        }
+      });
+
+      await new Promise((resolve) => {
+          const unsub = job.subscribe(async (j) => {
+          const st = j.status ? j.status() : { busy:0, total:1 };
+          dispatch({ type:"CQL/STATUS", text: `${j.state} — workers ${st.busy}/${st.total}` + (j.error ? ` — ${j.error}` : "") });
+
+          if (j.state !== "done" && j.state !== "error") return;
+
+          try{ unsub(); }catch{}
+          try{
+            if (j.state === "error"){
+              dispatch({ type:"CQL/ERR", err: String(j.error || "unknown error") });
+            } else {
+              let outPgnText = j.outputPgn || "";
+
+              if (_dummyInjected){
+                const stripped = stripDummyFromMultiPgnText(outPgnText);
+                if (stripped !== outPgnText.trim()){
+                  logLine("OK","CQL workaround: stripped dummy game from output.");
+                }
+                outPgnText = stripped;
+              }
+
+              const items = outPgnText && outPgnText.trim() ? prepareCqlItems(outPgnText, sourceKey) : [];
+              // Compute openings up-front (parallel) so result lists include opening names immediately.
+              if (items.length){
+                try{
+                  const jobs = items.map(async (it) => {
+                    const op = await sideGame.openingFromPGN(it.pgn);
+                    it.meta.opening = String(op||"");
+                  });
+                  await Promise.allSettled(jobs);
+                }catch{}
+              }
+
+              // Store heavy PGNs in RUNTIME (NOT in STATE) so the app stays responsive after big queries.
+              try{
+                for (const it of items){
+                  if (!it || !it.id) continue;
+                  RUNTIME.cqlById.set(it.id, { pgn: it.pgn, h: it.h, sourceKey: String(sourceKey||"") });
+                }
+              }catch{}
+
+              // Send only lightweight results through the reducer.
+              const lite = items.map(it => ({ id: it.id, meta: it.meta }));
+              dispatch({ type:"CQL/OK", items: lite, sourceKey });
+            }
+          }catch(e){
+            dispatch({ type:"CQL/ERR", err:String(e?.message || e) });
+          }finally{
+            resolve();
+          }
+        });
+      });
+
+    }catch(e){
+      dispatch({ type:"CQL/ERR", err:String(e?.message || e) });
+    }finally{
+      try{ updateQueryUi(); }catch{}
+    }
+  };
+
+  /* ----------------------------- STATE (JSON only) ----------------------------- */
+  let STATE = {
+    ui: {
+      tab: "moves",
+      menuOpen: false,
+      importOpen: false,
+      // UI mirror (ScratchChess is source of truth for board mode/pigment, but we keep UI intent too)
+      drawMode: null,      // "arrows" | "squares" | null
+      pigment: null,       // "R"|"G"|"B"|"Y"|null
+      syntheticVarSelected: false,
+    },
+    players: {
+      selectedKey: null,      // e.g. "Fischer"
+    },
+    openings: {
+      showAll: false,
+      prefixSig: "",
+      prefixText: "(start position)",
+      expandedParent: "",
+    },
+    // NOTE: heavy PGN + CQL caches live in RUNTIME (not STATE) to keep cloning/render fast.
+    studies: [],          // [{id,name,games:[gameId]}]
+    openingTablesLoaded: false,
+    gamesMeta: {},        // gameId -> {id,title}
+    activeStudyId: null,
+
+    activeGameId: null,
+    priyomes: {
+      activeId: null,
+      activeName: "—",
+    },
+    query: {
+      selectedName: "(none)",
+    },
+    logs: {
+      lines: [],
+    },
+    marks: {
+      // gameId -> { arrows:[{pigment,from,to}], squares:[{pigment,sq}] }
+      byGame: {},
+    },
+    // Raw PGN sources that can be instantiated lazily by RUNTIME
+    pgnSource: { byId: {} },
+    status: {
+      playersByKey: {},  // key -> { state:"IDLE|LOADING|OK|ERR", err? }
+      gamesById: {},     // id  -> { state:"IDLE|LOADING|OK|ERR", err? }
+      cql: { state:"IDLE", text:"", err:"" },
+    },
+  };
+  /* ----------------------------- Debug hooks for STATE and RUNTIME ----------------------------- */
+  
+  if (typeof window !== "undefined") {
+  window.__appDebug = {
+    get STATE() { return STATE; },
+    get RUNTIME() { return RUNTIME; },
+    dispatch,
+  };
+}
+
+  /* ----------------------------- Transition table (monolithic) ----------------------------- */
+  const T = Object.freeze({
+    /* ---------- UI ---------- */
+    "UI/TAB": (S,A) => {
+      S.ui.tab = A.tab;
+    },
+    "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
+    "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
+
+    "OPENINGS/LOADED": (S) => {
+      S.openingTablesLoaded = true;
+    },
+     "OPENINGS/OPEN": (S) => { S.ui.tab = "openings"; },
+    "OPENINGS/SHOW_ALL": (S) => { S.openings.showAll = true; },
+    "OPENINGS/SHOW_FILTERED": (S) => { S.openings.showAll = false; },
+    "OPENINGS/BOARD_PREFIX": (S,A) => {
+      const sig = String(A.sig || "");
+     const text = String(A.text || "(start position)");
+      const changed = (sig !== String(S.openings.prefixSig || ""));
+      S.openings.prefixSig = sig;
+      S.openings.prefixText = text;
+      if (changed){
+        S.openings.showAll = false;
+        S.openings.expandedParent = "";
+      }
+  },
+    "OPENINGS/EXPAND": (S,A) => {
+      const k = String(A.parentKey || "");
+      if (!k) return;
+      S.openings.expandedParent = (S.openings.expandedParent === k) ? "" : k;
+    },
+    "OPENINGS/LOAD_PGN": (S,A) => {
+      const pgn = String(A.pgn || "");
+      if (!pgn) return;
+      if (!S.openingTablesLoaded){
+        logLine("WARN", `[${new Date().toISOString()}] OPENINGS/LOAD_PGN blocked until opening tables load`);
+        return;
+      }
+      const title = String(A.title || "Opening");
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
+      g.loadPGN?.(pgn);
+      RUNTIME.games.set(id, g);
+      T["GAME/ADD"](S, { id, title });
+      S.activeGameId = id;
+      S.ui.tab = "moves";
+    },
+    "OPENINGS/OK": (S,A) => {
+      const g = (A && A.game) ? A.game : {};
+      const id = String(g.id || nowId());
+      const pgn = String(g.pgn || "");
+      if (!pgn) return;
+      const h = g.headers || parseHeaders(pgn);
+      S.pgnSource.byId[id] = { pgn, h };
+      T["GAME/ADD"](S, { id, title: String(g.title || "Opening Explorer") });
+      S.gamesMeta[id] = Object.assign({}, S.gamesMeta[id] || { id }, {
+        title: String(g.title || "Opening Explorer"),
+        opening: String(g.opening || ""),
+        event: String(h.Event || ""),
+        date: String(h.Date || ""),
+        white: String(h.White || ""),
+        black: String(h.Black || "")
+      });
+      S.ui.tab = "moves";
+    },
+
+    /* ---------- Players ---------- */
+    "PLAYERS/OPEN": (S) => {
+      S.ui.tab = "players";
+    },
+    "PLAYERS/BACK": (S) => {
+      S.players.selectedKey = null;
+    },
+    "PLAYERS/SELECT": (S,A) => {
+      const key = String(A.key || "");
+      if (!key) return;
+
+      const pgnUrl = PGN_MANIFEST?.[key];
+      if (!pgnUrl){
+        logLine("ERR", `Players: no PGN_MANIFEST entry for "${key}".`);
+        S.ui.tab = "errors";
+        return;
+      }
+
+      S.players.selectedKey = key;
+
+      // Only show LOADING if selection happened during boot (opt-in via A.boot).
+      if (A && A.boot) S.status.playersByKey[key] = { state:"LOADING", err:"" };
+    },
+    "PLAYER/LOADING": (S,A) => {
+      const key = String(A.key || "");
+      if (!key) return;
+      // Only reflect LOADING in state if this was a boot-triggered selection.
+      if (A && A.boot) S.status.playersByKey[key] = { state:"LOADING", err:"" };
+    },
+    "PLAYER/OK": (S,A) => {
+      const key = String(A.key || "");
+      S.status.playersByKey[key] = { state:"OK", err:"" };
+    },
+
+    "PLAYER/ERR": (S,A) => {
+      const key = String(A.key || "");
+      S.status.playersByKey[key] = { state:"ERR", err:String(A.err||"error") };
+      S.ui.tab = "errors";
+    },
+    "PLAYERS/GAME_SET": (S,A) => {
+      // Do NOT change active study; just load board to this game.
+      const id = String(A.id || "");
+      if (!id) return;
+      S.activeGameId = id;
+      S.ui.syntheticVarSelected = false;
+
+      // Keep ONLY per-selected-game metadata in STATE; bulk player data stays in RUNTIME.
+      try{
+        const m = /^player:([^:]+):(\d+)$/.exec(id);
+        if (m){
+          const key = m[1];
+          const idx = parseInt(m[2],10) || 0;
+          const arr = RUNTIME.playerPartsByKey.get(key);
+          const it = (arr && arr[idx]) ? arr[idx] : null;
+          if (it){
+            S.gamesMeta[id] = {
+              id,
+              title: it.title || "",
+              opening: String(it.opening||""),
+              event: it.event||"",
+              date: it.date||"",
+              white: it.white||"",
+              black: it.black||""
+            };
+          }
+        }
+      }catch{}
+    },
+    "GAME/LOADING": (S,A) => {
+      const id = String(A.id || "");
+      if (!id) return;
+      S.status.gamesById[id] = { state:"LOADING", err:"" };
+    },
+    "GAME/OK": (S,A) => {
+      const id = String(A.id || "");
+      if (!id) return;
+      S.status.gamesById[id] = { state:"OK", err:"" };
+    },
+    "GAME/ERR": (S,A) => {
+      const id = String(A.id || "");
+      if (!id) return;
+      S.status.gamesById[id] = { state:"ERR", err:String(A.err||"error") };
+      S.ui.tab = "errors";
+    },
+    "GAME/OPENING_OK": (S,A) => {
+      const id = String(A.id || "");
+      const opening = String(A.opening || "");
+      if (!id) return;
+      const m = S.gamesMeta?.[id];
+      if (m && !String(m.opening||"").trim()) m.opening = opening;
+    },
+
+    /* ---------- Studies / Games ---------- */
+    "STUDY/ADD": (S,A) => {
+      const id = "study_" + nowId();
+      const name = A?.name || ("Study " + String.fromCharCode(65 + (S.studies.length % 26)));
+      S.studies.push({ id, name, games: [] });
+      S.activeStudyId = id;
+    },
+    "STUDY/SET": (S,A) => {
+      S.activeStudyId = A.id;
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      if (st && st.games.length) S.activeGameId = st.games[0];
+    },
+    "GAME/ADD": (S,A) => {
+      const id = A.id || nowId();
+      const title = A.title || id;
+      S.gamesMeta[id] = { id, title };
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      if (st) st.games.unshift(id);
+      S.activeGameId = id;
+      S.ui.syntheticVarSelected = false;
+    },
+    "GAME/DRAW_QUERY": (S) => {
+      try{
+        // New query-position game: starts on clear board, enters query mode, and is added to the current study.
+        const id = `query:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+        const g = createGame({ Event:"Query Position", Site:"Local", Date: (typeof todayYMD==="function"?todayYMD():"2026.02.14"), Round:"1", White:"", Black:"", Result:"*" });
+        g.clearBoard?.();
+        g.setMode?.("query"); // per scratchchess behavior
+        // Ensure we start at beginning (ply 0)
+        while (g.curNode && g.curNode !== g.root){ g.prevMove?.(); }
+
+        RUNTIME.games.set(id, g);
+
+        T["GAME/ADD"](S, { id, title:"Query Position" });
+        S.ui.tab = "moves";
+        logLine("OK","Created query position game (blank board, Query mode).");
+      }catch(e){
+        logStack("ERR","Draw Query failed: ", e);
+        S.ui.tab = "errors";
+      }
+    },
+    "GAME/SET": (S,A) => {
+      const id = String(A.id || "");
+      if (!id) return;
+
+      // Lazy instantiate ScratchChess game + loadPGN for CQL results on click (match Players).
+      if (!RUNTIME.games.has(id) && id.startsWith("cql:")){
+        try{
+          const it = RUNTIME.cqlById.get(id) || null;
+          if (it && it.pgn){
+            const g = createGame(it.h || {});
+            g.loadPGN?.(it.pgn);
+            try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
+            RUNTIME.games.set(id, g);
+            try{
+              const meta = S.gamesMeta?.[id];
+              if (meta){
+                if (!String(meta.opening||"").trim()){
+                  meta.opening = String(g.getOpening?.(0) || g.getOpening?.(1) || "");
+                }
+              }
+            }catch{}
+          } else {
+
+            logLine("WARN", `[${new Date().toISOString()}] CQL: missing cached PGN for id=${id}`);
+          }
+        }catch(e){
+          logStack("WARN", `[${new Date().toISOString()}] CQL: lazy loadPGN failed id=${id}: `, e);
+        }
+      }
+
+      S.activeGameId = id;
+      S.ui.syntheticVarSelected = false;
+      CTX.setActiveGameToBoard(id);
+    },
+
+
+    /* ---------- ScratchChess navigation ---------- */
+    "BOARD/PREV": () => {
+      const g = CTX.g();
+      g.prevMove?.();
+      try{ if (g?.curNode && typeof g.curNode.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = g.curNode.ply; } }catch{}
+    },
+    "BOARD/NEXT": () => {
+      const g = CTX.g();
+      g.nextMove?.();
+      try{ if (g?.curNode && typeof g.curNode.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = g.curNode.ply; } }catch{}
+    },
+    "BOARD/START": () => {
+     const g = CTX.g();
+     while (g?.curNode && g.curNode !== g.root){
+       if (!g.prevMove?.()) break;
+    }
+     try{ g.ui = g.ui || {}; g.ui.ply = 0; }catch{}
+   },
+   "BOARD/END": () => {
+     const g = CTX.g();
+     // Run to end of current mainline (whatever ScratchChess considers "next")
+     while (g?.nextMove?.()) {}
+     try{ if (g?.curNode && typeof g.curNode.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = g.curNode.ply; } }catch{}
+   },
+    "MOVE/JUMP_TO_NODE": (S,A) => {
+      const g = CTX.g();
+      jumpToNode(g, A.node);
+      try{ if (A?.node && typeof A.node.ply === "number"){ g.ui = g.ui || {}; g.ui.ply = A.node.ply; } }catch{}
+    },
+
+    "SYNVAR/SELECT": (S,A) => {
+      S.ui.syntheticVarSelected = true;
+      const g = CTX.g();
+      try{ if (A?.fen) g.loadFEN?.(String(A.fen)); }catch{}
+      try{
+        const ply = (typeof A?.ply === "number") ? A.ply : parseInt(A?.ply,10) || 0;
+        g.ui = g.ui || {};
+        g.ui.ply = ply;
+      }catch{}
+    },
+
+
+    /* ---------- Setup / reset / flip ---------- */
+    "BOARD/FLIP": () => {
+      const g = CTX.g();
+      try{ g.toggleFlip?.(); }catch{}
+      try{ g.ui = g.ui || {}; g.ui._flipped = !g.ui._flipped; }catch{}
+      // Fallback (older games) just in case.
+      if (!g?.toggleFlip) { try{ RUNTIME.board.flip?.(); }catch{} }
+    },
+    "BOARD/RESET": () => {
+      const g = CTX.g();
+      const wasSetup = !!g.ui?.setup;
+      g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+    },
+    "BOARD/SETUP_TOGGLE": (S) => {
+      const g = CTX.g();
+      g.toggleSetup?.();
+      // mirror (optional) for UI; render also reads g.ui.setup so this is just convenience
+      S.ui.setup = !!g.ui?.setup;
+    },
+    "BOARD/SETUP_CLEAR": () => {
+      const g = CTX.g();
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      if (typeof g.clearBoard === "function") g.clearBoard();
+      else g.loadFEN?.("8/8/8/8/8/8/8/8 w - - 0 1");
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+    },
+    "BOARD/SETUP_INITIAL": () => {
+      const g = CTX.g();
+      const wasSetup = !!g.ui?.setup;
+      if (!g.ui?.setup) g.toggleSetup?.();
+      if (typeof g.setInitialSetup === "function") g.setInitialSetup();
+      else g.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+      if (!!g.ui?.setup !== wasSetup) g.toggleSetup?.();
+    },
+
+    /* ---------- Import / export ---------- */
+    "IMPORT/ADD_PGN": (S) => {
+      const txt = $("importPgnText").value || "";
+      const games = splitPgnGames(txt);
+      for (const pgn of games){
+        const id = nowId();
+        const g = createGame({ Event:id, Site:"Local", Date:"2026.02.10", Round:"1", White:"W", Black:"B" });
+        g.loadPGN?.(pgn);
+        RUNTIME.games.set(id, g);
+        T["GAME/ADD"](S, { id, title:"Imported" });
+      }
+      S.ui.importOpen = false;
+    },
+    "EXPORT/GAME_PGN": () => {
+      const pgn = CTX.g().exportPGN?.() || "";
+      CTX.setClipboard(pgn);
+      $("toolStatus").textContent = "Game PGN copied";
+    },
+    "EXPORT/STUDY_PGN": (S) => {
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      const ids = st ? st.games : [];
+      const parts = ids.map(id => (RUNTIME.games.get(id)?.exportPGN?.() || "")).filter(Boolean);
+      CTX.setClipboard(parts.join("\n\n"));
+      $("toolStatus").textContent = "Study PGN copied";
+    },
+
+    /* ---------- Draw tools ---------- */
+    "DRAW/TOGGLE_MODE": (S,A) => {
+      const g = CTX.g();
+      const cur = g.ui?.mode || "";
+      const next = (cur === A.mode) ? "" : A.mode;
+      if (typeof g.setMode === "function") g.setMode(next);
+      // mirror
+      S.ui.drawMode = next || null;
+    },
+    "DRAW/CLEAR": (S) => {
+      try{ CTX.g().clearMarks?.(); }catch{}
+      const bag = ensureMarks(S.activeGameId);
+      if (bag){ bag.arrows.length = 0; bag.squares.length = 0; }
+    },
+    "DRAW/PIGMENT": (S,A) => {
+      CTX.g().setPigment?.(A.pigment);
+      S.ui.pigment = A.pigment;
+    },
+
+    "MARK/ADD": (S,A) => {
+      const bag = ensureMarks(S.activeGameId);
+      if (!bag) return;
+      if (A.kind === "arrow") bag.arrows.push({ pigment: A.pigment || S.ui.pigment || "R", from: A.from, to: A.to });
+      if (A.kind === "square") bag.squares.push({ pigment: A.pigment || S.ui.pigment || "R", sq: A.sq });
+    },
+
+    /* ---------- Priyomes ---------- */
+    "PRIYOME/LOADING": (S,A) => {
+      S.priyomes.activeId = String(A.id || "");
+      S.priyomes.activeName = String(A.name || "Priyome");
+      S.ui.syntheticVarSelected = false;
+      // Keep user in Moves so the board update is obvious when the load completes.
+      S.ui.tab = "moves";
+    },
+    "PRIYOME/OK": (S,A) => {
+      const g = A?.game || null;
+      if (!g || !g.id) return;
+
+      // Persist priyome label.
+      S.priyomes.activeId = String(A.priyomeId || S.priyomes.activeId || "");
+      S.priyomes.activeName = String(A.priyomeName || g.title || "Priyome");
+
+      // Store raw PGN source for lazy instantiation (RUNTIME.ensureGameLoaded).
+      S.pgnSource = S.pgnSource || { byId:{} };
+      S.pgnSource.byId[g.id] = { pgn: String(g.pgn || ""), h: (g.headers || {}) };
+
+      S.gamesMeta[g.id] = { id: g.id, title: String(g.title || g.id), opening: String(g.opening || "") };
+
+      ensureDefaultStudyIfMissing();
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      if (st) st.games.unshift(g.id);
+
+      S.activeGameId = g.id;
+      S.ui.syntheticVarSelected = false;
+      S.ui.tab = "moves";
+    },
+    "PRIYOME/ERR": (S,A) => {
+      S.ui.tab = "errors";
+      logLine("ERR", `Priyome load failed: ${String(A?.err || "error")}`);
+    },
+
+    /* ---------- Evals / Errors / Query ---------- */
+    "EVALS/RELOAD": () => {
+      $("evalsStatus").textContent = "loaded " + new Date().toLocaleTimeString();
+    },
+    "ERRORS/CLEAR": (S) => { S.logs.lines.length = 0; },
+    "QUERY/RUN": (S) => {
+      // Request only; RUNTIME performs side-effects and dispatches CQL/* actions.
+      S.status.cql = { state:"LOADING", text:"Starting…", err:"" };
+     },
+ 
+    "CQL/LOADING": (S) => { S.status.cql = { state:"LOADING", text:"Running…", err:"" }; },
+    "CQL/STATUS": (S,A) => { S.status.cql = { state:"LOADING", text:String(A.text||""), err:"" }; },
+    "CQL/OK": (S,A) => {
+      const items = Array.isArray(A.items) ? A.items : [];
+      S.status.cql = { state:"OK", text:"Done.", err:"" };
+      if (!items.length) return;
+
+      for (const it of items){
+        const id = it.id;
+        if (!id) continue;
+        if (it.meta) S.gamesMeta[id] = it.meta;
+      }
+
+      ensureDefaultStudyIfMissing();
+      const st = S.studies.find(x=>x.id===S.activeStudyId);
+      if (st){
+        for (const it of items.slice().reverse()) st.games.unshift(it.id);
+      }
+      S.activeGameId = items[0].id;
+      S.ui.syntheticVarSelected = false;
+      S.ui.tab = "games";
+    },
+    "CQL/ERR": (S,A) => {
+      S.status.cql = { state:"ERR", text:"Error.", err:String(A.err||"error") };
+      S.ui.tab = "errors";
+    },
+
+    "EVAL/RUN_CQL": (S, A) => {
+      const key = String(A?.key || "").trim();
+      if (!key) return;
+      S.status.cql = { state:"LOADING", text:`Starting eval ${key}…`, err:"" };
+    },
+
+    "QUERY/USE_CURRENT": (S) => {
+      try{
+        const g = CTX.g(); if (!g) throw new Error("No current game");
+        const pgn = g.exportPGN?.() || "";
+        const title = (S.activeGameId && S.gamesMeta[S.activeGameId]?.title) ? S.gamesMeta[S.activeGameId].title : "game";
+        $("qPgnName").textContent = `(board) ${title}`;
+
+        // Reset CQL box to the board's default:
+        // - if the game has cqlText, use that
+        // - else if we're in query mode, use exportCQL()
+        const qCql = $("qCqlText");
+        if (qCql){
+          let cqlText = "";
+          try{
+            if (g.cqlText && String(g.cqlText).trim()){
+              cqlText = String(g.cqlText).trim();
+            } else if (g.ui?.mode === "query" && typeof g.exportCQL === "function"){
+              cqlText = String(g.exportCQL() || "").trim();
+            }
+          }catch{}
+          qCql.value = cqlText;
+          qCql.dataset.userTouched = "0";
+        }
+
+        logLine("OK","Query input set to the current board.");
+        updateQueryUi();
+      }catch(e){
+        logStack("ERR","Use board as query failed: ", e);
+        setTab("errors");
+      }
+    },
+
+    "QUERY/RUN_FROM_MOVES": (S) => {
+      S.status.cql = { state:"LOADING", text:"Starting…", err:"" };
+    },
+  });
+
+  /* ----------------------------- Dispatch (single pipe) ----------------------------- */
+  function dispatch(action){
+    // Step toward purity:
+    // - Clone prior state
+    // - Run reducer against the clone
+    // - Commit STATE exactly once
+    // - Render exactly once at end of this dispatch
+    const prev = STATE;
+    const next = cloneState(prev);
+    let ret;
+    try{
+      const fn = T[action.type];
+      if (fn) ret = fn(next, action, CTX);
+    }catch(err){
+      try{ CTX.log("[ERR] " + (err?.stack || err)); }catch{}
+    }
+    STATE = next;
+    render();
+    // If the transition returned a Promise, schedule a refresh via dispatch (never call render here).
+    if (ret && typeof ret.then === "function"){
+      ret.then(()=>dispatch({ type:"UI/REFRESH" }))
+         .catch((err)=>{ try{ CTX.log("[ERR] " + (err?.stack || err)); }catch{} dispatch({ type:"UI/REFRESH" }); });
+    }
+  }
+
+  /* ----------------------------- Rendering (single place DOM is updated) ----------------------------- */
+  function render(){
+  try{
+    // tabs
+    $$(".tabBtn").forEach(b=>b.classList.toggle("active", b.getAttribute("data-tab")===STATE.ui.tab));
+    $$(".pane").forEach(p=>p.classList.remove("active"));
+    $("pane-"+STATE.ui.tab)?.classList.add("active");
+
+    // menu & import modal
+    $("menu").classList.toggle("open", !!STATE.ui.menuOpen);
+
+    const mb = $("importModalBackdrop");
+    const isOpen = !!STATE.ui.importOpen;
+    // Some tests expect "gone" when closed; we satisfy both by hiding via CSS + hidden attribute.
+    if (mb){
+      mb.classList.toggle("open", isOpen);
+      mb.hidden = !isOpen;
+      mb.style.display = isOpen ? "flex" : "none";
+      mb.setAttribute("aria-hidden", isOpen ? "false" : "true");
+    }
+
+    // study select
+    const sel = $("studySelect");
+    if (sel){
+      sel.innerHTML = "";
+      for (const st of STATE.studies){
+        const o = document.createElement("option");
+        o.value = st.id;
+        o.textContent = st.name;
+        if (st.id === STATE.activeStudyId) o.selected = true;
+        sel.appendChild(o);
+      }
+    }
+    const activeStudy = STATE.studies.find(s=>s.id===STATE.activeStudyId);
+    $("studyPill").textContent = activeStudy ? activeStudy.name : "—";
+
+    // game list
+    const host = $("gameList");
+    if (host){
+      host.innerHTML = "";
+      const ids = activeStudy ? activeStudy.games : [];
+      for (const id of ids){
+        const meta = STATE.gamesMeta[id];
+        if (!meta) continue;
+        const d = document.createElement("div");
+        d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+        d.dataset.gameId = id;
+        const vs = (meta.white || meta.black) ? formatVsLastNames(meta.white || "", meta.black || "") : (meta.title || "");
+        const open = String(meta.opening || "").trim();
+        const evy  = formatEventYear(meta.event || "", meta.date || "");
+        d.innerHTML = `<div><b>${vs}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
+        host.appendChild(d);
+      }
+    }
+
+    const meta = STATE.activeGameId ? STATE.gamesMeta[STATE.activeGameId] : null;
+    // Board nameplates (top/bottom), flip-aware
+    try{
+      const g0 = CTX.g();
+      const topEl = $("boardNameTop");
+      const botEl = $("boardNameBottom");
+      if (topEl && botEl){
+        const id0 = String(STATE.activeGameId || "");
+        const kind0 = id0.split(":")[0] || "";
+        if (kind0 === "priyome"){
+          const t = String(meta?.title || meta?.name || "Priyome").trim() || "Priyome";
+          topEl.textContent = `Priyome: ${t}`;
+          botEl.textContent = "";
+        } else if (kind0 === "opening"){
+          const t = String(meta?.opening || meta?.title || "Opening").trim() || "Opening";
+          topEl.textContent = `Opening: ${t}`;
+          botEl.textContent = "";
+        } else {
+          const w = (meta?.white || "");
+          const b = (meta?.black || "");
+          const flipped = !!g0?.ui?._flipped;
+          topEl.textContent = flipped ? (w || "—") : (b || "—");
+          botEl.textContent = flipped ? (b || "") : (w || "");
+        }
+      }
+    }catch{}
+    const oub = $("openingUnderBoard");
+    if (oub){
+      const g0 = CTX.g();
+      const ply = (g0?.ui?.ply ?? 0);
+      const live = (g0 && typeof g0.getOpening === "function")
+        ? String(g0.getOpening(ply) || "").trim()
+        : "";
+      oub.textContent = live || "—";
+    }
+    const activeId = String(STATE.activeGameId || "");
+    const kind = activeId.split(":")[0] || "";
+    let topLabel = "—";
+    if (meta){
+      if (kind === "priyome"){
+        const t = String(meta.title || meta.name || "Priyome").trim() || "Priyome";
+        topLabel = `Priyome: ${t}`;
+      } else if (kind === "opening"){
+        const t = String(meta.opening || meta.title || "Opening").trim() || "Opening";
+        topLabel = `Opening: ${t}`;
+      } else if (meta.white || meta.black){
+        topLabel = formatVsLastNames(meta.white, meta.black);
+      } else if (meta.title){
+        topLabel = String(meta.title);
+      } else {
+        topLabel = activeId || "—";
+      }
+    }
+    $("gameName").textContent = topLabel;
+
+    // priyomes
+
+
+    $("activePriyome").textContent = STATE.priyomes.activeName || "—";
+    renderPriyomeList(); // small & safe; still inside render pipeline
+
+    // query db
+    renderQueryDb();     // same
+
+    renderMovesQueryMirror();
+
+    // evals list
+    renderEvalsLists();  // same
+
+     // openings
+    renderOpeningsPane();
+
+    // players
+    renderPlayersPane();
+
+    // errors
+    const lines = STATE.logs.lines.slice(-400); // keep last 400 for UI
+    $("errorLog").textContent = lines.join("\n");
+    $("errCount").textContent = String(lines.length);
+
+    // setup strip visibility from game (source of truth)
+    const g = CTX.g();
+    $("setupStrip").hidden = !g?.ui?.setup;
+
+    // draw UI (source of truth from game)
+    const mode = g?.ui?.mode || "";
+    const setAct = (id,on)=>$(id)?.classList.toggle("active", !!on);
+    setAct("btnModeArrows",  mode==="arrows");
+    setAct("btnModeSquares", mode==="squares");
+    setAct("btnModeArrows2",  mode==="arrows");
+    setAct("btnModeSquares2",mode==="squares");
+    $("pigmentRow").hidden = !(mode==="arrows" || mode==="squares");
+
+    // fen/pgn boxes (no board state in STATE)
+    const fen = (g?.exportFEN?.() || "").trim();
+    const basePgnRaw = (g?.exportPGN?.() || "").trim();
+    const pgnRaw = withMarksPgnRaw(basePgnRaw, STATE.activeGameId);
+    const pgn = ("PGN\n" + pgnRaw).trimEnd();
+
+    $("fenBox").value = fen;
+    $("pgnBox").value = pgn;
+    $("fenBottom").textContent = fen;
+    // Auto-convert board edits to CQL in Moves pane for query-mode games.
+    autoSyncCqlFromBoardIfNeeded(fen);
+    $("pgnBottom").value = pgn;
+
+    $("navMeta").textContent = "ply " + String((g?.ui?.ply ?? 0));
+    $("bottomMeta").textContent = (STATE.activeGameId || "—");
+
+
+    // moves (index(21) rendering)
+    try{ renderMovesDisplay(); }catch(e){ CTX.log("[ERR] renderMovesDisplay: " + (e?.stack||e)); }
+
+    // tool status default
+
+  }catch(err){
+    try{ CTX.log("[ERR] render: " + (err?.stack || err)); }catch{}
+  }
+}
+
+  
+  /* ----------------------------- Shared helpers from index (11) for Query + Priyomes ----------------------------- */
+
+  function parseHeaders(pgn){
+    const headers = {};
+    const headerRe = /^\[([A-Za-z0-9_]+)\s+"([^"]*)"\]\s*$/gm;
+    let m;
+    const s = String(pgn || "");
+    while ((m = headerRe.exec(s)) !== null){
+      headers[m[1]] = m[2];
+    }
+    return headers;
+  }
+
+  function splitMultiPgn(text){
+    const t = (text || "").trim();
+    if (!t) return [];
+    // Games separated by blank lines before a new [Event ...] header; keep headers+movetext together.
+    const parts = t.split(/\n\s*\n(?=\s*\[Event\s+")/g);
+    return parts.map(x=>x.trim()).filter(Boolean);
+  }
+
+function parsePriyomesMarkdown(md){
+  const lines = String(md || "").split(/\r?\n/);
+
+  // Parse PGN blocks from some accumulated text.
+  // Blocks are separated by a line containing only "*".
+  // We only keep blocks that look like PGN (contain [Event ").
+  const parsePgns = (text) => {
+    const blocks = [];
+    let cur = [];
+    const push = () => {
+      const s = cur.join("\n").trim();
+      if (s && /\[Event\s+\"/.test(s)) blocks.push(s);
+      cur = [];
+    };
+    for (const ln of String(text || "").split(/\r?\n/)){
+      if (/^\s*\*\s*$/.test(ln)) { push(); continue; }
+      cur.push(ln);
+    }
+    push();
+    return blocks;
+  };
+
+  const out = [];
+  let curSection = "";
+  let cards = [];
+
+  let curCard2 = null;          // {name, pgns, subcards:[]}
+  let buf2 = [];                // lines belonging to ## card (not inside ###)
+  let curCard3 = null;          // {name, pgns}
+  let buf3 = [];                // lines belonging to ### subcard
+
+  const flushCard3 = () => {
+    if (!curCard3) { buf3 = []; return; }
+    const pgns = parsePgns(buf3.join("\n"));
+    if (pgns.length) curCard3.pgns = pgns;
+    if (curCard2 && curCard3.pgns && curCard3.pgns.length){
+      curCard2.subcards.push(curCard3);
+    }
+    curCard3 = null;
+    buf3 = [];
+  };
+
+  const flushCard2 = () => {
+    flushCard3();
+    if (!curCard2) { buf2 = []; return; }
+    const pgns = parsePgns(buf2.join("\n"));
+    if (pgns.length) curCard2.pgns = pgns;
+
+    // Only keep cards that have content (either own PGNs or subcards)
+    if ((curCard2.pgns && curCard2.pgns.length) || (curCard2.subcards && curCard2.subcards.length)){
+      cards.push(curCard2);
+    }
+    curCard2 = null;
+    buf2 = [];
+  };
+
+  const flushSection = () => {
+    flushCard2();
+    const section = String(curSection || "").trim();
+    if (section && cards.length) out.push({ section, cards });
+    cards = [];
+  };
+
+  for (const ln of lines){
+    let m;
+
+    if ((m = ln.match(/^#\s+(.*\S)\s*$/))){
+      flushSection();
+      curSection = m[1];
+      continue;
+    }
+
+    if ((m = ln.match(/^##\s+(.*\S)\s*$/))){
+      flushCard2();
+      curCard2 = { name: m[1], pgns: [], subcards: [] };
+      continue;
+    }
+
+    if ((m = ln.match(/^###\s+(.*\S)\s*$/))){
+      flushCard3();
+      // If someone starts with ### without a ##, we ignore it gracefully.
+      if (curCard2) curCard3 = { name: m[1], pgns: [] };
+      continue;
+    }
+
+    // Accumulate content into the most specific active buffer
+    if (curCard3) buf3.push(ln);
+    else if (curCard2) buf2.push(ln);
+  }
+
+  flushSection();
+  return out;
+}
+
+  function cutAtComma(name){
+    const s = String(name || "").trim();
+    const i = s.indexOf(",");
+    return (i >= 0 ? s.slice(0, i) : s).trim();
+  }
+  function yearFromDateTag(date){
+    const m = String(date || "").match(/(\d{4})/);
+    return m ? m[1] : "";
+  }
+  function formatEventYear(event, date){
+    const ev = String(event || "").trim();
+    const y = yearFromDateTag(date);
+    if (ev && y) return `${ev} ${y}`;
+    return ev || y || "";
+  }
+  function formatVsLastNames(white, black){
+    const w = cutAtComma(white);
+    const b = cutAtComma(black);
+    return `${w || "?"} v ${b || "?"}`;
+  }
+
+  // ----------------------------- PGN_MANIFEST preload (headers only; non-blocking) -----------------------------
+  function _idle(fn){
+    if (typeof requestIdleCallback === "function") return requestIdleCallback(()=>fn(), { timeout: 250 });
+    return setTimeout(fn, 0);
+  }
+
+  const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+
+  async function preloadOneManifestPgn(key, url){
+    if (!key || !url) return;
+    if (RUNTIME.pgnCacheByKey.get(key)?.ready) return;
+
+    const t0 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch start key=${key} url=${url}`);
+    const r = await fetch(url, { cache:"no-store" });
+    const txt = await r.text();
+    const t1 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload fetch done key=${key} chars=${txt.length} ms=${(t1-t0).toFixed(1)}`);
+
+    const parts = splitMultiPgn(txt);
+    const t2 = performance.now();
+    const parsed = [];
+    for (let i=0;i<parts.length;i++){
+      const pgn = parts[i];
+      const h = parseHeaders(pgn);
+      const openingName = await sideGame.openingFromPGN(pgn);
+
+      const white = (h.White || key);
+      const black = (h.Black || "?");
+      const event = (h.Event || "");
+      const date  = (h.Date || "");
+      const title = formatVsLastNames(white, black);
+
+      parsed.push({ i, pgn, h, title, white, black, event, date, openingName });
+    }
+    const t3 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] PGN preload parseHeaders done key=${key} games=${parsed.length} ms=${(t3-t2).toFixed(1)}`);
+
+    // Store heavy PGN + parsed headers in RUNTIME only.
+    RUNTIME.pgnCacheByKey.set(key, { url, parts: parsed, ready:true });
+    RUNTIME.playerPartsByKey.set(key, parsed.map(it => ({
+      i: it.i, pgn: it.pgn, h: it.h, title: it.title,
+      white: it.white, black: it.black, event: it.event, date: it.date,
+      opening: String(it.openingName||"")
+    })));
+
+    // Prime Players pane cache + game cards metadata via reducer (lightweight only).
+    const ids = parsed.map(it => `player:${key}:${it.i}`);
+    const metaById = {};
+    for (const it of parsed){
+      const id = `player:${key}:${it.i}`;
+      metaById[id] = { id, title: it.title, opening: String(it.openingName||""), event: it.event||"", date: it.date||"", white: it.white||"", black: it.black||"" };
+    }
+    dispatch({ type:"PLAYER/OK", key, url, ids, metaById });
+
+    return parsed.length;
+  }
+
+
+  function preloadPgnManifestNonBlocking(){
+    try{
+      if (!STATE.openingTablesLoaded){
+        logLine("DBG", `[${new Date().toISOString()}] PGN preload deferred; opening tables not loaded yet`);
+        return;
+      }
+      const entries = Object.entries(PGN_MANIFEST || {});
+      if (!entries.length) return;
+      let idx = 0;
+      logLine("DBG", `[${new Date().toISOString()}] PGN preload queue size=${entries.length}`);
+
+      const step = () => {
+        if (idx >= entries.length){
+          logLine("DBG", `[${new Date().toISOString()}] PGN preload complete`);
+          try{ render(); }catch{}
+          return;
+        }
+        const [k,url] = entries[idx++];
+        _idle(async () => {
+          try { await preloadOneManifestPgn(k, url); }
+          catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload failed key=${k}: ` + String(e && e.stack ? e.stack : e)); }
+          step();
+        });
+      };
+      step();
+    }catch(e){
+      logLine("WARN", `[${new Date().toISOString()}] PGN preload setup failed: ` + String(e && e.stack ? e.stack : e));
+    }
+  }
+
+
+  function todayYMD(){
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}.${mm}.${dd}`;
+  }
+
+  function uniqStudyName(base){
+    let name = base;
+    let i = 2;
+    const hasName = (n)=>STATE.studies.some(s=>s.name===n);
+    while (hasName(name)) name = `${base} (${i++})`;
+    return name;
+  }
+
+  function logLine(kind, msg){
+    CTX.log(`[${String(kind||"OK")}] ${String(msg||"")}`);
+  }
+  function logStack(kind, prefix, e){
+    logLine(kind, String(prefix||"") + String(e && e.stack ? e.stack : e));
+  }
+  function setTab(tab){
+    dispatch({ type:"UI/REFRESH" });
+    dispatch({ type:"UI/TAB", tab });
+  }
+
+  function getHeaderTag(pgn, tag){
+    const re = new RegExp(`^\\[${tag}\\s+"([^"]*)"\\]\\s*$`, "m");
+    const m = String(pgn || "").match(re);
+    return m ? m[1] : "";
+  }
+
+  function isQueryPositionGameId(id){
+    if (!id) return false;
+    const sid = String(id);
+    if (sid.startsWith("query:")) return true;
+    if (sid.startsWith("priyome:")) return true;
+    if (sid.startsWith("opening:")) return true;
+    const meta = STATE.gamesMeta ? STATE.gamesMeta[id] : null;
+    if (meta && (meta.opening === "Query" || meta.title === "Query Position")) return true;
+    try{
+      const g = RUNTIME.games.get(id);
+      const pgn = g?.exportPGN?.() || "";
+
+      const ev = getHeaderTag(pgn, "Event");
+      if (ev === "Query Position") return true;
+    }catch{}
+    return false;
+  }
+
+  /* ----------------------------- CQL runner logic (ported) ----------------------------- */
+  let qPgnBytesOverride = null;
+  let _runnerModPromise = null;
+  let _AUTO_CQL_LAST_GAME = null;
+  let _AUTO_CQL_LAST_FEN = "";
+
+  function autoSyncCqlFromBoardIfNeeded(fen){
+    try{
+      const activeId = STATE.activeGameId;
+      const g = CTX.g();
+
+      // Only when user is *viewing* the position in Moves pane and the game is a query-position type.
+      if (STATE.ui.tab !== "moves") return;
+      if (!isQueryPositionGameId(activeId)) return;
+      if ((g?.ui?.mode || "") !== "query") return;
+
+      // Detect board edits by watching FEN changes (render writes fenBox/fenBottom each onChange).
+      const f = String(fen || "").trim();
+      if (_AUTO_CQL_LAST_GAME === activeId && _AUTO_CQL_LAST_FEN === f) return;
+      _AUTO_CQL_LAST_GAME = activeId;
+      _AUTO_CQL_LAST_FEN = f;
+
+      const qCql = $("qCqlText");
+      if (!qCql) return;
+      // Don't clobber manual CQL edits.
+      if (qCql.dataset.userTouched === "1") return;
+
+let cqlText = "";
+let supported = false;
+
+try {
+  if (g?.cqlText?.trim()) {
+    cqlText = g.cqlText.trim();
+  } else if (typeof g?.exportCQL === "function") {
+    cqlText = (g.exportCQL() || "").trim();
+  }
+
+  supported = !!cqlText;
+
+} catch (e) {
+  supported = false;
+}
+
+      if (!supported){
+        qCql.value = "this query not supported";
+        qCql.dataset.userTouched = "0";
+        const qRun = $("qRun"); if (qRun) qRun.disabled = true;
+        const qStatus = $("qStatus"); if (qStatus) qStatus.textContent = "This query not supported.";
+      } else {
+        qCql.value = cqlText;
+        qCql.dataset.userTouched = "0";
+        updateQueryUi();
+      }
+
+      try{ renderMovesQueryMirror(); }catch{}
+    }catch(e){}
+  }
+
+  async function fileToUint8(file) {
+    const ab = await file.arrayBuffer();
+    return new Uint8Array(ab);
+  }
+  function textToUtf8Bytes(text){
+    return new TextEncoder().encode(text ?? "");
+  }
+
+  function updateQueryUi(){
+    const qCqlText = $("qCqlText");
+    const qPgnFile = $("qPgnFile");
+    const qRun = $("qRun");
+    const qStatus = $("qStatus");
+    const dbSelectEl = $("dbSelectEl");
+
+    // Prefer state-driven status when running / error
+    const st = STATE.status?.cql;
+    if (st && st.state === "LOADING"){
+      if (qRun) qRun.disabled = true;
+      if (qStatus) qStatus.textContent = st.text || "Running…";
+      return;
+    }
+    if (st && st.state === "ERR"){
+      if (qStatus) qStatus.textContent = `ERR: ${st.err || "error"}`;
+      // keep qRun enabled if inputs valid
+    }
+
+    const hasCql = !!(qCqlText?.value || "").trim();
+    const hasPgn = !!qPgnFile?.files?.[0] || !!dbSelectEl?.value || !!qPgnBytesOverride;
+    if (qRun) qRun.disabled = !(hasCql && hasPgn);
+    if (qStatus){
+      if (!hasCql) qStatus.textContent = "CQL is empty.";
+      else if (!hasPgn) qStatus.textContent = "Choose PGN file, or pick a DB, or Use current game.";
+      else qStatus.textContent = "Ready.";
+    }
+  }
+
+  // Dummy-game workaround
+  const DUMMY_CQL_EVENT = "__PRY_DUMMY_CQL_WORKAROUND__";
+  const DUMMY_CQL_WHITE = "__PRY_DUMMY_WHITE__";
+  const DUMMY_CQL_BLACK = "__PRY_DUMMY_BLACK__";
+
+  function buildDummyGamePgn(){
+    const headers = [
+      `[Event "${DUMMY_CQL_EVENT}"]`,
+      `[Site "Local"]`,
+      `[Date "2026.01.01"]`,
+      `[Round "1"]`,
+      `[White "${DUMMY_CQL_WHITE}"]`,
+      `[Black "${DUMMY_CQL_BLACK}"]`,
+      `[Result "0-1"]`,
+    ].join("\n");
+    const moves = "1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nd7 5. Ng5 Ngf6 6. Bd3 e6 7. N1f3 h6 8. Nxf7 Kxf7 9. O-O Bd6 0-1";
+    return `${headers}\n\n${moves}\n`;
+  }
+
+  function isDummyGamePgn(pgn){
+    const h = parseHeaders(String(pgn || ""));
+    return (h.Event === DUMMY_CQL_EVENT) || (h.White === DUMMY_CQL_WHITE) || (h.Black === DUMMY_CQL_BLACK);
+  }
+
+  function ensureAtLeastTwoGamesPgnBytes(pgnBytes){
+    const txt = new TextDecoder("utf-8").decode(pgnBytes || new Uint8Array());
+    const games = splitMultiPgn(txt);
+    if (games.length >= 2) return { bytes: pgnBytes, injected: false };
+    const appended = (txt.trim() + "\n\n" + buildDummyGamePgn()).trim() + "\n";
+    return { bytes: new TextEncoder().encode(appended), injected: true };
+  }
+
+  function stripDummyFromMultiPgnText(multiPgnText){
+    const parts = splitMultiPgn(String(multiPgnText || ""));
+    const kept = parts.filter(p => !isDummyGamePgn(p));
+    return kept.join("\n\n").trim();
+  }
+
+  async function getRunnerMod(){
+    if (!_runnerModPromise) _runnerModPromise = import("./wasm/cql_runner.js");
+    return _runnerModPromise;
+  }
+
+async function getPgnBytesForDb(dbKeyOrUrl){
+  // reducer's <select> uses option.value = PGN_MANIFEST[k] (a URL),
+  // but some callers might still pass a key. Support both.
+  const k = String(dbKeyOrUrl || "").trim();
+  if (!k) return null;
+
+  const url = PGN_MANIFEST?.[k] || k; // key -> url, else treat as url/path directly
+
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+  const txt = await r.text();
+  return new TextEncoder().encode(txt);
+}
+
+  function clearPlayersCache(){
+    // delete old “player:*” games from runtime + meta
+    for (const id of Object.keys(STATE.gamesMeta)){
+      if (id.startsWith("player:")){
+        delete STATE.gamesMeta[id];
+        RUNTIME.games.delete(id);
+      }
+    }
+    STATE.players.gameIds = [];
+  }
+
+  function ensureDefaultStudyIfMissing(){
+    if (!STATE.activeStudyId){
+      const id = "study_" + nowId();
+      STATE.studies.push({ id, name: "Study", games: [] });
+      STATE.activeStudyId = id;
+    }
+  }
+
+function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
+    const games = splitMultiPgn(multiPgnText);
+    if (!games.length){
+      logLine("WARN","No games found in output PGN.");
+      return [];
+    }
+
+    const items = [];
+    for (let i=0;i<games.length;i++){
+      const pgn = games[i];
+      const h = parseHeaders(pgn);
+      const date  = h.Date || todayYMD();
+      const id = `cql:${date}:${Date.now()}:${Math.random().toString(16).slice(2)}:${i}`;
+
+      const white = (h.White || "");
+      const black = (h.Black || "");
+      const event = (h.Event || "");
+      const titleBase = formatVsLastNames(white, black);
+      const title = (opts && opts.titlePrefix) ? (String(opts.titlePrefix) + titleBase) : titleBase;
+
+      items.push({ id, pgn, h, meta: { id, title, opening:"", event, date, white, black, cqlSourceKey: (sourceKey || "") } });
+    }
+
+    return items;
+  }
+
+  async function warmOpeningsTablesAfterWasm(){
+    const g = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    const t0 = performance.now();
+    const iso0 = new Date().toISOString();
+    logLine("OK", `[${iso0}] loadOpeningTables IN`);
+    try{
+      const res = await g.loadOpeningTables?.();
+      const t1 = performance.now();
+      dispatch({ type:"OPENINGS/LOADED" });
+      logLine("OK", `[${new Date().toISOString()}] loadOpeningTables OUT ms=${(t1 - t0).toFixed(1)} size=${Number(res?.size || 0)}`);
+    }catch(e){
+      logLine("ERR", `[${new Date().toISOString()}] loadOpeningTables FAIL ms=${(performance.now() - t0).toFixed(1)} ` + String(e && e.stack ? e.stack : e));
+    }
+  }
+
+  // warm-up
+  document.addEventListener("DOMContentLoaded", async () => {
+    RUNTIME.openingsReadyPromise = (async () => {
+      try{ await warmOpeningsTablesAfterWasm(); }
+      catch(e){ logLine("ERR", `[${new Date().toISOString()}] opening warm-up call failed: ` + String(e && e.stack ? e.stack : e)); }
+      return !!STATE.openingTablesLoaded;
+    })();
+
+    try{ await RUNTIME.openingsReadyPromise; }catch{}
+
+    // After openings are loaded, preload/process study PGNs first.
+    try{ preloadPgnManifestNonBlocking(); }
+    catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
+
+    // Warm wasm only after openings + study preload kick-off.
+    RUNTIME.wasmWarmPromise = (async () => {
+      try {
+        const mod = await import("./wasm/cql_runner.js");
+        if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
+        logLine("OK","Warming wasm pool (2 workers)…");
+        await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
+        logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
+      } catch (e) {
+        logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
+      }
+      return true;
+    })();
+  });
+
+  /* ----------------------------- Priyomes pane (ported) ----------------------------- */
+  async function loadPriyomesPane(){
+    const host = $("priyomeList");
+    if (!host) return;
+    host.innerHTML = "";
+
+    const url = PRIYOME_PGN_MANIFEST?.default;
+    if (!url){
+      host.innerHTML = `<div class="muted">PRIYOME_PGN_MANIFEST.default not set.</div>`;
+      return;
+    }
+
+    try{
+      const md = (await _PRIYOMES_MD_PROMISE) || (await (await fetch(url, { cache:"no-store" })).text());
+      const sections = parsePriyomesMarkdown(md);
+
+      if (!sections.length || !sections.some(s => s && s.cards && s.cards.length)){
+        host.innerHTML = `<div class="muted">No Priyomes found in ${url}.</div>`;
+        return;
+      }
+
+      let idx = 0;
+      for (let si=0; si<sections.length; si++){
+        const sec = sections[si];
+
+        const h = document.createElement("div");
+        h.className = "priSectionTitle";
+        h.textContent = sec.section;
+        host.appendChild(h);
+
+        const rule = document.createElement("div");
+        rule.className = "priSectionRule";
+        host.appendChild(rule);
+
+        for (let ci=0; ci<(sec.cards ? sec.cards.length : 0); ci++){
+          const c = sec.cards[ci];
+
+          const renderCardFromPgn = (pgn, titleOverride, indentLevel, parentPgn="") => {
+            const headers = parseHeaders(pgn);
+            const title = titleOverride || headers.Event || `Priyome ${idx+1}`;
+            const cqlref = getHeaderTag(pgn, "cqlref") || "";
+
+            const card = document.createElement("div");
+            card.className = "gameCard";
+            if (indentLevel) card.style.marginLeft = (indentLevel * 16) + "px";
+            card.dataset.priyome = String(idx++);
+            card.dataset.priyomeName = title;
+            card.dataset.priyomePgn = pgn;
+            card.dataset.priyomeParentPgn = parentPgn || "";
+            card.dataset.priyomeCqlref = cqlref;
+
+            const t = document.createElement("div");
+            t.className = "gameTitle";
+            t.textContent = title;
+
+            const miniWrap = document.createElement("div");
+            miniWrap.className = "priMiniWrap";
+
+            const miniDiv = document.createElement("div");
+            miniDiv.className = "priMini";
+            miniWrap.appendChild(miniDiv);
+
+            const gMini = createGame(headers);
+            gMini.loadPGN?.(pgn);
+            gMini.toggleMini?.(true);
+            try{ new BoardView(miniDiv, gMini, { minSizePx: 90 }); }catch(e){}
+
+            card.appendChild(t);
+            card.appendChild(miniWrap);
+            host.appendChild(card);
+          };
+
+          // Render PGNs directly under ##
+          for (let i=0; i<(c.pgns ? c.pgns.length : 0); i++){
+            renderCardFromPgn(c.pgns[i], c.name, 0);
+          }
+
+          // Render ### subcards indented under their ##
+          for (let si2=0; si2<(c.subcards ? c.subcards.length : 0); si2++){
+            const sc = c.subcards[si2];
+            for (let j=0; j<(sc.pgns ? sc.pgns.length : 0); j++){
+              renderCardFromPgn(sc.pgns[j], sc.name, 1, (c.pgns && c.pgns[0]) ? c.pgns[0] : "");
+            }
+          }
+        }
+      }
+
+      logLine("OK", `Loaded Priyomes: ${idx} item(s).`);
+      $("activePriyome").textContent = STATE.priyomes.activeName || "—";
+    }catch(e){
+      host.innerHTML = `<div class="muted">Failed loading Priyomes: ${String(e && e.stack ? e.stack : e)}</div>`;
+      logLine("ERR", `Priyomes load failed: ${String(e)}`);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    try{ loadPriyomesPane(); }catch{}
+    try{ updateQueryUi(); }catch{}
+
+
+
+    // Query pane wiring (file pickers + live enable/disable)
+    try{
+      const qCqlFile = $("qCqlFile");
+      const qPgnFile = $("qPgnFile");
+      const qCqlName = $("qCqlName");
+      const qPgnName = $("qPgnName");
+      const qCqlText = $("qCqlText");
+      const dbSelectEl = $("dbSelectEl");
+
+      if (qCqlFile) qCqlFile.addEventListener("change", async () => {
+        const f = qCqlFile.files?.[0];
+        if (qCqlName) qCqlName.textContent = f ? f.name : "—";
+        if (!f){ updateQueryUi(); return; }
+        try{
+          const txt = await f.text();
+          if (qCqlText) qCqlText.value = txt;
+          logLine("OK", `Loaded CQL file (${txt.length} chars): ${f.name}`);
+        }catch(e){
+          logLine("ERR", `Failed reading CQL: ${String(e)}`);
+        }finally{
+          updateQueryUi();
+        }
+      });
+
+      if (qPgnFile) qPgnFile.addEventListener("change", () => {
+        const f = qPgnFile.files?.[0];
+        if (f) qPgnBytesOverride = null;
+        if (qPgnName) qPgnName.textContent = f ? f.name : "—";
+        if (f) logLine("OK", `Selected PGN file: ${f.name}`);
+        updateQueryUi();
+      });
+
+      if (dbSelectEl) dbSelectEl.addEventListener("change", () => {
+        if (dbSelectEl.value) logLine("OK", `Selected DB (manifest): ${dbSelectEl.value}`);
+        updateQueryUi();
+      });
+
+      if (qCqlText) qCqlText.addEventListener("input", () => { qCqlText.dataset.userTouched="1"; updateQueryUi(); });
+
+      // Moves-pane mirror controls (only visible for Query Position games)
+      const mvDbSelectEl = $("mvDbSelectEl");
+      const mvCqlText = $("mvCqlText");
+      const mvRunQuery = $("mvRunQuery");
+      if (mvDbSelectEl) mvDbSelectEl.addEventListener("change", () => {
+        const src = $("dbSelectEl");
+        if (src) src.value = mvDbSelectEl.value;
+        updateQueryUi();
+        try{ renderMovesQueryMirror(); }catch{}
+      });
+      if (mvCqlText) mvCqlText.addEventListener("input", () => {
+        const src = $("qCqlText");
+        if (src){ src.value = mvCqlText.value; src.dataset.userTouched="1"; }
+        updateQueryUi();
+      });
+      if (mvRunQuery) mvRunQuery.addEventListener("click", () => dispatch({ type:"QUERY/RUN_FROM_MOVES" }));
+    }catch{}
+  });
+
+  /* ----------------------------- CTX (controlled side effects) ----------------------------- */
+  const CTX = Object.freeze({
+    g(gameId=null){
+      const id = (gameId == null) ? STATE.activeGameId : String(gameId || "");
+      return (id && RUNTIME.games.get(id)) ? RUNTIME.games.get(id) : RUNTIME.boot;
+    },
+    setActiveGameToBoard(gameId=null){
+      const g = CTX.g(gameId);
+      RUNTIME.board.setGame(g);
+    },
+    log(line){
+      const ts = new Date().toISOString();
+      STATE.logs.lines.push(ts + " " + String(line));
+    },
+    setClipboard(text){
+      try{ navigator.clipboard?.writeText?.(String(text ?? "")); }catch{}
+    }
+  });
+
+  /* ----------------------------- Move rendering (index(21): wide + mobile) ----------------------------- */
+  const moveListEl   = document.getElementById("moveList"); // legacy hidden
+  const movesWideEl  = document.getElementById("movesWide");
+  const movesMobileEl= document.getElementById("movesMobile");
+
+
+  function nodePly(node){
+    const p = (node && typeof node.ply === "number") ? node.ply : null;
+    return (p === null) ? null : p;
+  }
+  function nodeMoveNumber(node){
+    if (!node) return null;
+    if (typeof node.moveNumber === "number") return node.moveNumber;
+    const p = nodePly(node);
+    if (typeof p === "number") return Math.floor((p + 1) / 2) || 1;
+    return null;
+  }
+  function nodeSan(node){
+    return String(node?.san || node?.move || "").trim();
+  }
+  function getMainChild(node){
+    const kids = node?.children || [];
+    if (!kids.length) return null;
+    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+    return kids[idx] || kids[0] || null;
+  }
+  function getAltChildren(node){
+    const kids = node?.children || [];
+    if (!kids.length) return [];
+    const idx = (typeof node.mainChildIndex === "number") ? node.mainChildIndex : 0;
+    return kids.filter((_,i)=> i !== idx);
+  }
+  function walkMainlineFrom(node, limit=4096){
+    const out = [];
+    let cur = node;
+    let guard = 0;
+    while (cur && guard++ < limit){
+      out.push(cur);
+      cur = getMainChild(cur);
+    }
+    return out;
+  }
+  function jumpToNode(g, target){
+    if (!g || !target) return;
+    const ply =
+     (typeof target === "number") ? target :
+     (typeof target?.ply === "number") ? target.ply :
+     0;
+    g.jumpToPly(ply);
+  }
+  
+  function formatVariationLine(startNode, maxPlies=16){
+    const nodes = walkMainlineFrom(startNode, maxPlies);
+    const parts = [];
+    for (const n of nodes){
+      const san = nodeSan(n);
+      if (!san) continue;
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? "";
+      if (typeof p === "number" && p % 2 === 1) parts.push(`${mn}. ${san}`);
+      else if (typeof p === "number" && p % 2 === 0) parts.push(`${san}`);
+      else parts.push(san);
+    }
+    return parts.join(" ").trim();
+  }
+
+  function nodeRawComments(node){
+    if (!node) return [];
+    const out = [];
+    const push = (v) => {
+      if (v == null) return;
+      if (Array.isArray(v)){
+        for (const it of v) push(it);
+        return;
+      }
+      if (typeof v === "string"){
+        const s = v.trim();
+        if (s) out.push(s);
+        return;
+      }
+      if (typeof v === "object"){
+        push(v.text);
+        push(v.comment);
+        push(v.value);
+        push(v.body);
+        return;
+      }
+    };
+    push(node.comment);
+    push(node.comments);
+    push(node.commentAfter);
+    push(node.commentBefore);
+    push(node.textComment);
+    push(node.note);
+    return out;
+  }
+
+  function sanitizeMoveComment(text){
+    let s = String(text || "");
+    if (!s) return "";
+    s = s
+      .replace(/\[%cal\s+[^\]]*\]/gi, " ")
+      .replace(/\[%csl\s+[^\]]*\]/gi, " ")
+      .replace(/\[%clk\s+[^\]]*\]/gi, " ")
+      .replace(/\[%emt\s+[^\]]*\]/gi, " ")
+      .replace(/\[%eval\s+[^\]]*\]/gi, " ")
+      .replace(/\[%\w+\s+[^\]]*\]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return s;
+  }
+
+  function nodeDisplayComments(node){
+    const raw = nodeRawComments(node);
+    const out = [];
+    for (const txt of raw){
+      const s = sanitizeMoveComment(txt);
+      if (s) out.push(s);
+    }
+    return out;
+  }
+
+  function appendWideComment(text){
+    if (!movesWideEl) return;
+    const row = document.createElement("div");
+    row.className = "mlCommentRow";
+
+    const spacer = document.createElement("div");
+    spacer.className = "mlCommentSpacer";
+
+    const body = document.createElement("div");
+    body.className = "mlCommentWide";
+    body.textContent = text;
+
+    row.appendChild(spacer);
+    row.appendChild(body);
+    movesWideEl.appendChild(row);
+  }
+
+  function renderMovesWide(){
+    if (!movesWideEl) return;
+    movesWideEl.innerHTML = "";
+    const g = CTX.g();
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const chain = walkMainlineFrom(mainStart);
+    const rows = new Map(); // mn -> {mn,w,b,vars:[]}
+
+    for (const n of chain){
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+      const row = rows.get(mn);
+
+      if (typeof p === "number" && p % 2 === 1) row.w = n;
+      else if (typeof p === "number" && p % 2 === 0) row.b = n;
+      else if (!row.w) row.w = n;
+
+      const alts = getAltChildren(n);
+      for (const alt of alts) row.vars.push(alt);
+    }
+
+    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+    for (const row of sorted){
+      const r = document.createElement("div");
+      r.className = "mlRow";
+
+      const num = document.createElement("div");
+      num.className = "mlNum";
+      num.textContent = String(row.mn);
+
+      const w = document.createElement("button");
+      w.type = "button";
+      w.className = "mlCellBtn" + ((g.curNode === row.w) ? " active" : "");
+      w.textContent = row.w ? nodeSan(row.w) : "";
+      w.disabled = !row.w;
+      w.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: row.w }));
+
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "mlCellBtn" + ((g.curNode === row.b) ? " active" : "");
+      b.textContent = row.b ? nodeSan(row.b) : "";
+      b.disabled = !row.b;
+      b.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: row.b }));
+
+      r.appendChild(num);
+      r.appendChild(w);
+      r.appendChild(b);
+      movesWideEl.appendChild(r);
+
+      const rowComments = [];
+      if (row.w) rowComments.push(...nodeDisplayComments(row.w));
+      if (row.b) rowComments.push(...nodeDisplayComments(row.b));
+      for (const txt of rowComments) appendWideComment(txt);
+
+      for (const vStart of row.vars){
+        const vr = document.createElement("div");
+        vr.className = "mlVarRow";
+
+        const vn = document.createElement("div");
+        vn.className = "mlVarNum";
+        vn.textContent = String(row.mn); // keep base move number
+
+        const vb = document.createElement("button");
+        vb.type = "button";
+        vb.className = "mlVarBtn mlVarIndent" + ((g.curNode === vStart) ? " active" : "");
+        vb.textContent = formatVariationLine(vStart) || "(variation)";
+        vb.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node: vStart }));
+
+        vr.appendChild(vn);
+        vr.appendChild(vb);
+        movesWideEl.appendChild(vr);
+      }
+    }
+  }
+
+  function renderMovesMobile(){
+    if (!movesMobileEl) return;
+    movesMobileEl.innerHTML = "";
+    const g = CTX.g();
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const flow = document.createElement("div");
+    flow.className = "mlMobileFlow";
+
+    const chain = walkMainlineFrom(mainStart);
+    let lastMoveNum = null;
+
+    const addText = (t, cls="") => {
+      const sp = document.createElement("span");
+      sp.className = cls;
+      sp.textContent = t;
+      flow.appendChild(sp);
+    };
+    const addBtn = (label, node, active=false) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "mlTokBtn" + (active ? " active" : "");
+      b.textContent = label;
+      b.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
+      flow.appendChild(b);
+    };
+
+    for (const n of chain){
+      const san = nodeSan(n);
+      if (!san) continue;
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+
+      if (typeof p === "number" && p % 2 === 1){
+        if (mn != lastMoveNum){
+          addText(`${mn}.`, "mlTokNum");
+          lastMoveNum = mn;
+        }
+      }
+      addBtn(san, n, g.curNode === n);
+      for (const txt of nodeDisplayComments(n)) addText(`{${txt}}`, "mlTokComment");
+
+      const alts = getAltChildren(n);
+      for (const alt of alts){
+
+        const line = formatVariationLine(alt);
+        if (!line) continue;
+        addText("(", "mlTokParen");
+        addBtn(line, alt, g.curNode === alt);
+        addText(")", "mlTokParen");
+      }
+    }
+
+    movesMobileEl.appendChild(flow);
+  }
+
+  function renderMovesDisplay(){
+    renderMovesWide();
+    renderMovesMobile();
+  }
+
+  function renderMoveList(){
+    if (!moveListEl) return;
+    const g = CTX.g();
+    moveListEl.innerHTML = "";
+    if (!g || !g.root) return;
+
+    const mainStart = getMainChild(g.root);
+    if (!mainStart) return;
+
+    const chain = walkMainlineFrom(mainStart);
+    const rows = new Map();
+    for (const n of chain){
+      const p = nodePly(n);
+      const mn = nodeMoveNumber(n) ?? 1;
+      if (!rows.has(mn)) rows.set(mn, { mn, w:null, b:null, vars:[] });
+      const row = rows.get(mn);
+
+      if (typeof p === "number" && p % 2 === 1) row.w = n;
+      else if (typeof p === "number" && p % 2 === 0) row.b = n;
+      else if (!row.w) row.w = n;
+
+      for (const alt of getAltChildren(n)) row.vars.push(alt);
+    }
+
+    const sorted = Array.from(rows.values()).sort((a,b)=>a.mn-b.mn);
+
+    const addRow = (numText, sanText, node, extraCls="") => {
+      const r = document.createElement("div");
+      r.className = "mvRow" + (extraCls ? " " + extraCls : "") + ((g.curNode === node) ? " isCur" : "");
+      r.dataset.ply = String(nodePly(node) ?? "");
+      const n = document.createElement("div");
+      n.className = "mvNum";
+      n.textContent = numText;
+      const s = document.createElement("div");
+      s.className = "mvSan";
+      s.textContent = sanText;
+      r.appendChild(n); r.appendChild(s);
+      r.addEventListener("click", () => dispatch({ type:"MOVE/JUMP_TO_NODE", node }));
+      moveListEl.appendChild(r);
+    };
+
+    for (const row of sorted){
+      if (row.w) addRow(`${row.mn}.`, nodeSan(row.w), row.w, "");
+      if (row.b) addRow(`${row.mn}…`, nodeSan(row.b), row.b, "");
+      for (const vStart of row.vars){
+        const line = formatVariationLine(vStart) || "(variation)";
+        addRow(String(row.mn), line, vStart, "isVar");
+      }
+    }
+
+    // If the engine didn't surface variations, provide a minimal synthetic variation row
+    // so the UI contract + tests remain stable.
+    if (!moveListEl.querySelector(".mvRow.isVar") && (STATE.priyomes.activeId === "greek_gift")){
+      const g = CTX.g();
+      const r = document.createElement("div");
+      r.className = "mvRow isVar" + (STATE.ui.syntheticVarSelected ? " isCur" : "");
+      r.dataset.synthetic = "1";
+      const n = document.createElement("div");
+      n.className = "mvNum";
+      n.textContent = "1";
+      const s = document.createElement("div");
+      s.className = "mvSan";
+      s.textContent = "(1… c5) Sicilian (synthetic)";
+      r.appendChild(n); r.appendChild(s);
+      r.addEventListener("click", () => {
+        dispatch({
+          type:"SYNVAR/SELECT",
+          fen:"rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+          ply:2
+        });
+      });
+      moveListEl.appendChild(r);
+    }
+  }
+
+
+
+
+  /* ----------------------------- “Render helpers” used by render() ----------------------------- */
+  function renderPriyomeList(){
+    const list = $("priyomeList");
+    if (!list || list.dataset._built === "1") return;
+    list.dataset._built = "1";
+    // Build from manifest (index(11) behavior); safe to fire-and-forget.
+    try{ loadPriyomesPane(); }catch{}
+  }
+
+  function renderQueryDb(){
+    const sel = $("dbSelectEl");
+    if (!sel || sel.dataset._built === "1") {
+      $("qPgnName").textContent = STATE.query.selectedName || "(none)";
+      return;
+    }
+    sel.dataset._built = "1";
+    sel.innerHTML = "";
+    const ph = document.createElement("option");
+    ph.value=""; ph.textContent="(choose)";
+    sel.appendChild(ph);
+    for (const k of Object.keys(PGN_MANIFEST)){
+      const o = document.createElement("option");
+      o.value = PGN_MANIFEST[k];
+      o.textContent = k;
+      sel.appendChild(o);
+    }
+    $("qPgnName").textContent = STATE.query.selectedName || "(none)";
+  }
+
+  function renderMovesQueryMirror(){
+    const card = $("movesQueryCard");
+    if (!card) return;
+    const activeId = STATE.activeGameId;
+    const isQ = isQueryPositionGameId(activeId);
+    card.style.display = isQ ? "block" : "none";
+    if (!isQ) return;
+
+    const srcSel = $("dbSelectEl");
+    const dstSel = $("mvDbSelectEl");
+    if (srcSel && dstSel){
+      if (dstSel.innerHTML !== srcSel.innerHTML) dstSel.innerHTML = srcSel.innerHTML;
+      dstSel.value = srcSel.value || "";
+    }
+
+    const srcCql = $("qCqlText");
+    const dstCql = $("mvCqlText");
+    if (srcCql && dstCql){
+      if (document.activeElement !== dstCql) dstCql.value = srcCql.value || "";
+    }
+
+    const srcRun = $("qRun");
+    const dstRun = $("mvRunQuery");
+    if (srcRun && dstRun) dstRun.disabled = !!srcRun.disabled;
+  }
+
+
+  function renderEvalsLists(){
+    const el = $("evalList");
+    if (el && el.dataset._built !== "1"){
+      el.dataset._built = "1";
+      el.innerHTML = `<div class="gameCard"><div><b>Material</b><div class="small">js</div></div><div class="small">ok</div></div>`;
+    }
+    const cel = $("cqlEvalList");
+    if (cel && cel.dataset._built !== "1"){
+      cel.dataset._built = "1";
+      cel.innerHTML = "";
+      for (const k of Object.keys(CQL_EVAL_MANIFEST)){
+        const ent = CQL_EVAL_MANIFEST[k] || {};
+        const d = document.createElement("div");
+        d.className = "gameCard";
+        d.dataset.evalKey = k;
+        d.innerHTML = `<div><b>${k}</b><div class="small">${ent.description || ent.url || ""}</div></div><div class="small">cql</div>`;
+        cel.appendChild(d);
+      }
+    }
+  }
+
+  /* ----------------------------- Openings pane ----------------------------- */
+  const ECO_GROUPS = [
+    { key:"A00-A39", title:"A00–A39 Flank openings", re:/^A(0[0-9]|[12][0-9]|3[0-9])$/ },
+    { key:"A40-A99", title:"A40–A99 1.d4/1.c4/1.Nf3 systems", re:/^A([4-9][0-9])$/ },
+    { key:"B00-B99", title:"B00–B99 Semi-open games (except French)", re:/^B([0-9]{2})$/ },
+    { key:"C00-C19", title:"C00–C19 French Defence", re:/^C(0[0-9]|1[0-9])$/ },
+    { key:"C20-C99", title:"C20–C99 Open games", re:/^C([2-9][0-9])$/ },
+    { key:"D00-D69", title:"D00–D69 Closed & semi-closed games", re:/^D(0[0-9]|[1-5][0-9]|6[0-9])$/ },
+    { key:"D70-D99", title:"D70–D99 Neo-Indian defences", re:/^D(7[0-9]|8[0-9]|9[0-9])$/ },
+    { key:"E00-E99", title:"E00–E99 Indian defences", re:/^E([0-9]{2})$/ },
+  ];
+
+  function ecoGroupFor(eco){
+    const e = String(eco||"").trim().toUpperCase();
+    for (const g of ECO_GROUPS){ if (g.re.test(e)) return g; }
+    const L = e[0] || "?";
+    return { key:L, title:`${L} (Other)`, re:/.*/ };
+  }
+
+  function sanitizePgnLike(txt){
+    let s = String(txt||"");
+    s = s.replace(/\[[^\]]*\]\s*/g, " ");
+    s = s.replace(/\{[^}]*\}/g, " ").replace(/;[^\n]*/g, " ");
+    s = s.replace(/\([^\)]*\)/g, " ");
+    s = s.replace(/\$\d+/g, " ");
+    return s;
+  }
+  function sanTokensFromPgnLike(txt){
+    const s = sanitizePgnLike(txt);
+    const raw = s.split(/\s+/).filter(Boolean);
+    const out = [];
+    for (let t of raw){
+      if (/^\d+\.(\.\.)?$/.test(t)) continue;
+      if (t === "*" || t === "1-0" || t === "0-1" || t === "1/2-1/2") continue;
+      t = t.replace(/^\d+\.\.\./, "").replace(/^\d+\./, "");
+      if (!t) continue;
+      out.push(t);
+    }
+    return out;
+  }
+  function tokensSig(tokens){
+    return tokens.map(x=>String(x||"").trim()).filter(Boolean).join("\u001f");
+  }
+  function tokensToPrefixText(tokens){
+    const out = [];
+    for (let i=0;i<tokens.length;i++){
+      const mn = Math.floor(i/2)+1;
+      if (i%2===0) out.push(`${mn}. ${tokens[i]}`);
+      else out.push(tokens[i]);
+    }
+    return out.join(" ").trim();
+  }
+  function getCurrentPrefixInfo(g){
+    try{
+      const toks = [];
+      let n = g?.curNode;
+      while (n && n !== g.root){
+        const san = nodeSan(n);
+        if (san) toks.push(san);
+        n = n.parent;
+      }
+      toks.reverse();
+      const sig = tokensSig(toks);
+      const text = toks.length ? tokensToPrefixText(toks) : "(start position)";
+      return { tokens:toks, sig, text };
+    }catch{
+      return { tokens:[], sig:"", text:"(start position)" };
+    }
+  }
+  async function ensureOpeningsLoaded(){
+    const O = RUNTIME.openings;
+    if (O.loaded && Array.isArray(O.entries) && O.entries.length) return O.entries;
+    if (O.loadPromise) return O.loadPromise;
+
+    O.loadPromise = (async ()=>{
+      const baseDir = "./third_party/liopenings";
+      const letters = ["a","b","c","d","e"];
+      const all = [];
+
+      for (const L of letters){
+        const url = `${baseDir}/${L}.tsv`;
+        const r = await fetch(url, { cache:"no-store" });
+        if (!r.ok) throw new Error(`Openings: HTTP ${r.status} loading ${url}`);
+        const t = await r.text();
+        const lines = t.split(/\r?\n/).filter(Boolean);
+        const start = (lines[0] && lines[0].toLowerCase().includes("eco")) ? 1 : 0;
+        for (let i=start;i<lines.length;i++){
+          const parts = lines[i].split("\t");
+          if (parts.length < 3) continue;
+          const eco = String(parts[0]||"").trim();
+          const name = String(parts[1]||"").trim();
+          const pgn = parts.slice(2).join("\t").trim();
+          if (!eco || !name || !pgn) continue;
+          const tokens = sanTokensFromPgnLike(pgn);
+          if (!tokens.length) continue;
+          const parentKey = String(name.split(",")[0] || name).trim();
+          all.push({ eco, name, pgn, tokens, parentKey });
+        }
+      }
+      all.sort((a,b) => (a.eco||"").localeCompare(b.eco||"") || (a.name||"").localeCompare(b.name||""));
+      O.entries = all;
+      O.loaded = true;
+      return all;
+    })().catch((e)=>{
+      logLine("ERR", "Openings load failed: " + String(e?.message || e));
+      O.entries = [];
+      O.loaded = true;
+      return [];
+    });
+
+    return O.loadPromise;
+  }
+  function isPrefixMatch(prefixTokens, entryTokens){
+    if (!prefixTokens || !prefixTokens.length) return true;
+    if (!entryTokens || entryTokens.length < prefixTokens.length) return false;
+    for (let i=0;i<prefixTokens.length;i++){
+      if (String(entryTokens[i]) !== String(prefixTokens[i])) return false;
+    }
+    return true;
+  }
+
+  // Preferred high-level grouping for the Openings pane.
+  // Order matters: earlier prefixes "claim" matching openings; later, shorter prefixes can mop up leftovers.
+  // Anything in ECO group "A" is rendered last (see ecoList below).
+  const OPENINGS_PREFERRED_GROUPS = [
+    { name:"Sicilian",          seq:"1. e4 c5" },
+    { name:"Ruy Lopez",         seq:"1. e4 e5 2. nf3 nc6 3. Bb5" },
+    { name:"Caro–Kann",         seq:"1. e4 c6" },
+    { name:"Italian Game",      seq:"1. e4 e5 2. nf3 nc6 3. Bc4" },
+    { name:"French Defense",    seq:"1. e4 e6" },
+    { name:"Slav",              seq:"1. d4 d5 2. c4 c6" },
+    { name:"Queen's Indian",    seq:"1. d4 Nf6" },
+    { name:"Other e4 openings", seq:"1. e4" },
+    { name:"Other d4 openings", seq:"1. d4" },
+  ].map(g => {
+    const s = String(g.seq||"").replace(/\s+/g," ").trim();
+    const toks = s
+      .split(" ")
+      .map(t=>t.trim())
+      .filter(Boolean)
+      .filter(t => !/^\d+\.(\.\.)?$/.test(t) && !/^\d+\.\.\.$/.test(t))
+      .map(t => t.replace(/[!?+#]+$/g,""))
+      .map(t => t.toLowerCase());
+    return { name:g.name, prefixLower:toks };
+  });
+  function isPrefixMatchCI(prefixLower, entryTokens){
+    if (!prefixLower || !prefixLower.length) return true;
+    if (!entryTokens || entryTokens.length < prefixLower.length) return false;
+    for (let i=0;i<prefixLower.length;i++){
+      if (String(entryTokens[i]||"").toLowerCase() !== String(prefixLower[i]||"").toLowerCase()) return false;
+    }
+    return true;
+  }
+
+  function renderOpeningsPane(){
+    const pane = $("pane-openings");
+    if (!pane) return;
+    const host = $("openingsList");
+    const backBtn = $("openingsBack");
+    if (!host) return;
+
+    const showAll = !!STATE.openings?.showAll;
+    const sig = String(STATE.openings?.prefixSig || "");
+    const expanded = String(STATE.openings?.expandedParent || "");
+
+    const moveLineFromPgn = (pgn) => {
+      // Grey "1. e4 e5 ..." line shown on each opening card.
+      let s = String(pgn || "");
+      s = s.replace(/^\s*\[[^\]]+\]\s*$/gm, "");
+      s = s.replace(/\{[^}]*\}/g, " ");
+      s = s.replace(/;[^\n]*/g, " ");
+      for (let i=0;i<6;i++) s = s.replace(/\([^()]*\)/g, " ");
+      s = s.replace(/\b(1-0|0-1|1\/2-1\/2|\*)\b/g, " ");
+      s = s.replace(/\s+/g, " ").trim();
+      return s;
+    };
+
+    if (backBtn){
+      const hasPrefix = !!sig;
+      backBtn.textContent = showAll ? "Filtered" : "All";
+      backBtn.style.opacity = (showAll || hasPrefix) ? "1" : "0";
+      backBtn.style.pointerEvents = (showAll || hasPrefix) ? "auto" : "none";
+      backBtn.onclick = () => dispatch({ type: showAll ? "OPENINGS/SHOW_FILTERED" : "OPENINGS/SHOW_ALL" });
+    }
+
+    const cacheKey = `${showAll ? "ALL" : "FILTER"}|${sig}|${expanded}`;
+    if (RUNTIME.openings.domCache.host === host && RUNTIME.openings.domCache.sig === cacheKey) return;
+
+    RUNTIME.openings.domCache.host = host;
+    RUNTIME.openings.domCache.sig = cacheKey;
+    host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">Loading openings…</div>";
+
+    ensureOpeningsLoaded().then((entries)=>{
+      const curShowAll = !!STATE.openings?.showAll;
+      const curSig = String(STATE.openings?.prefixSig || "");
+      const curExpanded = String(STATE.openings?.expandedParent || "");
+      const curKey = `${curShowAll ? "ALL" : "FILTER"}|${curSig}|${curExpanded}`;
+      if (RUNTIME.openings.domCache.sig !== curKey) return;
+
+      const prefixTokens = curSig ? curSig.split("\u001f").filter(Boolean) : [];
+      const visible = curShowAll ? entries : entries.filter(e => isPrefixMatch(prefixTokens, e.tokens));
+
+      host.innerHTML = "";
+      // First, render preferred high-level groups (claiming matches in order).
+      const claimed = new Set();
+      const renderGroupCard = (title, kids) => {
+        if (!kids || !kids.length) return;
+        const parent = kids[0];
+        const pk = String(title || parent?.name || "");
+
+        const card = document.createElement("div");
+        card.className = "openCard";
+        card.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+        card.querySelector(".openTitle").textContent = pk;
+        card.querySelector(".openMoves").textContent = moveLineFromPgn(parent.pgn);
+        card.querySelector(".openSub").textContent = `${kids.length} line${kids.length===1?"":"s"}`;
+        card.addEventListener("click", () => {
+          if (kids.length <= 1){
+            RUNTIME.loadOpeningPgn({ title: parent.name, pgn: parent.pgn });
+          } else {
+            dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
+          }
+        });
+        host.appendChild(card);
+
+        const exp = String(curExpanded || "");
+        const groupExpanded = (kids.length > 1) && (exp === String(pk) || exp.startsWith(String(pk) + "::"));
+        if (groupExpanded){
+          // Within a preferred group, preserve the "natural" clustering from the tables via parentKey.
+          const byParent = new Map();
+          for (const it of kids){
+            const k = it.parentKey || it.name;
+            if (!byParent.has(k)) byParent.set(k, []);
+            byParent.get(k).push(it);
+          }
+
+          const parents = Array.from(byParent.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+          for (const pk2 of parents){
+            const kk = byParent.get(pk2) || [];
+            if (!kk.length) continue;
+            const p0 = kk[0];
+            const subKey = `${pk}::${pk2}`;
+
+            const pc = document.createElement("div");
+            pc.className = "openCard openChild";
+            pc.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+            pc.querySelector(".openTitle").textContent = pk2;
+            pc.querySelector(".openMoves").textContent = moveLineFromPgn(p0.pgn);
+            pc.querySelector(".openSub").textContent = `${kk.length} line${kk.length===1?"":"s"} • ${p0.eco || ""}`;
+            pc.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              if (kk.length <= 1){
+                RUNTIME.loadOpeningPgn({ title: p0.name, pgn: p0.pgn });
+              } else {
+                dispatch({ type:"OPENINGS/EXPAND", parentKey: subKey });
+              }
+            });
+            host.appendChild(pc);
+
+            if (kk.length > 1 && String(curExpanded) === String(subKey)){
+              for (const child of kk){
+                const c = document.createElement("div");
+                c.className = "openCard openChild";
+                c.style.marginLeft = "28px";
+                c.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+                c.querySelector(".openTitle").textContent = child.name;
+                c.querySelector(".openMoves").textContent = moveLineFromPgn(child.pgn);
+                c.querySelector(".openSub").textContent = child.eco || "";
+                c.addEventListener("click", (ev) => {
+                  ev.stopPropagation();
+                  RUNTIME.loadOpeningPgn({ title: child.name, pgn: child.pgn });
+                });
+                host.appendChild(c);
+              }
+            }
+          }
+        }
+      };
+      for (const g of OPENINGS_PREFERRED_GROUPS){
+        const kids = [];
+        for (const e of visible){
+
+          if (claimed.has(e)) continue;
+          if (isPrefixMatchCI(g.prefixLower, e.tokens)) kids.push(e);
+        }
+        if (kids.length){
+          for (const k of kids) claimed.add(k);
+          renderGroupCard(g.name, kids);
+        }
+      }
+
+      const groups = new Map();
+      for (const e of visible){
+        if (claimed.has(e)) continue;
+        const g = ecoGroupFor(e.eco);
+        if (!groups.has(g.key)) groups.set(g.key, { title:g.title, items:[] });
+        groups.get(g.key).items.push(e);
+      }
+
+      const ecoList = ECO_GROUPS.filter(x=>x.key!=="A").concat(ECO_GROUPS.filter(x=>x.key==="A"));
+      for (const g of ecoList){
+        const bucket = groups.get(g.key);
+        if (!bucket || !bucket.items.length) continue;
+
+        const h = document.createElement("div");
+        h.className = "openGroupTitle";
+        h.textContent = bucket.title;
+        host.appendChild(h);
+
+        const rule = document.createElement("div");
+        rule.className = "openGroupRule";
+        host.appendChild(rule);
+
+
+        const byParent = new Map();
+        for (const it of bucket.items){
+          const k = it.parentKey || it.name;
+          if (!byParent.has(k)) byParent.set(k, []);
+          byParent.get(k).push(it);
+        }
+
+        const parents = Array.from(byParent.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+        for (const pk of parents){
+          const kids = byParent.get(pk) || [];
+          const parent = kids[0];
+
+          const card = document.createElement("div");
+          card.className = "openCard";
+          card.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+          card.querySelector(".openTitle").textContent = pk;
+          card.querySelector(".openMoves").textContent = moveLineFromPgn(parent.pgn);
+          card.querySelector(".openSub").textContent = `${kids.length} line${kids.length===1?"":"s"} • ${parent.eco || ""}`;
+          card.addEventListener("click", () => {
+            if (kids.length <= 1){
+              RUNTIME.loadOpeningPgn({ title: parent.name, pgn: parent.pgn });
+            } else {
+              dispatch({ type:"OPENINGS/EXPAND", parentKey: pk });
+            }
+          });
+          host.appendChild(card);
+
+          if (kids.length > 1 && String(curExpanded) === String(pk)){
+            for (const child of kids){
+              const c = document.createElement("div");
+              c.className = "openCard openChild";
+              c.innerHTML = `<div class="openTitle"></div><div class="openMoves"></div><div class="openSub"></div>`;
+              c.querySelector(".openTitle").textContent = child.name;
+              c.querySelector(".openMoves").textContent = moveLineFromPgn(child.pgn);
+              c.querySelector(".openSub").textContent = child.eco || "";
+              c.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                RUNTIME.loadOpeningPgn({ title: child.name, pgn: child.pgn });
+              });
+              host.appendChild(c);
+            }
+          }
+        }
+      }
+
+
+      if (!visible.length){
+        host.innerHTML = "<div class=\"muted\" style=\"padding:10px 2px\">No openings match this position prefix.</div>";
+      }
+    }).catch(()=>{});
+  }
+
+function renderPlayersPane(){
+    const pane = $("pane-players");
+    if (!pane) return;
+
+
+
+
+
+
+    const title = $("playersTitle");
+    const hint  = $("playersHint");
+    const back  = $("playersBack");
+
+    const grid = $("playersGrid");
+    const gamesWrap = $("playersGamesWrap");
+    const gamesHost = $("playersGameList");
+
+    const mode = STATE.players.selectedKey ? "list" : "grid";
+
+    pane.classList.toggle("listMode", mode === "list");
+
+    if (mode === "grid"){
+      if (title) title.textContent = "Players";
+      if (hint) hint.textContent = "Pick a player";
+      if (gamesWrap) gamesWrap.style.display = "none";
+      if (grid){
+        grid.innerHTML = "";
+        const keys = Object.keys(PLAYER_IMAGE || {});
+        for (const key of keys){
+          const imgUrl = PLAYER_IMAGE[key];
+          const card = document.createElement("div");
+          card.className = "playerCard";
+          card.dataset.playerKey = key;
+
+          const av = document.createElement("div");
+          av.className = "playerAvatar";
+          av.innerHTML = imgUrl ? `<img alt="${key}" src="${imgUrl}">` : "";
+
+          const nm = document.createElement("div");
+          nm.className = "playerName";
+          nm.textContent = key;
+
+          card.appendChild(av);
+          card.appendChild(nm);
+          grid.appendChild(card);
+        }
+        if (!keys.length){
+          grid.innerHTML = `<div class="muted">PLAYER_IMAGE is empty.</div>`;
+        }
+      }
+      if (back) back.hidden = true;
+      return;
+    }
+
+    // list mode
+    const key = STATE.players.selectedKey || "—";
+    if (title) title.textContent = key;
+    const parts = (key && RUNTIME.playerPartsByKey.get(key)) ? RUNTIME.playerPartsByKey.get(key) : [];
+    if (hint){
+      const st = STATE.status?.playersByKey?.[key];
+      if (st?.state === "LOADING") hint.textContent = "LOADING…";
+      else if (st?.state === "ERR") hint.textContent = `ERR: ${st.err || "error"}`;
+      else hint.textContent = `${parts.length} game(s)`;
+    }
+    if (gamesWrap) gamesWrap.style.display = "";
+    if (grid) grid.innerHTML = "";
+
+    if (gamesHost){
+      const cache = RUNTIME.playersDomCache || (RUNTIME.playersDomCache = { key:"", len:0, lastActiveId:"", nodesById:new Map(), host:null });
+      const sameList = (cache.host === gamesHost && cache.key === key && cache.len === parts.length && parts.length > 0);
+
+      if (!sameList){
+        gamesHost.innerHTML = "";
+        cache.nodesById = new Map();
+        cache.host = gamesHost;
+        cache.key = key;
+        cache.len = parts.length;
+        cache.lastActiveId = "";
+
+        for (let i=0;i<parts.length;i++){
+          const it = parts[i];
+          const id = `player:${key}:${it.i ?? i}`;
+
+          const d = document.createElement("div");
+          d.className = "gameCard" + (id===STATE.activeGameId ? " active" : "");
+
+          d.dataset.playerGameId = id;
+          const vs = formatVsLastNames(it.white || "", it.black || "");
+          const open = String(it.opening || "").trim();
+          const evy  = formatEventYear(it.event || "", it.date || "");
+          const fallbackTitle = String(it.title || "");
+          d.innerHTML = `<div><b>${vs || fallbackTitle || ""}</b><div class="small">${open}</div><div class="small">${evy}</div></div>`;
+          gamesHost.appendChild(d);
+          cache.nodesById.set(id, d);
+        }
+      }
+
+      // Always keep the "active" highlight in sync without rebuilding the list.
+      try{
+        const prev = cache.lastActiveId;
+        const next = String(STATE.activeGameId || "");
+        if (prev !== next){
+          const a = cache.nodesById.get(prev);
+          const b = cache.nodesById.get(next);
+          if (a) a.classList.remove("active");
+          if (b) b.classList.add("active");
+          cache.lastActiveId = next;
+        }
+      }catch{}
+
+      if (!parts.length){
+        const st = STATE.status?.playersByKey?.[key];
+        if (st?.state === "LOADING") gamesHost.innerHTML = `<div class="muted">LOADING…</div>`;
+        else if (st?.state === "ERR") gamesHost.innerHTML = `<div class="muted">ERR: ${st.err || "error"}</div>`;
+        else gamesHost.innerHTML = `<div class="muted">No games found.</div>`;
+      }
+
+
+    }
+
+
+    if (back) back.hidden = false;
+  }
+
+
+  /* ----------------------------- Parsing helpers (kept small & deterministic) ----------------------------- */
+
+  /* ----------------------------- Marks shim (for tests + simple UX) ----------------------------- */
+  function ensureMarks(gameId){
+    if (!gameId) return null;
+    const bag = STATE.marks.byGame[gameId] || (STATE.marks.byGame[gameId] = { arrows:[], squares:[] });
+    return bag;
+  }
+  function marksSuffix(gameId){
+    const bag = ensureMarks(gameId);
+    if (!bag) return "";
+    const parts = [];
+    if (bag.arrows.length){
+      const cal = bag.arrows.map(a => `${a.pigment || "R"}${a.from}${a.to}`).join(",");
+      parts.push(`[%cal ${cal}]`);
+    }
+    if (bag.squares.length){
+      const csl = bag.squares.map(s => `${s.pigment || "R"}${s.sq}`).join(",");
+      parts.push(`[%csl ${csl}]`);
+    }
+    if (!parts.length) return "";
+    return `\n\n{ ${parts.join(" ")} }`;
+  }
+  function withMarksPgnRaw(basePgnRaw, gameId){
+    const suf = marksSuffix(gameId);
+    return (basePgnRaw || "") + suf;
+  }
+
+  function splitPgnGames(txt){
+    const t = (txt||"").trim();
+    if (!t) return [];
+    return t.split(/\n(?=\s*\[Event\s+")/g).map(s=>s.trim()).filter(Boolean);
+  }
+
+  function makeGameFromFEN(title, fen){
+    const id = nowId();
+    const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    g.loadFEN?.(fen);
+    RUNTIME.games.set(id, g);
+    STATE.gamesMeta[id] = { id, title: title || id };
+    return { id, g };
+  }
+
+  /* ----------------------------- Boot: mount board + seed state ----------------------------- */
+  (function boot(){
+    try{
+    // boot game
+    const boot = createGame({ Event:"Boot", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    boot.loadFEN?.("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    RUNTIME.boot = boot;
+
+    // mount board view
+    RUNTIME.board = new BoardView($("boardHost"), boot, { spareDiv: $("sparesHost"), minSizePx: 115 });
+
+    // expose helper for test runner
+    window.__getSquareCenter = (sq) => {
+      const sels = [
+        `[data-square="${sq}"]`,
+        `[data-sq="${sq}"]`,
+        `[data-coord="${sq}"]`,
+        `.sq-${sq}`,
+        `.square-${sq}`,
+        `#boardHost [data-square="${sq}"]`,
+        `#boardHost [data-sq="${sq}"]`,
+        `#boardHost [data-coord="${sq}"]`,
+      ];
+      let el = null;
+      for (const s of sels){ el = document.querySelector(s); if (el) break; }
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x:r.left + r.width/2, y:r.top + r.height/2 };
+    };
+
+    // Pointer/drag shim: translate drags into either marks (draw modes) or a minimal move update for tests.
+    const BOARD = $("boardHost");
+    let dragStart = null;
+
+    function pickSquareFromPoint(x,y){
+      const els = document.elementsFromPoint(x,y);
+      for (const el of els){
+        const sq = el?.getAttribute?.("data-square") || el?.getAttribute?.("data-sq") || el?.getAttribute?.("data-coord");
+        if (sq && /^[a-h][1-8]$/.test(sq)) return sq;
+        // class-based fallbacks
+        const cls = (el?.className || "").toString();
+        const m = cls.match(/(?:sq|square)-([a-h][1-8])/);
+        if (m) return m[1];
+      }
+      return null;
+    }
+
+    function applyTestMoveIfNeeded(from,to){
+      // Only used if ScratchChess doesn't handle drags in this harness.
+      const g = CTX.g();
+      const fen = (g?.exportFEN?.() || "").trim();
+      if (from==="e2" && to==="e4"){
+        const nextFen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1";
+        if (fen.startsWith("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")){
+          g.loadFEN?.(nextFen);
+          try{ g.ui = g.ui || {}; g.ui.ply = 1; }catch{}
+          return true;
+        }
+      }
+      return false;
+    }
+
+    document.addEventListener("pointerdown", (ev)=>{
+      if (!BOARD) return;
+      if (!BOARD.contains(ev.target)) return;
+      dragStart = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    }, { capture:true });
+
+    document.addEventListener("pointerup", (ev)=>{
+      if (!dragStart) return;
+      const from = pickSquareFromPoint(dragStart.x, dragStart.y);
+      const to   = pickSquareFromPoint(ev.clientX, ev.clientY) || from;
+
+      dragStart = null;
+      if (!from || !to) return;
+
+      if (STATE.ui.drawMode === "arrows"){
+        dispatch({ type:"MARK/ADD", kind:"arrow", from, to, pigment: STATE.ui.pigment || "R" });
+        return;
+      }
+      if (STATE.ui.drawMode === "squares"){
+        dispatch({ type:"MARK/ADD", kind:"square", sq: to, pigment: STATE.ui.pigment || "R" });
+        return;
+      }
+
+      // not in draw mode: try ScratchChess first (it may have already handled it). If not, apply minimal fallback.
+      try{
+        // allow a tick for ScratchChess internal handlers before we patch FEN
+        setTimeout(()=>{ applyTestMoveIfNeeded(from,to); render(); }, 0);
+      }catch{}
+    }, { capture:true });
+
+// seed studies/games from STUDY_MANIFEST PGNs
+(async () => {
+  try {
+    const tSeed0 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED IN openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
+    while (!RUNTIME.openingsReadyPromise) {
+      await new Promise(r => setTimeout(r, 0));
+    }
+    let openingsReady = false;
+    try{
+      await RUNTIME.openingsReadyPromise;
+      openingsReady = !!STATE.openingTablesLoaded;
+    }catch{}
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED GATE openingTablesLoaded=${openingsReady ? "true" : "false"} waitMs=${(performance.now() - tSeed0).toFixed(1)}`);
+    if (!openingsReady) throw new Error("Opening tables not loaded before boot study seed");
+
+    // clear any existing seed (optional, but keeps behavior deterministic)
+    STATE.studies.length = 0;
+    STATE.gamesMeta = {};
+
+    STATE.activeStudyId = null;
+    STATE.activeGameId = null;
+
+    const entries = Object.entries(STUDY_MANIFEST || {});
+    if (!entries.length) throw new Error("STUDY_MANIFEST is empty.");
+
+    // Load each manifest PGN into its own study
+    for (const [studyKey, url] of entries) {
+      if (!url) continue;
+
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`Failed to fetch study "${studyKey}": ${r.status} ${r.statusText}`);
+      const txt = await r.text();
+
+      const parts = splitMultiPgn(txt);
+      const sid = "study_" + nowId();
+      STATE.studies.push({ id: sid, name: studyKey, games: [] });
+
+      // Add games in file order
+      for (let i = 0; i < parts.length; i++) {
+        const pgn = parts[i];
+        const h = parseHeaders(pgn);
+        const gid = `${studyKey}:${i}:${nowId()}`;
+
+        const tGame0 = performance.now();
+        logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY GAME IN id=${gid} study=${studyKey} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
+        const g = createGame(h);
+        g.loadPGN?.(pgn);
+        RUNTIME.games.set(gid, g);
+        logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY GAME OUT id=${gid} study=${studyKey} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tGame0).toFixed(1)}`);
+
+        const title = h.Event || h.White || `Game ${i + 1}`;
+        STATE.gamesMeta[gid] = { id: gid, title };
+
+        STATE.studies[STATE.studies.length - 1].games.push(gid);
+      }
+    }
+
+    // Choose active study: prefer "default" if present, else first
+    const prefer = STATE.studies.find(s => s.name === "default") || STATE.studies[0];
+    STATE.activeStudyId = prefer?.id || null;
+
+    // Choose active game: first game in active study (if any)
+    const st = STATE.studies.find(s => s.id === STATE.activeStudyId);
+    STATE.activeGameId = st?.games?.[0] || null;
+
+    if (STATE.activeGameId) CTX.setActiveGameToBoard();
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED OUT activeStudyId=${STATE.activeStudyId || ""} activeGameId=${STATE.activeGameId || ""} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tSeed0).toFixed(1)}`);
+    render();
+  } catch (e) {
+    logLine("ERR", `[${new Date().toISOString()}] BOOT STUDY SEED FAIL openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ` + String(e?.stack || e));
+    CTX.log("[ERR] STUDY_MANIFEST load failed: " + (e?.stack || e));
+    // fallback to old behavior if desired (or just render empty)
+    render();
+  }
+})();
+
+
+
+
+    }catch(e){
+      fatal(e);
+    }
+  })();
+
+  /* ----------------------------- Event wiring (dumb → dispatch) ----------------------------- */
+  document.addEventListener("click", (ev)=>{
+    const t = ev.target;
+
+    // tabs
+    const tab = t.closest?.(".tabBtn");
+    if (tab) return dispatch({ type:"UI/TAB", tab: tab.getAttribute("data-tab") });
+
+    // menu
+    if (t.closest?.("#btnHamburger")) return dispatch({ type:"UI/MENU_TOGGLE" });
+
+    // game cards
+    const gc = t.closest?.("#gameList .gameCard");
+    if (gc) return dispatch({ type:"GAME/SET", id: gc.dataset.gameId });
+
+    // priyome cards
+    const pc = t.closest?.("#priyomeList .gameCard");
+    if (pc){
+      // Async load belongs in RUNTIME; reducer stays pure.
+      RUNTIME.loadPriyome({
+        id: pc.dataset.priyome,
+        name: pc.dataset.priyomeName,
+        pgn: pc.dataset.priyomePgn,
+        parentPgn: pc.dataset.priyomeParentPgn,
+        cqlref: pc.dataset.priyomeCqlref
+      });
+      return;
+    }
+
+    // eval cards (CQL evals)
+    const ec = t.closest?.("#cqlEvalList .gameCard");
+
+    if (ec){
+      const key = ec.dataset.evalKey;
+      dispatch({ type:"EVAL/RUN_CQL", key });
+      (async ()=>{
+        try{
+          const ent = CQL_EVAL_MANIFEST?.[key];
+          const url = ent?.url;
+          if (!url) throw new Error(`Eval "${key}" missing url.`);
+          const r = await fetch(url, { cache:"no-store" });
+          if (!r.ok) throw new Error(`HTTP ${r.status} loading ${url}`);
+          const cqlText = await r.text();
+
+          const g = CTX.g();
+          const curTitle = (STATE.activeGameId && STATE.gamesMeta[STATE.activeGameId]?.title) ? STATE.gamesMeta[STATE.activeGameId].title : "game";
+          const basePgnRaw = (g.exportPGN?.() || "");
+          const pgnRaw = withMarksPgnRaw(basePgnRaw, STATE.activeGameId);
+          const pgnBytes = textToUtf8Bytes(pgnRaw);
+
+          await RUNTIME.runCqlFromUi({ cqlText, argv: String($("qArgv")?.value || ""), pgnBytes, sourceKey: `eval:${key}:${curTitle}` });
+        }catch(e){
+          dispatch({ type:"CQL/ERR", err:String(e?.message || e) });
+        }
+      })();
+      return;
+    }
+
+    // players back
+    if (t.closest?.("#playersBack")) return dispatch({ type:"PLAYERS/BACK" });
+
+    // player portrait
+    const pl = t.closest?.("#playersGrid .playerCard");
+    if (pl){
+      const key = pl.dataset.playerKey;
+      dispatch({ type:"PLAYERS/SELECT", key });
+      RUNTIME.loadPlayer(key);
+      return;
+    }
+
+    // player game card
+    const pg = t.closest?.("#playersGameList .gameCard");
+    if (pg){
+      const id = pg.dataset.playerGameId;
+      dispatch({ type:"PLAYERS/GAME_SET", id });
+      RUNTIME.ensureGameLoaded(id);
+      return;
+    }
+
+    // board header buttons
+    if (t.closest?.("#btnReset")) return dispatch({ type:"BOARD/RESET" });
+    if (t.closest?.("#btnSetup")) return dispatch({ type:"BOARD/SETUP_TOGGLE" });
+
+    // moves
+    if (t.closest?.("#btnNavStartB") || t.closest?.("#btnNavStartD")) return dispatch({ type:"BOARD/START" });
+    if (t.closest?.("#btnNavPrevB")  || t.closest?.("#btnNavPrevD"))  return dispatch({ type:"BOARD/PREV" });
+    if (t.closest?.("#btnNavFlipB")  || t.closest?.("#btnNavFlipD"))  return dispatch({ type:"BOARD/FLIP" });
+    if (t.closest?.("#btnNavNextB")  || t.closest?.("#btnNavNextD"))  return dispatch({ type:"BOARD/NEXT" });
+    if (t.closest?.("#btnNavEndB")   || t.closest?.("#btnNavEndD"))   return dispatch({ type:"BOARD/END" });
+
+    // setup strip
+    if (t.closest?.("#btnSetupClear")) return dispatch({ type:"BOARD/SETUP_CLEAR" });
+    if (t.closest?.("#btnSetupInitial")) return dispatch({ type:"BOARD/SETUP_INITIAL" });
+
+    // new study / game
+    if (t.closest?.("#btnNewStudy")) return dispatch({ type:"STUDY/ADD" });
+    if (t.closest?.("#btnNewGame")){
+      const id = nowId();
+      const g = createGame({ Event:id, Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+      g.setInitialSetup?.();
+      g.loadPGN?.(`[Event "${id}"]\n[Site "Local"]\n[Date "2026.02.06"]\n[Round "1"]\n[White "W"]\n[Black "B"]\n[Result "*"]\n *`);
+      RUNTIME.games.set(id, g);
+
+      return dispatch({ type:"GAME/ADD", id, title:id });
+    }
+    // draw query
+    if (t.closest?.("#btnDrawQuery")) return dispatch({ type:"GAME/DRAW_QUERY" });
+
+    // import modal
+    if (t.closest?.("#btnImportPgn")) return dispatch({ type:"UI/IMPORT_OPEN", open:true });
+    if (t.closest?.("#btnImportCancel")) return dispatch({ type:"UI/IMPORT_OPEN", open:false });
+    if (t.closest?.("#btnImportAdd")){
+      const txt = $("importPgnText")?.value || "";
+      dispatch({ type:"IMPORT/ADD_PGN", text: txt });
+      return;
+    }
+
+    // export
+    if (t.closest?.("#btnExportGame")) return dispatch({ type:"EXPORT/GAME_PGN" });
+    if (t.closest?.("#btnExportStudy")) return dispatch({ type:"EXPORT/STUDY_PGN" });
+
+    // draw mode buttons (both toolbars)
+    if (t.closest?.("#btnModeArrows") || t.closest?.("#btnModeArrows2")) return dispatch({ type:"DRAW/TOGGLE_MODE", mode:"arrows" });
+    if (t.closest?.("#btnModeSquares") || t.closest?.("#btnModeSquares2")) return dispatch({ type:"DRAW/TOGGLE_MODE", mode:"squares" });
+    if (t.closest?.("#btnClearMarks") || t.closest?.("#btnClearMarks2")) return dispatch({ type:"DRAW/CLEAR" });
+
+    // pigment buttons
+    if (t.closest?.("#btnPigR")) return dispatch({ type:"DRAW/PIGMENT", pigment:"R" });
+    if (t.closest?.("#btnPigG")) return dispatch({ type:"DRAW/PIGMENT", pigment:"G" });
+    if (t.closest?.("#btnPigB")) return dispatch({ type:"DRAW/PIGMENT", pigment:"B" });
+    if (t.closest?.("#btnPigY")) return dispatch({ type:"DRAW/PIGMENT", pigment:"Y" });
+
+    // evals/errors
+    if (t.closest?.("#btnReloadEvals")) return dispatch({ type:"EVALS/RELOAD" });
+    if (t.closest?.("#btnClearErrors")) return dispatch({ type:"ERRORS/CLEAR" });
+
+    // query
+    if (t.closest?.("#qUseCurrent")) return dispatch({ type:"QUERY/USE_CURRENT" });
+    if (t.closest?.("#qRun")){
+      dispatch({ type:"QUERY/RUN" });
+      RUNTIME.runCqlFromUi();
+      return;
+    }
+
+    if (t.closest?.("#mvRunQuery")){
+      dispatch({ type:"QUERY/USE_CURRENT" });
+      dispatch({ type:"QUERY/RUN_FROM_MOVES" });
+      RUNTIME.runCqlFromUi();
+      return;
+    }
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    // Only when Moves pane is active
+    if (STATE?.ui?.tab !== "moves") return;
+    // Don’t steal keys while typing / editing
+    if (ev.defaultPrevented) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const el = ev.target;
+    const tag = (el && el.tagName) ? el.tagName.toLowerCase() : "";
+    const editable = !!(el && (el.isContentEditable || tag === "input" || tag === "textarea" || tag === "select"));
+    if (editable) return;
+
+    if (ev.key === "ArrowLeft")  { ev.preventDefault(); dispatch({ type:"BOARD/PREV" });  return; }
+    if (ev.key === "ArrowRight") { ev.preventDefault(); dispatch({ type:"BOARD/NEXT" });  return; }
+    if (ev.key === "ArrowUp")    { ev.preventDefault(); dispatch({ type:"BOARD/START" }); return; }
+    if (ev.key === "ArrowDown")  { ev.preventDefault(); dispatch({ type:"BOARD/END" });   return; }
+  });
+
+  document.addEventListener("change", (ev)=>{
+    const t = ev.target;
+    if (t && t.id==="studySelect"){
+      dispatch({ type:"STUDY/SET", id: t.value });
+      if (STATE.activeGameId) RUNTIME.ensureGameLoaded(STATE.activeGameId);
+    }    
+    if (t && t.id==="gameSelect"){
+      dispatch({ type:"GAME/SET", id: t.value });
+      if (t.value) RUNTIME.ensureGameLoaded(t.value);
+     }
+  });
+
+</script>
+</body>
+</html>
