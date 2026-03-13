@@ -3727,6 +3727,12 @@ function renderPlayersPane(){
 // seed studies/games from STUDY_MANIFEST PGNs
 (async () => {
   try {
+    const tSeed0 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED IN openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
+    const openingsReady = await RUNTIME.waitForOpeningsTables();
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED GATE openingTablesLoaded=${openingsReady ? "true" : "false"} waitMs=${(performance.now() - tSeed0).toFixed(1)}`);
+    if (!openingsReady) throw new Error("Opening tables not loaded before boot study seed");
+
     // clear any existing seed (optional, but keeps behavior deterministic)
     STATE.studies.length = 0;
     STATE.gamesMeta = {};
@@ -3754,9 +3760,12 @@ function renderPlayersPane(){
         const h = parseHeaders(pgn);
         const gid = `${studyKey}:${i}:${nowId()}`;
 
+        const tGame0 = performance.now();
+        logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY GAME IN id=${gid} study=${studyKey} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
         const g = createGame(h);
         g.loadPGN?.(pgn);
         RUNTIME.games.set(gid, g);
+        logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY GAME OUT id=${gid} study=${studyKey} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tGame0).toFixed(1)}`);
 
         const title = h.Event || h.White || `Game ${i + 1}`;
         STATE.gamesMeta[gid] = { id: gid, title };
@@ -3774,13 +3783,16 @@ function renderPlayersPane(){
     STATE.activeGameId = st?.games?.[0] || null;
 
     if (STATE.activeGameId) CTX.setActiveGameToBoard();
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED OUT activeStudyId=${STATE.activeStudyId || ""} activeGameId=${STATE.activeGameId || ""} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tSeed0).toFixed(1)}`);
     render();
   } catch (e) {
+    logLine("ERR", `[${new Date().toISOString()}] BOOT STUDY SEED FAIL openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ` + String(e?.stack || e));
     CTX.log("[ERR] STUDY_MANIFEST load failed: " + (e?.stack || e));
     // fallback to old behavior if desired (or just render empty)
     render();
   }
 })();
+
 
 
 
