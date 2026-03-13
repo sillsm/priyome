@@ -774,7 +774,7 @@
 <!-- NOTE: the newline after <script avoids matching the literal substring "<script " in some of your tests -->
 <script
   type="module">
-  import { createGame, BoardView } from "./scratchchess.js";
+  import { createGame, BoardView } from "./scratchchess_dev.js";
 
   /* ----------------------------- Manifests ----------------------------- */
   const STUDY_MANIFEST = {
@@ -3729,13 +3729,21 @@ function renderPlayersPane(){
   try {
     const tSeed0 = performance.now();
     logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED IN openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
-    const openingsReady = await RUNTIME.waitForOpeningsTables();
+    while (!RUNTIME.openingsReadyPromise) {
+      await new Promise(r => setTimeout(r, 0));
+    }
+    let openingsReady = false;
+    try{
+      await RUNTIME.openingsReadyPromise;
+      openingsReady = !!STATE.openingTablesLoaded;
+    }catch{}
     logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED GATE openingTablesLoaded=${openingsReady ? "true" : "false"} waitMs=${(performance.now() - tSeed0).toFixed(1)}`);
     if (!openingsReady) throw new Error("Opening tables not loaded before boot study seed");
 
     // clear any existing seed (optional, but keeps behavior deterministic)
     STATE.studies.length = 0;
     STATE.gamesMeta = {};
+
     STATE.activeStudyId = null;
     STATE.activeGameId = null;
 
