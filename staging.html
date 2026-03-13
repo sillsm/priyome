@@ -985,9 +985,16 @@
     if (RUNTIME.gameLoads.has(id)) return RUNTIME.gameLoads.get(id);
 
     const p = (async ()=>{
+      const tLoad0 = performance.now();
+      const isoIn = new Date().toISOString();
+      logLine("DBG", `[${isoIn}] STUDY GAME LOAD IN id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
       dispatch({ type:"GAME/LOADING", id });
 
       const openingsReady = await RUNTIME.waitForOpeningsTables();
+      logLine(
+        "DBG",
+        `[${new Date().toISOString()}] STUDY GAME LOAD GATE id=${id} openingTablesLoaded=${openingsReady ? "true" : "false"} waitMs=${(performance.now() - tLoad0).toFixed(1)}`
+      );
       if (!openingsReady) throw new Error("Opening tables not loaded");
 
       try{
@@ -1019,6 +1026,11 @@
         const g = createGame(h || {});
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
+        logLine(
+          "DBG",
+          `[${new Date().toISOString()}] STUDY GAME LOAD OUT id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tLoad0).toFixed(1)}`
+        );
+
         dispatch({ type:"GAME/OK", id });
 
         if (STATE.activeGameId === id){
@@ -1038,6 +1050,11 @@
 
         return g;
       }catch(e){
+        logLine(
+          "ERR",
+          `[${new Date().toISOString()}] STUDY GAME LOAD FAIL id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tLoad0).toFixed(1)} ` + String(e && e.stack ? e.stack : e)
+        );
+
         dispatch({ type:"GAME/ERR", id, err:String(e?.message || e) });
       }finally{
         RUNTIME.gameLoads.delete(id);
@@ -1379,6 +1396,10 @@ fen "${fenPieces}"
     "OPENINGS/LOAD_PGN": (S,A) => {
       const pgn = String(A.pgn || "");
       if (!pgn) return;
+      if (!S.openingTablesLoaded){
+        logLine("WARN", `[${new Date().toISOString()}] OPENINGS/LOAD_PGN blocked until opening tables load`);
+        return;
+      }
       const title = String(A.title || "Opening");
       const id = nowId();
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
