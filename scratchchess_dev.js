@@ -2601,6 +2601,11 @@ async function openingFromPGN(pgnObj, { maxPlies = 32, index = null, timeoutMs =
   return bestName;
 }
 
+Game.prototype.waitForOpeningsReady = async function (timeoutMs = 2000) {
+  await waitForOpeningsReady(timeoutMs);
+  return true;
+};
+
 // Game-method wrappers so table-driven harnesses can call these via ctx.g[fn].
 Game.prototype.loadOpeningTables = async function (opts) {
   // If caller provides opts, use them; otherwise default path/files.
