@@ -998,7 +998,6 @@
         if (!pgn) throw new Error(`Missing PGN source for id=${id}`);
 
         const g = createGame(h || {});
-        await g.waitForOpeningsReady?.();
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
         dispatch({ type:"GAME/OK", id });
@@ -1529,7 +1528,6 @@ fen "${fenPieces}"
           const it = RUNTIME.cqlById.get(id) || null;
           if (it && it.pgn){
             const g = createGame(it.h || {});
-            await g.waitForOpeningsReady?.();
             g.loadPGN?.(it.pgn);
             try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
             RUNTIME.games.set(id, g);
@@ -2158,13 +2156,19 @@ function parsePriyomesMarkdown(md){
     meta.openingByPly = meta.openingByPly || {};
     const arr = Array.isArray(g.mainlineOpenings) ? g.mainlineOpenings : [];
     for (let i = 0; i < arr.length; i++){
-      if (arr[i] != null) {
+      if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, i) && arr[i] != null) {
         meta.openingByPly[i] = String(arr[i] || "").trim();
       }
     }
-    meta.openingByPly[1] = String(g.getOpening?.(1) || "").trim();
-    meta.openingByPly[0] = String(meta.openingByPly[1] || g.getOpening?.(0) || "").trim();
-    if (!String(meta.opening || "").trim()) meta.opening = String(meta.openingByPly[1] || meta.openingByPly[0] || "").trim();
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 0)) {
+      meta.openingByPly[0] = String(g.getOpening?.(0) || g.getOpening?.(1) || "").trim();
+    }
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 1)) {
+      meta.openingByPly[1] = String(g.getOpening?.(1) || meta.openingByPly[0] || "").trim();
+    }
+    if (!String(meta.opening || "").trim()) {
+      meta.opening = String(meta.openingByPly[0] || meta.openingByPly[1] || "").trim();
+    }
   }
 
   function ensureOpeningForPly(gameId, ply){
@@ -2179,8 +2183,8 @@ function parsePriyomesMarkdown(md){
     if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, p)) {
       meta.openingByPly[p] = String(g.getOpening(p) || "").trim();
     }
-    meta.openingByPly[1] = String(g.getOpening(1) || "").trim();
-    meta.openingByPly[0] = String(meta.openingByPly[1] || g.getOpening(0) || "").trim();
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 0)) meta.openingByPly[0] = String(g.getOpening(0) || g.getOpening(1) || "").trim();
+    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 1)) meta.openingByPly[1] = String(g.getOpening(1) || meta.openingByPly[0] || "").trim();
   }
 
   async function preloadOneManifestPgn(key, url){
@@ -2509,6 +2513,20 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     return items;
   }
 
+  async function warmOpeningsTablesAfterWasm(){
+    const g = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    const t0 = performance.now();
+    const iso0 = new Date().toISOString();
+    logLine("OK", `[${iso0}] loadOpeningTables IN`);
+    try{
+      const res = await g.loadOpeningTables?.();
+      const t1 = performance.now();
+      logLine("OK", `[${new Date().toISOString()}] loadOpeningTables OUT ms=${(t1 - t0).toFixed(1)} size=${Number(res?.size || 0)}`);
+    }catch(e){
+      logLine("ERR", `[${new Date().toISOString()}] loadOpeningTables FAIL ms=${(performance.now() - t0).toFixed(1)} ` + String(e && e.stack ? e.stack : e));
+    }
+  }
+
   // warm-up
   document.addEventListener("DOMContentLoaded", async () => {
     try {
@@ -2520,6 +2538,8 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     } catch (e) {
       logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
     }
+    try{ await warmOpeningsTablesAfterWasm(); }catch(e){ logLine("ERR", `[${new Date().toISOString()}] opening warm-up call failed: ` + String(e && e.stack ? e.stack : e)); }
+
     // After wasm warm-up (or failure), preload all PGN_MANIFEST PGNs in a non-blocking way (headers only).
     try{ preloadPgnManifestNonBlocking(); }catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
   });
