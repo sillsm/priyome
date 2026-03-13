@@ -877,6 +877,18 @@
   RUNTIME.playerLoads = new Map(); // key -> Promise
   RUNTIME.gameLoads = new Map();   // id -> Promise
   RUNTIME.priyomeLoads = new Map(); // key -> Promise
+  RUNTIME.openingsReadyPromise = null;
+  RUNTIME.wasmWarmPromise = null;
+
+  RUNTIME.waitForOpeningsTables = async function waitForOpeningsTables(){
+    if (STATE.openingTablesLoaded) return true;
+    if (RUNTIME.openingsReadyPromise && typeof RUNTIME.openingsReadyPromise.then === "function"){
+      try{ await RUNTIME.openingsReadyPromise; }catch{}
+    }
+    return !!STATE.openingTablesLoaded;
+  };
+
+  RUNTIME.waitForWasmWarm = async function waitForWasmWarm(){ if (RUNTIME.wasmWarmPromise) try{ await RUNTIME.wasmWarmPromise; }catch{} return true; };
 
   RUNTIME.syncBoard = function syncBoard(gameId=null){
     try{ CTX.setActiveGameToBoard(gameId); }catch{}
@@ -891,6 +903,10 @@
 
     const p = (async ()=>{
       dispatch({ type:"PLAYER/LOADING", key });
+      const openingsReady = await RUNTIME.waitForOpeningsTables();
+      if (!openingsReady) throw new Error("Opening tables not loaded");
+      await RUNTIME.waitForWasmWarm();
+
       try{
         const r = await fetch(url, { cache:"no-store" });
         if (!r.ok) throw new Error(`HTTP ${r.status} loading ${url}`);
@@ -970,6 +986,9 @@
 
     const p = (async ()=>{
       dispatch({ type:"GAME/LOADING", id });
+
+      const openingsReady = await RUNTIME.waitForOpeningsTables();
+      if (!openingsReady) throw new Error("Opening tables not loaded");
 
       try{
         let src = null;
@@ -1289,6 +1308,7 @@ fen "${fenPieces}"
     },
     // NOTE: heavy PGN + CQL caches live in RUNTIME (not STATE) to keep cloning/render fast.
     studies: [],          // [{id,name,games:[gameId]}]
+    openingTablesLoaded: false,
     gamesMeta: {},        // gameId -> {id,title}
     activeStudyId: null,
 
@@ -1334,6 +1354,9 @@ fen "${fenPieces}"
     "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
     "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
 
+    "OPENINGS/LOADED": (S) => {
+      S.openingTablesLoaded = true;
+    },
      "OPENINGS/OPEN": (S) => { S.ui.tab = "openings"; },
     "OPENINGS/SHOW_ALL": (S) => { S.openings.showAll = true; },
     "OPENINGS/SHOW_FILTERED": (S) => { S.openings.showAll = false; },
@@ -2197,6 +2220,10 @@ function parsePriyomesMarkdown(md){
 
   function preloadPgnManifestNonBlocking(){
     try{
+      if (!STATE.openingTablesLoaded){
+        logLine("DBG", `[${new Date().toISOString()}] PGN preload deferred; opening tables not loaded yet`);
+        return;
+      }
       const entries = Object.entries(PGN_MANIFEST || {});
       if (!entries.length) return;
       let idx = 0;
@@ -2478,6 +2505,7 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     try{
       const res = await g.loadOpeningTables?.();
       const t1 = performance.now();
+      dispatch({ type:"OPENINGS/LOADED" });
       logLine("OK", `[${new Date().toISOString()}] loadOpeningTables OUT ms=${(t1 - t0).toFixed(1)} size=${Number(res?.size || 0)}`);
     }catch(e){
       logLine("ERR", `[${new Date().toISOString()}] loadOpeningTables FAIL ms=${(performance.now() - t0).toFixed(1)} ` + String(e && e.stack ? e.stack : e));
@@ -2486,19 +2514,31 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
 
   // warm-up
   document.addEventListener("DOMContentLoaded", async () => {
-    try {
-      const mod = await import("./wasm/cql_runner.js");
-      if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
-      logLine("OK","Warming wasm pool (2 workers)…");
-      await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
-      logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
-    } catch (e) {
-      logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
-    }
-    try{ await warmOpeningsTablesAfterWasm(); }catch(e){ logLine("ERR", `[${new Date().toISOString()}] opening warm-up call failed: ` + String(e && e.stack ? e.stack : e)); }
+    RUNTIME.openingsReadyPromise = (async () => {
+      try{ await warmOpeningsTablesAfterWasm(); }
+      catch(e){ logLine("ERR", `[${new Date().toISOString()}] opening warm-up call failed: ` + String(e && e.stack ? e.stack : e)); }
+      return !!STATE.openingTablesLoaded;
+    })();
 
-    // After wasm warm-up (or failure), preload all PGN_MANIFEST PGNs in a non-blocking way (headers only).
-    try{ preloadPgnManifestNonBlocking(); }catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
+    try{ await RUNTIME.openingsReadyPromise; }catch{}
+
+    // After openings are loaded, preload/process study PGNs first.
+    try{ preloadPgnManifestNonBlocking(); }
+    catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
+
+    // Warm wasm only after openings + study preload kick-off.
+    RUNTIME.wasmWarmPromise = (async () => {
+      try {
+        const mod = await import("./wasm/cql_runner.js");
+        if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
+        logLine("OK","Warming wasm pool (2 workers)…");
+        await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
+        logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
+      } catch (e) {
+        logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
+      }
+      return true;
+    })();
   });
 
   /* ----------------------------- Priyomes pane (ported) ----------------------------- */
