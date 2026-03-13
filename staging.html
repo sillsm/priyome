@@ -1010,7 +1010,6 @@
         try{
           const meta = STATE.gamesMeta?.[id];
           if (meta){
-            seedOpeningCacheFromGame(id, g);
             if (!String(meta.opening||"").trim()) {
               const op0 = g.getOpening?.(0) || g.getOpening?.(1) || "";
               if (op0) meta.opening = String(op0);
@@ -1534,7 +1533,6 @@ fen "${fenPieces}"
             try{
               const meta = S.gamesMeta?.[id];
               if (meta){
-                seedOpeningCacheFromGame(id, g);
                 if (!String(meta.opening||"").trim()){
                   meta.opening = String(g.getOpening?.(0) || g.getOpening?.(1) || "");
                 }
@@ -1911,11 +1909,9 @@ fen "${fenPieces}"
     if (oub){
       const g0 = CTX.g();
       const ply = (g0?.ui?.ply ?? 0);
-      ensureOpeningForPly(STATE.activeGameId, ply);
-
-      const byPly = meta?.openingByPly || null;
-      const hasLive = !!(byPly && Object.prototype.hasOwnProperty.call(byPly, ply));
-      const live = hasLive ? String(byPly[ply] || "").trim() : "";
+      const live = (g0 && typeof g0.getOpening === "function")
+        ? String(g0.getOpening(ply) || "").trim()
+        : "";
       oub.textContent = live || "—";
     }
     const activeId = String(STATE.activeGameId || "");
@@ -2147,45 +2143,6 @@ function parsePriyomesMarkdown(md){
   }
 
   const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
-
-  // ----------------------------- Live opening label (by current ply) -----------------------------
-  function seedOpeningCacheFromGame(gameId, g){
-    if (!gameId || !g) return;
-    const meta = STATE.gamesMeta?.[gameId];
-    if (!meta) return;
-    meta.openingByPly = meta.openingByPly || {};
-    const arr = Array.isArray(g.mainlineOpenings) ? g.mainlineOpenings : [];
-    for (let i = 0; i < arr.length; i++){
-      if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, i) && arr[i] != null) {
-        meta.openingByPly[i] = String(arr[i] || "").trim();
-      }
-    }
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 0)) {
-      meta.openingByPly[0] = String(g.getOpening?.(0) || g.getOpening?.(1) || "").trim();
-    }
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 1)) {
-      meta.openingByPly[1] = String(g.getOpening?.(1) || meta.openingByPly[0] || "").trim();
-    }
-    if (!String(meta.opening || "").trim()) {
-      meta.opening = String(meta.openingByPly[0] || meta.openingByPly[1] || "").trim();
-    }
-  }
-
-  function ensureOpeningForPly(gameId, ply){
-    if (!gameId) return;
-    const meta = STATE.gamesMeta?.[gameId];
-    if (!meta) return;
-    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
-    const g = RUNTIME.games.get(gameId) || ((STATE.activeGameId === gameId) ? CTX.g() : null);
-    if (!g || typeof g.getOpening !== "function") return;
-    seedOpeningCacheFromGame(gameId, g);
-    meta.openingByPly = meta.openingByPly || {};
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, p)) {
-      meta.openingByPly[p] = String(g.getOpening(p) || "").trim();
-    }
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 0)) meta.openingByPly[0] = String(g.getOpening(0) || g.getOpening(1) || "").trim();
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 1)) meta.openingByPly[1] = String(g.getOpening(1) || meta.openingByPly[0] || "").trim();
-  }
 
   async function preloadOneManifestPgn(key, url){
     if (!key || !url) return;
