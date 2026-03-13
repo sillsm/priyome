@@ -998,6 +998,7 @@
         if (!pgn) throw new Error(`Missing PGN source for id=${id}`);
 
         const g = createGame(h || {});
+        await g.waitForOpeningsReady?.();
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
         dispatch({ type:"GAME/OK", id });
@@ -1528,6 +1529,7 @@ fen "${fenPieces}"
           const it = RUNTIME.cqlById.get(id) || null;
           if (it && it.pgn){
             const g = createGame(it.h || {});
+            await g.waitForOpeningsReady?.();
             g.loadPGN?.(it.pgn);
             try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
             RUNTIME.games.set(id, g);
@@ -2156,19 +2158,13 @@ function parsePriyomesMarkdown(md){
     meta.openingByPly = meta.openingByPly || {};
     const arr = Array.isArray(g.mainlineOpenings) ? g.mainlineOpenings : [];
     for (let i = 0; i < arr.length; i++){
-      if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, i) && arr[i] != null) {
+      if (arr[i] != null) {
         meta.openingByPly[i] = String(arr[i] || "").trim();
       }
     }
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 0)) {
-      meta.openingByPly[0] = String(g.getOpening?.(0) || g.getOpening?.(1) || "").trim();
-    }
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 1)) {
-      meta.openingByPly[1] = String(g.getOpening?.(1) || meta.openingByPly[0] || "").trim();
-    }
-    if (!String(meta.opening || "").trim()) {
-      meta.opening = String(meta.openingByPly[0] || meta.openingByPly[1] || "").trim();
-    }
+    meta.openingByPly[1] = String(g.getOpening?.(1) || "").trim();
+    meta.openingByPly[0] = String(meta.openingByPly[1] || g.getOpening?.(0) || "").trim();
+    if (!String(meta.opening || "").trim()) meta.opening = String(meta.openingByPly[1] || meta.openingByPly[0] || "").trim();
   }
 
   function ensureOpeningForPly(gameId, ply){
@@ -2183,8 +2179,8 @@ function parsePriyomesMarkdown(md){
     if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, p)) {
       meta.openingByPly[p] = String(g.getOpening(p) || "").trim();
     }
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 0)) meta.openingByPly[0] = String(g.getOpening(0) || g.getOpening(1) || "").trim();
-    if (!Object.prototype.hasOwnProperty.call(meta.openingByPly, 1)) meta.openingByPly[1] = String(g.getOpening(1) || meta.openingByPly[0] || "").trim();
+    meta.openingByPly[1] = String(g.getOpening(1) || "").trim();
+    meta.openingByPly[0] = String(meta.openingByPly[1] || g.getOpening(0) || "").trim();
   }
 
   async function preloadOneManifestPgn(key, url){
