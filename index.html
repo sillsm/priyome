@@ -774,7 +774,7 @@
 <!-- NOTE: the newline after <script avoids matching the literal substring "<script " in some of your tests -->
 <script
   type="module">
-  import { createGame, BoardView } from "./scratchchess.js";
+  import { createGame, BoardView } from "./scratchchess_dev.js";
 
   /* ----------------------------- Manifests ----------------------------- */
   const STUDY_MANIFEST = {
@@ -877,6 +877,18 @@
   RUNTIME.playerLoads = new Map(); // key -> Promise
   RUNTIME.gameLoads = new Map();   // id -> Promise
   RUNTIME.priyomeLoads = new Map(); // key -> Promise
+  RUNTIME.openingsReadyPromise = null;
+  RUNTIME.wasmWarmPromise = null;
+
+  RUNTIME.waitForOpeningsTables = async function waitForOpeningsTables(){
+    if (STATE.openingTablesLoaded) return true;
+    if (RUNTIME.openingsReadyPromise && typeof RUNTIME.openingsReadyPromise.then === "function"){
+      try{ await RUNTIME.openingsReadyPromise; }catch{}
+    }
+    return !!STATE.openingTablesLoaded;
+  };
+
+  RUNTIME.waitForWasmWarm = async function waitForWasmWarm(){ if (RUNTIME.wasmWarmPromise) try{ await RUNTIME.wasmWarmPromise; }catch{} return true; };
 
   RUNTIME.syncBoard = function syncBoard(gameId=null){
     try{ CTX.setActiveGameToBoard(gameId); }catch{}
@@ -891,6 +903,10 @@
 
     const p = (async ()=>{
       dispatch({ type:"PLAYER/LOADING", key });
+      const openingsReady = await RUNTIME.waitForOpeningsTables();
+      if (!openingsReady) throw new Error("Opening tables not loaded");
+      await RUNTIME.waitForWasmWarm();
+
       try{
         const r = await fetch(url, { cache:"no-store" });
         if (!r.ok) throw new Error(`HTTP ${r.status} loading ${url}`);
@@ -969,7 +985,17 @@
     if (RUNTIME.gameLoads.has(id)) return RUNTIME.gameLoads.get(id);
 
     const p = (async ()=>{
+      const tLoad0 = performance.now();
+      const isoIn = new Date().toISOString();
+      logLine("DBG", `[${isoIn}] STUDY GAME LOAD IN id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
       dispatch({ type:"GAME/LOADING", id });
+
+      const openingsReady = await RUNTIME.waitForOpeningsTables();
+      logLine(
+        "DBG",
+        `[${new Date().toISOString()}] STUDY GAME LOAD GATE id=${id} openingTablesLoaded=${openingsReady ? "true" : "false"} waitMs=${(performance.now() - tLoad0).toFixed(1)}`
+      );
+      if (!openingsReady) throw new Error("Opening tables not loaded");
 
       try{
         let src = null;
@@ -1000,6 +1026,11 @@
         const g = createGame(h || {});
         g.loadPGN?.(pgn);
         RUNTIME.games.set(id, g);
+        logLine(
+          "DBG",
+          `[${new Date().toISOString()}] STUDY GAME LOAD OUT id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tLoad0).toFixed(1)}`
+        );
+
         dispatch({ type:"GAME/OK", id });
 
         if (STATE.activeGameId === id){
@@ -1007,19 +1038,23 @@
           dispatch({ type:"UI/REFRESH" });
         }
 
-        // background opening fill-in
-        _idle(async ()=>{
-          try{
-            const meta = STATE.gamesMeta?.[id];
-            if (meta && !String(meta.opening||"").trim()){
-              const op = await sideGame.openingFromPGN(pgn);
-              dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
+        try{
+          const meta = STATE.gamesMeta?.[id];
+          if (meta){
+            if (!String(meta.opening||"").trim()) {
+              const op0 = g.getOpening?.(0) || g.getOpening?.(1) || "";
+              if (op0) meta.opening = String(op0);
             }
-          }catch{}
-        });
+          }
+        }catch{}
 
         return g;
       }catch(e){
+        logLine(
+          "ERR",
+          `[${new Date().toISOString()}] STUDY GAME LOAD FAIL id=${id} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tLoad0).toFixed(1)} ` + String(e && e.stack ? e.stack : e)
+        );
+
         dispatch({ type:"GAME/ERR", id, err:String(e?.message || e) });
       }finally{
         RUNTIME.gameLoads.delete(id);
@@ -1290,6 +1325,7 @@ fen "${fenPieces}"
     },
     // NOTE: heavy PGN + CQL caches live in RUNTIME (not STATE) to keep cloning/render fast.
     studies: [],          // [{id,name,games:[gameId]}]
+    openingTablesLoaded: false,
     gamesMeta: {},        // gameId -> {id,title}
     activeStudyId: null,
 
@@ -1335,6 +1371,9 @@ fen "${fenPieces}"
     "UI/MENU_TOGGLE": (S) => { S.ui.menuOpen = !S.ui.menuOpen; },
     "UI/IMPORT_OPEN": (S,A) => { S.ui.importOpen = !!A.open; },
 
+    "OPENINGS/LOADED": (S) => {
+      S.openingTablesLoaded = true;
+    },
      "OPENINGS/OPEN": (S) => { S.ui.tab = "openings"; },
     "OPENINGS/SHOW_ALL": (S) => { S.openings.showAll = true; },
     "OPENINGS/SHOW_FILTERED": (S) => { S.openings.showAll = false; },
@@ -1357,6 +1396,10 @@ fen "${fenPieces}"
     "OPENINGS/LOAD_PGN": (S,A) => {
       const pgn = String(A.pgn || "");
       if (!pgn) return;
+      if (!S.openingTablesLoaded){
+        logLine("WARN", `[${new Date().toISOString()}] OPENINGS/LOAD_PGN blocked until opening tables load`);
+        return;
+      }
       const title = String(A.title || "Opening");
       const id = nowId();
       const g = createGame({ Event:id, Site:"Local", Date:"2026.02.25", Round:"1", White:"W", Black:"B" });
@@ -1531,16 +1574,12 @@ fen "${fenPieces}"
             g.loadPGN?.(it.pgn);
             try{ g.cqlText = ""; g.cqlSourceKey = (S.gamesMeta?.[id]?.cqlSourceKey) || ""; }catch{}
             RUNTIME.games.set(id, g);
-            // Ensure opening name is present (compute async so reducer stays sync).
             try{
               const meta = S.gamesMeta?.[id];
-              if (meta && !String(meta.opening||"").trim()){
-                _idle(async ()=>{
-                  try{
-                    const op = await sideGame.openingFromPGN(it.pgn);
-                    dispatch({ type:"GAME/OPENING_OK", id, opening:String(op||"") });
-                  }catch{}
-                });
+              if (meta){
+                if (!String(meta.opening||"").trim()){
+                  meta.opening = String(g.getOpening?.(0) || g.getOpening?.(1) || "");
+                }
               }
             }catch{}
           } else {
@@ -1914,9 +1953,9 @@ fen "${fenPieces}"
     if (oub){
       const g0 = CTX.g();
       const ply = (g0?.ui?.ply ?? 0);
-      ensureOpeningForPly(STATE.activeGameId, ply);
-
-      const live = meta?.openingByPly?.[ply] ? String(meta.openingByPly[ply]).trim() : "";
+      const live = (g0 && typeof g0.getOpening === "function")
+        ? String(g0.getOpening(ply) || "").trim()
+        : "";
       oub.textContent = live || "—";
     }
     const activeId = String(STATE.activeGameId || "");
@@ -2149,31 +2188,6 @@ function parsePriyomesMarkdown(md){
 
   const sideGame = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
 
-  // ----------------------------- Live opening label (by current ply) -----------------------------
-  function ensureOpeningForPly(gameId, ply){
-    if (!gameId) return;
-    const meta = STATE.gamesMeta?.[gameId];
-    if (!meta) return;
-    const p = (typeof ply === "number" ? ply : parseInt(String(ply||"0"),10)) || 0;
-    meta.openingByPly = meta.openingByPly || {};
-    if (meta.openingByPly[p]) return;
-    const g = RUNTIME.games.get(gameId) || ((STATE.activeGameId === gameId) ? CTX.g() : null);
-    if (!g || typeof g.getOpening !== "function") return;
-
-    _idle(async () => {
-      try{
-        const op = await g.getOpening(p);
-        const m = STATE.gamesMeta?.[gameId];
-        if (!m) return;
-        m.openingByPly = m.openingByPly || {};
-        // only set if still missing (avoid races)
-        if (!m.openingByPly[p]) m.openingByPly[p] = String(op || "").trim();
-        if (p === 0 && !m.openingByPly[1] && m.openingByPly[0]) m.openingByPly[1] = m.openingByPly[0];
-        render();
-      }catch{}
-    });
-  }
-
   async function preloadOneManifestPgn(key, url){
     if (!key || !url) return;
     if (RUNTIME.pgnCacheByKey.get(key)?.ready) return;
@@ -2227,6 +2241,10 @@ function parsePriyomesMarkdown(md){
 
   function preloadPgnManifestNonBlocking(){
     try{
+      if (!STATE.openingTablesLoaded){
+        logLine("DBG", `[${new Date().toISOString()}] PGN preload deferred; opening tables not loaded yet`);
+        return;
+      }
       const entries = Object.entries(PGN_MANIFEST || {});
       if (!entries.length) return;
       let idx = 0;
@@ -2500,19 +2518,48 @@ function prepareCqlItems(multiPgnText, sourceKey="", opts=null){
     return items;
   }
 
+  async function warmOpeningsTablesAfterWasm(){
+    const g = createGame({ Event:"Website", Site:"Local", Date:"2026.02.06", Round:"1", White:"White", Black:"Black" });
+    const t0 = performance.now();
+    const iso0 = new Date().toISOString();
+    logLine("OK", `[${iso0}] loadOpeningTables IN`);
+    try{
+      const res = await g.loadOpeningTables?.();
+      const t1 = performance.now();
+      dispatch({ type:"OPENINGS/LOADED" });
+      logLine("OK", `[${new Date().toISOString()}] loadOpeningTables OUT ms=${(t1 - t0).toFixed(1)} size=${Number(res?.size || 0)}`);
+    }catch(e){
+      logLine("ERR", `[${new Date().toISOString()}] loadOpeningTables FAIL ms=${(performance.now() - t0).toFixed(1)} ` + String(e && e.stack ? e.stack : e));
+    }
+  }
+
   // warm-up
   document.addEventListener("DOMContentLoaded", async () => {
-    try {
-      const mod = await import("./wasm/cql_runner.js");
-      if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
-      logLine("OK","Warming wasm pool (2 workers)…");
-      await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
-      logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
-    } catch (e) {
-      logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
-    }
-    // After wasm warm-up (or failure), preload all PGN_MANIFEST PGNs in a non-blocking way (headers only).
-    try{ preloadPgnManifestNonBlocking(); }catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
+    RUNTIME.openingsReadyPromise = (async () => {
+      try{ await warmOpeningsTablesAfterWasm(); }
+      catch(e){ logLine("ERR", `[${new Date().toISOString()}] opening warm-up call failed: ` + String(e && e.stack ? e.stack : e)); }
+      return !!STATE.openingTablesLoaded;
+    })();
+
+    try{ await RUNTIME.openingsReadyPromise; }catch{}
+
+    // After openings are loaded, preload/process study PGNs first.
+    try{ preloadPgnManifestNonBlocking(); }
+    catch(e){ logLine("WARN", `[${new Date().toISOString()}] PGN preload call failed: ` + String(e && e.stack ? e.stack : e)); }
+
+    // Warm wasm only after openings + study preload kick-off.
+    RUNTIME.wasmWarmPromise = (async () => {
+      try {
+        const mod = await import("./wasm/cql_runner.js");
+        if (typeof mod.ensureWarmPool !== "function") throw new Error("ensureWarmPool export not found");
+        logLine("OK","Warming wasm pool (2 workers)…");
+        await mod.ensureWarmPool({ onLog: (line) => logLine("OK", String(line)) });
+        logLine("OK","Wasm pool warm: primary+standby ready (2/2).");
+      } catch (e) {
+        logLine("WARN","Warm-up failed; will warm on demand. " + String(e && e.stack ? e.stack : e));
+      }
+      return true;
+    })();
   });
 
   /* ----------------------------- Priyomes pane (ported) ----------------------------- */
@@ -3680,6 +3727,12 @@ function renderPlayersPane(){
 // seed studies/games from STUDY_MANIFEST PGNs
 (async () => {
   try {
+    const tSeed0 = performance.now();
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED IN openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
+    const openingsReady = await RUNTIME.waitForOpeningsTables();
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED GATE openingTablesLoaded=${openingsReady ? "true" : "false"} waitMs=${(performance.now() - tSeed0).toFixed(1)}`);
+    if (!openingsReady) throw new Error("Opening tables not loaded before boot study seed");
+
     // clear any existing seed (optional, but keeps behavior deterministic)
     STATE.studies.length = 0;
     STATE.gamesMeta = {};
@@ -3707,9 +3760,12 @@ function renderPlayersPane(){
         const h = parseHeaders(pgn);
         const gid = `${studyKey}:${i}:${nowId()}`;
 
+        const tGame0 = performance.now();
+        logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY GAME IN id=${gid} study=${studyKey} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"}`);
         const g = createGame(h);
         g.loadPGN?.(pgn);
         RUNTIME.games.set(gid, g);
+        logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY GAME OUT id=${gid} study=${studyKey} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tGame0).toFixed(1)}`);
 
         const title = h.Event || h.White || `Game ${i + 1}`;
         STATE.gamesMeta[gid] = { id: gid, title };
@@ -3727,13 +3783,16 @@ function renderPlayersPane(){
     STATE.activeGameId = st?.games?.[0] || null;
 
     if (STATE.activeGameId) CTX.setActiveGameToBoard();
+    logLine("DBG", `[${new Date().toISOString()}] BOOT STUDY SEED OUT activeStudyId=${STATE.activeStudyId || ""} activeGameId=${STATE.activeGameId || ""} openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ms=${(performance.now() - tSeed0).toFixed(1)}`);
     render();
   } catch (e) {
+    logLine("ERR", `[${new Date().toISOString()}] BOOT STUDY SEED FAIL openingTablesLoaded=${STATE.openingTablesLoaded ? "true" : "false"} ` + String(e?.stack || e));
     CTX.log("[ERR] STUDY_MANIFEST load failed: " + (e?.stack || e));
     // fallback to old behavior if desired (or just render empty)
     render();
   }
 })();
+
 
 
 
