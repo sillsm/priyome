@@ -129,6 +129,8 @@
     .split{display:grid; grid-template-columns:1fr 1fr; gap:10px}
     .kv{display:grid; grid-template-columns:auto 1fr; gap:8px 10px; align-items:baseline}
     .proofStep{padding:10px 12px; border-radius:12px; background:#101827; border:1px solid var(--line)}
+    .proofStep.clickable{cursor:pointer}
+    .proofStep.active{border-color:#5b87c4; box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
     .muted{color:var(--muted)}
     .footerNote{font-size:12px; color:var(--muted); padding-top:6px}
     @media (max-width: 1180px){
@@ -144,7 +146,7 @@
       <div class="hd">
         <div>
           <h2>Theorem setup</h2>
-          <div class="small">Position axiom → observations → related SAN moves → terminal material claim</div>
+          <div class="small">Position axiom → first-mover observations → related SAN moves → human reply → terminal material claim</div>
         </div>
       </div>
       <div class="bd stack">
@@ -171,8 +173,8 @@
         <div class="status" id="theoremStatus"></div>
         <div class="status">
           <div><strong>Theorem form</strong></div>
-          <div class="small mono">P₀ ∧ observations₀ ⟶ SAN₁ ⟶ P₁ ∧ observations₁ ⟶ SAN₂ ⟶ … ⟶ Pₙ</div>
-          <div class="small">Production rule: a move is allowed when it is related to at least one selected observation in the current position.</div>
+          <div class="small mono">P₀ ∧ observations(root side) ⟶ SAN(root side) ⟶ human best reply ⟶ … ⟶ Pₙ</div>
+          <div class="small">Production rule: only the original side to move gets observation-filtered tactical moves; the opposing side is entered manually for now.</div>
         </div>
         <div>
           <label>Proof line</label>
@@ -208,7 +210,7 @@
       <div class="hd">
         <div>
           <h2>Observations and related moves</h2>
-          <div class="small">Select observations, then choose from the restricted legal moves.</div>
+          <div class="small">On the root side's turns, select observations, then choose from the restricted legal moves.</div>
         </div>
       </div>
       <div class="bd stack">
@@ -221,7 +223,7 @@
           <div class="moveList" id="moveList"></div>
         </div>
         <div class="footerNote">
-          This is a bounded, ergonomic tactical prover. It does not establish a full adversarial minimax proof; it constructs short derivation lines from feature observations.
+          This is a bounded, ergonomic tactical prover. It filters tactical candidate moves only for the original side to move; the opponent's best reply is entered manually for now.
         </div>
       </div>
     </section>
@@ -251,6 +253,7 @@
     const theoremLine = [];
     let rootFen = '';
     let rootSide = 'w';
+    let viewPly = null;
 
     function FR(i){ return [i % 8, 7 - Math.floor(i / 8)]; }
     function idx(f,r){ return (7-r) * 8 + f; }
@@ -382,6 +385,40 @@
       return result;
     }
 
+    function moveResult(g, move){
+      const after = createGame();
+      after.loadFEN(g.exportFEN());
+      const ok = after.makeMoveUCI(move.uci);
+      if (!ok) return null;
+      if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
+      return after;
+    }
+
+    function sameLineNoBlock(g, a, b, c){
+      const dir1 = lineDirection(a, b);
+      const dir2 = lineDirection(b, c);
+      if (!dir1 || !dir2 || dir1[0] !== dir2[0] || dir1[1] !== dir2[1]) return false;
+
+      let [f,r] = FR(a);
+      f += dir1[0]; r += dir1[1];
+      while (inB(f, r)) {
+        const s = idx(f, r);
+        if (s === b) break;
+        if (g.state.board[s]) return false;
+        f += dir1[0]; r += dir1[1];
+      }
+
+      [f,r] = FR(b);
+      f += dir2[0]; r += dir2[1];
+      while (inB(f, r)) {
+        const s = idx(f, r);
+        if (s === c) return true;
+        if (g.state.board[s]) return false;
+        f += dir2[0]; r += dir2[1];
+      }
+      return false;
+    }
+
     function moveTagsForCurrentPosition(g = game){
       const side = g.state.side;
       const enemy = other(side);
@@ -397,7 +434,9 @@
         const ds = defendersOf(g, i, enemy);
         if (ds.length === 0 && p.type !== 'k') looseTargets.push(i);
         const mob = g._legalMovesFrom(i, enemy)?.length || 0;
-        if (mob <= Number(mobilityThresholdInput.value || 2) && p.type !== 'k') restrictedTargets.push(i);
+        if (mob <= Number(mobilityThresholdInput.value || 2) && p.type !== 'k') {
+          restrictedTargets.push({ square:i, mobility:mob, piece:p });
+        }
       }
 
       for (let i = 0; i < 64; i++) {
@@ -410,75 +449,57 @@
           if (occ && occ.color === enemy && occ.type !== 'k') defended.push(sq);
         }
         const uniq = [...new Set(defended)];
-        if (uniq.length >= 2) overworkedTargets.push({ guard:i, guarded:uniq });
+        if (uniq.length >= 2) overworkedTargets.push({ guard:i, guarded:uniq, piece:p });
       }
 
       return legal.map(move => {
         const tags = [];
-        if (move.givesCheck) tags.push({ type:'check', label:`Check on ${move.san}` });
+        const after = moveResult(g, move);
+        if (!after) return { ...move, tags };
+
+        if (move.givesCheck) {
+          tags.push({ type:'check', label:`Check on ${move.san}` });
+        }
 
         for (const pair of alignedPairs) {
-          const after = createGame();
-          after.loadFEN(g.exportFEN());
-          after.makeMoveUCI(move.uci);
-          if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
-          const attacksFront = attackedBy(after, pair.front, side);
-          const attacksRear = attackedBy(after, pair.rear, side);
-          if (attacksFront || attacksRear) {
+          const movedPiece = after.state.board[move.to];
+          if (!movedPiece || movedPiece.color !== side) continue;
+          if (!['q','r','b'].includes(movedPiece.type)) continue;
+          if (sameLineNoBlock(after, move.to, pair.front, pair.rear)) {
             tags.push({
               type:'alignment',
-              label:`Exploits alignment ${pieceLetter(pair.frontPiece)}${sqName(pair.front)}–${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`
+              label:`Join alignment on ${pieceLetter(pair.frontPiece)}${sqName(pair.front)}–${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`
             });
-            break;
           }
         }
 
         for (const sq of looseTargets) {
-          const after = createGame();
-          after.loadFEN(g.exportFEN());
-          after.makeMoveUCI(move.uci);
-          if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
-          const occ = after.state.board[sq];
-          if (!occ || occ.color === side || attackedBy(after, sq, side)) {
-            const p = g.state.board[sq];
-            tags.push({ type:'loose', label:`Targets loose ${pieceLetter(p)}${sqName(sq)}` });
-            break;
+          const target = g.state.board[sq];
+          if (!target) continue;
+          if (move.to === sq || attackedBy(after, sq, side)) {
+            tags.push({ type:'loose', label:`Attack loose ${pieceLetter(target)}${sqName(sq)}` });
           }
         }
 
-        for (const sq of restrictedTargets) {
-          const after = createGame();
-          after.loadFEN(g.exportFEN());
-          after.makeMoveUCI(move.uci);
-          if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
-          const beforeMob = g.state.board[sq] ? (g._legalMovesFrom(sq, enemy)?.length || 0) : null;
+        for (const info of restrictedTargets) {
+          const sq = info.square;
           const afterPiece = after.state.board[sq];
           const afterMob = afterPiece ? (after._legalMovesFrom(sq, enemy)?.length || 0) : null;
-          if (!afterPiece || (beforeMob != null && afterMob != null && afterMob <= beforeMob)) {
-            const p = g.state.board[sq];
-            tags.push({ type:'mobility', label:`Presses restricted ${pieceLetter(p)}${sqName(sq)}` });
-            break;
+          if (move.to === sq || attackedBy(after, sq, side) || !afterPiece || (afterMob != null && afterMob < info.mobility)) {
+            tags.push({ type:'mobility', label:`Press restricted ${pieceLetter(info.piece)}${sqName(sq)}` });
           }
         }
 
         for (const ow of overworkedTargets) {
-          const after = createGame();
-          after.loadFEN(g.exportFEN());
-          after.makeMoveUCI(move.uci);
-          if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
-          const guardGone = !after.state.board[ow.guard] || after.state.board[ow.guard].color === side;
-          const losesCoverage = ow.guarded.some(sq => {
-            const occ = after.state.board[sq];
-            return occ && occ.color === enemy && defendersOf(after, sq, enemy).length === 0;
-          });
-          if (guardGone || losesCoverage || attackedBy(after, ow.guard, side)) {
-            const gp = g.state.board[ow.guard];
-            tags.push({ type:'overworked', label:`Overloads ${pieceLetter(gp)}${sqName(ow.guard)}` });
-            break;
+          if (move.to === ow.guard || ow.guarded.includes(move.to) || attackedBy(after, ow.guard, side)) {
+            tags.push({ type:'overworked', label:`Distract ${pieceLetter(ow.piece)}${sqName(ow.guard)}` });
           }
         }
 
-        return { ...move, tags };
+        return {
+          ...move,
+          tags:[...new Map(tags.map(t => [t.type + '|' + t.label, t])).values()]
+        };
       });
     }
 
@@ -565,10 +586,30 @@
     }
 
     function renderObservationsAndMoves(){
+      if (game.state.side !== rootSide) {
+        selectedObs.clear();
+        obsList.innerHTML = '<div class="small">Opponent to move. Enter the best reply manually for now; observation filtering resumes on the original side&#39;s next turn.</div>';
+        const moves = allLegalMoves(game, game.state.side).sort((a,b) => a.san.localeCompare(b.san));
+        moveList.innerHTML = '';
+        for (const move of moves) {
+          const div = document.createElement('div');
+          div.className = 'card';
+          div.innerHTML = `
+            <button class="moveBtn">
+              <div><strong>${escapeHtml(move.san)}</strong> <span class="mono muted">${move.uci}</span></div>
+              <div class="small">Manual opponent reply</div>
+            </button>`;
+          div.querySelector('button').onclick = () => applyProofMove({ ...move, reasons:['Manual opponent reply'] });
+          moveList.appendChild(div);
+        }
+        selectionSummaryEl.textContent = 'Manual opponent reply';
+        return;
+      }
+
       const obs = observationsForCurrentPosition();
       const selectedExisting = new Set(obs.map(o => o.id));
       for (const id of [...selectedObs]) if (!selectedExisting.has(id)) selectedObs.delete(id);
-
+      
       obsList.innerHTML = '';
       if (!obs.length) {
         obsList.innerHTML = '<div class="small">No feature observations found for this position under the current heuristics.</div>';
@@ -617,7 +658,27 @@
       selectionSummaryEl.textContent = selectedObs.size ? [...selectedObs].map(id => id.split('|')[1]).join(' · ') : 'None selected';
     }
 
+    function syncGameToView(){
+      game.loadFEN(rootFen || fenInput.value.trim());
+      const limit = viewPly == null ? theoremLine.length : Math.max(0, Math.min(viewPly, theoremLine.length));
+      for (let i = 0; i < limit; i++) {
+        const step = theoremLine[i];
+        game.makeMoveUCI(step.uci);
+        if (game.state.pendingPromotion) game.resolvePendingPromotion('Q');
+      }
+    }
+
+    function jumpToPly(ply){
+      viewPly = ply;
+      selectedObs.clear();
+      syncGameToView();
+      render();
+    }
+
     function applyProofMove(move){
+      if (viewPly != null && viewPly < theoremLine.length) theoremLine.splice(viewPly);
+      viewPly = null;
+      syncGameToView();
       const applied = game.makeMoveUCI(move.uci);
       if (!applied) return;
       if (game.state.pendingPromotion) game.resolvePendingPromotion('Q');
@@ -634,9 +695,10 @@
     }
 
     function resetLine(){
-      game.loadFEN(rootFen || fenInput.value.trim());
       theoremLine.length = 0;
+      viewPly = null;
       selectedObs.clear();
+      syncGameToView();
       render();
     }
 
@@ -646,24 +708,31 @@
       rootFen = game.exportFEN();
       rootSide = game.state.side;
       theoremLine.length = 0;
+      viewPly = null;
       selectedObs.clear();
       render();
     }
 
     function theoremVerdict(){
-      const lead = materialLeadForRootSide(game);
+      const end = createGame();
+      end.loadFEN(theoremLine.length ? theoremLine[theoremLine.length - 1].toFen : rootFen);
+      const lead = materialLeadForRootSide(end);
       const plyLimit = Number(plyLimitInput.value || 3);
-      if (lead > 0) return { cls:'good', text:`Theorem goal currently holds: ${prettySide(rootSide)} is ahead by ${lead} point${lead === 1 ? '' : 's'}.` };
-      if (theoremLine.length >= plyLimit) return { cls:'bad', text:`Ply bound reached without proving a material lead for ${prettySide(rootSide)}.` };
-      return { cls:'warn', text:`Not yet proved. ${prettySide(rootSide)} needs a positive material lead within ${plyLimit} plies.` };
+      if (lead > 0) return { cls:'good', terminalLead: lead, text:`Theorem goal currently holds: ${prettySide(rootSide)} is ahead by ${lead} point${lead === 1 ? '' : 's'} at the end of the line.` };
+      if (theoremLine.length >= plyLimit) return { cls:'bad', terminalLead: lead, text:`Ply bound reached without proving a material lead for ${prettySide(rootSide)}.` };
+      return { cls:'warn', terminalLead: lead, text:`Not yet proved. ${prettySide(rootSide)} needs a positive material lead within ${plyLimit} plies.` };
     }
 
     function renderProofList(){
       proofList.innerHTML = '';
+      const viewed = viewPly == null ? theoremLine.length : viewPly;
+
       const axiom = document.createElement('div');
-      axiom.className = 'proofStep';
-      axiom.innerHTML = `<strong>Axiom P₀</strong><div class="mono small">${escapeHtml(rootFen)}</div><div class="small">Initial side to move: ${prettySide(rootSide)}</div>`;
+      axiom.className = 'proofStep clickable' + (viewed === 0 ? ' active' : '');
+      axiom.innerHTML = `<strong>Axiom P₀</strong><div class="mono small">${escapeHtml(rootFen)}</div><div class="small">Initial side to move: ${prettySide(rootSide)} · click to view</div>`;
+      axiom.onclick = () => jumpToPly(0);
       proofList.appendChild(axiom);
+
       if (!theoremLine.length) {
         const empty = document.createElement('div');
         empty.className = 'proofStep';
@@ -671,13 +740,16 @@
         proofList.appendChild(empty);
         return;
       }
+
       for (const step of theoremLine) {
         const div = document.createElement('div');
-        div.className = 'proofStep';
+        div.className = 'proofStep clickable' + (viewed === step.ply ? ' active' : '');
         div.innerHTML = `
           <div><strong>Ply ${step.ply}: ${escapeHtml(step.san)}</strong> <span class="mono muted">${escapeHtml(step.uci)}</span></div>
           <div class="small">Production rule witness: ${escapeHtml((step.reasons || []).join(' · ') || 'related move')}</div>
-          <div class="small mono">${escapeHtml(step.toFen)}</div>`;
+          <div class="small mono">${escapeHtml(step.toFen)}</div>
+          <div class="small muted">Click to view this board position</div>`;
+        div.onclick = () => jumpToPly(step.ply);
         proofList.appendChild(div);
       }
     }
@@ -687,8 +759,8 @@
       const mat = materialTotals(game);
       theoremStatus.innerHTML = `
         <div class="${verdict.cls}"><strong>${escapeHtml(verdict.text)}</strong></div>
-        <div class="small">Current ply: ${theoremLine.length} / ${Number(plyLimitInput.value || 3)}</div>
-        <div class="small">Material: ${formatMaterial(mat)} · Root-side lead: ${materialLeadForRootSide(game)}</div>`;
+        <div class="small">Current board view: ply ${viewPly == null ? theoremLine.length : viewPly} · Line length: ${theoremLine.length} / ${Number(plyLimitInput.value || 3)}</div>
+        <div class="small">Board material: ${formatMaterial(mat)} · Terminal root-side lead: ${verdict.terminalLead}</div>`;
       boardMeta.textContent = `Side to move: ${prettySide(game.state.side)}`;
       currentFenEl.textContent = game.exportFEN();
       materialLineEl.textContent = formatMaterial(mat);
@@ -728,7 +800,7 @@
         if (depth >= maxPlies) return null;
 
         const obs = observationsForFen(g);
-        const moves = relatedMovesForFen(g, obs);
+        const moves = g.state.side === startSide ? relatedMovesForFen(g, obs) : allLegalMoves(g, g.state.side).map(m => ({ ...m, reasons:['Manual opponent reply'] }));
         for (const move of moves) {
           const ng = createGame();
           ng.loadFEN(fen);
@@ -783,11 +855,11 @@
     document.getElementById('resetLineBtn').onclick = resetLine;
     document.getElementById('undoBtn').onclick = () => {
       if (!theoremLine.length) return;
-      theoremLine.pop();
-      if (!game.prevMove()) {
-        game.loadFEN(rootFen);
-      }
+      const cut = viewPly == null ? theoremLine.length - 1 : Math.max(0, viewPly - 1);
+      theoremLine.splice(cut);
+      viewPly = null;
       selectedObs.clear();
+      syncGameToView();
       render();
     };
     document.getElementById('flipBtn').onclick = () => game.toggleFlip();
