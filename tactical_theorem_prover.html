@@ -131,6 +131,13 @@
     .proofStep{padding:10px 12px; border-radius:12px; background:#101827; border:1px solid var(--line)}
     .proofStep.clickable{cursor:pointer}
     .proofStep.active{border-color:#5b87c4; box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
+    details.fold{
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#0b1220;
+      padding:10px 12px;
+    }
+    details.fold summary{cursor:pointer; color:var(--muted)}
     .muted{color:var(--muted)}
     .footerNote{font-size:12px; color:var(--muted); padding-top:6px}
     @media (max-width: 1180px){
@@ -419,6 +426,18 @@
       return false;
     }
 
+    function pieceAttacksSquare(g, fromIdx, sq){
+      const piece = g.state.board[fromIdx];
+      if (!piece) return false;
+      return pieceAttackSquares(g, fromIdx, piece).includes(sq);
+    }
+
+    function moveAttacksSquare(after, move, sq, side){
+      const movedPiece = after.state.board[move.to];
+      if (!movedPiece || movedPiece.color !== side) return false;
+      return pieceAttacksSquare(after, move.to, sq);
+    }
+
     function moveTagsForCurrentPosition(g = game){
       const side = g.state.side;
       const enemy = other(side);
@@ -458,41 +477,75 @@
         if (!after) return { ...move, tags };
 
         if (move.givesCheck) {
-          tags.push({ type:'check', label:`Check on ${move.san}` });
+          tags.push({
+            type:'check',
+            obsId:`check|${move.uci}`,
+            label:`Check on ${move.san}`
+          });
         }
 
         for (const pair of alignedPairs) {
+          const obsId = `alignment|${pair.front}-${pair.rear}`;
           const movedPiece = after.state.board[move.to];
-          if (!movedPiece || movedPiece.color !== side) continue;
-          if (!['q','r','b'].includes(movedPiece.type)) continue;
-          if (sameLineNoBlock(after, move.to, pair.front, pair.rear)) {
+          const coaligns =
+            movedPiece &&
+            movedPiece.color === side &&
+            ['q','r','b'].includes(movedPiece.type) &&
+            sameLineNoBlock(after, move.to, pair.front, pair.rear);
+          const attacksFront = moveAttacksSquare(after, move, pair.front, side);
+          const attacksRear = moveAttacksSquare(after, move, pair.rear, side);
+          const capturesFront = move.to === pair.front;
+          const capturesRear = move.to === pair.rear;
+          if (coaligns || attacksFront || attacksRear || capturesFront || capturesRear) {
             tags.push({
               type:'alignment',
-              label:`Join alignment on ${pieceLetter(pair.frontPiece)}${sqName(pair.front)}–${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`
+              obsId,
+              label:`Exploit alignment ${pieceLetter(pair.frontPiece)}${sqName(pair.front)}–${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`
             });
           }
         }
 
         for (const sq of looseTargets) {
+          const obsId = `loose|${sq}`;
           const target = g.state.board[sq];
           if (!target) continue;
-          if (move.to === sq || attackedBy(after, sq, side)) {
-            tags.push({ type:'loose', label:`Attack loose ${pieceLetter(target)}${sqName(sq)}` });
+          if (move.to === sq || moveAttacksSquare(after, move, sq, side)) {
+            tags.push({
+              type:'loose',
+              obsId,
+              label:`Attack loose ${pieceLetter(target)}${sqName(sq)}`
+            });
           }
         }
 
         for (const info of restrictedTargets) {
+          const obsId = `mobility|${info.square}`;
           const sq = info.square;
           const afterPiece = after.state.board[sq];
           const afterMob = afterPiece ? (after._legalMovesFrom(sq, enemy)?.length || 0) : null;
-          if (move.to === sq || attackedBy(after, sq, side) || !afterPiece || (afterMob != null && afterMob < info.mobility)) {
-            tags.push({ type:'mobility', label:`Press restricted ${pieceLetter(info.piece)}${sqName(sq)}` });
+          const attacksTarget = afterPiece && moveAttacksSquare(after, move, sq, side);
+          const reducesMobility = afterPiece && afterMob != null && afterMob < info.mobility;
+          if (move.to === sq || attacksTarget || reducesMobility) {
+            tags.push({
+              type:'mobility',
+              obsId,
+              label:`Press restricted ${pieceLetter(info.piece)}${sqName(sq)}`
+            });
           }
         }
 
         for (const ow of overworkedTargets) {
-          if (move.to === ow.guard || ow.guarded.includes(move.to) || attackedBy(after, ow.guard, side)) {
-            tags.push({ type:'overworked', label:`Distract ${pieceLetter(ow.piece)}${sqName(ow.guard)}` });
+          const obsId = `overworked|${ow.guard}|${ow.guarded.join(',')}`;
+          const attacksGuard = moveAttacksSquare(after, move, ow.guard, side);
+          const attacksGuarded = ow.guarded.some(sq => moveAttacksSquare(after, move, sq, side));
+          const capturesGuard = move.to === ow.guard;
+          const capturesGuarded = ow.guarded.includes(move.to);
+          if (capturesGuard || capturesGuarded || attacksGuard || attacksGuarded) {
+            tags.push({
+              type:'overworked',
+              obsId,
+              label:`Distract ${pieceLetter(ow.piece)}${sqName(ow.guard)}`
+            });
           }
         }
 
@@ -507,15 +560,16 @@
       const side = game.state.side;
       const enemy = other(side);
       const legalWithTags = moveTagsForCurrentPosition(game);
-      const map = new Map();
+      const obs = [];
+
       for (const move of legalWithTags) {
-        for (const tag of move.tags) {
-          const key = `${tag.type}|${tag.label}`;
-          if (!map.has(key)) {
-            map.set(key, { id:key, type:tag.type, label:tag.label, moves:[] });
-          }
-          map.get(key).moves.push(move);
-        }
+        if (!move.givesCheck) continue;
+        obs.push({
+          id:`check|${move.uci}`,
+          type:'check',
+          label:`Check on ${move.san}`,
+          moves:[move]
+        });
       }
 
       for (let i = 0; i < 64; i++) {
@@ -523,49 +577,57 @@
         if (!p || p.color !== enemy || p.type === 'k') continue;
         const ds = defendersOf(game, i, enemy);
         if (ds.length === 0) {
-          const key = `loose|Loose ${pieceLetter(p)}${sqName(i)}`;
-          if (!map.has(key)) map.set(key, { id:key, type:'loose', label:`Loose ${pieceLetter(p)}${sqName(i)}`, moves:legalWithTags.filter(m => m.tags.some(t => t.type === 'loose' && t.label.includes(sqName(i)))) });
+          const id = `loose|${i}`;
+          obs.push({
+            id,
+            type:'loose',
+            label:`Loose ${pieceLetter(p)}${sqName(i)}`,
+            moves:legalWithTags.filter(m => m.tags.some(t => t.obsId === id))
+          });
         }
         const mob = game._legalMovesFrom(i, enemy)?.length || 0;
         if (mob <= Number(mobilityThresholdInput.value || 2)) {
-          const key = `mobility|Restricted ${pieceLetter(p)}${sqName(i)} has ${mob} legal moves`;
-          if (!map.has(key)) map.set(key, { id:key, type:'mobility', label:`Restricted ${pieceLetter(p)}${sqName(i)} has ${mob} legal moves`, moves:legalWithTags.filter(m => m.tags.some(t => t.type === 'mobility')) });
+          const id = `mobility|${i}`;
+          obs.push({
+            id,
+            type:'mobility',
+            label:`Restricted ${pieceLetter(p)}${sqName(i)} has ${mob} legal moves`,
+            moves:legalWithTags.filter(m => m.tags.some(t => t.obsId === id))
+          });
         }
       }
 
       const alignedPairs = findAlignedEnemyPairs(game, side);
       for (const pair of alignedPairs) {
-        const key = `alignment|Enemy alignment ${pieceLetter(pair.frontPiece)}${sqName(pair.front)} in front of ${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            id:key,
-            type:'alignment',
-            label:`Enemy alignment ${pieceLetter(pair.frontPiece)}${sqName(pair.front)} in front of ${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`,
-            moves:legalWithTags.filter(m => m.tags.some(t => t.type === 'alignment'))
-          });
-        }
+        const id = `alignment|${pair.front}-${pair.rear}`;
+        obs.push({
+          id,
+          type:'alignment',
+          label:`Enemy alignment ${pieceLetter(pair.frontPiece)}${sqName(pair.front)} in front of ${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`,
+          moves:legalWithTags.filter(m => m.tags.some(t => t.obsId === id))
+        });
       }
 
       for (let i = 0; i < 64; i++) {
         const p = game.state.board[i];
         if (!p || p.color !== enemy) continue;
-        const defended = [];
-        const attacks = pieceAttackSquares(game, i, p);
-        for (const sq of attacks) {
+        const uniq = [...new Set(pieceAttackSquares(game, i, p).filter(sq => {
           const occ = game.state.board[sq];
-          if (occ && occ.color === enemy && occ.type !== 'k') defended.push(sq);
-        }
-        const uniq = [...new Set(defended)];
+          return occ && occ.color === enemy && occ.type !== 'k';
+        }))];
         if (uniq.length >= 2) {
           const targets = uniq.slice(0,3).map(sq => sqName(sq)).join(', ');
-          const key = `overworked|${pieceLetter(p)}${sqName(i)} guards ${targets}`;
-          if (!map.has(key)) {
-            map.set(key, { id:key, type:'overworked', label:`${pieceLetter(p)}${sqName(i)} guards ${targets}`, moves:legalWithTags.filter(m => m.tags.some(t => t.type === 'overworked')) });
-          }
+          const id = `overworked|${i}|${uniq.join(',')}`;
+          obs.push({
+            id,
+            type:'overworked',
+            label:`${pieceLetter(p)}${sqName(i)} guards ${targets}`,
+            moves:legalWithTags.filter(m => m.tags.some(t => t.obsId === id))
+          });
         }
       }
 
-      return [...map.values()].sort((a,b) => {
+      return obs.sort((a,b) => {
         const order = ['check','alignment','loose','mobility','overworked'];
         return order.indexOf(a.type) - order.indexOf(b.type) || a.label.localeCompare(b.label);
       });
@@ -609,30 +671,59 @@
       const obs = observationsForCurrentPosition();
       const selectedExisting = new Set(obs.map(o => o.id));
       for (const id of [...selectedObs]) if (!selectedExisting.has(id)) selectedObs.delete(id);
-      
+
+      const workable = obs.filter(o => o.moves.length > 0);
+      const unworkable = obs.filter(o => o.moves.length === 0);
+
       obsList.innerHTML = '';
-      if (!obs.length) {
+      if (!workable.length && !unworkable.length) {
         obsList.innerHTML = '<div class="small">No feature observations found for this position under the current heuristics.</div>';
       }
-      for (const ob of obs) {
-        const div = document.createElement('div');
-        div.className = 'card' + (selectedObs.has(ob.id) ? ' selected' : '');
-        div.innerHTML = `
-          <div class="row" style="justify-content:space-between; align-items:flex-start">
-            <div>
-              <div><strong>${escapeHtml(ob.label)}</strong></div>
-              <div class="small">${ob.moves.length} related legal move${ob.moves.length === 1 ? '' : 's'}</div>
+
+      for (const ob of workable) {
+          const div = document.createElement('div');
+          div.className = 'card' + (selectedObs.has(ob.id) ? ' selected' : '');
+          div.innerHTML = `
+            <div class="row" style="justify-content:space-between; align-items:flex-start">
+              <div>
+                <div><strong>${escapeHtml(ob.label)}</strong></div>
+                <div class="small">${ob.moves.length} related legal move${ob.moves.length === 1 ? '' : 's'}</div>
+              </div>
+              <span class="chip ${ob.type}">${ob.type}</span>
             </div>
-            <span class="chip ${ob.type}">${ob.type}</span>
-          </div>
-          <div class="row">
-            <button>${selectedObs.has(ob.id) ? 'Unselect' : 'Select'}</button>
-          </div>`;
-        div.querySelector('button').onclick = () => {
-          if (selectedObs.has(ob.id)) selectedObs.delete(ob.id); else selectedObs.add(ob.id);
-          render();
-        };
-        obsList.appendChild(div);
+            <div class="row">
+              <button>${selectedObs.has(ob.id) ? 'Unselect' : 'Select'}</button>
+            </div>`;
+          div.querySelector('button').onclick = () => {
+            if (selectedObs.has(ob.id)) selectedObs.delete(ob.id); else selectedObs.add(ob.id);
+            render();
+          };
+          obsList.appendChild(div);
+      }
+
+      if (unworkable.length) {
+        const wrap = document.createElement('details');
+        wrap.className = 'fold';
+        wrap.innerHTML = `<summary>${unworkable.length} unworkable idea${unworkable.length === 1 ? '' : 's'} in this position</summary>`;
+        const body = document.createElement('div');
+        body.style.display = 'grid';
+        body.style.gap = '10px';
+        body.style.marginTop = '10px';
+        for (const ob of unworkable) {
+          const div = document.createElement('div');
+          div.className = 'card';
+          div.innerHTML = `
+            <div class="row" style="justify-content:space-between; align-items:flex-start">
+              <div>
+                <div><strong>${escapeHtml(ob.label)}</strong></div>
+                <div class="small">0 related legal moves</div>
+              </div>
+              <span class="chip ${ob.type}">${ob.type}</span>
+            </div>`;
+          body.appendChild(div);
+        }
+        wrap.appendChild(body);
+        obsList.appendChild(wrap);
       }
 
       const moves = filteredMoves(obs);
