@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scratchchess Tactical Theorem Prover</title>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --panel2:#0b1220;
+      --line:#243041;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --accent:#60a5fa;
+      --good:#34d399;
+      --warn:#fbbf24;
+      --bad:#f87171;
+      --chip:#1f2937;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      color:var(--text);
+      background:linear-gradient(180deg,#0b1020,#0f172a 35%,#0b1220);
+    }
+    .wrap{
+      max-width:1500px;
+      margin:0 auto;
+      padding:18px;
+      display:grid;
+      grid-template-columns:420px minmax(360px,560px) 1fr;
+      gap:16px;
+      min-height:100vh;
+    }
+    .panel{
+      background:rgba(17,24,39,.96);
+      border:1px solid var(--line);
+      border-radius:16px;
+      box-shadow:0 8px 30px rgba(0,0,0,.28);
+      overflow:hidden;
+    }
+    .panel h2,.panel h3{margin:0}
+    .hd{
+      padding:14px 16px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      background:rgba(255,255,255,.02);
+    }
+    .bd{padding:14px 16px}
+    .stack{display:grid; gap:12px}
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .row > *{min-width:0}
+    label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
+    textarea,input,select,button{
+      font:inherit;
+      border-radius:10px;
+      border:1px solid #334155;
+      background:#0b1220;
+      color:var(--text);
+    }
+    textarea,input,select{width:100%; padding:10px 12px}
+    textarea{min-height:88px; resize:vertical}
+    button{
+      padding:10px 12px;
+      cursor:pointer;
+      background:#132033;
+      transition:.15s ease;
+    }
+    button:hover{border-color:#4b6b91; background:#17253c}
+    button.primary{background:#17365d; border-color:#315b8e}
+    button.primary:hover{background:#1d4678}
+    button.ghost{background:transparent}
+    button.danger{background:#3b1620; border-color:#7f1d1d}
+    .small{font-size:12px; color:var(--muted)}
+    .boardWrap{padding:14px; display:grid; gap:10px; justify-items:center}
+    #board{width:min(100%,520px); aspect-ratio:1}
+    .status{
+      padding:12px 14px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#0b1220;
+      display:grid;
+      gap:6px;
+    }
+    .good{color:var(--good)}
+    .warn{color:var(--warn)}
+    .bad{color:var(--bad)}
+    .obsList,.moveList,.proofList{
+      display:grid;
+      gap:10px;
+      max-height:calc(100vh - 240px);
+      overflow:auto;
+      padding-right:4px;
+    }
+    .card{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:12px;
+      background:#0b1220;
+      display:grid;
+      gap:8px;
+    }
+    .card.selected{border-color:#5b87c4; box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
+    .chipRow{display:flex; gap:6px; flex-wrap:wrap}
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      border:1px solid #334155;
+      background:var(--chip);
+      color:#dbeafe;
+      border-radius:999px;
+      padding:4px 9px;
+      font-size:12px;
+    }
+    .chip.check{color:#fca5a5}
+    .chip.alignment{color:#fcd34d}
+    .chip.loose{color:#93c5fd}
+    .chip.mobility{color:#c4b5fd}
+    .chip.overworked{color:#6ee7b7}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .moveBtn{width:100%; text-align:left; display:grid; gap:5px}
+    .split{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+    .kv{display:grid; grid-template-columns:auto 1fr; gap:8px 10px; align-items:baseline}
+    .proofStep{padding:10px 12px; border-radius:12px; background:#101827; border:1px solid var(--line)}
+    .muted{color:var(--muted)}
+    .footerNote{font-size:12px; color:var(--muted); padding-top:6px}
+    @media (max-width: 1180px){
+      .wrap{grid-template-columns:1fr}
+      .obsList,.moveList,.proofList{max-height:none}
+      #board{width:min(100%,620px)}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="panel">
+      <div class="hd">
+        <div>
+          <h2>Theorem setup</h2>
+          <div class="small">Position axiom → observations → related SAN moves → terminal material claim</div>
+        </div>
+      </div>
+      <div class="bd stack">
+        <div>
+          <label for="fenInput">Initial FEN</label>
+          <textarea id="fenInput">r2q1rk1/ppp2ppp/2n2n2/3P4/2B1P1b1/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 1</textarea>
+        </div>
+        <div class="split">
+          <div>
+            <label for="plyLimit">Ply limit</label>
+            <input id="plyLimit" type="number" min="1" max="8" value="3" />
+          </div>
+          <div>
+            <label for="mobilityThreshold">Restricted mobility threshold</label>
+            <input id="mobilityThreshold" type="number" min="0" max="8" value="2" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="loadFenBtn" class="primary">Load FEN</button>
+          <button id="resetLineBtn">Reset proof line</button>
+          <button id="undoBtn">Undo ply</button>
+          <button id="searchBtn">Auto-search</button>
+        </div>
+        <div class="status" id="theoremStatus"></div>
+        <div class="status">
+          <div><strong>Theorem form</strong></div>
+          <div class="small mono">P₀ ∧ observations₀ ⟶ SAN₁ ⟶ P₁ ∧ observations₁ ⟶ SAN₂ ⟶ … ⟶ Pₙ</div>
+          <div class="small">Production rule: a move is allowed when it is related to at least one selected observation in the current position.</div>
+        </div>
+        <div>
+          <label>Proof line</label>
+          <div class="proofList" id="proofList"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="hd">
+        <div>
+          <h2>Board</h2>
+          <div class="small" id="boardMeta">Side to move: —</div>
+        </div>
+      </div>
+      <div class="boardWrap">
+        <div id="board"></div>
+        <div class="split" style="width:min(100%,520px)">
+          <button id="flipBtn">Flip board</button>
+          <button id="copyFenBtn">Copy current FEN</button>
+        </div>
+        <div class="status" style="width:min(100%,520px)">
+          <div class="kv">
+            <div class="muted">Current FEN</div><div class="mono" id="currentFen"></div>
+            <div class="muted">Material</div><div id="materialLine"></div>
+            <div class="muted">Observation filter</div><div id="selectionSummary"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="hd">
+        <div>
+          <h2>Observations and related moves</h2>
+          <div class="small">Select observations, then choose from the restricted legal moves.</div>
+        </div>
+      </div>
+      <div class="bd stack">
+        <div>
+          <label>Observations in the current position</label>
+          <div class="obsList" id="obsList"></div>
+        </div>
+        <div>
+          <label>Related legal moves</label>
+          <div class="moveList" id="moveList"></div>
+        </div>
+        <div class="footerNote">
+          This is a bounded, ergonomic tactical prover. It does not establish a full adversarial minimax proof; it constructs short derivation lines from feature observations.
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { createGame, BoardView } from './scratchchess (7).js';
+
+    const fenInput = document.getElementById('fenInput');
+    const plyLimitInput = document.getElementById('plyLimit');
+    const mobilityThresholdInput = document.getElementById('mobilityThreshold');
+    const theoremStatus = document.getElementById('theoremStatus');
+    const proofList = document.getElementById('proofList');
+    const obsList = document.getElementById('obsList');
+    const moveList = document.getElementById('moveList');
+    const boardMeta = document.getElementById('boardMeta');
+    const currentFenEl = document.getElementById('currentFen');
+    const materialLineEl = document.getElementById('materialLine');
+    const selectionSummaryEl = document.getElementById('selectionSummary');
+
+    const game = createGame();
+    const board = new BoardView(document.getElementById('board'), game, { minSizePx: 320 });
+
+    const values = { p:1, n:3, b:3, r:5, q:9, k:0 };
+    const files = 'abcdefgh';
+    const selectedObs = new Set();
+    const theoremLine = [];
+    let rootFen = '';
+    let rootSide = 'w';
+
+    function FR(i){ return [i % 8, 7 - Math.floor(i / 8)]; }
+    function idx(f,r){ return (7-r) * 8 + f; }
+    function inB(f,r){ return f >= 0 && f < 8 && r >= 0 && r < 8; }
+    function sqName(i){ const [f,r] = FR(i); return files[f] + (r+1); }
+    function other(c){ return c === 'w' ? 'b' : 'w'; }
+    function pieceLetter(piece){ return piece.color === 'w' ? piece.type.toUpperCase() : piece.type; }
+    function prettySide(c){ return c === 'w' ? 'White' : 'Black'; }
+
+    function cloneGameFromCurrent(){
+      const g = createGame();
+      g.loadFEN(game.exportFEN());
+      return g;
+    }
+
+    function allLegalMoves(g = game, side = g.state.side){
+      const out = [];
+      for (let i = 0; i < 64; i++) {
+        const p = g.state.board[i];
+        if (!p || p.color !== side) continue;
+        const tos = g._legalMovesFrom(i, side) || [];
+        for (const to of tos) {
+          const uci = sqName(i) + sqName(to);
+          const temp = createGame();
+          temp.loadFEN(g.exportFEN());
+          const ok = temp.makeMoveUCI(uci);
+          if (!ok) continue;
+          const pending = !!temp.state.pendingPromotion;
+          if (pending) temp.resolvePendingPromotion('Q');
+          out.push({
+            from:i,
+            to,
+            uci: pending ? uci + 'q' : uci,
+            san: temp.curNode?.san || (uci + (pending ? 'q' : '')),
+            fenAfter: temp.exportFEN(),
+            givesCheck: temp._isInCheck(other(side)),
+          });
+        }
+      }
+      return out;
+    }
+
+    function materialTotals(g = game){
+      const t = { w:0, b:0 };
+      for (const p of g.state.board) {
+        if (!p) continue;
+        t[p.color] += values[p.type] || 0;
+      }
+      return t;
+    }
+
+    function materialLeadForRootSide(g = game){
+      const t = materialTotals(g);
+      return t[rootSide] - t[other(rootSide)];
+    }
+
+    function attackedBy(g, squareIndex, byColor){
+      return g._attacked(squareIndex, byColor);
+    }
+
+    function pieceAttackSquares(g, fromIdx, piece){
+      const [f,r] = FR(fromIdx);
+      const out = [];
+      if (piece.type === 'p') {
+        const dir = piece.color === 'w' ? 1 : -1;
+        for (const df of [-1,1]) {
+          const nf = f + df, nr = r + dir;
+          if (inB(nf,nr)) out.push(idx(nf,nr));
+        }
+        return out;
+      }
+      return g._genPseudo(fromIdx, true);
+    }
+
+    function defendersOf(g, squareIndex, color){
+      const out = [];
+      for (let i = 0; i < 64; i++) {
+        const p = g.state.board[i];
+        if (!p || p.color !== color) continue;
+        const attacks = pieceAttackSquares(g, i, p);
+        if (attacks.includes(squareIndex)) out.push(i);
+      }
+      return out;
+    }
+
+    function formatMaterial(t){
+      return `White ${t.w} · Black ${t.b}`;
+    }
+
+    function lineDirection(a, b){
+      const [af,ar] = FR(a), [bf,br] = FR(b);
+      const df = Math.sign(bf-af), dr = Math.sign(br-ar);
+      if (af === bf) return [0, dr];
+      if (ar === br) return [df, 0];
+      if (Math.abs(bf-af) === Math.abs(br-ar)) return [df, dr];
+      return null;
+    }
+
+    function findAlignedEnemyPairs(g = game, side = g.state.side){
+      const enemy = other(side);
+      const result = [];
+      const seen = new Set();
+      for (let a = 0; a < 64; a++) {
+        const pa = g.state.board[a];
+        if (!pa || pa.color !== enemy) continue;
+        for (let b = a + 1; b < 64; b++) {
+          const pb = g.state.board[b];
+          if (!pb || pb.color !== enemy) continue;
+          const dir = lineDirection(a,b);
+          if (!dir) continue;
+          let [f,r] = FR(a);
+          f += dir[0]; r += dir[1];
+          let blockers = 0;
+          while (inB(f,r)) {
+            const s = idx(f,r);
+            if (s === b) break;
+            if (g.state.board[s]) blockers++;
+            f += dir[0]; r += dir[1];
+          }
+          if (blockers !== 0) continue;
+          const key = `${Math.min(a,b)}-${Math.max(a,b)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const front = (values[pa.type] <= values[pb.type]) ? a : b;
+          const rear = front === a ? b : a;
+          result.push({ front, rear, frontPiece: g.state.board[front], rearPiece: g.state.board[rear] });
+        }
+      }
+      return result;
+    }
+
+    function moveTagsForCurrentPosition(g = game){
+      const side = g.state.side;
+      const enemy = other(side);
+      const legal = allLegalMoves(g, side);
+      const alignedPairs = findAlignedEnemyPairs(g, side);
+      const looseTargets = [];
+      const restrictedTargets = [];
+      const overworkedTargets = [];
+
+      for (let i = 0; i < 64; i++) {
+        const p = g.state.board[i];
+        if (!p || p.color !== enemy) continue;
+        const ds = defendersOf(g, i, enemy);
+        if (ds.length === 0 && p.type !== 'k') looseTargets.push(i);
+        const mob = g._legalMovesFrom(i, enemy)?.length || 0;
+        if (mob <= Number(mobilityThresholdInput.value || 2) && p.type !== 'k') restrictedTargets.push(i);
+      }
+
+      for (let i = 0; i < 64; i++) {
+        const p = g.state.board[i];
+        if (!p || p.color !== enemy) continue;
+        const defended = [];
+        const attacks = pieceAttackSquares(g, i, p);
+        for (const sq of attacks) {
+          const occ = g.state.board[sq];
+          if (occ && occ.color === enemy && occ.type !== 'k') defended.push(sq);
+        }
+        const uniq = [...new Set(defended)];
+        if (uniq.length >= 2) overworkedTargets.push({ guard:i, guarded:uniq });
+      }
+
+      return legal.map(move => {
+        const tags = [];
+        if (move.givesCheck) tags.push({ type:'check', label:`Check on ${move.san}` });
+
+        for (const pair of alignedPairs) {
+          const after = createGame();
+          after.loadFEN(g.exportFEN());
+          after.makeMoveUCI(move.uci);
+          if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
+          const attacksFront = attackedBy(after, pair.front, side);
+          const attacksRear = attackedBy(after, pair.rear, side);
+          if (attacksFront || attacksRear) {
+            tags.push({
+              type:'alignment',
+              label:`Exploits alignment ${pieceLetter(pair.frontPiece)}${sqName(pair.front)}–${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`
+            });
+            break;
+          }
+        }
+
+        for (const sq of looseTargets) {
+          const after = createGame();
+          after.loadFEN(g.exportFEN());
+          after.makeMoveUCI(move.uci);
+          if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
+          const occ = after.state.board[sq];
+          if (!occ || occ.color === side || attackedBy(after, sq, side)) {
+            const p = g.state.board[sq];
+            tags.push({ type:'loose', label:`Targets loose ${pieceLetter(p)}${sqName(sq)}` });
+            break;
+          }
+        }
+
+        for (const sq of restrictedTargets) {
+          const after = createGame();
+          after.loadFEN(g.exportFEN());
+          after.makeMoveUCI(move.uci);
+          if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
+          const beforeMob = g.state.board[sq] ? (g._legalMovesFrom(sq, enemy)?.length || 0) : null;
+          const afterPiece = after.state.board[sq];
+          const afterMob = afterPiece ? (after._legalMovesFrom(sq, enemy)?.length || 0) : null;
+          if (!afterPiece || (beforeMob != null && afterMob != null && afterMob <= beforeMob)) {
+            const p = g.state.board[sq];
+            tags.push({ type:'mobility', label:`Presses restricted ${pieceLetter(p)}${sqName(sq)}` });
+            break;
+          }
+        }
+
+        for (const ow of overworkedTargets) {
+          const after = createGame();
+          after.loadFEN(g.exportFEN());
+          after.makeMoveUCI(move.uci);
+          if (after.state.pendingPromotion) after.resolvePendingPromotion('Q');
+          const guardGone = !after.state.board[ow.guard] || after.state.board[ow.guard].color === side;
+          const losesCoverage = ow.guarded.some(sq => {
+            const occ = after.state.board[sq];
+            return occ && occ.color === enemy && defendersOf(after, sq, enemy).length === 0;
+          });
+          if (guardGone || losesCoverage || attackedBy(after, ow.guard, side)) {
+            const gp = g.state.board[ow.guard];
+            tags.push({ type:'overworked', label:`Overloads ${pieceLetter(gp)}${sqName(ow.guard)}` });
+            break;
+          }
+        }
+
+        return { ...move, tags };
+      });
+    }
+
+    function observationsForCurrentPosition(){
+      const side = game.state.side;
+      const enemy = other(side);
+      const legalWithTags = moveTagsForCurrentPosition(game);
+      const map = new Map();
+      for (const move of legalWithTags) {
+        for (const tag of move.tags) {
+          const key = `${tag.type}|${tag.label}`;
+          if (!map.has(key)) {
+            map.set(key, { id:key, type:tag.type, label:tag.label, moves:[] });
+          }
+          map.get(key).moves.push(move);
+        }
+      }
+
+      for (let i = 0; i < 64; i++) {
+        const p = game.state.board[i];
+        if (!p || p.color !== enemy || p.type === 'k') continue;
+        const ds = defendersOf(game, i, enemy);
+        if (ds.length === 0) {
+          const key = `loose|Loose ${pieceLetter(p)}${sqName(i)}`;
+          if (!map.has(key)) map.set(key, { id:key, type:'loose', label:`Loose ${pieceLetter(p)}${sqName(i)}`, moves:legalWithTags.filter(m => m.tags.some(t => t.type === 'loose' && t.label.includes(sqName(i)))) });
+        }
+        const mob = game._legalMovesFrom(i, enemy)?.length || 0;
+        if (mob <= Number(mobilityThresholdInput.value || 2)) {
+          const key = `mobility|Restricted ${pieceLetter(p)}${sqName(i)} has ${mob} legal moves`;
+          if (!map.has(key)) map.set(key, { id:key, type:'mobility', label:`Restricted ${pieceLetter(p)}${sqName(i)} has ${mob} legal moves`, moves:legalWithTags.filter(m => m.tags.some(t => t.type === 'mobility')) });
+        }
+      }
+
+      const alignedPairs = findAlignedEnemyPairs(game, side);
+      for (const pair of alignedPairs) {
+        const key = `alignment|Enemy alignment ${pieceLetter(pair.frontPiece)}${sqName(pair.front)} in front of ${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            id:key,
+            type:'alignment',
+            label:`Enemy alignment ${pieceLetter(pair.frontPiece)}${sqName(pair.front)} in front of ${pieceLetter(pair.rearPiece)}${sqName(pair.rear)}`,
+            moves:legalWithTags.filter(m => m.tags.some(t => t.type === 'alignment'))
+          });
+        }
+      }
+
+      for (let i = 0; i < 64; i++) {
+        const p = game.state.board[i];
+        if (!p || p.color !== enemy) continue;
+        const defended = [];
+        const attacks = pieceAttackSquares(game, i, p);
+        for (const sq of attacks) {
+          const occ = game.state.board[sq];
+          if (occ && occ.color === enemy && occ.type !== 'k') defended.push(sq);
+        }
+        const uniq = [...new Set(defended)];
+        if (uniq.length >= 2) {
+          const targets = uniq.slice(0,3).map(sq => sqName(sq)).join(', ');
+          const key = `overworked|${pieceLetter(p)}${sqName(i)} guards ${targets}`;
+          if (!map.has(key)) {
+            map.set(key, { id:key, type:'overworked', label:`${pieceLetter(p)}${sqName(i)} guards ${targets}`, moves:legalWithTags.filter(m => m.tags.some(t => t.type === 'overworked')) });
+          }
+        }
+      }
+
+      return [...map.values()].sort((a,b) => {
+        const order = ['check','alignment','loose','mobility','overworked'];
+        return order.indexOf(a.type) - order.indexOf(b.type) || a.label.localeCompare(b.label);
+      });
+    }
+
+    function filteredMoves(obs){
+      const relatedMoveMap = new Map();
+      for (const ob of obs) {
+        if (!selectedObs.has(ob.id)) continue;
+        for (const move of ob.moves) {
+          const key = move.uci;
+          const prev = relatedMoveMap.get(key) || { ...move, reasons:[] };
+          prev.reasons.push(ob.label);
+          relatedMoveMap.set(key, prev);
+        }
+      }
+      return [...relatedMoveMap.values()].sort((a,b) => a.san.localeCompare(b.san));
+    }
+
+    function renderObservationsAndMoves(){
+      const obs = observationsForCurrentPosition();
+      const selectedExisting = new Set(obs.map(o => o.id));
+      for (const id of [...selectedObs]) if (!selectedExisting.has(id)) selectedObs.delete(id);
+
+      obsList.innerHTML = '';
+      if (!obs.length) {
+        obsList.innerHTML = '<div class="small">No feature observations found for this position under the current heuristics.</div>';
+      }
+      for (const ob of obs) {
+        const div = document.createElement('div');
+        div.className = 'card' + (selectedObs.has(ob.id) ? ' selected' : '');
+        div.innerHTML = `
+          <div class="row" style="justify-content:space-between; align-items:flex-start">
+            <div>
+              <div><strong>${escapeHtml(ob.label)}</strong></div>
+              <div class="small">${ob.moves.length} related legal move${ob.moves.length === 1 ? '' : 's'}</div>
+            </div>
+            <span class="chip ${ob.type}">${ob.type}</span>
+          </div>
+          <div class="row">
+            <button>${selectedObs.has(ob.id) ? 'Unselect' : 'Select'}</button>
+          </div>`;
+        div.querySelector('button').onclick = () => {
+          if (selectedObs.has(ob.id)) selectedObs.delete(ob.id); else selectedObs.add(ob.id);
+          render();
+        };
+        obsList.appendChild(div);
+      }
+
+      const moves = filteredMoves(obs);
+      moveList.innerHTML = '';
+      if (!selectedObs.size) {
+        moveList.innerHTML = '<div class="small">Select at least one observation to restrict the legal moves by the production rule.</div>';
+      } else if (!moves.length) {
+        moveList.innerHTML = '<div class="small">No legal moves are related to the currently selected observations.</div>';
+      } else {
+        for (const move of moves) {
+          const div = document.createElement('div');
+          div.className = 'card';
+          div.innerHTML = `
+            <button class="moveBtn">
+              <div><strong>${escapeHtml(move.san)}</strong> <span class="mono muted">${move.uci}</span></div>
+              <div class="chipRow">${move.tags.map(t => `<span class="chip ${t.type}">${escapeHtml(t.type)}</span>`).join('')}</div>
+              <div class="small">Related to: ${escapeHtml(move.reasons.join(' · '))}</div>
+            </button>`;
+          div.querySelector('button').onclick = () => applyProofMove(move);
+          moveList.appendChild(div);
+        }
+      }
+      selectionSummaryEl.textContent = selectedObs.size ? [...selectedObs].map(id => id.split('|')[1]).join(' · ') : 'None selected';
+    }
+
+    function applyProofMove(move){
+      const applied = game.makeMoveUCI(move.uci);
+      if (!applied) return;
+      if (game.state.pendingPromotion) game.resolvePendingPromotion('Q');
+      theoremLine.push({
+        ply: theoremLine.length + 1,
+        san: game.curNode?.san || move.san,
+        uci: move.uci,
+        fromFen: theoremLine.length ? theoremLine[theoremLine.length - 1].toFen : rootFen,
+        toFen: game.exportFEN(),
+        reasons: move.reasons || move.tags.map(t => t.label),
+      });
+      selectedObs.clear();
+      render();
+    }
+
+    function resetLine(){
+      game.loadFEN(rootFen || fenInput.value.trim());
+      theoremLine.length = 0;
+      selectedObs.clear();
+      render();
+    }
+
+    function loadFen(){
+      const fen = fenInput.value.trim();
+      game.loadFEN(fen);
+      rootFen = game.exportFEN();
+      rootSide = game.state.side;
+      theoremLine.length = 0;
+      selectedObs.clear();
+      render();
+    }
+
+    function theoremVerdict(){
+      const lead = materialLeadForRootSide(game);
+      const plyLimit = Number(plyLimitInput.value || 3);
+      if (lead > 0) return { cls:'good', text:`Theorem goal currently holds: ${prettySide(rootSide)} is ahead by ${lead} point${lead === 1 ? '' : 's'}.` };
+      if (theoremLine.length >= plyLimit) return { cls:'bad', text:`Ply bound reached without proving a material lead for ${prettySide(rootSide)}.` };
+      return { cls:'warn', text:`Not yet proved. ${prettySide(rootSide)} needs a positive material lead within ${plyLimit} plies.` };
+    }
+
+    function renderProofList(){
+      proofList.innerHTML = '';
+      const axiom = document.createElement('div');
+      axiom.className = 'proofStep';
+      axiom.innerHTML = `<strong>Axiom P₀</strong><div class="mono small">${escapeHtml(rootFen)}</div><div class="small">Initial side to move: ${prettySide(rootSide)}</div>`;
+      proofList.appendChild(axiom);
+      if (!theoremLine.length) {
+        const empty = document.createElement('div');
+        empty.className = 'proofStep';
+        empty.innerHTML = '<div class="small">No derivation steps yet.</div>';
+        proofList.appendChild(empty);
+        return;
+      }
+      for (const step of theoremLine) {
+        const div = document.createElement('div');
+        div.className = 'proofStep';
+        div.innerHTML = `
+          <div><strong>Ply ${step.ply}: ${escapeHtml(step.san)}</strong> <span class="mono muted">${escapeHtml(step.uci)}</span></div>
+          <div class="small">Production rule witness: ${escapeHtml((step.reasons || []).join(' · ') || 'related move')}</div>
+          <div class="small mono">${escapeHtml(step.toFen)}</div>`;
+        proofList.appendChild(div);
+      }
+    }
+
+    function renderStatus(){
+      const verdict = theoremVerdict();
+      const mat = materialTotals(game);
+      theoremStatus.innerHTML = `
+        <div class="${verdict.cls}"><strong>${escapeHtml(verdict.text)}</strong></div>
+        <div class="small">Current ply: ${theoremLine.length} / ${Number(plyLimitInput.value || 3)}</div>
+        <div class="small">Material: ${formatMaterial(mat)} · Root-side lead: ${materialLeadForRootSide(game)}</div>`;
+      boardMeta.textContent = `Side to move: ${prettySide(game.state.side)}`;
+      currentFenEl.textContent = game.exportFEN();
+      materialLineEl.textContent = formatMaterial(mat);
+    }
+
+    function render(){
+      renderStatus();
+      renderProofList();
+      renderObservationsAndMoves();
+    }
+
+    function escapeHtml(s){
+      return String(s)
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'",'&#39;');
+    }
+
+    function dfsAutoSearch(startFen, maxPlies){
+      const start = createGame();
+      start.loadFEN(startFen);
+      const startSide = start.state.side;
+      const seen = new Set();
+
+      function rec(fen, depth, line){
+        const key = `${fen}|${depth}`;
+        if (seen.has(key)) return null;
+        seen.add(key);
+
+        const g = createGame();
+        g.loadFEN(fen);
+        const mat = materialTotals(g);
+        const lead = mat[startSide] - mat[other(startSide)];
+        if (lead > 0) return line;
+        if (depth >= maxPlies) return null;
+
+        const obs = observationsForFen(g);
+        const moves = relatedMovesForFen(g, obs);
+        for (const move of moves) {
+          const ng = createGame();
+          ng.loadFEN(fen);
+          const ok = ng.makeMoveUCI(move.uci);
+          if (!ok) continue;
+          if (ng.state.pendingPromotion) ng.resolvePendingPromotion('Q');
+          const result = rec(ng.exportFEN(), depth + 1, [...line, move]);
+          if (result) return result;
+        }
+        return null;
+      }
+
+      function observationsForFen(g){
+        const oldFen = game.exportFEN();
+        const oldRootFen = rootFen;
+        const oldRootSide = rootSide;
+        game.loadFEN(g.exportFEN());
+        rootFen = startFen;
+        rootSide = startSide;
+        const obs = observationsForCurrentPosition();
+        game.loadFEN(oldFen);
+        rootFen = oldRootFen;
+        rootSide = oldRootSide;
+        return obs;
+      }
+
+      function relatedMovesForFen(g, obs){
+        const oldFen = game.exportFEN();
+        const oldRootFen = rootFen;
+        const oldRootSide = rootSide;
+        game.loadFEN(g.exportFEN());
+        rootFen = startFen;
+        rootSide = startSide;
+        const related = new Map();
+        for (const ob of obs) {
+          for (const m of ob.moves) {
+            const prev = related.get(m.uci) || { ...m, reasons:[] };
+            prev.reasons.push(ob.label);
+            related.set(m.uci, prev);
+          }
+        }
+        game.loadFEN(oldFen);
+        rootFen = oldRootFen;
+        rootSide = oldRootSide;
+        return [...related.values()];
+      }
+
+      return rec(startFen, 0, []);
+    }
+
+    document.getElementById('loadFenBtn').onclick = loadFen;
+    document.getElementById('resetLineBtn').onclick = resetLine;
+    document.getElementById('undoBtn').onclick = () => {
+      if (!theoremLine.length) return;
+      theoremLine.pop();
+      if (!game.prevMove()) {
+        game.loadFEN(rootFen);
+      }
+      selectedObs.clear();
+      render();
+    };
+    document.getElementById('flipBtn').onclick = () => game.toggleFlip();
+    document.getElementById('copyFenBtn').onclick = async () => {
+      try { await navigator.clipboard.writeText(game.exportFEN()); } catch {}
+    };
+    document.getElementById('searchBtn').onclick = () => {
+      const line = dfsAutoSearch(game.exportFEN(), Number(plyLimitInput.value || 3));
+      if (!line) {
+        theoremStatus.innerHTML = `<div class="bad"><strong>No proof line found within the current bound under these heuristics.</strong></div>` + theoremStatus.innerHTML;
+        return;
+      }
+      for (const move of line) applyProofMove(move);
+    };
+
+    plyLimitInput.oninput = render;
+    mobilityThresholdInput.oninput = render;
+
+    loadFen();
+  </script>
+</body>
+</html>
