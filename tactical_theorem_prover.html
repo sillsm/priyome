@@ -519,12 +519,9 @@
       return pieceAttacksSquare(after, move.to, sq);
     }
 
-    function parseTacticalPositionsMarkdown(md){
+    function parseTacticalFeaturesMarkdown(md){
       const lines = String(md || '').split(/\r?\n/);
-      const positions = [];
       const observations = [];
-      let section = '';
-      let curPos = null;
       let curObs = null;
       let collecting = null;
       let buf = [];
@@ -549,67 +546,67 @@
           continue;
         }
 
-        if (trimmed === '# Observation Types') {
-          section = 'observations';
-          continue;
-        }
-        if (trimmed === '# Tactical Positions') {
+        if (!trimmed || trimmed === '# Tactical Features') continue;
+
+        if (trimmed.startsWith('## ')) {
           if (curObs && curObs.kind && curObs.observe && curObs.related) observations.push(curObs);
-          curObs = null;
-          section = 'positions';
+          curObs = {
+            title: trimmed.slice(3).trim(),
+            kind: '',
+            order: '999',
+            color: '',
+            observe: '',
+            related: ''
+          };
           continue;
         }
 
-        if (section === 'observations') {
-          if (trimmed.startsWith('## ')) {
-            if (curObs && curObs.kind && curObs.observe && curObs.related) observations.push(curObs);
-            curObs = {
-              title: trimmed.slice(3).trim(),
-              kind: '',
-              order: '999',
-              color: '',
-              observe: '',
-              related: ''
-            };
-            continue;
-          }
-          if (!curObs) continue;
-          if (trimmed === '### observe') { collecting = 'observe'; buf = []; continue; }
-          if (trimmed === '### related') { collecting = 'related'; buf = []; continue; }
-          if (trimmed === '```js') continue;
-          const m = trimmed.match(/^([A-Za-z][A-Za-z0-9 _-]*):\s*(.*)$/);
-          if (m) {
-            const key = m[1].trim().toLowerCase();
-            const value = (m[2] || '').trim();
-            if (key === 'kind') curObs.kind = value;
-            else if (key === 'order') curObs.order = value;
-            else if (key === 'color') curObs.color = value;
-          }
-          continue;
-        }
+        if (!curObs) continue;
+        if (trimmed === '### observe') { collecting = 'observe'; buf = []; continue; }
+        if (trimmed === '### related') { collecting = 'related'; buf = []; continue; }
+        if (trimmed === '```js') continue;
 
-        if (section === 'positions') {
-          if (!trimmed) continue;
-          if (trimmed.startsWith('## ')) {
-            if (curPos && curPos.title && curPos.fen) positions.push(curPos);
-            curPos = { title: trimmed.slice(3).trim(), fen:'', theme:'', solution:'' };
-            continue;
-          }
-          if (!curPos) continue;
-          const m = trimmed.match(/^([A-Za-z][A-Za-z0-9 _-]*):\s*(.*)$/);
-          if (!m) continue;
-          const key = m[1].trim().toLowerCase();
-          const value = (m[2] || '').trim();
-          if (key === 'fen') curPos.fen = value;
-          else if (key === 'theme') curPos.theme = value;
-          else if (key === 'solution') curPos.solution = value;
-        }
+        const m = trimmed.match(/^([A-Za-z][A-Za-z0-9 _-]*):\s*(.*)$/);
+        if (!m) continue;
+        const key = m[1].trim().toLowerCase();
+        const value = (m[2] || '').trim();
+        if (key === 'kind') curObs.kind = value;
+        else if (key === 'order') curObs.order = value;
+        else if (key === 'color') curObs.color = value;
       }
 
       flushCode();
       if (curObs && curObs.kind && curObs.observe && curObs.related) observations.push(curObs);
+      return observations;
+    }
+
+    function parseTacticalPositionsMarkdown(md){
+      const lines = String(md || '').split(/\r?\n/);
+      const positions = [];
+      let curPos = null;
+
+      for (const raw of lines) {
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed === '# Tactical Positions') continue;
+
+        if (trimmed.startsWith('## ')) {
+          if (curPos && curPos.title && curPos.fen) positions.push(curPos);
+          curPos = { title: trimmed.slice(3).trim(), fen:'', theme:'', solution:'' };
+          continue;
+        }
+
+        if (!curPos) continue;
+        const m = trimmed.match(/^([A-Za-z][A-Za-z0-9 _-]*):\s*(.*)$/);
+        if (!m) continue;
+        const key = m[1].trim().toLowerCase();
+        const value = (m[2] || '').trim();
+        if (key === 'fen') curPos.fen = value;
+        else if (key === 'theme') curPos.theme = value;
+        else if (key === 'solution') curPos.solution = value;
+      }
+
       if (curPos && curPos.title && curPos.fen) positions.push(curPos);
-      return { observations, positions };
+      return positions;
     }
 
     function compileObservationType(def){
@@ -627,6 +624,7 @@
       const side = g.state.side;
       const enemy = other(side);
       const legalMoves = allLegalMoves(g, side);
+      const afterCache = new Map();
       return {
         game: g,
         side,
@@ -635,6 +633,9 @@
         legalMoves,
         mobilityThreshold: Number(mobilityThresholdInput.value || 2),
         values,
+        pieceValue(piece){
+          return piece ? (values[piece.type] || 0) : 0;
+        },
         files,
         FR, idx, inB, sqName, other, pieceLetter,
         materialTotals,
@@ -644,8 +645,26 @@
         lineDirection,
         sameLineNoBlock,
         moveAttacksSquare,
+        afterFor(move){
+          if (!afterCache.has(move.uci)) {
+            afterCache.set(move.uci, moveResult(g, move));
+          }
+          return afterCache.get(move.uci);
+        },
         findAlignedPairs: (color) => findAlignedPairs(g, color),
       };
+    }
+
+    async function loadTacticalFeatures(){
+      try {
+        const res = await fetch('./tactical_features.md');
+        if (!res.ok) throw new Error('fetch failed');
+        const text = await res.text();
+        const parsed = parseTacticalFeaturesMarkdown(text);
+        observationTypes.splice(0, observationTypes.length, ...parsed.map(compileObservationType));
+      } catch {
+        observationTypes.splice(0, observationTypes.length);
+      }
     }
 
     async function loadTacticalPositions(){
@@ -653,11 +672,8 @@
         const res = await fetch('./tactical_positions.md');
         if (!res.ok) throw new Error('fetch failed');
         const text = await res.text();
-        const parsed = parseTacticalPositionsMarkdown(text);
-        observationTypes.splice(0, observationTypes.length, ...parsed.observations.map(compileObservationType));
-        testPositions.splice(0, testPositions.length, ...parsed.positions);
+        testPositions.splice(0, testPositions.length, ...parseTacticalPositionsMarkdown(text));
       } catch {
-        observationTypes.splice(0, observationTypes.length);
         testPositions.splice(0, testPositions.length);
       }
       renderTestPositions();
@@ -1111,6 +1127,7 @@
 
     plyLimitInput.oninput = render;
     mobilityThresholdInput.oninput = render;
+    await loadTacticalFeatures();
     await loadTacticalPositions();
     loadFen();
   </script>
