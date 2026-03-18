@@ -538,7 +538,9 @@
         const trimmed = line.trim();
 
         if (collecting) {
-          if (trimmed === '```') {
+          if (trimmed === '```js') {
+            continue;
+          } else if (trimmed === '```') {
             flushCode();
           } else {
             buf.push(line);
@@ -564,7 +566,7 @@
         if (!curObs) continue;
         if (trimmed === '### observe') { collecting = 'observe'; buf = []; continue; }
         if (trimmed === '### related') { collecting = 'related'; buf = []; continue; }
-        if (trimmed === '```js') continue;
+
 
         const m = trimmed.match(/^([A-Za-z][A-Za-z0-9 _-]*):\s*(.*)$/);
         if (!m) continue;
@@ -662,10 +664,13 @@
         const text = await res.text();
         const parsed = parseTacticalFeaturesMarkdown(text);
         observationTypes.splice(0, observationTypes.length, ...parsed.map(compileObservationType));
+        console.log('Loaded tactical features:', observationTypes.map(x => x.kind));
       } catch {
+        console.error('Failed to load tactical features');
         observationTypes.splice(0, observationTypes.length);
       }
     }
+
 
     async function loadTacticalPositions(){
       try {
