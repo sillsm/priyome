@@ -40,7 +40,7 @@
       border:1px solid var(--line);
       border-radius:16px;
       box-shadow:0 8px 30px rgba(0,0,0,.28);
-      overflow:hidden;
+      overflow:visible;
     }
     .panel h2,.panel h3{margin:0}
     .hd{
@@ -78,8 +78,53 @@
     button.ghost{background:transparent}
     button.danger{background:#3b1620; border-color:#7f1d1d}
     .small{font-size:12px; color:var(--muted)}
-    .boardWrap{padding:14px; display:grid; gap:10px; justify-items:center}
+    .boardWrap{
+      padding:14px;
+      display:grid;
+      gap:10px;
+      justify-items:center;
+      justify-content:center;
+      align-content:start;
+    }
     #board{width:min(100%,520px); aspect-ratio:1}
+    .testBox{
+      width:min(100%,520px);
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:#0b1220;
+      display:grid;
+      gap:10px;
+      padding:12px;
+    }
+    .testHead{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+    }
+    .testList{
+      display:grid;
+      gap:10px;
+      max-height:320px;
+      overflow:auto;
+      padding-right:4px;
+    }
+    .testCard{
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:#101827;
+      padding:10px 12px;
+      display:grid;
+      gap:8px;
+    }
+    .testCard h3{margin:0; font-size:15px}
+    .testMeta{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    .solutionBox{
+      border-top:1px solid var(--line);
+      padding-top:8px;
+      display:grid;
+      gap:6px;
+    }
     .status{
       padding:12px 14px;
       border:1px solid var(--line);
@@ -206,8 +251,20 @@
         <div class="status" style="width:min(100%,520px)">
           <div class="kv">
             <div class="muted">Current FEN</div><div class="mono" id="currentFen"></div>
+            <div class="muted">Loaded test</div><div id="loadedTestName">Custom position</div>
+            <div class="muted">Theme</div><div id="loadedTestTheme">—</div>
+            <div class="muted">Hidden solution</div><div id="loadedTestSolution">None</div>
             <div class="muted">Material</div><div id="materialLine"></div>
             <div class="muted">Observation filter</div><div id="selectionSummary"></div>
+          </div>
+        </div>
+        <div class="testBox">
+          <div class="testHead">
+            <div><strong>Test positions</strong></div>
+            <div class="small muted" id="testCount">Loading…</div>
+          </div>
+          <div class="testList" id="testList"></div>
+          <div class="small muted">Click a test to load its FEN. Solutions stay hidden until revealed.</div>
           </div>
         </div>
       </div>
@@ -250,17 +307,24 @@
     const currentFenEl = document.getElementById('currentFen');
     const materialLineEl = document.getElementById('materialLine');
     const selectionSummaryEl = document.getElementById('selectionSummary');
+    const loadedTestNameEl = document.getElementById('loadedTestName');
+    const loadedTestThemeEl = document.getElementById('loadedTestTheme');
+    const loadedTestSolutionEl = document.getElementById('loadedTestSolution');
+    const testListEl = document.getElementById('testList');
+    const testCountEl = document.getElementById('testCount');
 
     const game = createGame();
     const board = new BoardView(document.getElementById('board'), game, { minSizePx: 320 });
 
     const values = { p:1, n:3, b:3, r:5, q:9, k:0 };
     const files = 'abcdefgh';
+    const testPositions = [];
     const selectedObs = new Set();
     const theoremLine = [];
     let rootFen = '';
     let rootSide = 'w';
     let viewPly = null;
+    let activeTest = null;
 
     function FR(i){ return [i % 8, 7 - Math.floor(i / 8)]; }
     function idx(f,r){ return (7-r) * 8 + f; }
@@ -436,6 +500,81 @@
       const movedPiece = after.state.board[move.to];
       if (!movedPiece || movedPiece.color !== side) return false;
       return pieceAttacksSquare(after, move.to, sq);
+    }
+
+    function parseTacticalPositionsMarkdown(md){
+      const lines = String(md || '').split(/\r?\n/);
+      const out = [];
+      let cur = null;
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line === '# Tactical Positions') continue;
+        if (line.startsWith('## ')) {
+          if (cur && cur.title && cur.fen) out.push(cur);
+          cur = { title: line.slice(3).trim(), fen:'', theme:'', solution:'' };
+          continue;
+        }
+        if (!cur) continue;
+        const m = line.match(/^([A-Za-z][A-Za-z0-9 _-]*):\s*(.*)$/);
+        if (!m) continue;
+        const key = m[1].trim().toLowerCase();
+        const value = (m[2] || '').trim();
+        if (key === 'fen') cur.fen = value;
+        else if (key === 'theme') cur.theme = value;
+        else if (key === 'solution') cur.solution = value;
+      }
+      if (cur && cur.title && cur.fen) out.push(cur);
+      return out;
+    }
+
+    async function loadTacticalPositions(){
+      try {
+        const res = await fetch('./tactical_positions.md');
+        if (!res.ok) throw new Error('fetch failed');
+        const text = await res.text();
+        testPositions.splice(0, testPositions.length, ...parseTacticalPositionsMarkdown(text));
+      } catch {
+        testPositions.splice(0, testPositions.length);
+      }
+      renderTestPositions();
+    }
+
+    function renderTestPositions(){
+      testListEl.innerHTML = '';
+      testCountEl.textContent = testPositions.length ? `${testPositions.length} loaded` : 'No test positions';
+
+      for (const tp of testPositions) {
+        const card = document.createElement('div');
+        card.className = 'testCard';
+        card.innerHTML = `
+          <h3>${escapeHtml(tp.title)}</h3>
+          <div class="testMeta">
+            ${tp.theme ? `<span class="chip">${escapeHtml(tp.theme)}</span>` : ''}
+          </div>
+          <div class="row">
+            <button class="loadTestBtn">Load position</button>
+            ${tp.solution ? `<button class="showSolutionBtn">Show solution</button>` : ''}
+          </div>
+          ${tp.solution ? `<div class="solutionBox" hidden><div class="small muted">Solution</div><div class="mono">${escapeHtml(tp.solution)}</div></div>` : ''}`;
+        const loadBtn = card.querySelector('.loadTestBtn');
+        loadBtn.onclick = () => loadTestPosition(tp);
+        const solBtn = card.querySelector('.showSolutionBtn');
+        if (solBtn) {
+          solBtn.onclick = () => {
+            const box = card.querySelector('.solutionBox');
+            const hidden = box.hasAttribute('hidden');
+            if (hidden) box.removeAttribute('hidden'); else box.setAttribute('hidden', '');
+            solBtn.textContent = hidden ? 'Hide solution' : 'Show solution';
+          };
+        }
+        testListEl.appendChild(card);
+      }
+    }
+
+    function loadTestPosition(tp){
+      activeTest = tp;
+      fenInput.value = tp.fen;
+      loadFen();
     }
 
     function moveTagsForCurrentPosition(g = game){
@@ -631,6 +770,18 @@
         const order = ['check','alignment','loose','mobility','overworked'];
         return order.indexOf(a.type) - order.indexOf(b.type) || a.label.localeCompare(b.label);
       });
+    }
+
+    function syncLoadedTestMeta(){
+      if (!activeTest || fenInput.value.trim() !== activeTest.fen.trim()) {
+        activeTest = null;
+      }
+      loadedTestNameEl.textContent = activeTest ? activeTest.title : 'Custom position';
+      loadedTestThemeEl.textContent = activeTest && activeTest.theme ? activeTest.theme : '—';
+      loadedTestSolutionEl.textContent =
+        activeTest && activeTest.solution
+          ? 'Hidden — use “Show solution” below the board.'
+          : 'None';
     }
 
     function filteredMoves(obs){
@@ -852,6 +1003,7 @@
         <div class="${verdict.cls}"><strong>${escapeHtml(verdict.text)}</strong></div>
         <div class="small">Current board view: ply ${viewPly == null ? theoremLine.length : viewPly} · Line length: ${theoremLine.length} / ${Number(plyLimitInput.value || 3)}</div>
         <div class="small">Board material: ${formatMaterial(mat)} · Terminal root-side lead: ${verdict.terminalLead}</div>`;
+      syncLoadedTestMeta();
       boardMeta.textContent = `Side to move: ${prettySide(game.state.side)}`;
       currentFenEl.textContent = game.exportFEN();
       materialLineEl.textContent = formatMaterial(mat);
@@ -968,7 +1120,7 @@
 
     plyLimitInput.oninput = render;
     mobilityThresholdInput.oninput = render;
-
+    await loadTacticalPositions();
     loadFen();
   </script>
 </body>
