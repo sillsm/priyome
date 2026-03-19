@@ -29,6 +29,7 @@
     .wrap{
       max-width:1560px;
       margin:0 auto;
+      width:100%;
       padding:18px;
       display:grid;
       grid-template-columns:380px 620px 380px;
@@ -41,7 +42,10 @@
       border:1px solid var(--line);
       border-radius:16px;
       box-shadow:0 8px 30px rgba(0,0,0,.28);
-      overflow:visible;
+      overflow:hidden; /* CRITICAL: contain children */
+      min-width:0;     /* CRITICAL: allow shrink in grid */
+      display:flex;
+      flex-direction:column;
     }
     .panel h2,.panel h3{margin:0}
     .hd{
@@ -54,9 +58,12 @@
       background:rgba(255,255,255,.02);
     }
     .bd{padding:14px 16px}
+    .bd{min-width:0} /* allow inner wrapping */
+
     .stack{display:grid; gap:12px}
     .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-    .row > *{min-width:0}
+    .row > *{min-width:0} /* prevent flex overflow */
+
     label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
     textarea,input,select,button{
       font:inherit;
@@ -66,7 +73,13 @@
       color:var(--text);
     }
     textarea,input,select{width:100%; padding:10px 12px}
-    textarea{min-height:88px; resize:vertical}
+    textarea{
+      min-height:88px;
+      resize:vertical;
+      word-break:break-word;
+      overflow-wrap:anywhere; /* fixes long FEN overflow */
+    }
+
     button{
       padding:10px 12px;
       cursor:pointer;
@@ -133,7 +146,10 @@
       background:#0b1220;
       display:grid;
       gap:6px;
+      min-width:0;
+      overflow:hidden;
     }
+
     .good{color:var(--good)}
     .warn{color:var(--warn)}
     .bad{color:var(--bad)}
@@ -143,7 +159,9 @@
       max-height:calc(100vh - 220px);
       overflow:auto;
       padding-right:4px;
+      min-width:0;
     }
+
     .card{
       border:1px solid var(--line);
       border-radius:14px;
@@ -151,7 +169,16 @@
       background:#0b1220;
       display:grid;
       gap:8px;
+      min-width:0;
+    .mono{
+      word-break:break-all;       /* FEN / UCI safe */
+      overflow-wrap:anywhere;
     }
+
+      overflow:hidden;
+      word-break:break-word;
+    }
+
     .card.selected{border-color:#5b87c4; box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
     .chipRow{display:flex; gap:6px; flex-wrap:wrap}
     .chip{
@@ -164,6 +191,10 @@
       border-radius:999px;
       padding:4px 9px;
       font-size:12px;
+    .kv > div{
+      min-width:0;
+    }
+
     }
     .chip.check{color:#fca5a5}
     .chip.capture{color:#fdba74}
