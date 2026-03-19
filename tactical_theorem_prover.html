@@ -32,7 +32,7 @@
       width:100%;
       padding:18px;
       display:grid;
-      grid-template-columns:380px 620px 380px;
+      grid-template-columns:minmax(0,380px) minmax(0,620px) minmax(0,380px);
       gap:16px;
       min-height:100vh;
       justify-content:center;
@@ -96,12 +96,14 @@
       padding:14px;
       display:grid;
       gap:10px;
+      width:100%;
+      min-width:0;
       justify-items:center;
       align-content:start;
     }
-    #board{width:520px; max-width:100%; aspect-ratio:1}
+    #board{width:min(100%,520px); max-width:100%; aspect-ratio:1}
     .testBox{
-      width:520px;
+      width:min(100%,520px);
       max-width:100%;
       border:1px solid var(--line);
       border-radius:14px;
@@ -170,14 +172,19 @@
       display:grid;
       gap:8px;
       min-width:0;
-    .mono{
-      word-break:break-all;       /* FEN / UCI safe */
-      overflow-wrap:anywhere;
-    }
-
       overflow:hidden;
+      overflow-wrap:anywhere;
       word-break:break-word;
     }
+    .mono{
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      overflow-wrap:anywhere;
+      word-break:break-word;
+    }
+    .kv > div{
+      min-width:0;
+      overflow-wrap:anywhere;
+      word-break:break-word;
 
     .card.selected{border-color:#5b87c4; box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
     .chipRow{display:flex; gap:6px; flex-wrap:wrap}
@@ -191,10 +198,6 @@
       border-radius:999px;
       padding:4px 9px;
       font-size:12px;
-    .kv > div{
-      min-width:0;
-    }
-
     }
     .chip.check{color:#fca5a5}
     .chip.capture{color:#fdba74}
@@ -205,7 +208,6 @@
     .chip.overworked{color:#6ee7b7}
     .chip.ours{color:#86efac}
     .chip.theirs{color:#fca5a5}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
     .moveBtn{width:100%; text-align:left; display:grid; gap:5px}
     .split{display:grid; grid-template-columns:1fr 1fr; gap:10px}
     .kv{display:grid; grid-template-columns:auto 1fr; gap:8px 10px; align-items:baseline}
@@ -225,9 +227,23 @@
       .wrap{grid-template-columns:1fr}
     }
     @media (max-width: 900px){
+      body{overflow-x:hidden}
+      .wrap{
+        grid-template-columns:1fr;
+        padding:12px;
+      }
+      .hd,.bd,.boardWrap{min-width:0}
+      .split{
+        grid-template-columns:1fr;
+      }
       .wrap{grid-template-columns:1fr}
       .obsList,.moveList,.proofList{max-height:none}
-      #board{width:min(100%,620px)}
+      #board{width:100%}
+      .testBox{width:100%}
+    }
+    @media (max-width: 640px){
+      .wrap{padding:10px}
+      .panel{border-radius:14px}
     }
   </style>
 </head>
@@ -283,11 +299,11 @@
       </div>
       <div class="boardWrap">
         <div id="board"></div>
-        <div class="split" style="width:min(100%,520px)">
+        <div class="split" style="width:100%; max-width:520px">
           <button id="flipBtn">Flip board</button>
           <button id="copyFenBtn">Copy current FEN</button>
         </div>
-        <div class="status" style="width:min(100%,520px)">
+        <div class="status" style="width:100%; max-width:520px">
           <div class="kv">
             <div class="muted">Current FEN</div><div class="mono" id="currentFen"></div>
             <div class="muted">Loaded test</div><div id="loadedTestName">Custom position</div>
