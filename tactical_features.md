@@ -23,6 +23,38 @@ return ctx.legalMoves
 return move.uci === observation.data.uci;
 ```
 
+## Loose Piece
+kind: loose
+order: 50
+color: loose
+
+### observe
+```js
+const out = [];
+
+for (let sq = 0; sq < 64; sq++) {
+  const p = ctx.game.state.board[sq];
+  if (!p || p.type === 'k') continue;
+  if (ctx.defendersOf(ctx.game, sq, p.color).length !== 0) continue;
+
+  out.push({
+    id: `loose|${sq}`,
+    label: `Loose ${ctx.pieceLetter(p)}${ctx.sqName(sq)}`,
+    side: p.color === ctx.side ? 'ours' : 'theirs',
+    implicatedValue: ctx.pieceValue(p),
+    data: { square: sq }
+  });
+}
+
+return out;
+```
+
+### related
+```js
+return move.to === observation.data.square ||
+  ctx.moveAttacksSquare(after, move, observation.data.square, ctx.side);
+```
+
 ## Alignment
 kind: alignment
 order: 40
@@ -72,38 +104,6 @@ if (owner === ctx.enemy) {
 }
 
 return move.from === front || move.from === rear;
-```
-
-## Loose Piece
-kind: loose
-order: 50
-color: loose
-
-### observe
-```js
-const out = [];
-
-for (let sq = 0; sq < 64; sq++) {
-  const p = ctx.game.state.board[sq];
-  if (!p || p.type === 'k') continue;
-  if (ctx.defendersOf(ctx.game, sq, p.color).length !== 0) continue;
-
-  out.push({
-    id: `loose|${sq}`,
-    label: `Loose ${ctx.pieceLetter(p)}${ctx.sqName(sq)}`,
-    side: p.color === ctx.side ? 'ours' : 'theirs',
-    implicatedValue: ctx.pieceValue(p),
-    data: { square: sq }
-  });
-}
-
-return out;
-```
-
-### related
-```js
-return move.to === observation.data.square ||
-  ctx.moveAttacksSquare(after, move, observation.data.square, ctx.side);
 ```
 
 ## Mobility
