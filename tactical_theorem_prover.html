@@ -185,8 +185,21 @@
       min-width:0;
       overflow-wrap:anywhere;
       word-break:break-word;
-
-    .card.selected{border-color:#5b87c4; box-shadow:0 0 0 1px rgba(96,165,250,.25) inset}
+    }
+    .card.selected{
+      border-color:#5b87c4;
+      box-shadow:
+        0 0 0 1px rgba(96,165,250,.28) inset,
+        0 10px 24px rgba(37,99,235,.10);
+      background:linear-gradient(180deg, rgba(17,24,39,.98), rgba(11,18,32,.98));
+    }
+    .featureLegend{
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:linear-gradient(180deg, rgba(15,23,42,.95), rgba(11,18,32,.95));
+      padding:10px 12px;
+      display:grid;
+      gap:8px;
     .chipRow{display:flex; gap:6px; flex-wrap:wrap}
     .chip{
       display:inline-flex;
@@ -208,6 +221,19 @@
     .chip.overworked{color:#6ee7b7}
     .chip.ours{color:#86efac}
     .chip.theirs{color:#fca5a5}
+    .chip.feature{
+      background:linear-gradient(180deg,#182235,#121c2e);
+      border-color:#314155;
+      color:#e5efff;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .chip.feature.check{color:#fca5a5}
+    .chip.feature.capture{color:#fdba74}
+    .chip.feature.attack{color:#f9a8d4}
+    .chip.feature.alignment{color:#fcd34d}
+    .chip.feature.loose{color:#93c5fd}
+    .chip.feature.mobility{color:#c4b5fd}
+    .chip.feature.overworked{color:#6ee7b7}
     .moveBtn{width:100%; text-align:left; display:grid; gap:5px}
     .split{display:grid; grid-template-columns:1fr 1fr; gap:10px}
     .kv{display:grid; grid-template-columns:auto 1fr; gap:8px 10px; align-items:baseline}
@@ -223,7 +249,7 @@
     details.fold summary{cursor:pointer; color:var(--muted)}
     .muted{color:var(--muted)}
     .footerNote{font-size:12px; color:var(--muted); padding-top:6px}
-    @media (max-width: 1460px){
+    @media (max-width: 1180px){
       .wrap{grid-template-columns:1fr}
     }
     @media (max-width: 900px){
@@ -236,7 +262,6 @@
       .split{
         grid-template-columns:1fr;
       }
-      .wrap{grid-template-columns:1fr}
       .obsList,.moveList,.proofList{max-height:none}
       #board{width:100%}
       .testBox{width:100%}
@@ -333,6 +358,9 @@
       </div>
       <div class="bd stack">
         <div>
+          <div class="featureLegend" id="featureLegend">
+            <div class="small">Looking at loaded features in MD order:</div>
+          </div>
           <label>Observations in the current position</label>
           <div class="obsList" id="obsList"></div>
         </div>
@@ -357,6 +385,7 @@
     const proofList = document.getElementById('proofList');
     const obsList = document.getElementById('obsList');
     const moveList = document.getElementById('moveList');
+    const featureLegend = document.getElementById('featureLegend');
     const boardMeta = document.getElementById('boardMeta');
     const currentFenEl = document.getElementById('currentFen');
     const materialLineEl = document.getElementById('materialLine');
@@ -817,10 +846,9 @@
         }
       }
 
+
       return obs.sort((a,b) =>
-        (b.implicatedValue - a.implicatedValue) ||
-        (a.order - b.order) ||
-        a.label.localeCompare(b.label)
+        (a.order - b.order) || a.label.localeCompare(b.label)
       );
     }
 
@@ -857,7 +885,20 @@
       return out.sort((a,b) => a.san.localeCompare(b.san));
     }
 
+    function renderFeatureLegend(){
+      featureLegend.innerHTML = `
+        <div class="small">Looking at loaded features in MD order:</div>
+        <div class="chipRow">
+          ${observationTypes.map(type => `
+            <span class="chip feature ${escapeHtml(type.kind)}">
+              ${escapeHtml(type.title || type.kind)}
+            </span>
+          `).join('')}
+        </div>`;
+    }
+
     function renderObservationsAndMoves(){
+      renderFeatureLegend();
       if (game.state.side !== rootSide) {
         selectedObs.clear();
         obsList.innerHTML = '<div class="small">Opponent to move. Enter the best reply manually for now; observation filtering resumes on the original side&#39;s next turn.</div>';
