@@ -632,6 +632,27 @@
       };
     }
 
+    function moveCategoryRank(g, move){
+      if (move.givesCheck) return 0;
+      if (move.isCapture) return 1;
+      const after = moveResult(g, move);
+      if (after) {
+        const movedPiece = after.state.board[move.to];
+        if (movedPiece && movedPiece.color === g.state.side) {
+          const attacks = pieceAttackSquares(after, move.to, movedPiece);
+          for (const sq of attacks) {
+            const occ = after.state.board[sq];
+            if (occ && occ.color !== movedPiece.color) return 2;
+          }
+        }
+      }
+      return 3;
+    }
+
+    function sortMovesForDisplay(g, moves){
+      return [...moves].sort((a,b) => (moveCategoryRank(g, a) - moveCategoryRank(g, b)) || a.san.localeCompare(b.san));
+    }
+
     function makeObservationContext(g){
       const side = g.state.side;
       const enemy = other(side);
@@ -754,6 +775,7 @@
             label: raw.label,
             data: raw.data || {},
             implicatedValue: Number(raw.implicatedValue || 0),
+            suborder: Number(raw.suborder || 0),
             order: type.order,
             moves: [],
           };
@@ -781,8 +803,9 @@
       }
 
       return obs.sort((a,b) =>
-        (b.implicatedValue - a.implicatedValue) ||
         (a.order - b.order) ||
+        (b.implicatedValue - a.implicatedValue) ||
+        (a.suborder - b.suborder) ||
         a.label.localeCompare(b.label)
       );
     }
@@ -817,14 +840,14 @@
         ...move,
         reasons: chosen.map(ob => ob.label)
       }));
-      return out.sort((a,b) => a.san.localeCompare(b.san));
+      return sortMovesForDisplay(game, out);
     }
 
     function renderObservationsAndMoves(){
       if (game.state.side !== rootSide) {
         selectedObs.clear();
         obsList.innerHTML = '<div class="small">Opponent to move. Enter the best reply manually for now; observation filtering resumes on the original side&#39;s next turn.</div>';
-        const moves = allLegalMoves(game, game.state.side).sort((a,b) => a.san.localeCompare(b.san));
+        const moves = sortMovesForDisplay(game, allLegalMoves(game, game.state.side));
         moveList.innerHTML = '';
         for (const move of moves) {
           const div = document.createElement('div');
@@ -853,7 +876,23 @@
         obsList.innerHTML = '<div class="small">No feature observations found for this position under the current heuristics.</div>';
       }
 
-      for (const ob of workable) {
+      const groups = observationTypes.map(type => ({
+        type,
+        workable: workable.filter(ob => ob.type === type.kind),
+        unworkable: unworkable.filter(ob => ob.type === type.kind),
+      })).filter(group => group.workable.length || group.unworkable.length);
+
+      for (const group of groups) {
+        const header = document.createElement('div');
+        header.className = 'card';
+        header.innerHTML = `
+          <div class="row" style="justify-content:space-between; align-items:center">
+            <div><strong>${escapeHtml(group.type.title)}</strong></div>
+            <div class="chipRow"><span class="chip ${group.type.kind}">${escapeHtml(group.type.kind)}</span></div>
+          </div>`;
+        obsList.appendChild(header);
+
+        for (const ob of group.workable) {
           const div = document.createElement('div');
           div.className = 'card' + (selectedObs.has(ob.id) ? ' selected' : '');
           div.innerHTML = `
@@ -872,6 +911,7 @@
             render();
           };
           obsList.appendChild(div);
+        }
       }
 
       if (unworkable.length) {
@@ -1054,10 +1094,11 @@
       function rec(fen, depth){
         const g = createGame();
         g.loadFEN(fen);
-        const mat = materialTotals(g);
-        const lead = mat[startSide] - mat[other(startSide)];
-        if (lead > 0) return [];
-        if (depth >= maxPlies) return null;
+        if (depth === maxPlies) {
+          const mat = materialTotals(g);
+          const lead = mat[startSide] - mat[other(startSide)];
+          return lead > 0 ? [] : null;
+        }
 
         if (g.state.side === startSide) {
           const obs = observationsForGame(g).filter(ob => ob.moves.length > 0);
@@ -1074,7 +1115,7 @@
             for (let i = 1; i < sets.length; i++) {
               for (const key of [...shared.keys()]) if (!sets[i].has(key)) shared.delete(key);
             }
-            for (const move of shared.values()) {
+            for (const move of sortMovesForDisplay(g, [...shared.values()])) {
               const ng = createGame();
               ng.loadFEN(fen);
               const ok = ng.makeMoveUCI(move.uci);
@@ -1092,25 +1133,22 @@
           return null;
         }
 
-        const enemyMoves = allLegalMoves(g, g.state.side);
-        if (!enemyMoves.length) return [];
-        let witness = null;
+        const enemyMoves = sortMovesForDisplay(g, allLegalMoves(g, g.state.side));
         for (const move of enemyMoves) {
           const ng = createGame();
           ng.loadFEN(fen);
           const ok = ng.makeMoveUCI(move.uci);
-          if (!ok) return null;
+          if (!ok) continue;
           if (ng.state.pendingPromotion) ng.resolvePendingPromotion('Q');
           const tail = rec(ng.exportFEN(), depth + 1);
-          if (!tail) return null;
-          if (!witness) {
-            witness = [{
+          if (tail) {
+            return [{
               ...move,
-              reasons:['Enemy reply checked exhaustively']
+              reasons:['DFS reply']
             }, ...tail];
           }
         }
-        return witness;
+        return null;
       }
 
       return rec(startFen, 0);
