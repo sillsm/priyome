@@ -15,5 +15,5 @@ fen: 2r2rk1/pQ1n1pp1/1p2p2p/3p4/P2P4/4P2P/1qB2PP1/2R2RK1 w - - 0 22
 theme: discovery
 
 ## Svidler v Adams (2000) (Spanish)
-fen: 1r1q1rk1/2p2ppp/2Q5/P7/R2bB3/7P/4bPP1/2B2RK1
+fen: 1r1q1rk1/2p2ppp/2Q5/P7/R2bB3/7P/4bPP1/2B2RK1 w - - 0 1
 theme: discovery, forks
