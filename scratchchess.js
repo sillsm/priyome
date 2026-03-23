@@ -1204,9 +1204,14 @@ exportCQL() {
 
       while (cur.children.length) {
         const main = cur.children[cur.mainChildIndex] || cur.children[0];
+        const prevHadInterruption =
+          cur !== node && (
+            this._buildMarksComment(cur) ||
+            (cur.children && cur.children.length > 1)
+          );
 
         if (side === "w") s += moveNumber + ". ";
-        else if (side === "b" && cur === node) s += moveNumber + "... ";
+        else if (side === "b" && (cur === node || prevHadInterruption)) s += moveNumber + "... ";
 
         s += main.san + " ";
         const cm = this._buildMarksComment(main);
@@ -1232,7 +1237,9 @@ exportCQL() {
       return s;
     };
 
-    pgn += walk(this.root, 1, "w");
+    const startMoveNumber = this.initialSnap?.fullmove || 1;
+    const startSide = this.initialSnap?.side || "w";
+    pgn += walk(this.root, startMoveNumber, startSide);
     pgn += this.tags.Result || "*";
     return pgn.trim();
   }
