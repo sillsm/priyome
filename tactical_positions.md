@@ -17,3 +17,7 @@ theme: discovery
 ## Svidler v Adams (2000) (Spanish)
 fen: 1r1q1rk1/2p2ppp/2Q5/P7/R2bB3/7P/4bPP1/2B2RK1 w - - 0 1
 theme: discovery, forks
+
+## Woodpecker 81
+fen: 6k1/6pp/p1p3r1/3p4/P2P1Pq1/1R2PR2/2Q1K1P1/7r b - - 0 1
+solution: 1... Qxg2+ 2. Rf2 Qxf2+ 3. Kxf2 Rh2+ { And Black takes the queen: } 4. Kf3 Rxc2 { ✔ } *
