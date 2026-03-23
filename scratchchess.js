@@ -81,10 +81,19 @@ function makeNode(parent = null) {
     moveInfo: null,
     snapBefore: null,
     fenAfter: null, // cached FEN after this node's move (root is initial position)
+    pgnAfter: "",   // cached mainline movetext prefix through this ply
+    openingAfter: null, // cached opening name through this ply
     ply: 0,
     marks: { sqMarks: new Map(), arrows: [] },
     comments: [],
   };
+}
+
+function appendSANToPrefix(prefix, san, ply) {
+  const moveNo = Math.floor((ply + 1) / 2);
+  const head = (ply % 2 === 1) ? `${moveNo}. ${san}` : `${moveNo}... ${san}`;
+  const base = String(prefix || "").trim();
+  return base ? `${base} ${head}` : head;
 }
 
 function snapshotFrom(state) {
@@ -233,6 +242,7 @@ export class Game {
     this.curNode = this.root;
     this.initialSnap = null;
     this.mainlineFens = [];
+    this.mainlineOpenings = [];
     this._pendingPromotion = null;
 
     this.initializePosition();
@@ -257,15 +267,19 @@ export class Game {
   _rebuildMainlineFenCache() {
     // mainlineFens[ply] = FEN after that ply's move (ply 0 = root position)
     const out = [];
+    const openings = [];
     let n = this.root;
     if (n && n.fenAfter) out[0] = n.fenAfter;
+    if (n) openings[0] = n.openingAfter;
     while (n && n.children && n.children.length) {
       const c = n.children[n.mainChildIndex] || n.children[0];
       if (!c) break;
       if (c.fenAfter) out[c.ply] = c.fenAfter;
+      openings[c.ply] = c.openingAfter;
       n = c;
     }
     this.mainlineFens = out;
+    this.mainlineOpenings = openings;
   }
 
   clearBoard() {
@@ -886,6 +900,7 @@ export class Game {
     node.snapBefore = snapBefore;
     node.ply = parent.ply + 1;
     node.fenAfter = this.exportFEN();
+    node.pgnAfter = appendSANToPrefix(parent.pgnAfter, san, node.ply);
 
     parent.children.push(node);
     if (parent.children.length === 1) parent.mainChildIndex = 0;
@@ -963,6 +978,30 @@ export class Game {
     this.state.pendingPromotion = null;
     this._emit();
     return true;
+  }
+
+  _mainlineNodeAtPly(n) {
+    const target = Math.max(0, Math.floor(+n || 0));
+    let node = this.root;
+    while (node && node.ply < target) {
+      if (!node.children.length) break;
+      node = node.children[node.mainChildIndex] || node.children[0];
+    }
+    return node || this.root;
+  }
+
+  getOpening(ply = null) {
+    const target = (ply == null) ? this.curNode.ply : Math.max(0, Math.floor(+ply || 0));
+    if (target <= 0) {
+      if (this.mainlineOpenings && this.mainlineOpenings[0] != null) return this.mainlineOpenings[0] || "";
+      if (this.root && this.root.children.length) {
+        const c = this.root.children[this.root.mainChildIndex] || this.root.children[0];
+        return (c && c.openingAfter != null) ? (c.openingAfter || "") : "";
+      }
+      return "";
+    }
+    const node = this._mainlineNodeAtPly(target);
+    return (node && node.openingAfter != null) ? (node.openingAfter || "") : "";
   }
 
   deleteMoveFromHere() {
@@ -1165,14 +1204,9 @@ exportCQL() {
 
       while (cur.children.length) {
         const main = cur.children[cur.mainChildIndex] || cur.children[0];
-        const prevHadInterruption =
-          cur !== node && (
-            this._buildMarksComment(cur) ||
-            (cur.children && cur.children.length > 1)
-          );
 
         if (side === "w") s += moveNumber + ". ";
-        else if (side === "b" && (cur === node || prevHadInterruption)) s += moveNumber + "... ";
+        else if (side === "b" && cur === node) s += moveNumber + "... ";
 
         s += main.san + " ";
         const cm = this._buildMarksComment(main);
@@ -1198,9 +1232,7 @@ exportCQL() {
       return s;
     };
 
-    const startMoveNumber = this.initialSnap?.fullmove || 1;
-    const startSide = this.initialSnap?.side || "w";
-    pgn += walk(this.root, startMoveNumber, startSide);
+    pgn += walk(this.root, 1, "w");
     pgn += this.tags.Result || "*";
     return pgn.trim();
   }
@@ -1292,6 +1324,13 @@ exportCQL() {
         if (this.state.pendingPromotion) this.resolvePendingPromotion(mv.promo || "Q");
 
         if (this.curNode && !this.curNode.fenAfter) this.curNode.fenAfter = this.exportFEN();
+        if (this.curNode && !this.curNode.pgnAfter) {
+          const parent = this.curNode.parent || this.root;
+          this.curNode.pgnAfter = appendSANToPrefix(parent.pgnAfter, this.curNode.san || sanTok, this.curNode.ply);
+        }
+        if (this.curNode && this.curNode.openingAfter == null) {
+          this.curNode.openingAfter = openingFromPGNSync(this.curNode.pgnAfter);
+        }
 
         tokenPly++;
         const cs = commentByPly.get(tokenPly);
@@ -1302,6 +1341,10 @@ exportCQL() {
     };
 
     parseSeq();
+    if (this.root) {
+      const c0 = this.root.children[this.root.mainChildIndex] || this.root.children[0] || null;
+      this.root.openingAfter = c0 ? String(c0.openingAfter || "") : "";
+    }
     this._rebuildMainlineFenCache();
     this._emit();
   }
@@ -2496,6 +2539,32 @@ async function waitForOpeningsReady(timeoutMs = 2000) {
   return true;
 }
 
+function openingFromPGNSync(pgnObj, { maxPlies = 32, index = null } = {}) {
+  if (typeof pgnObj === "string") pgnObj = parsePgnFastInto(pgnObj);
+  if (!index) index = OPENING_INDEX;
+  if (!index || index.size === 0) return "";
+
+  const moves = extractSanTokensFromPGN(pgnObj);
+  if (!moves.length) return "";
+
+  const wSorted = [];
+  const bSorted = [];
+  let bestName = "";
+  const plies = Math.min(moves.length, maxPlies);
+
+  for (let ply = 0; ply < plies; ply++) {
+    const m = moves[ply];
+    if (ply % 2 === 0) binInsertSorted(wSorted, m);
+    else binInsertSorted(bSorted, m);
+
+    const key = makeKey(wSorted, bSorted);
+    const hit = index.get(key);
+    if (hit) bestName = hit;
+  }
+
+  return bestName;
+}
+
 /**
  * openingFromPGN(pgnText, { maxPlies=32, index=OPENING_INDEX })
  * - Tokenize moves
@@ -2504,6 +2573,7 @@ async function waitForOpeningsReady(timeoutMs = 2000) {
  */
 async function openingFromPGN(pgnObj, { maxPlies = 32, index = null, timeoutMs = 2000 } = {}) {
   // Default to the module index. If it isn't ready yet, wait briefly (and/or kick off load).
+  if (typeof pgnObj === "string") pgnObj = parsePgnFastInto(pgnObj);
   if (!index) {
     await waitForOpeningsReady(timeoutMs);
     index = OPENING_INDEX;
@@ -2530,6 +2600,11 @@ async function openingFromPGN(pgnObj, { maxPlies = 32, index = null, timeoutMs =
 
   return bestName;
 }
+
+Game.prototype.waitForOpeningsReady = async function (timeoutMs = 2000) {
+  await waitForOpeningsReady(timeoutMs);
+  return true;
+};
 
 // Game-method wrappers so table-driven harnesses can call these via ctx.g[fn].
 Game.prototype.loadOpeningTables = async function (opts) {
