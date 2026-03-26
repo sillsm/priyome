@@ -343,9 +343,20 @@ export const TACTICAL_FEATURES = [
     related(ctx, observation, move, after) {
       const movedPiece = after.state.board[move.to];
       const subtype = observation.data.subtype;
+      const owner = observation.data.owner;
+      const front = observation.data.front;
+      const rear = observation.data.rear;
       const exploitSquares = observation.data.exploitSquares || [];
 
-      if (subtype === "diagonal" || subtype === "line" || subtype === "knight" || subtype === "bishopFork" || subtype === "queenFork") {
+      if (subtype === "diagonal" || subtype === "line") {
+        const isDiscovery = owner === ctx.enemy;
+        if (isDiscovery) {
+          return move.from === front || move.from === rear;
+        }
+        return exploitSquares.includes(move.to);
+      }
+
+      if (subtype === "knight" || subtype === "bishopFork" || subtype === "queenFork") {
         return exploitSquares.includes(move.to);
       }
 
