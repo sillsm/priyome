@@ -317,6 +317,7 @@
 
   <script type="module">
     import { createGame, BoardView } from './scratchchess.js';
+    import { TACTICAL_FEATURES } from './tactical_features.js';
 
     const fenInput = document.getElementById('fenInput');
     const plyLimitInput = document.getElementById('plyLimit');
@@ -664,6 +665,12 @@
       const legalMoves = allLegalMoves(g, side);
       const afterCache = new Map();
       return {
+        isCheck(after, checkedSide){
+          return after ? after._isInCheck(checkedSide) : false;
+        },
+        attackersOf(squareIndex, color){
+          return defendersOf(g, squareIndex, color).map(sq => ({ sq, piece: g.state.board[sq] })).filter(x => x.piece);
+        },
         game: g,
         side,
         enemy,
@@ -683,6 +690,7 @@
         lineDirection,
         sameLineNoBlock,
         moveAttacksSquare,
+        baseObservations: [],
         afterFor(move){
           if (!afterCache.has(move.uci)) {
             afterCache.set(move.uci, moveResult(g, move));
@@ -695,11 +703,10 @@
 
     async function loadTacticalFeatures(){
       try {
-        const res = await fetch('./tactical_features.md');
-        if (!res.ok) throw new Error('fetch failed');
-        const text = await res.text();
-        const parsed = parseTacticalFeaturesMarkdown(text);
-        observationTypes.splice(0, observationTypes.length, ...parsed.map(compileObservationType));
+        observationTypes.splice(0, observationTypes.length, ...TACTICAL_FEATURES.map(def => ({
+          ...def,
+          title: def.title || def.name || def.kind,
+        })));
         console.log('Loaded tactical features:', observationTypes.map(x => x.kind));
       } catch {
         console.error('Failed to load tactical features');
@@ -760,52 +767,61 @@
 
     function observationsForGame(g = game){
       const ctx = makeObservationContext(g);
-      const legal = ctx.legalMoves;
-      const obs = [];
       const afterCache = new Map();
+      const legal = ctx.legalMoves;
 
-      for (const type of observationTypes) {
-        let produced = [];
-        try {
-          produced = type.observe(ctx) || [];
-        } catch {
-          produced = [];
+      function materialize(types){
+        const out = [];
+        for (const type of types) {
+          let produced = [];
+          try {
+            produced = type.observe(ctx) || [];
+          } catch {
+            produced = [];
+          }
+          for (const raw of produced) {
+            const ob = {
+              id: raw.id,
+              type: type.kind,
+              color: type.color,
+              side: raw.side || 'theirs',
+              label: raw.label,
+              data: raw.data || {},
+              implicatedValue: Number(raw.implicatedValue || 0),
+              suborder: Number(raw.suborder || 0),
+              order: type.order,
+              moves: [],
+            };
+            ob.moves = legal.filter(move => {
+              let after = afterCache.get(move.uci);
+              if (!afterCache.has(move.uci)) {
+                after = moveResult(g, move);
+                afterCache.set(move.uci, after);
+              }
+              if (!after) return false;
+              try {
+                return !!type.related(ctx, ob, move, after);
+              } catch {
+                return false;
+              }
+            }).map(move => ({
+              ...move,
+              tags: [
+                { type: ob.type, label: ob.label, obsId: ob.id },
+                { type: ob.side, label: ob.side, obsId: ob.id }
+              ]
+            }));
+            out.push(ob);
+          }
         }
-        for (const raw of produced) {
-          const ob = {
-            id: raw.id,
-            type: type.kind,
-            color: type.color,
-            side: raw.side || 'theirs',
-            label: raw.label,
-            data: raw.data || {},
-            implicatedValue: Number(raw.implicatedValue || 0),
-            suborder: Number(raw.suborder || 0),
-            order: type.order,
-            moves: [],
-          };
-          ob.moves = legal.filter(move => {
-            let after = afterCache.get(move.uci);
-            if (!afterCache.has(move.uci)) {
-              after = moveResult(g, move);
-              afterCache.set(move.uci, after);
-            }
-            if (!after) return false;
-            try {
-              return !!type.related(ctx, ob, move, after);
-            } catch {
-              return false;
-            }
-          }).map(move => ({
-            ...move,
-            tags: [
-              { type: ob.type, label: ob.label, obsId: ob.id },
-              { type: ob.side, label: ob.side, obsId: ob.id }
-            ]
-          }));
-          obs.push(ob);
-        }
+        return out;
       }
+
+      const baseTypes = observationTypes.filter(type => type.kind !== 'combo');
+      const comboTypes = observationTypes.filter(type => type.kind === 'combo');
+      const obs = materialize(baseTypes);
+      ctx.baseObservations = obs;
+      obs.push(...materialize(comboTypes));
 
       return obs.sort((a,b) =>
         (a.order - b.order) ||
