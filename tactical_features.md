@@ -249,7 +249,7 @@ if (subtype === 'pawn') {
     (exploitSquares.includes(move.to) || exploitFiles.includes(fileOf(move.to)));
 }
 
-+return false;
+return false;
 ```
 
 ## Mobility
