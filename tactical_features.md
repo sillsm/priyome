@@ -234,6 +234,7 @@ return out;
 ### related
 ```js
 const subtype = observation.data.subtype;
+const movedPiece = after.state.board[move.to];
 const exploitSquares = observation.data.exploitSquares || [];
 
 if (subtype === 'diagonal' || subtype === 'line' || subtype === 'knight') {
