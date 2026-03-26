@@ -248,6 +248,37 @@ export const TACTICAL_FEATURES = [
 
           if (!subtype) continue;
 
+          out.push({
+            id: `alignment|${subtype}|${owner}|${front}-${rear}`,
+            label: `${owner === ctx.side ? "Our" : "Enemy"} ${subtype} alignment ${ctx.pieceLetter(pair.frontPiece)}${ctx.sqName(front)} / ${ctx.pieceLetter(pair.rearPiece)}${ctx.sqName(rear)}`,
+            side: owner === ctx.side ? "ours" : "theirs",
+            implicatedValue: sumValue(pair.frontPiece, pair.rearPiece),
+            data: { owner, subtype, front, rear, exploitSquares }
+          });
+        }
+
+        const pieces = allPiecesOf(owner);
+        for (let i = 0; i < pieces.length; i++) {
+          for (let j = i + 1; j < pieces.length; j++) {
+            const a = pieces[i].sq;
+            const b = pieces[j].sq;
+
+            const knightSquares = mutualKnightForkSquares(a, b);
+            if (knightSquares.length) {
+              const enemyKnightCanReach = allPiecesOf(enemy).some(({ sq, p }) =>
+                p.type === "n" && knightSquares.some(target => knightDistanceLE2(sq, target))
+              );
+              if (enemyKnightCanReach) {
+                out.push({
+                  id: `alignment|knight|${owner}|${a}-${b}`,
+                  label: `${owner === ctx.side ? "Our" : "Enemy"} knight alignment ${ctx.pieceLetter(pieces[i].p)}${ctx.sqName(a)} / ${ctx.pieceLetter(pieces[j].p)}${ctx.sqName(b)}`,
+                  side: owner === ctx.side ? "ours" : "theirs",
+                  implicatedValue: sumValue(pieces[i].p, pieces[j].p),
+                  data: { owner, subtype: "knight", front: a, rear: b, exploitSquares: knightSquares }
+                });
+              }
+            }
+
             const bishopSquares = bishopAttackersOf(a).filter(sq =>
               bishopAttackersOf(b).includes(sq)
             );
@@ -281,37 +312,6 @@ export const TACTICAL_FEATURES = [
                   side: owner === ctx.side ? "ours" : "theirs",
                   implicatedValue: sumValue(pieces[i].p, pieces[j].p),
                   data: { owner, subtype: "queenFork", front: a, rear: b, exploitSquares: queenSquares }
-                });
-              }
-            }
-
-              out.push({
-            id: `alignment|${subtype}|${owner}|${front}-${rear}`,
-            label: `${owner === ctx.side ? "Our" : "Enemy"} ${subtype} alignment ${ctx.pieceLetter(pair.frontPiece)}${ctx.sqName(front)} / ${ctx.pieceLetter(pair.rearPiece)}${ctx.sqName(rear)}`,
-            side: owner === ctx.side ? "ours" : "theirs",
-            implicatedValue: sumValue(pair.frontPiece, pair.rearPiece),
-            data: { owner, subtype, front, rear, exploitSquares }
-          });
-        }
-
-        const pieces = allPiecesOf(owner);
-        for (let i = 0; i < pieces.length; i++) {
-          for (let j = i + 1; j < pieces.length; j++) {
-            const a = pieces[i].sq;
-            const b = pieces[j].sq;
-
-            const knightSquares = mutualKnightForkSquares(a, b);
-            if (knightSquares.length) {
-              const enemyKnightCanReach = allPiecesOf(enemy).some(({ sq, p }) =>
-                p.type === "n" && knightSquares.some(target => knightDistanceLE2(sq, target))
-              );
-              if (enemyKnightCanReach) {
-                out.push({
-                  id: `alignment|knight|${owner}|${a}-${b}`,
-                  label: `${owner === ctx.side ? "Our" : "Enemy"} knight alignment ${ctx.pieceLetter(pieces[i].p)}${ctx.sqName(a)} / ${ctx.pieceLetter(pieces[j].p)}${ctx.sqName(b)}`,
-                  side: owner === ctx.side ? "ours" : "theirs",
-                  implicatedValue: sumValue(pieces[i].p, pieces[j].p),
-                  data: { owner, subtype: "knight", front: a, rear: b, exploitSquares: knightSquares }
                 });
               }
             }
