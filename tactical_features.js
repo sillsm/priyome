@@ -97,6 +97,54 @@ export const TACTICAL_FEATURES = [
           typeof m === "number" ? m : m.to
         );
 
+      const sumValue = (aPiece, bPiece) =>
+        ctx.pieceValue(aPiece) + ctx.pieceValue(bPiece);
+
+      const uniq = xs => [...new Set(xs)];
+
+      const fullRaySquares = (startF, startR, df, dr) => {
+        const xs = [];
+        let f = startF + df, r = startR + dr;
+        while (onBoard(f, r)) {
+          xs.push(sqOf(f, r));
+          f += df;
+          r += dr;
+        }
+        return xs;
+      };
+
+      const fullLineThrough = (a, b) => {
+        const af = fileOf(a), ar = rankOf(a);
+        const bf = fileOf(b), br = rankOf(b);
+        const df = Math.sign(bf - af), dr = Math.sign(br - ar);
+        return uniq([
+          a,
+          ...fullRaySquares(af, ar, df, dr),
+          ...fullRaySquares(af, ar, -df, -dr)
+        ]);
+      };
+
+      const diagonalsThrough = sq => {
+        const f = fileOf(sq), r = rankOf(sq);
+        return uniq([
+          sq,
+          ...fullRaySquares(f, r, 1, 1),
+          ...fullRaySquares(f, r, 1, -1),
+          ...fullRaySquares(f, r, -1, 1),
+          ...fullRaySquares(f, r, -1, -1)
+        ]);
+      };
+
+      const bishopAttackersOf = target => uniq(diagonalsThrough(target).filter(sq => sq !== target));
+      const rookAttackersOf = target => {
+        const f = fileOf(target), r = rankOf(target);
+        return uniq([
+          ...fullRaySquares(f, r, 1, 0), ...fullRaySquares(f, r, -1, 0),
+          ...fullRaySquares(f, r, 0, 1), ...fullRaySquares(f, r, 0, -1)
+        ]);
+      };
+      const queenAttackersOf = target => uniq([...rookAttackersOf(target), ...bishopAttackersOf(target)]);
+
       const lineSquaresBetweenInclusive = (a, b) => {
         const af = fileOf(a), ar = rankOf(a);
         const bf = fileOf(b), br = rankOf(b);
@@ -174,35 +222,74 @@ export const TACTICAL_FEATURES = [
           const rf = fileOf(rear), rr = rankOf(rear);
           const diagonal = Math.abs(ff - rf) === Math.abs(fr - rr);
           const orthogonal = ff === rf || fr === rr;
-          const exploitSquares = lineSquaresBetweenInclusive(front, rear);
 
           let subtype = null;
-          let relevant = false;
+          let exploitSquares = [];
 
           if (diagonal) {
             subtype = "diagonal";
-            relevant = allPiecesOf(enemy).some(({ sq, p }) =>
+            exploitSquares = fullLineThrough(front, rear);
+            if (!allPiecesOf(enemy).some(({ sq, p }) =>
               ["b", "q"].includes(p.type) &&
               legalTos(sq, enemy).some(to => exploitSquares.includes(to))
-            );
+            )) continue;
           } else if (orthogonal) {
             subtype = "line";
-            relevant = allPiecesOf(enemy).some(({ sq, p }) =>
-              ["r", "q"].includes(p.type) &&
+            exploitSquares = uniq([
+              ...fullLineThrough(front, rear),
+              ...diagonalsThrough(front),
+              ...diagonalsThrough(rear)
+            ]);
+            if (!allPiecesOf(enemy).some(({ sq, p }) =>
+              ["r", "b", "q"].includes(p.type) &&
               legalTos(sq, enemy).some(to => exploitSquares.includes(to))
-            );
+            )) continue;
           }
 
-          if (!subtype || !relevant) continue;
+          if (!subtype) continue;
 
-          out.push({
+            const bishopSquares = bishopAttackersOf(a).filter(sq =>
+              bishopAttackersOf(b).includes(sq)
+            );
+            if (bishopSquares.length) {
+              const enemyBishopishCanReach = allPiecesOf(enemy).some(({ sq, p }) =>
+                ["b", "q"].includes(p.type) &&
+                legalTos(sq, enemy).some(to => bishopSquares.includes(to))
+              );
+              if (enemyBishopishCanReach) {
+                out.push({
+                  id: `alignment|bishopFork|${owner}|${a}-${b}`,
+                  label: `${owner === ctx.side ? "Our" : "Enemy"} bishop-forkable ${ctx.pieceLetter(pieces[i].p)}${ctx.sqName(a)} / ${ctx.pieceLetter(pieces[j].p)}${ctx.sqName(b)}`,
+                  side: owner === ctx.side ? "ours" : "theirs",
+                  implicatedValue: sumValue(pieces[i].p, pieces[j].p),
+                  data: { owner, subtype: "bishopFork", front: a, rear: b, exploitSquares: bishopSquares }
+                });
+              }
+            }
+
+            const queenSquares = queenAttackersOf(a).filter(sq =>
+              queenAttackersOf(b).includes(sq)
+            );
+            if (queenSquares.length) {
+              const enemyQueenCanReach = allPiecesOf(enemy).some(({ sq, p }) =>
+                p.type === "q" && legalTos(sq, enemy).some(to => queenSquares.includes(to))
+              );
+              if (enemyQueenCanReach) {
+                out.push({
+                  id: `alignment|queenFork|${owner}|${a}-${b}`,
+                  label: `${owner === ctx.side ? "Our" : "Enemy"} queen-forkable ${ctx.pieceLetter(pieces[i].p)}${ctx.sqName(a)} / ${ctx.pieceLetter(pieces[j].p)}${ctx.sqName(b)}`,
+                  side: owner === ctx.side ? "ours" : "theirs",
+                  implicatedValue: sumValue(pieces[i].p, pieces[j].p),
+                  data: { owner, subtype: "queenFork", front: a, rear: b, exploitSquares: queenSquares }
+                });
+              }
+            }
+
+              out.push({
             id: `alignment|${subtype}|${owner}|${front}-${rear}`,
             label: `${owner === ctx.side ? "Our" : "Enemy"} ${subtype} alignment ${ctx.pieceLetter(pair.frontPiece)}${ctx.sqName(front)} / ${ctx.pieceLetter(pair.rearPiece)}${ctx.sqName(rear)}`,
             side: owner === ctx.side ? "ours" : "theirs",
-            implicatedValue: Math.max(
-              ctx.pieceValue(pair.frontPiece),
-              ctx.pieceValue(pair.rearPiece)
-            ),
+            implicatedValue: sumValue(pair.frontPiece, pair.rearPiece),
             data: { owner, subtype, front, rear, exploitSquares }
           });
         }
@@ -223,10 +310,7 @@ export const TACTICAL_FEATURES = [
                   id: `alignment|knight|${owner}|${a}-${b}`,
                   label: `${owner === ctx.side ? "Our" : "Enemy"} knight alignment ${ctx.pieceLetter(pieces[i].p)}${ctx.sqName(a)} / ${ctx.pieceLetter(pieces[j].p)}${ctx.sqName(b)}`,
                   side: owner === ctx.side ? "ours" : "theirs",
-                  implicatedValue: Math.max(
-                    ctx.pieceValue(pieces[i].p),
-                    ctx.pieceValue(pieces[j].p)
-                  ),
+                  implicatedValue: sumValue(pieces[i].p, pieces[j].p),
                   data: { owner, subtype: "knight", front: a, rear: b, exploitSquares: knightSquares }
                 });
               }
@@ -238,10 +322,7 @@ export const TACTICAL_FEATURES = [
                 id: `alignment|pawn|${owner}|${a}-${b}`,
                 label: `${owner === ctx.side ? "Our" : "Enemy"} pawn alignment ${ctx.pieceLetter(pieces[i].p)}${ctx.sqName(a)} / ${ctx.pieceLetter(pieces[j].p)}${ctx.sqName(b)}`,
                 side: owner === ctx.side ? "ours" : "theirs",
-                implicatedValue: Math.max(
-                  ctx.pieceValue(pieces[i].p),
-                  ctx.pieceValue(pieces[j].p)
-                ),
+                implicatedValue: sumValue(pieces[i].p, pieces[j].p),
                 data: {
                   owner,
                   subtype: "pawn",
@@ -264,7 +345,7 @@ export const TACTICAL_FEATURES = [
       const subtype = observation.data.subtype;
       const exploitSquares = observation.data.exploitSquares || [];
 
-      if (subtype === "diagonal" || subtype === "line" || subtype === "knight") {
+      if (subtype === "diagonal" || subtype === "line" || subtype === "knight" || subtype === "bishopFork" || subtype === "queenFork") {
         return exploitSquares.includes(move.to);
       }
 
@@ -295,50 +376,6 @@ export const TACTICAL_FEATURES = [
 
     related(ctx, observation, move, after) {
       return false;
-    }
-  },
-
-  {
-    name: "Combos",
-    kind: "combo",
-    order: 80,
-    color: "combo",
-
-    observe(ctx) {
-      const out = [];
-      const base = ctx.baseObservations || [];
-
-      for (let i = 0; i < base.length; i++) {
-        for (let j = i + 1; j < base.length; j++) {
-          const a = base[i];
-          const b = base[j];
-
-          if (a.type === b.type) continue;
-          if (!a.moves?.length || !b.moves?.length) continue;
-
-          const shared = new Set(a.moves.map(m => m.uci));
-          const overlap = b.moves.filter(m => shared.has(m.uci));
-          if (!overlap.length) continue;
-
-          out.push({
-            id: `combo|${a.id}|${b.id}`,
-            label: `Combo: ${a.label} + ${b.label}`,
-            side: (a.side === "ours" || b.side === "ours") ? "ours" : "theirs",
-            implicatedValue: Math.max(a.implicatedValue, b.implicatedValue),
-            data: {
-              aId: a.id,
-              bId: b.id,
-              sharedUcis: overlap.map(m => m.uci)
-            }
-          });
-        }
-      }
-
-      return out;
-    },
-
-    related(ctx, observation, move, after) {
-      return (observation.data.sharedUcis || []).includes(move.uci);
     }
   }
 ];
