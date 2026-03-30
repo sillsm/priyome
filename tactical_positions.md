@@ -26,3 +26,7 @@ solution: 1... Qxg2+ 2. Rf2 Qxf2+ 3. Kxf2 Rh2+ { And Black takes the queen: } 4.
 ## Pin weakens defender
 fen: 5r2/p2Q2bk/1p1N2np/2p1P2n/5P1q/4BR1P/PP6/3R2K1 b - - 4 27
 where: https://lichess.org/training/bfhHY
+
+## Checking the king into alignment with loose piece
+fen: 5r2/2p2p2/8/2K3p1/1R2P3/k1P1NP1p/5n2/8 w - - 0 34
+where: https://lichess.org/training/LEHbA
