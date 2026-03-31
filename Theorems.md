@@ -103,3 +103,35 @@ the net material balance is favorable for side \(s\). Hence the sequence wins ma
 
 **Example**
 Woodpecker 76
+
+## Theorem: Pinned piece defends another. Back is undefended. You capture the other, pin recaptures, and you capture back
+
+**Theorem (Overloaded aligned defender deflected by capture).**  
+Let \(P\) be a position with side \(s\) to move. Suppose the opponent has two aligned pieces, \(b\) (the back piece) and \(f\) (the front piece), and side \(s\) has a piece \(A\) attacking \(f\). Suppose further that:
+
+1. \(b\) and \(f\) are aligned on a rank, file, or diagonal, with \(f\) in front of \(b\) relative to the attack of \(A\);
+2. the back piece \(b\) is undefended;
+3. the front piece \(f\) is the sole defender of another enemy piece \(x\);
+4. side \(s\) has a legal capture \(A_2 \times x\);
+5. if the opponent replies \(f \times A_2\), then side \(s\) has the legal recapture \(A \times f\);
+6. after \(A \times f\), the resulting exchange leaves side \(s\) with the material gain corresponding to the collapse of the overloaded defensive structure.
+
+If moreover
+\[
+\mathrm{Value}(A_2) < \mathrm{Value}(b),
+\]
+then the sequence
+\[
+A_2 \times x,\quad f \times A_2,\quad A \times f
+\]
+wins material for side \(s\).
+
+**Proof.**  
+Since \(f\) is the sole defender of \(x\), side \(s\) may capture \(x\) with \(A_2\). If the opponent does not recapture, then side \(s\) has already won \(x\), so the critical case is \(f \times A_2\). But then \(f\) has been deflected from its overloaded defensive role and is itself captured by \(A \times f\). Thus the opponent loses both \(x\) and \(f\), while side \(s\) loses only \(A_2\). Because the back piece \(b\) was undefended and the alignment made \(f\) tactically burdened, this exchange collapses the defensive structure in favor of side \(s\). In particular, if
+\[
+\mathrm{Value}(A_2) < \mathrm{Value}(b),
+\]
+the net material balance is favorable for side \(s\). Hence the sequence wins material. ∎
+
+** Example **
+https://lichess.org/training/bfhHY
