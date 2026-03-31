@@ -64,6 +64,12 @@ Play \(a_1 \times p\). By hypothesis, the opponent must answer with \(d \times a
 
 ## Theorem Preparatory capture enabling a winning knight fork.
 
+### Cues
+
+Knight can fork king and defender. You can take defender first, forcing a recapture, then forking kind and recapturing piece.
+
+### Statement
+
 Let \(P_0\) be a position with side \(s\) to move. Suppose there is a square \(S\) occupied by an enemy piece \(p\), defended by exactly one enemy defender \(d\), and suppose side \(s\) has:
 
 - a piece \(A\) that can legally capture \(p\) on \(S\), and
