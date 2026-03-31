@@ -18,21 +18,36 @@ That is the compact version of the long proof.
 Woodpecker 44
 
 ## Theorem (Forced recapture into a defended pin).
-Let \(P\) be a position with side \(s\) to move. Suppose the opponent has a king \(k\), a target piece \(p\), and a defender \(d\), and side \(s\) has two pieces \(a_1\) and \(a_2\), such that:
 
-1. in the initial position, \(k\) and \(p\) are collinear on a rank, file, or diagonal;
+### Cues
+Enemy king and piece are aligned. You have two pieces, one that can join alignment, other that can capture piece. The first mandatory defender seems to have higher material value than your two pieces.
+
+### Statement
+Let \(P\) be a position with side \(s\) to move. Suppose the opponent has a king \(k\), a target piece \(p\), and a defender \(d\), and side \(s\) has pieces \(a_1\) and \(a_2\), such that:
+
+1. in the initial position, \(k\) and \(p\) are collinear;
 2. the king \(k\) does not defend \(p\);
-3. \(a_1 \times p\) is a legal move;
-4. after \(a_1 \times p\), the reply \(d \times a_1\) is forced or materially mandatory, in the sense that if the opponent does not recapture with \(d\), side \(s\) wins material anyway;
-5. after \(d \times a_1\), side \(s\) has a legal move with \(a_2\) to a square \(q\) such that:
-   - \(a_2\) on \(q\), \(d\), and \(k\) are collinear,
-   - \(d\) lies between \(a_2\) and \(k\), so \(d\) is pinned to the king,
-   - the square \(q\) is defended by side \(s\), so \(a_2\) cannot be favorably eliminated at once;
-6. after this move by \(a_2\), the opponent has no tactical resource that refutes the sequence, such as:
-   - a forcing check,
-   - an effective blocking move that breaks the pin,
-   - a capture of \(a_2\) without adequate immediate recapture by side \(s\),
-   - or any stronger continuation that saves the exchange.
+3. \(a_1 \times p\) is legal;
+4. after \(a_1 \times p\), the recapture \(d \times a_1\) is materially mandatory (i.e., if the opponent does not play \(d \times a_1\), side \(s\) wins material immediately);
+5. after \(d \times a_1\), there exists a move \(a_2 \to q\) such that:
+   - \(a_2\), \(d\), and \(k\) are collinear with \(d\) between \(a_2\) and \(k\) (so \(d\) is pinned),
+   - the square \(q\) is defended by side \(s\).
+
+Assume furthermore that after \(a_2 \to q\), all of the following hold:
+
+6. (**No checking resource**)  
+   The opponent has no move that gives check and avoids immediate material loss.
+
+7. (**No safe capture of the pinning piece**)  
+   Every capture of \(a_2\) by the opponent is met by a recapture that is at least as favorable for side \(s\).
+
+8. (**No effective block or unpin**)  
+   There is no legal move that:
+   - interposes a piece between \(a_2\) and \(k\) while maintaining material balance, or  
+   - moves the king or the pinned piece in a way that both resolves the pin and preserves material.
+
+9. (**Pinned piece cannot be maintained**)  
+   The pinned piece \(d\) cannot be adequately defended or traded without material loss.
 
 Then the sequence
 \[
