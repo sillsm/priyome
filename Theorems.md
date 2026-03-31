@@ -16,3 +16,10 @@ That is the compact version of the long proof.
 
 **Example**
 Woodpecker 44
+
+## Theorem 2
+
+**Example**
+
+[Event "Woodpecker Method easy (51-100): Easy Exercises - Exercise 78"]
+[FEN "3r4/p2q1pkp/1pn1bnp1/2p1p3/P1N1P3/1PP1Q1PP/5PK1/4RBN1 b - - 0 1"]
