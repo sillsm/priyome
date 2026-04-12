@@ -866,14 +866,15 @@
 
     function observationPriority(ob){
       if (ob.type === 'attack' && ob.data?.isCheck) return 0;
-      if (ob.type === 'attack') return 1;
-      if (ob.type === 'hang') return 2;
-      if (ob.type === 'loose') return 3;
-      if (ob.type === 'defend') return 4;
-      if (ob.type === 'alignment') return 5;
-      if (ob.type === 'forkable_by_x') return 6;
-      if (ob.type === 'mobility') return 7;
-      return 8;
+      if (ob.type === 'alignment' && ob.data?.leavesWithCheck) return 1;
+      if (ob.type === 'attack') return 2;
+      if (ob.type === 'hang') return 3;
+      if (ob.type === 'loose') return 4;
+      if (ob.type === 'defend') return 5;
+      if (ob.type === 'alignment') return 6;
+      if (ob.type === 'forkable_by_x') return 7;
+      if (ob.type === 'mobility') return 8;
+      return 9;
     }
 
     function sortClusterObservations(obs){
@@ -915,14 +916,30 @@
         return path;
       }
 
+      const mandatory = sorted.filter(ob => ob.data?.forcePrimary);
       let primaryObs = [];
-      for (const seed of sorted) {
-        const candidate = buildBestFrom(seed);
-        if (candidate.length > primaryObs.length) primaryObs = candidate;
-        else if (candidate.length === primaryObs.length) {
-          const curScore = candidate.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
-          const bestScore = primaryObs.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
-          if (curScore > bestScore) primaryObs = candidate;
+      if (mandatory.length) {
+        primaryObs = [...mandatory];
+        let alignmentsUsed = primaryObs.filter(ob => ob.type === 'alignment').length;
+        while (primaryObs.length < 8) {
+          const prev = primaryObs[primaryObs.length - 1];
+          const next = sorted.find(candidate =>
+            !primaryObs.some(ob => ob.id === candidate.id) &&
+            canFollow(prev, candidate, alignmentsUsed)
+          );
+          if (!next) break;
+          primaryObs.push(next);
+          if (next.type === 'alignment') alignmentsUsed++;
+        }
+      } else {
+        for (const seed of sorted) {
+          const candidate = buildBestFrom(seed);
+          if (candidate.length > primaryObs.length) primaryObs = candidate;
+          else if (candidate.length === primaryObs.length) {
+            const curScore = candidate.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
+            const bestScore = primaryObs.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
+            if (curScore > bestScore) primaryObs = candidate;
+          }
         }
       }
 
@@ -979,6 +996,46 @@
       return out;
     }
 
+    function lineEndpoints(squares){
+      const uniq = [...new Set(squares)].sort((a,b) => a - b);
+      if (uniq.length < 2) return null;
+      const [a, b] = [uniq[0], uniq[uniq.length - 1]];
+      const dir = lineDirection(a, b);
+      if (!dir) return { from: sqName(a), to: sqName(b) };
+      let minSq = a, maxSq = a;
+      for (const sq of uniq) {
+        const [f,r] = FR(sq);
+        const score = f * dir[0] + r * dir[1];
+        const [fmin,rmin] = FR(minSq);
+        const [fmax,rmax] = FR(maxSq);
+        const smin = fmin * dir[0] + rmin * dir[1];
+        const smax = fmax * dir[0] + rmax * dir[1];
+        if (score < smin) minSq = sq;
+        if (score > smax) maxSq = sq;
+      }
+      return { from: sqName(minSq), to: sqName(maxSq) };
+    }
+
+    function applyPrimaryGraphMarks(primary){
+      const marks = game.curNode?.marks;
+      if (!marks) return;
+      marks.sqMarks.clear();
+      marks.arrows.length = 0;
+      for (const ob of (primary?.observations || [])) {
+        if (ob.type === 'hang' && ob.data?.square != null) {
+          marks.sqMarks.set(sqName(ob.data.square), 'R');
+        } else if ((ob.type === 'attack' || ob.type === 'defend') && ob.data?.attacker != null && ob.data?.square != null) {
+          marks.arrows.push({ color: 'G', from: sqName(ob.data.attacker), to: sqName(ob.data.square) });
+        } else if ((ob.type === 'attack' || ob.type === 'defend') && ob.data?.defender != null && ob.data?.square != null) {
+          marks.arrows.push({ color: 'G', from: sqName(ob.data.defender), to: sqName(ob.data.square) });
+        } else if (ob.type === 'alignment' && Array.isArray(ob.data?.squares)) {
+          const ep = lineEndpoints(ob.data.squares);
+          if (ep) marks.arrows.push({ color: 'Y', from: ep.from, to: ep.to });
+        }
+      }
+      game._emit();
+    }
+
     function renderObservationsAndMoves(){
       const obs = observationsForGame(game, false);
       const threats = enemyThreatsForPosition(game, obs);
@@ -1010,6 +1067,7 @@
       selectionSummaryEl.textContent = primary.squares.length
         ? primary.squares.map(sqName).join(', ')
         : '—';
+      applyPrimaryGraphMarks(primary);
 
       const moves = filteredMoves(obs);
 
