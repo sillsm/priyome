@@ -22,7 +22,7 @@ export const TACTICAL_FEATURES = [
           const target = ctx.game.state.board[to];
           if (!target || target.color === p.color) continue;
           const isCheck = target.type === 'k';
-          const id = `attack|${from}|${to}|${isCheck ? 'check' : 'plain'}`;
+          const id = `attack|static|${from}|${to}|${isCheck ? 'check' : 'plain'}`;
           if (seen.has(id)) continue;
           seen.add(id);
           out.push({
@@ -30,14 +30,31 @@ export const TACTICAL_FEATURES = [
             label: `attack(${pieceTag(ctx, p, from)}, ${ctx.sqName(to)}${isCheck ? '+' : ''})`,
             side: p.color === ctx.side ? "ours" : "theirs",
             implicatedValue: ctx.pieceValue(target) + (isCheck ? 1000 : 0),
-            data: { refs: [from, to], owner: p.color, attacker: from, square: to, isCheck }
+            data: { refs: [from, to], owner: p.color, attacker: from, square: to, isCheck, forcePrimary: isCheck }
           });
         }
+      }
+      for (const move of ctx.legalMoves) {
+        const after = ctx.afterFor(move);
+        if (!after || !after._isInCheck(ctx.enemy)) continue;
+        const moved = ctx.game.state.board[move.from];
+        if (!moved) continue;
+        const id = `attack|movecheck|${move.uci}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push({
+          id,
+          label: `attack(${pieceTag(ctx, moved, move.from)}, ${ctx.sqName(move.to)}+)`,
+          side: "ours",
+          implicatedValue: 2000,
+          data: { refs: [move.from, move.to], owner: ctx.side, attacker: move.from, square: move.to, isCheck: true, moveUci: move.uci, forcePrimary: true }
+        });
       }
       return out;
     },
 
     related(ctx, observation, move, after) {
+      if (observation.data.moveUci) return move.uci === observation.data.moveUci;
       const refs = observation.data.refs || [];
       return refs.includes(move.from) || refs.includes(move.to) || refs.some(sq => ctx.moveAttacksSquare(after, move, sq, ctx.side));
     }
@@ -126,7 +143,7 @@ export const TACTICAL_FEATURES = [
         const attackers = ctx.attackersOf(sq, ctx.other(p.color));
         const defenders = ctx.attackersOf(sq, p.color);
         if (!attackers.length) continue;
-        if (!(attackers.length > defenders.length || defenders.length === 0)) continue;
+        if (!(defenders.length < attackers.length)) continue;
         out.push({
           id: `hang|${p.color}|${sq}`,
           label: `hang(${pieceTag(ctx, p, sq)})`,
@@ -181,16 +198,27 @@ export const TACTICAL_FEATURES = [
           const pb = ctx.game.state.board[b];
           if (!pb) continue;
 
-          if (nonPawnCount([pa, pb]) >= 2) {
+          if (nonPawnCount([pa, pb]) >= 2 && pa.color === pb.color) {
             const id2 = `alignment|${a}|${b}`;
             if (!seen.has(id2)) {
+              const legalA = ctx.game._legalMovesFrom(a, pa.color) || [];
+              const legalB = ctx.game._legalMovesFrom(b, pb.color) || [];
+              const leavesWithCheck = (pa.color === ctx.side && legalA.some(to => {
+                const mv = { from:a, to, uci: ctx.sqName(a) + ctx.sqName(to) };
+                const after = ctx.afterFor(mv);
+                return after && after._isInCheck(ctx.enemy);
+              })) || (pb.color === ctx.side && legalB.some(to => {
+                const mv = { from:b, to, uci: ctx.sqName(b) + ctx.sqName(to) };
+                const after = ctx.afterFor(mv);
+                return after && after._isInCheck(ctx.enemy);
+              }));
               seen.add(id2);
               out.push({
                 id: id2,
                 label: `alignment(${pieceTag(ctx, pa, a)}, ${pieceTag(ctx, pb, b)})`,
                 side: 'theirs',
-                implicatedValue: ctx.pieceValue(pa) + ctx.pieceValue(pb),
-                data: { refs: [a, b], squares: [a, b] }
+                implicatedValue: ctx.pieceValue(pa) + ctx.pieceValue(pb) + (leavesWithCheck ? 1000 : 0),
+                data: { refs: [a, b], squares: [a, b], leavesWithCheck, forcePrimary: leavesWithCheck }
               });
             }
           }
@@ -203,12 +231,24 @@ export const TACTICAL_FEATURES = [
           const id3 = `alignment|${a}|${b}|${c}`;
           if (seen.has(id3)) continue;
           seen.add(id3);
+          const leaveSquares = [a, b, c];
+          const leavePieces = [pa, pb, pc];
+          const leavesWithCheck = leaveSquares.some((sq, i) => {
+            const piece = leavePieces[i];
+            if (!piece || piece.color !== ctx.side) return false;
+            const legal = ctx.game._legalMovesFrom(sq, piece.color) || [];
+            return legal.some(to => {
+              const mv = { from:sq, to, uci: ctx.sqName(sq) + ctx.sqName(to) };
+              const after = ctx.afterFor(mv);
+              return after && after._isInCheck(ctx.enemy);
+            });
+          });
           out.push({
             id: id3,
             label: `alignment(${pieceTag(ctx, pa, a)}, ${pieceTag(ctx, pb, b)}, ${pieceTag(ctx, pc, c)})`,
             side: 'theirs',
-            implicatedValue: ctx.pieceValue(pa) + ctx.pieceValue(pb) + ctx.pieceValue(pc),
-            data: { refs: [a, b, c], squares: [a, b, c] }
+            implicatedValue: ctx.pieceValue(pa) + ctx.pieceValue(pb) + ctx.pieceValue(pc) + (leavesWithCheck ? 1000 : 0),
+            data: { refs: [a, b, c], squares: [a, b, c], leavesWithCheck, forcePrimary: leavesWithCheck }
           });
         }
       }
