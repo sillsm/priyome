@@ -930,18 +930,6 @@
           observations: [...groupObs]
         });
       }
-        const before = observationsForGame(game);
-        const afterG = createGame();
-        afterG.loadFEN(game.exportFEN());
-        afterG.makeMoveUCI(move.uci);
-        if (afterG.state.pendingPromotion) afterG.resolvePendingPromotion('Q');
-        const after = observationsForGame(afterG);
-
-        const beforeIds = new Set(before.map(o => o.id));
-        const afterIds = new Set(after.map(o => o.id));
-
-        const added = after.filter(o => !beforeIds.has(o.id)).slice(0,2);
-        const removed = before.filter(o => !afterIds.has(o.id)).slice(0,2);
 
 
       clusters.sort((a,b) => b.observations.length - a.observations.length);
@@ -1042,6 +1030,19 @@
         moveList.innerHTML = '<div class="small">No legal moves are related to the currently selected observations.</div>';
       } else {
         for (const move of moves) {
+          const before = observationsForGame(game);
+          const afterG = createGame();
+          afterG.loadFEN(game.exportFEN());
+          afterG.makeMoveUCI(move.uci);
+          if (afterG.state.pendingPromotion) afterG.resolvePendingPromotion('Q');
+          const after = observationsForGame(afterG);
+
+          const beforeIds = new Set(before.map(o => o.id));
+          const afterIds = new Set(after.map(o => o.id));
+
+          const added = after.filter(o => !beforeIds.has(o.id)).slice(0,2);
+          const removed = before.filter(o => !afterIds.has(o.id)).slice(0,2);
+
           const div = document.createElement('div');
           div.className = 'card';
           div.innerHTML = `
@@ -1049,10 +1050,10 @@
               <div><strong>${escapeHtml(move.san)}</strong> <span class="mono muted">${move.uci}</span></div>
               <div class="chipRow">${move.tags.map(t => `<span class="chip ${t.type}">${escapeHtml(t.type)}</span>`).join('')}</div>
               <div class="small">Related to: ${escapeHtml(move.reasons.join(' · '))}</div>
-            <div class="small">
-              ${added.map(o => `<span class="plus">+ ${o.label}</span>`).join(' ')}
-              ${removed.map(o => `<span class="minus">- ${o.label}</span>`).join(' ')}
-            </div>
+              <div class="small">
+                ${added.map(o => `<span class="plus">+ ${escapeHtml(o.label)}</span>`).join(' ')}
+                ${removed.map(o => `<span class="minus">- ${escapeHtml(o.label)}</span>`).join(' ')}
+              </div>
             </button>`;
           div.querySelector('button').onclick = () => applyProofMove(move);
           moveList.appendChild(div);
