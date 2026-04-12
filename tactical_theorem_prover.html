@@ -770,7 +770,7 @@
       loadFen();
     }
 
-    function observationsForGame(g = game){
+    function observationsForGame(g = game, includeMoves = false){
       const ctx = makeObservationContext(g);
       const afterCache = new Map();
       const legal = ctx.legalMoves;
@@ -797,25 +797,27 @@
               order: type.order,
               moves: [],
             };
-            ob.moves = legal.filter(move => {
-              let after = afterCache.get(move.uci);
-              if (!afterCache.has(move.uci)) {
-                after = moveResult(g, move);
-                afterCache.set(move.uci, after);
-              }
-              if (!after) return false;
-              try {
-                return !!type.related(ctx, ob, move, after);
-              } catch {
-                return false;
-              }
-            }).map(move => ({
-              ...move,
-              tags: [
-                { type: ob.type, label: ob.label, obsId: ob.id },
-                { type: ob.side, label: ob.side, obsId: ob.id }
-              ]
-            }));
+            if (includeMoves) {
+              ob.moves = legal.filter(move => {
+                let after = afterCache.get(move.uci);
+                if (!afterCache.has(move.uci)) {
+                  after = moveResult(g, move);
+                  afterCache.set(move.uci, after);
+                }
+                if (!after) return false;
+                try {
+                  return !!type.related(ctx, ob, move, after);
+                } catch {
+                  return false;
+                }
+              }).map(move => ({
+                ...move,
+                tags: [
+                  { type: ob.type, label: ob.label, obsId: ob.id },
+                  { type: ob.side, label: ob.side, obsId: ob.id }
+                ]
+              }));
+            }
             out.push(ob);
           }
         }
@@ -985,7 +987,7 @@
     }
 
     function renderObservationsAndMoves(){
-      const obs = observationsForGame(game);
+      const obs = observationsForGame(game, false);
       const threats = enemyThreatsForPosition(game, obs);
       const clustered = clusterObservationsByRefs(obs);
       const primary = clustered.primary;
@@ -1027,7 +1029,7 @@
 
       for (const move of moves) {
         const after = moveResult(game, move);
-        const diff = after ? diffObservations(obs, observationsForGame(after)) : { added: [], removed: [] };
+        const diff = after ? diffObservations(obs, observationsForGame(after, false)) : { added: [], removed: [] };
         const added = diff.added.slice(0, 2);
         const removed = diff.removed.slice(0, 2);
 
@@ -1067,11 +1069,11 @@
       if (viewPly != null && viewPly < theoremLine.length) theoremLine.splice(viewPly);
       viewPly = null;
       syncGameToView();
-      const before = observationsForGame(game);
+      const before = observationsForGame(game, false);
       const applied = game.makeMoveUCI(move.uci);
       if (!applied) return;
       if (game.state.pendingPromotion) game.resolvePendingPromotion('Q');
-      const after = observationsForGame(game);
+      const after = observationsForGame(game, false);
       theoremLine.push({
         ply: theoremLine.length + 1,
         san: game.curNode?.san || move.san,
@@ -1195,7 +1197,7 @@
         }
 
         if (g.state.side === startSide) {
-          const obs = observationsForGame(g).filter(ob => ob.moves.length > 0);
+          const obs = observationsForGame(g, true).filter(ob => ob.moves.length > 0);
           const bundles = [];
           for (let i = 0; i < obs.length; i++) {
             bundles.push([obs[i]]);
