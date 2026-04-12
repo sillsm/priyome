@@ -866,14 +866,13 @@
 
     function observationPriority(ob){
       if (ob.type === 'attack' && ob.data?.isCheck) return 0;
-      if (ob.type === 'attack' && ob.data?.moveUci) return 1;
-      if (ob.type === 'loose') return 2;
+      if (ob.type === 'alignment' && ob.data?.leavesWithCheck) return 1;
+      if (ob.type === 'attack') return 2;
       if (ob.type === 'hang') return 3;
-      if (ob.type === 'mobility') return 4;
-      if (ob.type === 'attack') return 5;
-      if (ob.type === 'defend') return 6;
-      if (ob.type === 'alignment') return 7;
-      if (ob.type === 'forkable_by_x') return 8;
+      if (ob.type === 'loose') return 4;
+      if (ob.type === 'defend') return 5;
+      if (ob.type === 'alignment') return 6;
+      if (ob.type === 'forkable_by_x') return 7;
       if (ob.type === 'mobility') return 8;
       return 9;
     }
@@ -888,52 +887,61 @@
 
     function clusterObservationsByRefs(obs){
       const sorted = sortClusterObservations(obs);
-      const moveByUci = new Map(allLegalMoves(game, game.state.side).map(m => [m.uci, m]));
-      const pieceAtSquare = sq => (sq == null ? null : game.state.board[sq]);
-      const isMateInOneAttack = ob => {
-        if (ob.type !== 'attack' || !ob.data?.moveUci) return false;
-        const mv = moveByUci.get(ob.data.moveUci);
-        return !!mv && /#$/.test(mv.san || '');
-      };
-      const isNonPawnLoose = ob => {
-        if (ob.type !== 'loose') return false;
-        const p = pieceAtSquare(ob.data?.square);
-        return !!p && p.type !== 'p';
-      };
-      const isNonPawnMobility = ob => {
-        if (ob.type !== 'mobility') return false;
-        const p = pieceAtSquare(ob.data?.square);
-        return !!p && p.type !== 'p';
-      };
 
-      const firstPass = sorted.filter(ob =>
-        (ob.type === 'attack' && ob.data?.isCheck) ||
-        isMateInOneAttack(ob) ||
-        isNonPawnLoose(ob) ||
-        ob.type === 'hang' ||
-        isNonPawnMobility(ob)
-      );
+      function canFollow(prev, next, alignmentsUsed){
+        if (!prev || !next) return false;
+        if (prev.id === next.id) return false;
+        if (prev.type === next.type) return false;
+        if (!observationsShareRef(prev, next)) return false;
+        if (next.type === 'alignment' && alignmentsUsed >= 3) return false;
+        return true;
+      }
 
-      const firstIds = new Set(firstPass.map(ob => ob.id));
-      const firstSquares = new Set(firstPass.flatMap(ob => observationRefs(ob)));
+      function buildBestFrom(seed){
+        const path = [seed];
+        const used = new Set([seed.id]);
+        let prev = seed;
+        let alignmentsUsed = seed.type === 'alignment' ? 1 : 0;
+        while (path.length < 8) {
+          const next = sorted.find(candidate =>
+            !used.has(candidate.id) &&
+            canFollow(prev, candidate, alignmentsUsed)
+          );
+          if (!next) break;
+          path.push(next);
+          used.add(next.id);
+          if (next.type === 'alignment') alignmentsUsed++;
+          prev = next;
+        }
+        return path;
+      }
 
-      const secondPass = sorted.filter(ob =>
-        !firstIds.has(ob.id) &&
-        (ob.type === 'attack' || ob.type === 'defend') &&
-        observationRefs(ob).some(sq => firstSquares.has(sq))
-      );
-
-      const secondIds = new Set(secondPass.map(ob => ob.id));
-      const secondSquares = new Set([...firstSquares, ...secondPass.flatMap(ob => observationRefs(ob))]);
-
-      const finalPass = sorted.filter(ob =>
-        !firstIds.has(ob.id) &&
-        !secondIds.has(ob.id) &&
-        (ob.type === 'alignment' || ob.type === 'forkable_by_x') &&
-        observationRefs(ob).some(sq => secondSquares.has(sq))
-      );
-
-      const primaryObs = [...firstPass, ...secondPass, ...finalPass];
+      const mandatory = sorted.filter(ob => ob.data?.forcePrimary);
+      let primaryObs = [];
+      if (mandatory.length) {
+        primaryObs = [...mandatory];
+        let alignmentsUsed = primaryObs.filter(ob => ob.type === 'alignment').length;
+        while (primaryObs.length < 8) {
+          const prev = primaryObs[primaryObs.length - 1];
+          const next = sorted.find(candidate =>
+            !primaryObs.some(ob => ob.id === candidate.id) &&
+            canFollow(prev, candidate, alignmentsUsed)
+          );
+          if (!next) break;
+          primaryObs.push(next);
+          if (next.type === 'alignment') alignmentsUsed++;
+        }
+      } else {
+        for (const seed of sorted) {
+          const candidate = buildBestFrom(seed);
+          if (candidate.length > primaryObs.length) primaryObs = candidate;
+          else if (candidate.length === primaryObs.length) {
+            const curScore = candidate.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
+            const bestScore = primaryObs.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
+            if (curScore > bestScore) primaryObs = candidate;
+          }
+        }
+      }
 
       const primaryIds = new Set(primaryObs.map(o => o.id));
       const primarySquares = [...new Set(primaryObs.flatMap(ob => observationRefs(ob)))].sort((a,b) => a - b);
@@ -954,8 +962,8 @@
     }
 
     function enemyThreatsForPosition(g, obs){
-      const us = other(g.state.side);
-      const them = g.state.side;
+      const us = g.state.side;
+      const them = other(us);
       const vulnerable = new Map();
       for (const ob of obs) {
         if ((ob.type === 'loose' || ob.type === 'hang') && ob.data?.owner === us) {
@@ -1016,8 +1024,6 @@
       for (const ob of (primary?.observations || [])) {
         if (ob.type === 'hang' && ob.data?.square != null) {
           marks.sqMarks.set(sqName(ob.data.square), 'R');
-        } else if (ob.type === 'loose' && ob.data?.square != null) {
-          marks.sqMarks.set(sqName(ob.data.square), 'B');
         } else if ((ob.type === 'attack' || ob.type === 'defend') && ob.data?.attacker != null && ob.data?.square != null) {
           marks.arrows.push({ color: 'G', from: sqName(ob.data.attacker), to: sqName(ob.data.square) });
         } else if ((ob.type === 'attack' || ob.type === 'defend') && ob.data?.defender != null && ob.data?.square != null) {
@@ -1025,8 +1031,6 @@
         } else if (ob.type === 'alignment' && Array.isArray(ob.data?.squares)) {
           const ep = lineEndpoints(ob.data.squares);
           if (ep) marks.arrows.push({ color: 'Y', from: ep.from, to: ep.to });
-        } else if (ob.type === 'forkable_by_x' && Array.isArray(ob.data?.squares) && ob.data.squares.length >= 2) {
-          marks.arrows.push({ color: 'Y', from: sqName(ob.data.squares[0]), to: sqName(ob.data.squares[1]) });
         }
       }
       game._emit();
