@@ -177,6 +177,10 @@
     .chip.mobility{color:#c4b5fd}
     .chip.overworked{color:#6ee7b7}
     .chip.combo{color:#f0abfc}
+    .plus{color:#34d399}
+    .minus{color:#f87171}
+
+
     .chip.ours{color:#86efac}
     .chip.theirs{color:#fca5a5}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -296,8 +300,8 @@
     <section class="panel">
       <div class="hd">
         <div>
-          <h2>Observations and related moves</h2>
-          <div class="small">On the root side's turns, select observations, then choose from the restricted legal moves.</div>
+          <h2>Threats and Features</h2>
+          <div class="small">Threats, clustered features, and move diffs.</div>
         </div>
       </div>
       <div class="bd stack">
@@ -887,6 +891,75 @@
       }
 
       const obs = observationsForGame(game);
+
+      // --- cluster by square refs ---
+      const squareMap = new Map();
+      for (const ob of obs) {
+        const refs = ob.data?.refs || [];
+        for (const sq of refs) {
+          if (!squareMap.has(sq)) squareMap.set(sq, []);
+          squareMap.get(sq).push(ob);
+        }
+      }
+
+      const clusters = [];
+      const seen = new Set();
+
+      for (const sq of squareMap.keys()) {
+        if (seen.has(sq)) continue;
+        const stack = [sq];
+        const groupSquares = [];
+        const groupObs = new Set();
+
+        while (stack.length) {
+          const cur = stack.pop();
+          if (seen.has(cur)) continue;
+          seen.add(cur);
+          groupSquares.push(cur);
+
+          for (const ob of squareMap.get(cur) || []) {
+            groupObs.add(ob);
+            for (const ref of ob.data?.refs || []) {
+              if (!seen.has(ref)) stack.push(ref);
+            }
+          }
+        }
+
+        clusters.push({
+          squares: groupSquares,
+          observations: [...groupObs]
+        });
+      }
+        const before = observationsForGame(game);
+        const afterG = createGame();
+        afterG.loadFEN(game.exportFEN());
+        afterG.makeMoveUCI(move.uci);
+        if (afterG.state.pendingPromotion) afterG.resolvePendingPromotion('Q');
+        const after = observationsForGame(afterG);
+
+        const beforeIds = new Set(before.map(o => o.id));
+        const afterIds = new Set(after.map(o => o.id));
+
+        const added = after.filter(o => !beforeIds.has(o.id)).slice(0,2);
+        const removed = before.filter(o => !afterIds.has(o.id)).slice(0,2);
+
+
+      clusters.sort((a,b) => b.observations.length - a.observations.length);
+
+      const primary = clusters[0] || { squares: [], observations: [] };
+      const primaryIds = new Set(primary.observations.map(o => o.id));
+      const scratch = obs.filter(o => !primaryIds.has(o.id));
+
+      obsList.innerHTML = `
+        <div class="card">
+          <strong>Primary Graph</strong>
+          ${primary.observations.map(o => `<div>${o.label}</div>`).join("")}
+        </div>
+        <div class="card">
+          <strong>Scratch</strong>
+          ${scratch.map(o => `<div>${o.label}</div>`).join("")}
+        </div>
+      `;
       const selectedExisting = new Set(obs.map(o => o.id));
       for (const id of [...selectedObs]) if (!selectedExisting.has(id)) selectedObs.delete(id);
 
@@ -976,9 +1049,14 @@
               <div><strong>${escapeHtml(move.san)}</strong> <span class="mono muted">${move.uci}</span></div>
               <div class="chipRow">${move.tags.map(t => `<span class="chip ${t.type}">${escapeHtml(t.type)}</span>`).join('')}</div>
               <div class="small">Related to: ${escapeHtml(move.reasons.join(' · '))}</div>
+            <div class="small">
+              ${added.map(o => `<span class="plus">+ ${o.label}</span>`).join(' ')}
+              ${removed.map(o => `<span class="minus">- ${o.label}</span>`).join(' ')}
+            </div>
             </button>`;
           div.querySelector('button').onclick = () => applyProofMove(move);
           moveList.appendChild(div);
+
         }
       }
       selectionSummaryEl.textContent = selectedObs.size ? obs.filter(ob => selectedObs.has(ob.id)).map(ob => ob.label).join(' ∩ ') : 'None selected';
