@@ -4,10 +4,6 @@ function pieceTag(ctx, piece, sq) {
   return `${ctx.pieceLetter(piece)}${ctx.sqName(sq)}`;
 }
 
-function pieceName(type) {
-  return ({ p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' })[type] || type;
-}
-
 export const TACTICAL_FEATURES = [
   {
     name: "Attack",
@@ -25,16 +21,16 @@ export const TACTICAL_FEATURES = [
         for (const to of attacks) {
           const target = ctx.game.state.board[to];
           if (!target || target.color === p.color) continue;
-          const note = target.type === 'k' ? ' check' : '';
-          const id = `attack|${from}|${to}|${note ? 'check' : 'plain'}`;
+          const isCheck = target.type === 'k';
+          const id = `attack|${from}|${to}|${isCheck ? 'check' : 'plain'}`;
           if (seen.has(id)) continue;
           seen.add(id);
           out.push({
             id,
-            label: `attack(${pieceTag(ctx, p, from)}, ${ctx.sqName(to)}${note})`,
+            label: `attack(${pieceTag(ctx, p, from)}, ${ctx.sqName(to)}${isCheck ? '+' : ''})`,
             side: p.color === ctx.side ? "ours" : "theirs",
-            implicatedValue: ctx.pieceValue(target),
-            data: { refs: [from, to], owner: p.color, attacker: from, square: to, isCheck: target.type === 'k' }
+            implicatedValue: ctx.pieceValue(target) + (isCheck ? 1000 : 0),
+            data: { refs: [from, to], owner: p.color, attacker: from, square: to, isCheck }
           });
         }
       }
@@ -172,6 +168,10 @@ export const TACTICAL_FEATURES = [
         return null;
       }
 
+      function nonPawnCount(pieces) {
+        return pieces.filter(p => p && p.type !== 'p').length;
+      }
+
       for (let a = 0; a < 64; a++) {
         const pa = ctx.game.state.board[a];
         if (!pa) continue;
@@ -179,9 +179,10 @@ export const TACTICAL_FEATURES = [
           const b = firstOccupiedFrom(a, df, dr);
           if (b == null) continue;
           const pb = ctx.game.state.board[b];
-          const nonPawns2 = [pa, pb].filter(p => p && p.type !== 'p').length;
-          if (pb && nonPawns2 === 2) {
-            const id2 = `alignment2|${a}|${b}`;
+          if (!pb) continue;
+
+          if (nonPawnCount([pa, pb]) >= 2) {
+            const id2 = `alignment|${a}|${b}`;
             if (!seen.has(id2)) {
               seen.add(id2);
               out.push({
@@ -193,12 +194,13 @@ export const TACTICAL_FEATURES = [
               });
             }
           }
+
           const c = firstOccupiedFrom(b, df, dr);
           if (c == null) continue;
           const pc = ctx.game.state.board[c];
-          const nonPawns3 = [pa, pb, pc].filter(p => p && p.type !== 'p').length;
-          if (nonPawns3 < 2) continue;
-          const id3 = `alignment3|${a}|${b}|${c}`;
+          if (!pc) continue;
+          if (nonPawnCount([pa, pb, pc]) < 2) continue;
+          const id3 = `alignment|${a}|${b}|${c}`;
           if (seen.has(id3)) continue;
           seen.add(id3);
           out.push({
@@ -258,111 +260,30 @@ export const TACTICAL_FEATURES = [
     observe(ctx) {
       const out = [];
       const seen = new Set();
-      const board = ctx.game.state.board;
-      const presentTypesByColor = { w: new Set(), b: new Set() };
-      for (let sq = 0; sq < 64; sq++) {
-        const p = board[sq];
-        if (p) presentTypesByColor[p.color].add(p.type);
-      }
+      for (const move of ctx.legalMoves) {
+        const after = ctx.afterFor(move);
+        if (!after) continue;
+        const moved = after.state.board[move.to];
+        if (!moved || moved.color !== ctx.side) continue;
+        const attacked = ctx.pieceAttackSquares(after, move.to, moved).filter(sq => {
+          const target = after.state.board[sq];
+          return target && target.color === ctx.enemy;
+        });
+        for (let i = 0; i < attacked.length; i++) {
+          for (let j = i + 1; j < attacked.length; j++) {
+            const a = attacked[i], b = attacked[j];
+            const pieceName = ({ p:'pawn', n:'knight', b:'bishop', r:'rook', q:'queen', k:'king' })[moved.type] || moved.type;
+            const id = `forkable_by_${pieceName}|${move.uci}|${Math.min(a,b)}|${Math.max(a,b)}`;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            out.push({
+              id,
+              label: `forkable_by_${pieceName}(${ctx.sqName(a)}, ${ctx.sqName(b)})`,
+              side: 'ours',
+              implicatedValue: 100,
+              data: { refs: [move.to, a, b], moveUci: move.uci, landing: move.to, squares: [a, b] }
 
-      const knightSources = (a, b) => {
-        const deltas = [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
-        const hitsA = new Set();
-        const [af, ar] = ctx.FR(a);
-        for (const [df, dr] of deltas) {
-          const f = af - df, r = ar - dr;
-          if (ctx.inB(f, r)) hitsA.add(ctx.idx(f, r));
-        }
-        const outSq = [];
-        const [bf, br] = ctx.FR(b);
-        for (const [df, dr] of deltas) {
-          const f = bf - df, r = br - dr;
-          if (!ctx.inB(f, r)) continue;
-          const sq = ctx.idx(f, r);
-          if (hitsA.has(sq)) outSq.push(sq);
-        }
-        return outSq;
-      };
-
-      const clearLine = (from, to) => {
-        const dir = ctx.lineDirection(from, to);
-        if (!dir) return false;
-        let [f, r] = ctx.FR(from);
-        f += dir[0];
-        r += dir[1];
-        while (ctx.inB(f, r)) {
-          const sq = ctx.idx(f, r);
-          if (sq === to) return true;
-          if (ctx.game.state.board[sq]) return false;
-          f += dir[0];
-          r += dir[1];
-        }
-        return false;
-      };
-
-      const bishopishSources = (a, b, allowOrthogonal) => {
-        const outSq = [];
-        for (let s = 0; s < 64; s++) {
-          if (s === a || s === b) continue;
-          const da = ctx.lineDirection(s, a);
-          const db = ctx.lineDirection(s, b);
-          const okA = da && (Math.abs(da[0]) === Math.abs(da[1]) || (allowOrthogonal && (da[0] === 0 || da[1] === 0)));
-          const okB = db && (Math.abs(db[0]) === Math.abs(db[1]) || (allowOrthogonal && (db[0] === 0 || db[1] === 0)));
-          if (!okA || !okB) continue;
-          if (!clearLine(s, a)) continue;
-          if (!clearLine(s, b)) continue;
-          outSq.push(s);
-        }
-        return outSq;
-      };
-
-      for (const owner of ['w', 'b']) {
-        const enemy = ctx.other(owner);
-        const enemySquares = [];
-        for (let sq = 0; sq < 64; sq++) {
-          const p = board[sq];
-          if (p && p.color === enemy) enemySquares.push(sq);
-        }
-        for (let i = 0; i < enemySquares.length; i++) {
-          for (let j = i + 1; j < enemySquares.length; j++) {
-            const a = enemySquares[i], b = enemySquares[j];
-            const enemyA = board[a], enemyB = board[b];
-            if (!enemyA || !enemyB) continue;
-            const candidates = [];
-            if (presentTypesByColor[owner].has('n') && knightSources(a, b).length) candidates.push('n');
-            if (presentTypesByColor[owner].has('b') && bishopishSources(a, b, false).length) candidates.push('b');
-            if (presentTypesByColor[owner].has('r') && bishopishSources(a, b, true).filter(s => {
-              const da = ctx.lineDirection(s, a), db = ctx.lineDirection(s, b);
-              return da && db && (da[0] === 0 || da[1] === 0) && (db[0] === 0 || db[1] === 0);
-            }).length) candidates.push('r');
-            if (presentTypesByColor[owner].has('q') && bishopishSources(a, b, true).length) candidates.push('q');
-            if (presentTypesByColor[owner].has('p')) {
-              for (let s = 0; s < 64; s++) {
-                const [sf, sr] = ctx.FR(s);
-                const dir = owner === 'w' ? 1 : -1;
-                const hits = [];
-                for (const df of [-1, 1]) {
-                  const nf = sf + df, nr = sr + dir;
-                  if (ctx.inB(nf, nr)) hits.push(ctx.idx(nf, nr));
-                }
-                if (hits.includes(a) && hits.includes(b)) {
-                  candidates.push('p');
-                  break;
-                }
-              }
-            }
-            for (const type of candidates) {
-              const id = `forkable_by_${type}|${owner}|${Math.min(a,b)}|${Math.max(a,b)}`;
-              if (seen.has(id)) continue;
-              seen.add(id);
-              out.push({
-                id,
-                label: `forkable_by_${pieceName(type)}(${ctx.sqName(a)}, ${ctx.sqName(b)})`,
-                side: owner === ctx.side ? 'ours' : 'theirs',
-                implicatedValue: ctx.pieceValue(enemyA) + ctx.pieceValue(enemyB),
-                data: { refs: [a, b], owner, pieceType: type, squares: [a, b] }
-              });
-            }
+            });
           }
         }
       }
@@ -370,8 +291,7 @@ export const TACTICAL_FEATURES = [
     },
 
     related(ctx, observation, move, after) {
-      const refs = observation.data.refs || [];
-      return refs.includes(move.to) || refs.some(sq => ctx.moveAttacksSquare(after, move, sq, ctx.side));
+      return move.uci === observation.data.moveUci;
     }
   }
 ];
