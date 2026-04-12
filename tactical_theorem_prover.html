@@ -864,11 +864,11 @@
 
     function observationPriority(ob){
       if (ob.type === 'attack' && ob.data?.isCheck) return 0;
-      if (ob.type === 'alignment') return 1;
-      if (ob.type === 'attack') return 2;
-      if (ob.type === 'defend') return 3;
-      if (ob.type === 'hang') return 4;
-      if (ob.type === 'loose') return 5;
+      if (ob.type === 'attack') return 1;
+      if (ob.type === 'hang') return 2;
+      if (ob.type === 'loose') return 3;
+      if (ob.type === 'defend') return 4;
+      if (ob.type === 'alignment') return 5;
       if (ob.type === 'forkable_by_x') return 6;
       if (ob.type === 'mobility') return 7;
       return 8;
@@ -883,47 +883,58 @@
     }
 
     function clusterObservationsByRefs(obs){
-      const clusters = [];
-      const usedObs = new Set();
-      const seeds = sortClusterObservations(obs);
+      const sorted = sortClusterObservations(obs);
 
-      for (const seed of seeds) {
-        if (usedObs.has(seed.id)) continue;
-        const cluster = [];
-        const clusterIds = new Set();
-        const queue = [seed];
+      function canFollow(prev, next, alignmentsUsed){
+        if (!prev || !next) return false;
+        if (prev.id === next.id) return false;
+        if (prev.type === next.type) return false;
+        if (!observationsShareRef(prev, next)) return false;
+        if (next.type === 'alignment' && alignmentsUsed >= 3) return false;
+        return true;
+      }
 
-        while (queue.length) {
-          const cur = queue.shift();
-          if (clusterIds.has(cur.id)) continue;
-          clusterIds.add(cur.id);
-          cluster.push(cur);
-          for (const next of obs) {
-            if (clusterIds.has(next.id)) continue;
-            if (next.type === cur.type) continue;
-            if (!observationsShareRef(cur, next)) continue;
-            queue.push(next);
+      function buildBestFrom(seed){
+        let best = [seed];
+
+        function dfs(path, used, alignmentsUsed){
+          if (path.length > best.length) best = [...path];
+          else if (path.length === best.length) {
+            const bestScore = best.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
+            const pathScore = path.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
+            if (pathScore > bestScore) best = [...path];
+          }
+          const prev = path[path.length - 1];
+          const candidates = sorted.filter(next => !used.has(next.id) && canFollow(prev, next, alignmentsUsed));
+          for (const next of candidates.slice(0, 12)) {
+            used.add(next.id);
+            path.push(next);
+            dfs(path, used, alignmentsUsed + (next.type === 'alignment' ? 1 : 0));
+            path.pop();
+            used.delete(next.id);
           }
         }
 
-        for (const ob of cluster) usedObs.add(ob.id);
-        const squares = [...new Set(cluster.flatMap(ob => observationRefs(ob)))].sort((a,b) => a - b);
-        clusters.push({
-          squares,
-          observations: sortClusterObservations(cluster)
-        });
+        const used = new Set([seed.id]);
+        dfs([seed], used, seed.type === 'alignment' ? 1 : 0);
+        return best;
       }
 
-      clusters.sort((a,b) => {
-        const ap = observationPriority(a.observations[0] || { type:'zzz' });
-        const bp = observationPriority(b.observations[0] || { type:'zzz' });
-        return (ap - bp) || (b.observations.length - a.observations.length) || (b.squares.length - a.squares.length);
-      });
+      let primaryObs = [];
+      for (const seed of sorted) {
+        const candidate = buildBestFrom(seed);
+        if (candidate.length > primaryObs.length) primaryObs = candidate;
+        else if (candidate.length === primaryObs.length) {
+          const curScore = candidate.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
+          const bestScore = primaryObs.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
+          if (curScore > bestScore) primaryObs = candidate;
+        }
+      }
 
-      const primary = clusters[0] || { squares: [], observations: [] };
-      const primaryIds = new Set(primary.observations.map(o => o.id));
+      const primaryIds = new Set(primaryObs.map(o => o.id));
+      const primarySquares = [...new Set(primaryObs.flatMap(ob => observationRefs(ob)))].sort((a,b) => a - b);
       const scratch = sortClusterObservations(obs.filter(o => !primaryIds.has(o.id)));
-      return { primary, scratch };
+      return { primary: { squares: primarySquares, observations: primaryObs }, scratch };
     }
 
     function diffObservations(before, after){
@@ -1001,11 +1012,12 @@
             : '<div class="small muted">No scratch features.</div>'}
         </div>
       `;
-      selectionSummaryEl.textContent = primary.observations.length
-        ? primary.observations.map(o => o.label).join(' · ')
+      selectionSummaryEl.textContent = primary.squares.length
+        ? primary.squares.map(sqName).join(', ')
         : '—';
 
       const moves = filteredMoves(obs);
+
       moveList.innerHTML = '';
 
       if (!moves.length) {
