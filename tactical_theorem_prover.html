@@ -852,45 +852,77 @@
       return sortMovesForDisplay(game, allLegalMoves(game, game.state.side));
     }
 
-    function clusterObservationsByRefs(obs){
-      const squareMap = new Map();
-      for (const ob of obs) {
-        const refs = ob.data?.refs || [];
-        for (const sq of refs) {
-          if (!squareMap.has(sq)) squareMap.set(sq, []);
-          squareMap.get(sq).push(ob);
-        }
-      }
+    function observationRefs(ob){
+      return [...new Set(ob?.data?.refs || [])];
+    }
 
+    function observationsShareRef(a, b){
+      const as = new Set(observationRefs(a));
+      for (const sq of observationRefs(b)) if (as.has(sq)) return true;
+      return false;
+    }
+
+    function observationPriority(ob){
+      if (ob.type === 'attack' && ob.data?.isCheck) return 0;
+      if (ob.type === 'alignment') return 1;
+      if (ob.type === 'attack') return 2;
+      if (ob.type === 'defend') return 3;
+      if (ob.type === 'hang') return 4;
+      if (ob.type === 'loose') return 5;
+      if (ob.type === 'forkable_by_x') return 6;
+      if (ob.type === 'mobility') return 7;
+      return 8;
+    }
+
+    function sortClusterObservations(obs){
+      return [...obs].sort((a,b) =>
+        (observationPriority(a) - observationPriority(b)) ||
+        (b.implicatedValue - a.implicatedValue) ||
+        a.label.localeCompare(b.label)
+      );
+    }
+
+    function clusterObservationsByRefs(obs){
       const clusters = [];
-      const seenSquares = new Set();
-      for (const sq of squareMap.keys()) {
-        if (seenSquares.has(sq)) continue;
-        const stack = [sq];
-        const groupSquares = [];
-        const groupObs = new Map();
-        while (stack.length) {
-          const cur = stack.pop();
-          if (seenSquares.has(cur)) continue;
-          seenSquares.add(cur);
-          groupSquares.push(cur);
-          for (const ob of squareMap.get(cur) || []) {
-            groupObs.set(ob.id, ob);
-            for (const ref of ob.data?.refs || []) {
-              if (!seenSquares.has(ref)) stack.push(ref);
-            }
+      const usedObs = new Set();
+      const seeds = sortClusterObservations(obs);
+
+      for (const seed of seeds) {
+        if (usedObs.has(seed.id)) continue;
+        const cluster = [];
+        const clusterIds = new Set();
+        const queue = [seed];
+
+        while (queue.length) {
+          const cur = queue.shift();
+          if (clusterIds.has(cur.id)) continue;
+          clusterIds.add(cur.id);
+          cluster.push(cur);
+          for (const next of obs) {
+            if (clusterIds.has(next.id)) continue;
+            if (next.type === cur.type) continue;
+            if (!observationsShareRef(cur, next)) continue;
+            queue.push(next);
           }
         }
+
+        for (const ob of cluster) usedObs.add(ob.id);
+        const squares = [...new Set(cluster.flatMap(ob => observationRefs(ob)))].sort((a,b) => a - b);
         clusters.push({
-          squares: groupSquares.sort((a,b) => a - b),
-          observations: [...groupObs.values()].sort((a,b) => a.label.localeCompare(b.label))
+          squares,
+          observations: sortClusterObservations(cluster)
         });
       }
 
-      clusters.sort((a,b) => (b.observations.length - a.observations.length) || (b.squares.length - a.squares.length));
+      clusters.sort((a,b) => {
+        const ap = observationPriority(a.observations[0] || { type:'zzz' });
+        const bp = observationPriority(b.observations[0] || { type:'zzz' });
+        return (ap - bp) || (b.observations.length - a.observations.length) || (b.squares.length - a.squares.length);
+      });
+
       const primary = clusters[0] || { squares: [], observations: [] };
       const primaryIds = new Set(primary.observations.map(o => o.id));
-      const scratch = obs.filter(o => !primaryIds.has(o.id));
+      const scratch = sortClusterObservations(obs.filter(o => !primaryIds.has(o.id)));
       return { primary, scratch };
     }
 
@@ -969,10 +1001,13 @@
             : '<div class="small muted">No scratch features.</div>'}
         </div>
       `;
-      selectionSummaryEl.textContent = primary.squares.length ? primary.squares.map(sqName).join(', ') : '—';
+      selectionSummaryEl.textContent = primary.observations.length
+        ? primary.observations.map(o => o.label).join(' · ')
+        : '—';
 
       const moves = filteredMoves(obs);
       moveList.innerHTML = '';
+
       if (!moves.length) {
         moveList.innerHTML = '<div class="small">No legal moves available.</div>';
         return;
