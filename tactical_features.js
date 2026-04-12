@@ -110,7 +110,6 @@ export const TACTICAL_FEATURES = [
         if (!p || p.type === 'k') continue;
         const attackers = ctx.attackersOf(sq, ctx.other(p.color));
         const defenders = ctx.attackersOf(sq, p.color);
-        if (!attackers.length) continue;
         if (attackers.length !== defenders.length) continue;
         out.push({
           id: `loose|${p.color}|${sq}`,
@@ -142,7 +141,6 @@ export const TACTICAL_FEATURES = [
         if (!p || p.type === 'k') continue;
         const attackers = ctx.attackersOf(sq, ctx.other(p.color));
         const defenders = ctx.attackersOf(sq, p.color);
-        if (!attackers.length) continue;
         if (!(defenders.length < attackers.length)) continue;
         out.push({
           id: `hang|${p.color}|${sq}`,
