@@ -897,29 +897,22 @@
       }
 
       function buildBestFrom(seed){
-        let best = [seed];
-
-        function dfs(path, used, alignmentsUsed){
-          if (path.length > best.length) best = [...path];
-          else if (path.length === best.length) {
-            const bestScore = best.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
-            const pathScore = path.reduce((n, ob) => n + (1000 - observationPriority(ob) * 100) + ob.implicatedValue, 0);
-            if (pathScore > bestScore) best = [...path];
-          }
-          const prev = path[path.length - 1];
-          const candidates = sorted.filter(next => !used.has(next.id) && canFollow(prev, next, alignmentsUsed));
-          for (const next of candidates.slice(0, 12)) {
-            used.add(next.id);
-            path.push(next);
-            dfs(path, used, alignmentsUsed + (next.type === 'alignment' ? 1 : 0));
-            path.pop();
-            used.delete(next.id);
-          }
-        }
-
+        const path = [seed];
         const used = new Set([seed.id]);
-        dfs([seed], used, seed.type === 'alignment' ? 1 : 0);
-        return best;
+        let alignmentsUsed = seed.type === 'alignment' ? 1 : 0;
+        let prev = seed;
+        while (path.length < 8) {
+          const next = sorted.find(candidate =>
+            !used.has(candidate.id) &&
+            canFollow(prev, candidate, alignmentsUsed)
+          );
+          if (!next) break;
+          path.push(next);
+          used.add(next.id);
+          if (next.type === 'alignment') alignmentsUsed++;
+          prev = next;
+        }
+        return path;
       }
 
       let primaryObs = [];
@@ -1027,11 +1020,18 @@
         return;
       }
 
-      for (const move of moves) {
-        const after = moveResult(game, move);
-        const diff = after ? diffObservations(obs, observationsForGame(after, false)) : { added: [], removed: [] };
-        const added = diff.added.slice(0, 2);
-        const removed = diff.removed.slice(0, 2);
+      const previewLimit = 12;
+      for (let i = 0; i < moves.length; i++) {
+        const move = moves[i];
+        let diff = { added: [], removed: [] };
+        let added = [];
+        let removed = [];
+        if (i < previewLimit) {
+          const after = moveResult(game, move);
+          diff = after ? diffObservations(obs, observationsForGame(after, false)) : { added: [], removed: [] };
+          added = diff.added.slice(0, 2);
+          removed = diff.removed.slice(0, 2);
+        }
 
         const div = document.createElement('div');
         div.className = 'card';
@@ -1039,8 +1039,9 @@
           <button class="moveBtn">
             <div><strong>${escapeHtml(move.san)}</strong> <span class="mono muted">${move.uci}</span></div>
             <div class="small">
-              ${added.map(o => `<span class="plus">+ ${escapeHtml(o.label)}</span>`).join(' ')}
-              ${removed.map(o => `<span class="minus">- ${escapeHtml(o.label)}</span>`).join(' ')}
+              ${i < previewLimit
+                ? `${added.map(o => `<span class="plus">+ ${escapeHtml(o.label)}</span>`).join(' ')} ${removed.map(o => `<span class="minus">- ${escapeHtml(o.label)}</span>`).join(' ')}`
+                : '<span class="muted">diff preview omitted</span>'}
             </div>
           </button>`;
         div.querySelector('button').onclick = () => applyProofMove({ ...move, featureDiff: diff });
