@@ -30,3 +30,7 @@ where: https://lichess.org/training/bfhHY
 ## Checking the king into alignment with loose piece
 fen: 5r2/2p2p2/8/2K3p1/1R2P3/k1P1NP1p/5n2/8 w - - 0 34
 where: https://lichess.org/training/LEHbA
+
+## Capture chain with alignment
+fen: 2r1k2r/1bqnbpp1/p2p4/4p1B1/1p2N2P/1N3P2/PPPQ4/2KR1B1R b k - 0 18
+where: https://lichess.org/training/zr9a1
