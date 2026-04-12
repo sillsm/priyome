@@ -283,7 +283,7 @@
             <div class="muted">Theme</div><div id="loadedTestTheme">—</div>
             <div class="muted">Hidden solution</div><div id="loadedTestSolution">None</div>
             <div class="muted">Material</div><div id="materialLine"></div>
-            <div class="muted">Observation filter</div><div id="selectionSummary"></div>
+            <div class="muted">Primary graph</div><div id="selectionSummary"></div>
           </div>
         </div>
         <div class="testBox">
@@ -306,15 +306,15 @@
       </div>
       <div class="bd stack">
         <div>
-          <label>Observations in the current position</label>
+          <label>Threats and largest feature graph</label>
           <div class="obsList" id="obsList"></div>
         </div>
         <div>
-          <label>Related legal moves</label>
+          <label>Legal moves with feature diff</label>
           <div class="moveList" id="moveList"></div>
         </div>
         <div class="footerNote">
-          This is a bounded, ergonomic tactical prover. It filters tactical candidate moves only for the original side to move; the opponent's best reply is entered manually for now.
+          Each move previews feature development with inline + / - changes, and the proof line preserves those feature diffs.
         </div>
       </div>
     </section>
@@ -849,50 +849,10 @@
     }
 
     function filteredMoves(obs){
-      const chosen = obs.filter(ob => selectedObs.has(ob.id));
-      if (!chosen.length) return [];
-      let shared = null;
-      for (const ob of chosen) {
-        const map = new Map(ob.moves.map(move => [move.uci, move]));
-        if (shared == null) {
-          shared = map;
-        } else {
-          for (const key of [...shared.keys()]) {
-            if (!map.has(key)) shared.delete(key);
-          }
-        }
-      }
-      const out = [...(shared ? shared.values() : [])].map(move => ({
-        ...move,
-        reasons: chosen.map(ob => ob.label)
-      }));
-      return sortMovesForDisplay(game, out);
+      return sortMovesForDisplay(game, allLegalMoves(game, game.state.side));
     }
 
-    function renderObservationsAndMoves(){
-      if (game.state.side !== rootSide) {
-        selectedObs.clear();
-        obsList.innerHTML = '<div class="small">Opponent to move. Enter the best reply manually for now; observation filtering resumes on the original side&#39;s next turn.</div>';
-        const moves = sortMovesForDisplay(game, allLegalMoves(game, game.state.side));
-        moveList.innerHTML = '';
-        for (const move of moves) {
-          const div = document.createElement('div');
-          div.className = 'card';
-          div.innerHTML = `
-            <button class="moveBtn">
-              <div><strong>${escapeHtml(move.san)}</strong> <span class="mono muted">${move.uci}</span></div>
-              <div class="small">Manual opponent reply</div>
-            </button>`;
-          div.querySelector('button').onclick = () => applyProofMove({ ...move, reasons:['Manual opponent reply'] });
-          moveList.appendChild(div);
-        }
-        selectionSummaryEl.textContent = 'Manual opponent reply';
-        return;
-      }
-
-      const obs = observationsForGame(game);
-
-      // --- cluster by square refs ---
+    function clusterObservationsByRefs(obs){
       const squareMap = new Map();
       for (const ob of obs) {
         const refs = ob.data?.refs || [];
@@ -903,164 +863,140 @@
       }
 
       const clusters = [];
-      const seen = new Set();
-
+      const seenSquares = new Set();
       for (const sq of squareMap.keys()) {
-        if (seen.has(sq)) continue;
+        if (seenSquares.has(sq)) continue;
         const stack = [sq];
         const groupSquares = [];
-        const groupObs = new Set();
-
+        const groupObs = new Map();
         while (stack.length) {
           const cur = stack.pop();
-          if (seen.has(cur)) continue;
-          seen.add(cur);
+          if (seenSquares.has(cur)) continue;
+          seenSquares.add(cur);
           groupSquares.push(cur);
-
           for (const ob of squareMap.get(cur) || []) {
-            groupObs.add(ob);
+            groupObs.set(ob.id, ob);
             for (const ref of ob.data?.refs || []) {
-              if (!seen.has(ref)) stack.push(ref);
+              if (!seenSquares.has(ref)) stack.push(ref);
             }
           }
         }
-
         clusters.push({
-          squares: groupSquares,
-          observations: [...groupObs]
+          squares: groupSquares.sort((a,b) => a - b),
+          observations: [...groupObs.values()].sort((a,b) => a.label.localeCompare(b.label))
         });
       }
 
-
-      clusters.sort((a,b) => b.observations.length - a.observations.length);
-
+      clusters.sort((a,b) => (b.observations.length - a.observations.length) || (b.squares.length - a.squares.length));
       const primary = clusters[0] || { squares: [], observations: [] };
       const primaryIds = new Set(primary.observations.map(o => o.id));
       const scratch = obs.filter(o => !primaryIds.has(o.id));
+      return { primary, scratch };
+    }
+
+    function diffObservations(before, after){
+      const beforeIds = new Map(before.map(o => [o.id, o]));
+      const afterIds = new Map(after.map(o => [o.id, o]));
+      const added = [];
+      const removed = [];
+      for (const [id, ob] of afterIds) if (!beforeIds.has(id)) added.push(ob);
+      for (const [id, ob] of beforeIds) if (!afterIds.has(id)) removed.push(ob);
+      added.sort((a,b) => a.label.localeCompare(b.label));
+      removed.sort((a,b) => a.label.localeCompare(b.label));
+      return { added, removed };
+    }
+
+    function enemyThreatsForPosition(g, obs){
+      const us = g.state.side;
+      const them = other(us);
+      const vulnerable = new Map();
+      for (const ob of obs) {
+        if ((ob.type === 'loose' || ob.type === 'hang') && ob.data?.owner === us) {
+          vulnerable.set(ob.data.square, ob);
+        }
+      }
+      const out = [];
+      const seen = new Set();
+      const moves = sortMovesForDisplay(g, allLegalMoves(g, them));
+      for (const move of moves) {
+        const after = moveResult(g, move);
+        if (!after) continue;
+        if (move.isCapture && vulnerable.has(move.captureSquare)) {
+          const ob = vulnerable.get(move.captureSquare);
+          const key = `capture|${move.uci}|${ob.id}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            out.push({ label: `${move.san} captures ${ob.label}` });
+          }
+        }
+        if (after._isInCheck(us)) {
+          const replies = allLegalMoves(after, us);
+          const key = replies.length ? `check|${move.uci}` : `mate|${move.uci}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            out.push({ label: replies.length ? `${move.san} gives check` : `${move.san} is mate in one` });
+          }
+        }
+      }
+      return out;
+    }
+
+    function renderObservationsAndMoves(){
+      const obs = observationsForGame(game);
+      const threats = enemyThreatsForPosition(game, obs);
+      const clustered = clusterObservationsByRefs(obs);
+      const primary = clustered.primary;
+      const scratch = clustered.scratch;
 
       obsList.innerHTML = `
         <div class="card">
+          <strong>Threats the other side has</strong>
+          ${threats.length
+            ? threats.map(t => `<div>${escapeHtml(t.label)}</div>`).join('')
+            : '<div class="small muted">No immediate check, mate in one, or capture of our loose/hanging piece found.</div>'}
+        </div>
+        <div class="card">
           <strong>Primary Graph</strong>
-          ${primary.observations.map(o => `<div>${o.label}</div>`).join("")}
+          <div class="small muted">${primary.squares.length ? 'Squares: ' + escapeHtml(primary.squares.map(sqName).join(', ')) : 'No connected graph'}</div>
+          ${primary.observations.length
+            ? primary.observations.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
+            : '<div class="small muted">No feature graph.</div>'}
         </div>
         <div class="card">
           <strong>Scratch</strong>
-          ${scratch.map(o => `<div>${o.label}</div>`).join("")}
+          ${scratch.length
+            ? scratch.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
+            : '<div class="small muted">No scratch features.</div>'}
         </div>
       `;
-      const selectedExisting = new Set(obs.map(o => o.id));
-      for (const id of [...selectedObs]) if (!selectedExisting.has(id)) selectedObs.delete(id);
-
-      const workable = obs.filter(o => o.moves.length > 0);
-      const unworkable = obs.filter(o => o.moves.length === 0);
-
-      obsList.innerHTML = '';
-      if (!workable.length && !unworkable.length) {
-        obsList.innerHTML = '<div class="small">No feature observations found for this position under the current heuristics.</div>';
-      }
-
-      const groups = observationTypes.map(type => ({
-        type,
-        workable: workable.filter(ob => ob.type === type.kind),
-        unworkable: unworkable.filter(ob => ob.type === type.kind),
-      })).filter(group => group.workable.length || group.unworkable.length);
-
-      for (const group of groups) {
-        const header = document.createElement('div');
-        header.className = 'card';
-        header.innerHTML = `
-          <div class="row" style="justify-content:space-between; align-items:center">
-            <div><strong>${escapeHtml(group.type.title)}</strong></div>
-            <div class="chipRow"><span class="chip ${group.type.kind}">${escapeHtml(group.type.kind)}</span></div>
-          </div>`;
-        obsList.appendChild(header);
-
-        for (const ob of group.workable) {
-          const div = document.createElement('div');
-          div.className = 'card' + (selectedObs.has(ob.id) ? ' selected' : '');
-          div.innerHTML = `
-            <div class="row" style="justify-content:space-between; align-items:flex-start">
-              <div>
-                <div><strong>${escapeHtml(ob.label)}</strong></div>
-                <div class="small">${ob.moves.length} related legal move${ob.moves.length === 1 ? '' : 's'} · value ${ob.implicatedValue}</div>
-              </div>
-              <div class="chipRow"><span class="chip ${ob.type}">${ob.type}</span><span class="chip ${ob.side}">${ob.side}</span></div>
-            </div>
-            <div class="row">
-              <button ${selectedObs.size >= 2 && !selectedObs.has(ob.id) ? 'disabled' : ''}>${selectedObs.has(ob.id) ? 'Unselect' : 'Select'}</button>
-            </div>`;
-          div.querySelector('button').onclick = () => {
-            if (selectedObs.has(ob.id)) selectedObs.delete(ob.id); else selectedObs.add(ob.id);
-            render();
-          };
-          obsList.appendChild(div);
-        }
-      }
-
-      if (unworkable.length) {
-        const wrap = document.createElement('details');
-        wrap.className = 'fold';
-        wrap.innerHTML = `<summary>${unworkable.length} unworkable idea${unworkable.length === 1 ? '' : 's'} in this position</summary>`;
-        const body = document.createElement('div');
-        body.style.display = 'grid';
-        body.style.gap = '10px';
-        body.style.marginTop = '10px';
-        for (const ob of unworkable) {
-          const div = document.createElement('div');
-          div.className = 'card';
-          div.innerHTML = `
-            <div class="row" style="justify-content:space-between; align-items:flex-start">
-              <div>
-                <div><strong>${escapeHtml(ob.label)}</strong></div>
-                <div class="small">0 related legal moves</div>
-              </div>
-              <div class="chipRow"><span class="chip ${ob.type}">${ob.type}</span><span class="chip ${ob.side}">${ob.side}</span></div>
-            </div>`;
-          body.appendChild(div);
-        }
-        wrap.appendChild(body);
-        obsList.appendChild(wrap);
-      }
+      selectionSummaryEl.textContent = primary.squares.length ? primary.squares.map(sqName).join(', ') : '—';
 
       const moves = filteredMoves(obs);
       moveList.innerHTML = '';
-      if (!selectedObs.size) {
-        moveList.innerHTML = '<div class="small">Select at least one observation to restrict the legal moves by the production rule.</div>';
-      } else if (!moves.length) {
-        moveList.innerHTML = '<div class="small">No legal moves are related to the currently selected observations.</div>';
-      } else {
-        for (const move of moves) {
-          const before = observationsForGame(game);
-          const afterG = createGame();
-          afterG.loadFEN(game.exportFEN());
-          afterG.makeMoveUCI(move.uci);
-          if (afterG.state.pendingPromotion) afterG.resolvePendingPromotion('Q');
-          const after = observationsForGame(afterG);
-
-          const beforeIds = new Set(before.map(o => o.id));
-          const afterIds = new Set(after.map(o => o.id));
-
-          const added = after.filter(o => !beforeIds.has(o.id)).slice(0,2);
-          const removed = before.filter(o => !afterIds.has(o.id)).slice(0,2);
-
-          const div = document.createElement('div');
-          div.className = 'card';
-          div.innerHTML = `
-            <button class="moveBtn">
-              <div><strong>${escapeHtml(move.san)}</strong> <span class="mono muted">${move.uci}</span></div>
-              <div class="chipRow">${move.tags.map(t => `<span class="chip ${t.type}">${escapeHtml(t.type)}</span>`).join('')}</div>
-              <div class="small">Related to: ${escapeHtml(move.reasons.join(' · '))}</div>
-              <div class="small">
-                ${added.map(o => `<span class="plus">+ ${escapeHtml(o.label)}</span>`).join(' ')}
-                ${removed.map(o => `<span class="minus">- ${escapeHtml(o.label)}</span>`).join(' ')}
-              </div>
-            </button>`;
-          div.querySelector('button').onclick = () => applyProofMove(move);
-          moveList.appendChild(div);
-
-        }
+      if (!moves.length) {
+        moveList.innerHTML = '<div class="small">No legal moves available.</div>';
+        return;
       }
-      selectionSummaryEl.textContent = selectedObs.size ? obs.filter(ob => selectedObs.has(ob.id)).map(ob => ob.label).join(' ∩ ') : 'None selected';
+
+      for (const move of moves) {
+        const after = moveResult(game, move);
+        const diff = after ? diffObservations(obs, observationsForGame(after)) : { added: [], removed: [] };
+        const added = diff.added.slice(0, 2);
+        const removed = diff.removed.slice(0, 2);
+
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML = `
+          <button class="moveBtn">
+            <div><strong>${escapeHtml(move.san)}</strong> <span class="mono muted">${move.uci}</span></div>
+            <div class="small">
+              ${added.map(o => `<span class="plus">+ ${escapeHtml(o.label)}</span>`).join(' ')}
+              ${removed.map(o => `<span class="minus">- ${escapeHtml(o.label)}</span>`).join(' ')}
+            </div>
+          </button>`;
+        div.querySelector('button').onclick = () => applyProofMove({ ...move, featureDiff: diff });
+        moveList.appendChild(div);
+      }
     }
 
     function syncGameToView(){
@@ -1084,16 +1020,19 @@
       if (viewPly != null && viewPly < theoremLine.length) theoremLine.splice(viewPly);
       viewPly = null;
       syncGameToView();
+      const before = observationsForGame(game);
       const applied = game.makeMoveUCI(move.uci);
       if (!applied) return;
       if (game.state.pendingPromotion) game.resolvePendingPromotion('Q');
+      const after = observationsForGame(game);
       theoremLine.push({
         ply: theoremLine.length + 1,
         san: game.curNode?.san || move.san,
         uci: move.uci,
         fromFen: theoremLine.length ? theoremLine[theoremLine.length - 1].toFen : rootFen,
         toFen: game.exportFEN(),
-        reasons: move.reasons || move.tags.map(t => t.label),
+        reasons: move.reasons || [],
+        featureDiff: move.featureDiff || diffObservations(before, after),
       });
       selectedObs.clear();
       render();
@@ -1148,14 +1087,20 @@
       }
 
       for (const step of theoremLine) {
+        const added = (step.featureDiff?.added || []).slice(0, 2);
+        const removed = (step.featureDiff?.removed || []).slice(0, 2);
         const div = document.createElement('div');
         div.className = 'proofStep clickable' + (viewed === step.ply ? ' active' : '');
         div.innerHTML = `
           <div><strong>Ply ${step.ply}: ${escapeHtml(step.san)}</strong> <span class="mono muted">${escapeHtml(step.uci)}</span></div>
-          <div class="small">Production rule witness: ${escapeHtml((step.reasons || []).join(' · ') || 'related move')}</div>
+          <div class="small">
+            ${added.map(o => `<span class="plus">+ ${escapeHtml(o.label)}</span>`).join(' ')}
+            ${removed.map(o => `<span class="minus">- ${escapeHtml(o.label)}</span>`).join(' ')}
+          </div>
           <div class="small mono">${escapeHtml(step.toFen)}</div>
           <div class="small muted">Click to view this board position</div>`;
         div.onclick = () => jumpToPly(step.ply);
+
         proofList.appendChild(div);
       }
     }
