@@ -322,7 +322,7 @@
 
   <script type="module">
     import { createGame, BoardView } from './scratchchess.js';
-    import { TACTICAL_FEATURES } from './tactical_features.js';
+    import { TACTICAL_FEATURES, filtration } from './tactical_features.js';
 
     const fenInput = document.getElementById('fenInput');
     const plyLimitInput = document.getElementById('plyLimit');
@@ -829,8 +829,9 @@
       const obs = materialize(baseTypes);
       ctx.baseObservations = obs;
       obs.push(...materialize(comboTypes));
+      const filtered = filtration(obs, ctx);
 
-      return obs.sort((a,b) =>
+      return filtered.sort((a,b) =>
         (a.order - b.order) ||
         (b.implicatedValue - a.implicatedValue) ||
         (a.suborder - b.suborder) ||
@@ -856,6 +857,26 @@
 
     function observationRefs(ob){
       return [...new Set(ob?.data?.refs || [])];
+    }
+
+    function involvedPiecesFromObservations(obs, g = game){
+      const out = [];
+      const seen = new Set();
+      for (const ob of obs) {
+        for (const sq of observationRefs(ob)) {
+          const p = g.state.board[sq];
+          if (!p) continue;
+          const key = `${p.color}${p.type}@${sq}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(`${pieceLetter(p)}${sqName(sq)}`);
+        }
+      }
+      return out.sort((a, b) => a.localeCompare(b));
+    }
+
+    function relatedPredicateLabels(obs){
+      return obs.map(ob => ob.label).sort((a, b) => a.localeCompare(b));
     }
 
     function observationsShareRef(a, b){
@@ -1041,7 +1062,8 @@
       const threats = enemyThreatsForPosition(game, obs);
       const clustered = clusterObservationsByRefs(obs);
       const primary = clustered.primary;
-      const scratch = clustered.scratch;
+      const involvedPieces = involvedPiecesFromObservations(obs, game);
+      const relatedPredicates = relatedPredicateLabels(obs);
 
       obsList.innerHTML = `
         <div class="card">
@@ -1051,17 +1073,23 @@
             : '<div class="small muted">No immediate check, mate in one, or capture of our loose/hanging piece found.</div>'}
         </div>
         <div class="card">
+          <strong>Involved pieces</strong>
+          ${involvedPieces.length
+            ? `<div class="chipRow">${involvedPieces.map(label => `<span class="chip">${escapeHtml(label)}</span>`).join('')}</div>`
+            : '<div class="small muted">No involved pieces found.</div>'}
+        </div>
+        <div class="card">
+          <strong>Related predicates</strong>
+          ${relatedPredicates.length
+            ? relatedPredicates.map(label => `<div>${escapeHtml(label)}</div>`).join('')
+            : '<div class="small muted">No related predicates found.</div>'}
+        </div>
+        <div class="card">
           <strong>Primary Graph</strong>
           <div class="small muted">${primary.squares.length ? 'Squares: ' + escapeHtml(primary.squares.map(sqName).join(', ')) : 'No connected graph'}</div>
           ${primary.observations.length
             ? primary.observations.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
             : '<div class="small muted">No feature graph.</div>'}
-        </div>
-        <div class="card">
-          <strong>Scratch</strong>
-          ${scratch.length
-            ? scratch.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
-            : '<div class="small muted">No scratch features.</div>'}
         </div>
       `;
       selectionSummaryEl.textContent = primary.squares.length
