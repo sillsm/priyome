@@ -8,11 +8,18 @@ function hasPiece(board, sq) {
   return Number.isInteger(sq) && sq >= 0 && sq < 64 && !!board[sq];
 }
 
-export function filtration(observations, ctx) {
-  if (!Array.isArray(observations) || !ctx?.game?.state?.board) return [];
-  const board = ctx.game.state.board;
-  const involvedSquares = new Set();
+function observationRefs(ob) {
+  const refs = ob?.data?.refs || [];
+  if (ob?.type === 'alignment') return ob?.data?.squares || refs;
+  return refs;
+}
 
+export function interestSquares(observations, ctx) {
+  if (!Array.isArray(observations) || !ctx?.game?.state?.board) return new Set();
+  const board = ctx.game.state.board;
+  const involved = new Set();
+
+  // 1) Initial pieces of interest: attacked / capturable pieces (both colors).
   for (const ob of observations) {
     if (ob.type !== 'attack') continue;
     const attackerSq = ob.data?.attacker;
@@ -21,20 +28,28 @@ export function filtration(observations, ctx) {
     const attacker = board[attackerSq];
     const target = board[targetSq];
     if (!attacker || !target || attacker.color === target.color) continue;
-    involvedSquares.add(targetSq);
+    involved.add(targetSq);
   }
 
+  // 2) Add defenders of those attacked/capturable pieces, then stop.
+  for (const ob of observations) {
+    if (ob.type !== 'defend') continue;
+    const defendedSq = ob.data?.square;
+    const defenderSq = ob.data?.defender;
+    if (!involved.has(defendedSq) || !hasPiece(board, defenderSq)) continue;
+    involved.add(defenderSq);
+  }
+
+  return involved;
+}
+
+export function filtration(observations, ctx) {
+  const involvedSquares = interestSquares(observations, ctx);
   if (!involvedSquares.size) return [];
 
   return observations.filter(ob => {
-    const refs = ob.data?.refs || [];
+    const refs = observationRefs(ob);
     if (!refs.length) return false;
-
-    if (ob.type === 'alignment') {
-      const squares = ob.data?.squares || refs;
-      return squares.length > 0 && squares.every(sq => involvedSquares.has(sq));
-    }
-
     return refs.some(sq => involvedSquares.has(sq));
   });
 }
