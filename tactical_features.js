@@ -4,6 +4,56 @@ function pieceTag(ctx, piece, sq) {
   return `${ctx.pieceLetter(piece)}${ctx.sqName(sq)}`;
 }
 
+function hasPiece(board, sq) {
+  return Number.isInteger(sq) && sq >= 0 && sq < 64 && !!board[sq];
+}
+
+export function filtration(observations, ctx) {
+  if (!Array.isArray(observations) || !ctx?.game?.state?.board) return [];
+  const board = ctx.game.state.board;
+  const piecesOfInterest = new Set();
+
+  for (const ob of observations) {
+    if (ob.type !== 'attack') continue;
+    const attackerSq = ob.data?.attacker;
+    const targetSq = ob.data?.square;
+    if (!hasPiece(board, attackerSq) || !hasPiece(board, targetSq)) continue;
+    const attacker = board[attackerSq];
+    const target = board[targetSq];
+    if (!attacker || !target || attacker.color === target.color) continue;
+    piecesOfInterest.add(attackerSq);
+    piecesOfInterest.add(targetSq);
+  }
+
+  for (const ob of observations) {
+    if (ob.type !== 'attack' || !ob.data?.isCheck) continue;
+    const attackerSq = ob.data?.attacker;
+    if (hasPiece(board, attackerSq)) piecesOfInterest.add(attackerSq);
+  }
+
+  for (const move of ctx.legalMoves || []) {
+    const after = ctx.afterFor(move);
+    if (!after || !after._isInCheck(ctx.enemy)) continue;
+    if (hasPiece(board, move.from)) piecesOfInterest.add(move.from);
+  }
+
+  return observations.filter(ob => {
+    if (ob.type === 'attack') {
+      const refs = ob.data?.refs || [];
+      return refs.some(sq => piecesOfInterest.has(sq));
+    }
+    if (ob.type === 'defend') {
+      const refs = ob.data?.refs || [];
+      return refs.some(sq => piecesOfInterest.has(sq));
+    }
+    if (ob.type === 'alignment') {
+      const squares = ob.data?.squares || [];
+      return squares.some(sq => piecesOfInterest.has(sq));
+    }
+    return false;
+  });
+}
+
 export const TACTICAL_FEATURES = [
   {
     name: "Attack",
