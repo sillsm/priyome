@@ -859,6 +859,26 @@
       return [...new Set(ob?.data?.refs || [])];
     }
 
+    function involvedPieceSquares(g, obs){
+      const out = new Set();
+      for (const ob of obs) {
+        if (ob.type !== 'attack') continue;
+        const attackerSq = ob.data?.attacker;
+        const targetSq = ob.data?.square;
+        if (!Number.isInteger(attackerSq) || !Number.isInteger(targetSq)) continue;
+        const attacker = g.state.board[attackerSq];
+        const target = g.state.board[targetSq];
+        if (!attacker || !target || attacker.color === target.color) continue;
+        out.add(targetSq);
+      }
+      return [...out].sort((a,b) => a - b);
+    }
+
+    function pieceTagAtSquare(g, sq){
+      const piece = g.state.board[sq];
+      return piece ? `${pieceLetter(piece)}${sqName(sq)}` : sqName(sq);
+    }
+
     function observationsShareRef(a, b){
       const as = new Set(observationRefs(a));
       for (const sq of observationRefs(b)) if (as.has(sq)) return true;
@@ -1040,9 +1060,17 @@
     function renderObservationsAndMoves(){
       const obs = observationsForGame(game, false);
       const threats = enemyThreatsForPosition(game, obs);
-      const clustered = clusterObservationsByRefs(obs);
-      const primary = clustered.primary;
-      const scratch = clustered.scratch;
+      const involvedSquares = involvedPieceSquares(game, obs);
+      const involvedSet = new Set(involvedSquares);
+      const relatedPredicates = sortClusterObservations(obs.filter(ob => {
+        const refs = observationRefs(ob);
+        if (!refs.length) return false;
+        if (ob.type === 'alignment') {
+          const squares = ob.data?.squares || refs;
+          return squares.length > 0 && squares.every(sq => involvedSet.has(sq));
+        }
+        return refs.some(sq => involvedSet.has(sq));
+      }));
 
       obsList.innerHTML = `
         <div class="card">
@@ -1052,23 +1080,20 @@
             : '<div class="small muted">No immediate check, mate in one, or capture of our loose/hanging piece found.</div>'}
         </div>
         <div class="card">
-          <strong>Primary Graph</strong>
-          <div class="small muted">${primary.squares.length ? 'Squares: ' + escapeHtml(primary.squares.map(sqName).join(', ')) : 'No connected graph'}</div>
-          ${primary.observations.length
-            ? primary.observations.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
-            : '<div class="small muted">No feature graph.</div>'}
+          <strong>Involved pieces</strong>
+          <div class="small muted">${involvedSquares.length ? involvedSquares.map(sq => escapeHtml(pieceTagAtSquare(game, sq))).join(', ') : 'None'}</div>
         </div>
         <div class="card">
-          <strong>Scratch</strong>
-          ${scratch.length
-            ? scratch.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
-            : '<div class="small muted">No scratch features.</div>'}
+          <strong>Related predicates</strong>
+          ${relatedPredicates.length
+            ? relatedPredicates.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
+            : '<div class="small muted">No predicates related to involved pieces.</div>'}
         </div>
       `;
-      selectionSummaryEl.textContent = primary.squares.length
-        ? primary.squares.map(sqName).join(', ')
+      selectionSummaryEl.textContent = involvedSquares.length
+        ? involvedSquares.map(sqName).join(', ')
         : '—';
-      applyPrimaryGraphMarks(primary);
+      applyPrimaryGraphMarks({ observations: relatedPredicates, squares: involvedSquares });
 
       const moves = filteredMoves(obs);
 
