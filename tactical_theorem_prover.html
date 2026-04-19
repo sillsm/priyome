@@ -898,16 +898,12 @@
     }
 
     function observationPriority(ob){
-      if (ob.type === 'attack' && ob.data?.isCheck) return 0;
-      if (ob.type === 'alignment' && ob.data?.leavesWithCheck) return 1;
-      if (ob.type === 'attack') return 2;
-      if (ob.type === 'hang') return 3;
-      if (ob.type === 'loose') return 4;
-      if (ob.type === 'defend') return 5;
-      if (ob.type === 'alignment') return 6;
-      if (ob.type === 'forkable_by_x') return 7;
-      if (ob.type === 'mobility') return 8;
-      return 9;
+      if (ob.type === 'hang') return 0;
+      if (ob.type === 'loose') return 1;
+      if (ob.type === 'alignment' && ob.data?.leavesWithCheck) return 2;
+      if (ob.type === 'alignment') return 3;
+      if (ob.type === 'mobility') return 4;
+      return 5;
     }
 
     function sortClusterObservations(obs){
@@ -1057,13 +1053,15 @@
       for (const ob of (primary?.observations || [])) {
         if (ob.type === 'hang' && ob.data?.square != null) {
           marks.sqMarks.set(sqName(ob.data.square), 'R');
-        } else if ((ob.type === 'attack' || ob.type === 'defend') && ob.data?.attacker != null && ob.data?.square != null) {
-          marks.arrows.push({ color: 'G', from: sqName(ob.data.attacker), to: sqName(ob.data.square) });
-        } else if ((ob.type === 'attack' || ob.type === 'defend') && ob.data?.defender != null && ob.data?.square != null) {
-          marks.arrows.push({ color: 'G', from: sqName(ob.data.defender), to: sqName(ob.data.square) });
+        } else if (ob.type === 'loose' && ob.data?.square != null) {
+          const square = sqName(ob.data.square);
+          if (!marks.sqMarks.has(square)) marks.sqMarks.set(square, 'B');
         } else if (ob.type === 'alignment' && Array.isArray(ob.data?.squares)) {
           const ep = lineEndpoints(ob.data.squares);
           if (ep) marks.arrows.push({ color: 'Y', from: ep.from, to: ep.to });
+        } else if (ob.type === 'mobility' && ob.data?.square != null) {
+          const square = sqName(ob.data.square);
+          if (!marks.sqMarks.has(square)) marks.sqMarks.set(square, 'Y');
         }
       }
       game._emit();
@@ -1075,12 +1073,14 @@
       const threats = enemyThreatsForPosition(game, obs);
       const involvedSquares = current.involvedSquares;
       const relatedPredicates = current.relatedPredicates;
+      const displayPredicates = relatedPredicates.filter(ob => ob.type !== 'loose');
 
       const shownPly = viewPly == null ? theoremLine.length : viewPly;
       let relatedDiff = null;
       if (shownPly > 0) {
         const prev = relatedPredicatesForGame(gameAtPly(shownPly - 1));
-        relatedDiff = diffObservations(prev.relatedPredicates, relatedPredicates);
+        const prevDisplay = prev.relatedPredicates.filter(ob => ob.type !== 'loose');
+        relatedDiff = diffObservations(prevDisplay, displayPredicates);
       }
 
       const relatedHtml = relatedDiff
@@ -1088,8 +1088,8 @@
             ? `${relatedDiff.added.map(o => `<div class="plus">+ ${escapeHtml(o.label)}</div>`).join('')}
                ${relatedDiff.removed.map(o => `<div class="minus"><s>${escapeHtml(o.label)}</s></div>`).join('')}`
             : '<div class="small muted">No related predicate changes from previous ply.</div>')
-        : (relatedPredicates.length
-            ? relatedPredicates.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
+        : (displayPredicates.length
+            ? displayPredicates.map(o => `<div>${escapeHtml(o.label)}</div>`).join('')
             : '<div class="small muted">No predicates related to involved pieces.</div>');
 
       obsList.innerHTML = `
