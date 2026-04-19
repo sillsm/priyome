@@ -16,28 +16,19 @@ function observationRefs(ob) {
 
 export function interestSquares(observations, ctx) {
   if (!Array.isArray(observations) || !ctx?.game?.state?.board) return new Set();
-  const board = ctx.game.state.board;
   const involved = new Set();
 
-  // 1) Initial pieces of interest: attacked / capturable pieces (both colors).
+  // Core tactical pieces we want to keep in focus on the board.
   for (const ob of observations) {
-    if (ob.type !== 'attack') continue;
-    const attackerSq = ob.data?.attacker;
-    const targetSq = ob.data?.square;
-    if (!hasPiece(board, attackerSq) || !hasPiece(board, targetSq)) continue;
-    const attacker = board[attackerSq];
-    const target = board[targetSq];
-    if (!attacker || !target || attacker.color === target.color) continue;
-    involved.add(targetSq);
-  }
-
-  // 2) Add defenders of those attacked/capturable pieces, then stop.
-  for (const ob of observations) {
-    if (ob.type !== 'defend') continue;
-    const defendedSq = ob.data?.square;
-    const defenderSq = ob.data?.defender;
-    if (!involved.has(defendedSq) || !hasPiece(board, defenderSq)) continue;
-    involved.add(defenderSq);
+    if (ob.type === 'hang' || ob.type === 'loose' || ob.type === 'mobility') {
+      if (hasPiece(ctx.game.state.board, ob.data?.square)) involved.add(ob.data.square);
+      continue;
+    }
+    if (ob.type === 'alignment') {
+      for (const sq of (ob.data?.squares || [])) {
+        if (hasPiece(ctx.game.state.board, sq)) involved.add(sq);
+      }
+    }
   }
 
   return involved;
@@ -56,101 +47,9 @@ export function filtration(observations, ctx) {
 
 export const TACTICAL_FEATURES = [
   {
-    name: "Attack",
-    kind: "attack",
-    order: 10,
-    color: "attack",
-
-    observe(ctx) {
-      const out = [];
-      const seen = new Set();
-      for (let from = 0; from < 64; from++) {
-        const p = ctx.game.state.board[from];
-        if (!p) continue;
-        const attacks = ctx.pieceAttackSquares(ctx.game, from, p);
-        for (const to of attacks) {
-          const target = ctx.game.state.board[to];
-          if (!target || target.color === p.color) continue;
-          const isCheck = target.type === 'k';
-          const id = `attack|static|${from}|${to}|${isCheck ? 'check' : 'plain'}`;
-          if (seen.has(id)) continue;
-          seen.add(id);
-          out.push({
-            id,
-            label: `attack(${pieceTag(ctx, p, from)}, ${ctx.sqName(to)}${isCheck ? '+' : ''})`,
-            side: p.color === ctx.side ? "ours" : "theirs",
-            implicatedValue: ctx.pieceValue(target) + (isCheck ? 1000 : 0),
-            data: { refs: [from, to], owner: p.color, attacker: from, square: to, isCheck, forcePrimary: isCheck }
-          });
-        }
-      }
-      for (const move of ctx.legalMoves) {
-        const after = ctx.afterFor(move);
-        if (!after || !after._isInCheck(ctx.enemy)) continue;
-        const moved = ctx.game.state.board[move.from];
-        if (!moved) continue;
-        const id = `attack|movecheck|${move.uci}`;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        out.push({
-          id,
-          label: `attack(${pieceTag(ctx, moved, move.from)}, ${ctx.sqName(move.to)}+)`,
-          side: "ours",
-          implicatedValue: 2000,
-          data: { refs: [move.from, move.to], owner: ctx.side, attacker: move.from, square: move.to, isCheck: true, moveUci: move.uci, forcePrimary: true }
-        });
-      }
-      return out;
-    },
-
-    related(ctx, observation, move, after) {
-      if (observation.data.moveUci) return move.uci === observation.data.moveUci;
-      const refs = observation.data.refs || [];
-      return refs.includes(move.from) || refs.includes(move.to) || refs.some(sq => ctx.moveAttacksSquare(after, move, sq, ctx.side));
-    }
-  },
-
-  {
-    name: "Defend",
-    kind: "defend",
-    order: 20,
-    color: "overworked",
-
-    observe(ctx) {
-      const out = [];
-      const seen = new Set();
-      for (let from = 0; from < 64; from++) {
-        const p = ctx.game.state.board[from];
-        if (!p) continue;
-        const attacks = ctx.pieceAttackSquares(ctx.game, from, p);
-        for (const to of attacks) {
-          const target = ctx.game.state.board[to];
-          if (!target || target.color !== p.color) continue;
-          const id = `defend|${from}|${to}`;
-          if (seen.has(id)) continue;
-          seen.add(id);
-          out.push({
-            id,
-            label: `defend(${pieceTag(ctx, p, from)}, ${ctx.sqName(to)})`,
-            side: p.color === ctx.side ? "ours" : "theirs",
-            implicatedValue: ctx.pieceValue(target),
-            data: { refs: [from, to], owner: p.color, defender: from, square: to }
-          });
-        }
-      }
-      return out;
-    },
-
-    related(ctx, observation, move, after) {
-      const refs = observation.data.refs || [];
-      return refs.includes(move.from) || refs.includes(move.to) || refs.some(sq => ctx.moveAttacksSquare(after, move, sq, ctx.side));
-    }
-  },
-
-  {
     name: "Loose",
     kind: "loose",
-    order: 30,
+    order: 10,
     color: "loose",
 
     observe(ctx) {
@@ -181,7 +80,7 @@ export const TACTICAL_FEATURES = [
   {
     name: "Hang",
     kind: "hang",
-    order: 40,
+    order: 20,
     color: "bad",
 
     observe(ctx) {
@@ -212,7 +111,7 @@ export const TACTICAL_FEATURES = [
   {
     name: "Alignment",
     kind: "alignment",
-    order: 50,
+    order: 30,
     color: "alignment",
 
     observe(ctx) {
@@ -312,7 +211,7 @@ export const TACTICAL_FEATURES = [
   {
     name: "Mobility",
     kind: "mobility",
-    order: 60,
+    order: 40,
     color: "mobility",
 
     observe(ctx) {
@@ -339,47 +238,4 @@ export const TACTICAL_FEATURES = [
     }
   },
 
-  {
-    name: "Forkable By X",
-    kind: "forkable_by_x",
-    order: 70,
-    color: "combo",
-
-    observe(ctx) {
-      const out = [];
-      const seen = new Set();
-      for (const move of ctx.legalMoves) {
-        const after = ctx.afterFor(move);
-        if (!after) continue;
-        const moved = after.state.board[move.to];
-        if (!moved || moved.color !== ctx.side) continue;
-        const attacked = ctx.pieceAttackSquares(after, move.to, moved).filter(sq => {
-          const target = after.state.board[sq];
-          return target && target.color === ctx.enemy;
-        });
-        for (let i = 0; i < attacked.length; i++) {
-          for (let j = i + 1; j < attacked.length; j++) {
-            const a = attacked[i], b = attacked[j];
-            const pieceName = ({ p:'pawn', n:'knight', b:'bishop', r:'rook', q:'queen', k:'king' })[moved.type] || moved.type;
-            const id = `forkable_by_${pieceName}|${move.uci}|${Math.min(a,b)}|${Math.max(a,b)}`;
-            if (seen.has(id)) continue;
-            seen.add(id);
-            out.push({
-              id,
-              label: `forkable_by_${pieceName}(${ctx.sqName(a)}, ${ctx.sqName(b)})`,
-              side: 'ours',
-              implicatedValue: 100,
-              data: { refs: [move.to, a, b], moveUci: move.uci, landing: move.to, squares: [a, b] }
-
-            });
-          }
-        }
-      }
-      return out;
-    },
-
-    related(ctx, observation, move, after) {
-      return move.uci === observation.data.moveUci;
-    }
-  }
 ];
