@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chess Proof Markdown Builder</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --panel: #ffffff;
+      --ink: #162018;
+      --muted: #66736b;
+      --line: #d9dfdc;
+      --accent: #226b4a;
+      --accent-soft: #e8f3ee;
+      --bad: #9d2c2c;
+      --bad-soft: #fff0f0;
+      --ok: #1f6b3a;
+      --ok-soft: #edf8f1;
+      --code: #101614;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    h1 {
+      font-size: 17px;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .status {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      background: var(--ok-soft);
+      color: var(--ok);
+    }
+
+    .status.bad {
+      background: var(--bad-soft);
+      color: var(--bad);
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+      gap: 14px;
+      padding: 14px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 1px 8px rgba(20, 30, 24, 0.04);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 11px 13px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfb;
+    }
+
+    .body { padding: 13px; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin: 10px 0 5px;
+    }
+
+    input, textarea, select, button {
+      font: inherit;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px 9px;
+      background: white;
+      color: var(--ink);
+    }
+
+    textarea {
+      min-height: 88px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 7px 10px;
+      background: white;
+      cursor: pointer;
+      font-weight: 650;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    button.soft {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: #bcd8cb;
+    }
+
+    button.danger {
+      color: var(--bad);
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      margin: 10px 0;
+      background: #fff;
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 5px;
+    }
+
+    .right-grid {
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .triple {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--code);
+      background: #fbfbfa;
+      min-height: 260px;
+      padding: 13px;
+      overflow: auto;
+    }
+
+    .schema-editor {
+      min-height: 260px;
+      border: 0;
+      border-radius: 0;
+      background: #fbfbfa;
+    }
+
+    .errors {
+      border-top: 1px solid var(--line);
+      padding: 10px 13px;
+      background: var(--bad-soft);
+      color: var(--bad);
+      display: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .errors.show { display: block; }
+
+    @media (max-width: 980px) {
+      main, .triple { grid-template-columns: 1fr; }
+      .right-grid { grid-template-rows: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Chess Proof Markdown Builder</h1>
+    <div id="status" class="status">Valid proof JSON</div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Form Builder</h2>
+      <div class="body">
+        <label>Proof title</label>
+        <input id="title" value="Fork wins loose piece">
+
+        <label>Claim</label>
+        <textarea id="claim">If a checking fork attacks a loose piece and the defender can be profitably removed, the forcing line wins material.</textarea>
+
+        <label>Initial position FEN</label>
+        <input id="fen" value="8/4k3/8/8/2Q1r3/8/8/4K3 w - - 0 1">
+        <div class="hint">Optional. Leave blank to omit the section.</div>
+
+        <div class="buttons">
+          <button class="soft" id="addObservation">+ Observation</button>
+          <button class="soft" id="addLine">+ Line</button>
+          <button id="loadExample">Load example</button>
+        </div>
+
+        <label>Observations</label>
+        <div id="observations"></div>
+
+        <label>Objective</label>
+        <div class="card">
+          <div class="row">
+            <div>
+              <label>Eval at least</label>
+              <input id="evalAtLeast" type="number" step="0.5" value="2">
+            </div>
+            <div>
+              <label>Or mate?</label>
+              <select id="mateAllowed">
+                <option value="true" selected>yes</option>
+                <option value="false">no</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <label>Lines / Branches</label>
+        <div id="lines"></div>
+
+        <label>Final line</label>
+        <textarea id="finalLine">1. Qxe4+, {king reply}, Qxe4 wins the loose rook.</textarea>
+      </div>
+    </section>
+
+    <section class="right-grid">
+      <div class="triple">
+        <section class="panel">
+          <h2>Generated Markdown</h2>
+          <pre id="markdownOut"></pre>
+        </section>
+
+        <section class="panel">
+          <h2>Validated JSON</h2>
+          <pre id="jsonOut"></pre>
+          <div id="errors" class="errors"></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <h2>Reference JSON Schema</h2>
+        <textarea id="schemaOut" class="schema-editor" spellcheck="false"></textarea>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      observations: [
+        { type: 'attacks', piece: 'Q@c4', square: 'e4' },
+        { type: 'loose', piece: 'r@e4' },
+        { type: 'align', a: 'Q@c4', b: 'r@e4', c: 'k@e7' }
+      ],
+      lines: [
+        {
+          label: 'candidate check fork',
+          move: '1. Qxe4+',
+          replyClass: 'legal_reply AND king_safe',
+          result: 'side_to_move >= +2',
+          observations: 'loose(r@e4)\ncheck(Qxe4+)'
+        }
+      ]
+    };
+
+    const schema = {
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      title: 'ChessProof.v0',
+      type: 'object',
+      required: ['title', 'claim', 'observations', 'objective', 'lines', 'finalLine'],
+      additionalProperties: false,
+      properties: {
+        title: { type: 'string', minLength: 1 },
+        claim: { type: 'string', minLength: 1 },
+        initialPosition: {
+          type: 'object',
+          required: ['fen'],
+          additionalProperties: false,
+          properties: { fen: { type: 'string', minLength: 1 } }
+        },
+        observations: {
+          type: 'array',
+          minItems: 1,
+          items: { $ref: '#/$defs/observation' }
+        },
+        objective: {
+          type: 'object',
+          required: ['anyOf'],
+          additionalProperties: false,
+          properties: {
+            anyOf: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                anyOf: [
+                  {
+                    type: 'object',
+                    required: ['evalAtLeast'],
+                    additionalProperties: false,
+                    properties: { evalAtLeast: { type: 'number' } }
+                  },
+                  {
+                    type: 'object',
+                    required: ['mate'],
+                    additionalProperties: false,
+                    properties: { mate: { const: true } }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        lines: {
+          type: 'array',
+          minItems: 1,
+          items: { $ref: '#/$defs/line' }
+        },
+        finalLine: { type: 'string', minLength: 1 }
+      },
+      $defs: {
+        observation: {
+          anyOf: [
+            {
+              type: 'object', required: ['type', 'piece', 'square'], additionalProperties: false,
+              properties: { type: { const: 'attacks' }, piece: { type: 'string' }, square: { type: 'string' } }
+            },
+            {
+              type: 'object', required: ['type', 'piece', 'square'], additionalProperties: false,
+              properties: { type: { const: 'defends' }, piece: { type: 'string' }, square: { type: 'string' } }
+            },
+            {
+              type: 'object', required: ['type', 'piece'], additionalProperties: false,
+              properties: { type: { const: 'loose' }, piece: { type: 'string' } }
+            },
+            {
+              type: 'object', required: ['type', 'piece'], additionalProperties: false,
+              properties: { type: { const: 'hanging' }, piece: { type: 'string' } }
+            },
+            {
+              type: 'object', required: ['type', 'a', 'b', 'c'], additionalProperties: false,
+              properties: { type: { const: 'align' }, a: { type: 'string' }, b: { type: 'string' }, c: { type: 'string' } }
+            },
+            {
+              type: 'object', required: ['type', 'piece', 'target1', 'target2'], additionalProperties: false,
+              properties: { type: { const: 'fork' }, piece: { type: 'string' }, target1: { type: 'string' }, target2: { type: 'string' } }
+            },
+            {
+              type: 'object', required: ['type', 'move'], additionalProperties: false,
+              properties: { type: { const: 'check' }, move: { type: 'string' } }
+            },
+            {
+              type: 'object', required: ['type', 'move'], additionalProperties: false,
+              properties: { type: { const: 'mate_threat' }, move: { type: 'string' } }
+            }
+          ]
+        },
+        line: {
+          type: 'object',
+          required: ['label', 'move', 'replyClass', 'result'],
+          additionalProperties: false,
+          properties: {
+            label: { type: 'string', minLength: 1 },
+            move: { type: 'string', minLength: 1 },
+            replyClass: { type: 'string', minLength: 1 },
+            result: { type: 'string', minLength: 1 },
+            observations: { type: 'array', items: { type: 'string' } },
+            branches: { type: 'array', items: { $ref: '#/$defs/line' } }
+          }
+        }
+      }
+    };
+
+    const $ = id => document.getElementById(id);
+
+    function observationToText(o) {
+      if (o.type === 'attacks' || o.type === 'defends') return `${o.type}(${o.piece}, ${o.square})`;
+      if (o.type === 'loose' || o.type === 'hanging') return `${o.type}(${o.piece})`;
+      if (o.type === 'align') return `align(${o.a}, ${o.b}, ${o.c})`;
+      if (o.type === 'fork') return `fork(${o.piece}, ${o.target1}, ${o.target2})`;
+      if (o.type === 'check' || o.type === 'mate_threat') return `${o.type}(${o.move})`;
+      return JSON.stringify(o);
+    }
+
+    function parseObservationLines(text) {
+      return text.split('\n').map(s => s.trim()).filter(Boolean);
+    }
+
+    function buildProof() {
+      const title = $('title').value.trim();
+      const claim = $('claim').value.trim();
+      const fen = $('fen').value.trim();
+      const anyOf = [];
+      const evalAtLeast = Number($('evalAtLeast').value);
+      if (!Number.isNaN(evalAtLeast)) anyOf.push({ evalAtLeast });
+      if ($('mateAllowed').value === 'true') anyOf.push({ mate: true });
+
+      const proof = {
+        title,
+        claim,
+        observations: state.observations,
+        objective: { anyOf },
+        lines: state.lines.map(l => ({
+          label: l.label.trim(),
+          move: l.move.trim(),
+          replyClass: l.replyClass.trim(),
+          result: l.result.trim(),
+          observations: parseObservationLines(l.observations || '')
+        })),
+        finalLine: $('finalLine').value.trim()
+      };
+      if (fen) proof.initialPosition = { fen };
+      return proof;
+    }
+
+    function buildMarkdown(proof) {
+      const out = [];
+      out.push(`# Proof: ${proof.title}`);
+      out.push('', '## claim', proof.claim);
+      if (proof.initialPosition) out.push('', '## initial position', `fen: ${proof.initialPosition.fen}`);
+      out.push('', '## observations');
+      proof.observations.forEach(o => out.push(`- ${observationToText(o)}`));
+      out.push('', '## objective');
+      out.push(proof.objective.anyOf.map(o => o.mate ? 'mate' : `eval_at_least(${o.evalAtLeast})`).join(' OR '));
+      out.push('', '## lines');
+      proof.lines.forEach(line => {
+        out.push(`### line: ${line.label}`);
+        out.push(`move: ${line.move}`);
+        out.push('', 'reply_class:');
+        out.push(`- ${line.replyClass}`);
+        if (line.observations && line.observations.length) {
+          out.push('', 'observations:');
+          line.observations.forEach(o => out.push(`- ${o}`));
+        }
+        out.push('', 'result:');
+        out.push(`- ${line.result}`, '');
+      });
+      out.push('## final line', proof.finalLine);
+      return out.join('\n');
+    }
+
+    function renderObservationForm() {
+      const root = $('observations');
+      root.innerHTML = '';
+      state.observations.forEach((o, i) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="card-title">Observation ${i + 1}<button class="danger" data-remove="${i}">remove</button></div>
+          <label>Predicate</label>
+          <select data-field="type" data-i="${i}">
+            ${['attacks','defends','loose','hanging','align','fork','check','mate_threat'].map(t => `<option value="${t}" ${o.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <div class="row fields"></div>
+        `;
+        root.appendChild(card);
+        renderObservationFields(card.querySelector('.fields'), o, i);
+      });
+    }
+
+    function renderObservationFields(container, o, i) {
+      const fieldsByType = {
+        attacks: ['piece', 'square'], defends: ['piece', 'square'], loose: ['piece'], hanging: ['piece'],
+        align: ['a', 'b', 'c'], fork: ['piece', 'target1', 'target2'], check: ['move'], mate_threat: ['move']
+      };
+      container.innerHTML = fieldsByType[o.type].map(f => `
+        <div>
+          <label>${f}</label>
+          <input data-field="${f}" data-i="${i}" value="${escapeHtml(o[f] || '')}" placeholder="${placeholderFor(f)}">
+        </div>
+      `).join('');
+    }
+
+    function placeholderFor(f) {
+      return ({ piece: 'Q@c4', square: 'e4', a: 'Q@c4', b: 'r@e4', c: 'k@e7', target1: 'k@e7', target2: 'r@e4', move: 'Qxe4+' })[f] || '';
+    }
+
+    function renderLinesForm() {
+      const root = $('lines');
+      root.innerHTML = '';
+      state.lines.forEach((l, i) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="card-title">Line ${i + 1}<button class="danger" data-remove-line="${i}">remove</button></div>
+          <label>Label</label><input data-line-field="label" data-i="${i}" value="${escapeHtml(l.label)}">
+          <label>Move</label><input data-line-field="move" data-i="${i}" value="${escapeHtml(l.move)}">
+          <label>Reply class</label><input data-line-field="replyClass" data-i="${i}" value="${escapeHtml(l.replyClass)}">
+          <label>Line observations, one per line</label><textarea data-line-field="observations" data-i="${i}">${escapeHtml(l.observations || '')}</textarea>
+          <label>Result</label><input data-line-field="result" data-i="${i}" value="${escapeHtml(l.result)}">
+        `;
+        root.appendChild(card);
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+    }
+
+    function validateValue(value, rule, path, rootSchema) {
+      const errors = [];
+      const fail = msg => errors.push(`${path}: ${msg}`);
+
+      if (rule.$ref) {
+        const ref = rule.$ref.replace('#/$defs/', '');
+        return validateValue(value, rootSchema.$defs[ref], path, rootSchema);
+      }
+      if (rule.anyOf) {
+        const passes = rule.anyOf.some(r => validateValue(value, r, path, rootSchema).length === 0);
+        return passes ? [] : [`${path}: matches none of anyOf`];
+      }
+      if (rule.const !== undefined && value !== rule.const) fail(`expected const ${JSON.stringify(rule.const)}`);
+      if (rule.type === 'object') {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return [`${path}: expected object`];
+        (rule.required || []).forEach(k => { if (!(k in value)) fail(`missing required property ${k}`); });
+        if (rule.additionalProperties === false) {
+          Object.keys(value).forEach(k => { if (!rule.properties || !(k in rule.properties)) fail(`additional property ${k}`); });
+        }
+        Object.keys(rule.properties || {}).forEach(k => {
+          if (k in value) errors.push(...validateValue(value[k], rule.properties[k], `${path}.${k}`, rootSchema));
+        });
+      }
+      if (rule.type === 'array') {
+        if (!Array.isArray(value)) return [`${path}: expected array`];
+        if (rule.minItems && value.length < rule.minItems) fail(`expected at least ${rule.minItems} item(s)`);
+        value.forEach((item, i) => errors.push(...validateValue(item, rule.items, `${path}[${i}]`, rootSchema)));
+      }
+      if (rule.type === 'string') {
+        if (typeof value !== 'string') return [`${path}: expected string`];
+        if (rule.minLength && value.length < rule.minLength) fail(`expected minLength ${rule.minLength}`);
+      }
+      if (rule.type === 'number' && typeof value !== 'number') fail('expected number');
+      return errors;
+    }
+
+    function validate(proof) {
+      let activeSchema;
+      try {
+        activeSchema = JSON.parse($('schemaOut').value);
+      } catch (e) {
+        return [`schema: invalid JSON: ${e.message}`];
+      }
+      return validateValue(proof, activeSchema, '$', activeSchema);
+    }
+
+    function render() {
+      const proof = buildProof();
+      $('markdownOut').textContent = buildMarkdown(proof);
+      $('jsonOut').textContent = JSON.stringify(proof, null, 2);
+      const errors = validate(proof);
+      $('errors').textContent = errors.join('\n');
+      $('errors').classList.toggle('show', errors.length > 0);
+      $('status').textContent = errors.length ? `${errors.length} validation error(s)` : 'Valid proof JSON';
+      $('status').classList.toggle('bad', errors.length > 0);
+    }
+
+    function rerenderFormsAndOutput() {
+      renderObservationForm();
+      renderLinesForm();
+      render();
+    }
+
+    document.addEventListener('input', e => {
+      const t = e.target;
+      if (t.dataset.field) {
+        const i = Number(t.dataset.i);
+        if (t.dataset.field === 'type') {
+          state.observations[i] = { type: t.value };
+          if (t.value === 'attacks' || t.value === 'defends') Object.assign(state.observations[i], { piece: 'Q@c4', square: 'e4' });
+          if (t.value === 'loose' || t.value === 'hanging') Object.assign(state.observations[i], { piece: 'r@e4' });
+          if (t.value === 'align') Object.assign(state.observations[i], { a: 'Q@c4', b: 'r@e4', c: 'k@e7' });
+          if (t.value === 'fork') Object.assign(state.observations[i], { piece: 'Q@c4', target1: 'k@e7', target2: 'r@e4' });
+          if (t.value === 'check' || t.value === 'mate_threat') Object.assign(state.observations[i], { move: 'Qxe4+' });
+          rerenderFormsAndOutput();
+          return;
+        }
+        state.observations[i][t.dataset.field] = t.value;
+      }
+      if (t.dataset.lineField) state.lines[Number(t.dataset.i)][t.dataset.lineField] = t.value;
+      render();
+    });
+
+    document.addEventListener('click', e => {
+      const t = e.target;
+      if (t.id === 'addObservation') {
+        state.observations.push({ type: 'loose', piece: 'r@e4' });
+        rerenderFormsAndOutput();
+      }
+      if (t.id === 'addLine') {
+        state.lines.push({ label: 'new branch', move: '1. ...', replyClass: 'legal_reply', result: 'side_to_move >= +2', observations: '' });
+        rerenderFormsAndOutput();
+      }
+      if (t.dataset.remove) {
+        state.observations.splice(Number(t.dataset.remove), 1);
+        rerenderFormsAndOutput();
+      }
+      if (t.dataset.removeLine) {
+        state.lines.splice(Number(t.dataset.removeLine), 1);
+        rerenderFormsAndOutput();
+      }
+      if (t.id === 'loadExample') {
+        state.observations = [
+          { type: 'fork', piece: 'Q@c4', target1: 'k@e7', target2: 'r@e4' },
+          { type: 'loose', piece: 'r@e4' },
+          { type: 'defends', piece: 'b@d5', square: 'e4' }
+        ];
+        state.lines = [
+          { label: 'remove defender', move: '1. Cxd5', replyClass: 'forced_recapture OR no_recapture', result: 'defender removed and loose piece remains', observations: 'attacks(C@c3, d5)\nloose(r@e4)' },
+          { label: 'fork after king reply', move: '2. Qxe4+', replyClass: 'king_legal_reply', result: 'wins_material(2)', observations: 'check(Qxe4+)\nattacks(Q@e4, r@e4)' }
+        ];
+        $('title').value = 'Defender removal enables fork';
+        $('claim').value = 'If capturing the defender costs less than the defender plus the loose piece, the forcing sequence wins material.';
+        $('fen').value = '';
+        $('finalLine').value = '1. Cxd5, {recapture or decline}, 2. Qxe4+ wins the loose piece after the king reply.';
+        rerenderFormsAndOutput();
+      }
+    });
+
+    $('schemaOut').value = JSON.stringify(schema, null, 2);
+    rerenderFormsAndOutput();
+  </script>
+</body>
+</html>
