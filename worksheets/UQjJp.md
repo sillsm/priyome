@@ -22,6 +22,7 @@ observations:
 enemy_reply_classes:
 
 candidate_moves: Qxe4, Ne5, Nd4
+
 candidate_forced_sequences: QxN, BxN, PxB, QxN+
 
 conclusion: 
