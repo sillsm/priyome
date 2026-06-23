@@ -38,7 +38,7 @@
 // - Your HTML should only provide containers and wire buttons to exported methods.
 // =======================================================
 
-const PIECE_BASE = "https://commons.wikimedia.org/wiki/Special:FilePath/Chess_";
+const PIECE_BASE = "https://priyomes.com/third_party/pieces/Chess_";
 // Wikimedia pattern: Chess_[piece][l|d]t45.svg  (piece in {k,q,r,b,n,p}; l=white/light, d=black/dark)
 const pieceSrc = (code) => {
   const color = code[0] === "w" ? "l" : "d";     // w->l, b->d
