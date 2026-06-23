@@ -552,7 +552,7 @@
             <label>Candidate forced sequences</label>
             <input data-box="${i}" data-sequence-line="true" value="${escapeHtml(box.forcedSequences.sequences)}" placeholder="1. Qh3+ Kg1 2. Qxh8; 1. Qh3+ gxh3 2. Bxh6">
             <div class="buttons">
-              <button class="soft" type="button" data-generate-sequence-boards="${i}">Generate forced-sequence miniboards</button>
+              <button class="soft" type="button" data-generate-sequence-boards="${i}">Generate forcing moves</button>
             </div>
             <div id="sequenceBoards-${i}" class="mini-board-row"></div>
 
@@ -896,20 +896,21 @@
       return parts[1] === 'b' ? 'black' : 'white';
     }
 
+    function worksheetBottomColor(fallbackFen = START_FEN) {
+      // The whole worksheet uses the initial FEN orientation. If the generated
+      // sequence FEN later has the other side to move, we still keep the same
+      // bottom color so all miniboards are visually comparable.
+      return fenSideToMove(safeFen() || fallbackFen || START_FEN);
+    }
+
     function syncSideToMoveDefault() {
       const side = document.getElementById('side');
       if (side) side.value = 'side_to_move';
     }
 
-    function orientGameFromFenSide(g, fen) {
-      const stm = fenSideToMove(fen);
-      try { g.ui = g.ui || {}; } catch {}
-      if (stm === 'black') {
-        try { g.toggleFlip?.(); } catch {}
-        try { g.ui._flipped = true; } catch {}
-      } else {
-        try { g.ui._flipped = false; } catch {}
-      }
+    function orientGameFromFenSide(g, referenceFen) {
+      const bottomColor = worksheetBottomColor(referenceFen);
+      try { g.toggleFlip?.(bottomColor === 'black'); } catch {}
     }
 
     function makeGameFromFen(fen, title = 'Worksheet') {
@@ -1016,25 +1017,59 @@
       return fallbackFen || START_FEN;
     }
 
-    function legalReplyCount(g) {
-      const names = ['legalMoves', 'moves', 'getLegalMoves', 'generateLegalMoves', 'legalReplies'];
-      for (const name of names) {
-        try {
-          const out = g?.[name]?.();
-          if (Array.isArray(out)) return out.length;
-        } catch {}
-      }
-      try {
-        if (g?.isMate?.() || g?.inCheckmate?.() || g?.checkmate?.()) return 0;
-      } catch {}
-      return null;
+    const FILES = 'abcdefgh';
+
+    function scratchSqName(i) {
+      const f = i % 8;
+      const r = 7 - Math.floor(i / 8);
+      return FILES[f] + (r + 1);
     }
 
-    function shouldShowPosition(g, isFinal) {
-      const replies = legalReplyCount(g);
-      if (replies === 0 || replies === 1) return { show: true, note: replies === 0 ? 'mate / 0 replies' : '1 legal reply' };
-      if (replies === null && isFinal) return { show: true, note: 'reply count unavailable; showing final position' };
-      return { show: false, note: `${replies} replies` };
+    function uciForMove(m, promo = '') {
+      return scratchSqName(m.from) + scratchSqName(m.to) + String(promo || '').toLowerCase();
+    }
+
+    function legalMovesForPosition(g) {
+      // The live ScratchChess Game exposes _allLegalMoves(color), where color is 'w' or 'b'.
+      // It returns objects shaped like { from: <board index>, to: <board index> }.
+      try {
+        const color = g?.state?.side;
+        if (color !== 'w' && color !== 'b') return [];
+        const moves = g._allLegalMoves(color);
+        return Array.isArray(moves) ? moves : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function legalReplyCount(g) {
+      return legalMovesForPosition(g).length;
+    }
+
+    function applyScratchMoveUCI(g, move) {
+      const uci = uciForMove(move);
+      const ok = g.makeMoveUCI?.(uci);
+      if (!ok) return false;
+      // ScratchChess pauses on promotion until a piece is chosen. For search, choose queen.
+      if (g.state?.pendingPromotion) {
+        try { g.resolvePendingPromotion?.('Q'); } catch { return false; }
+      }
+      return true;
+    }
+
+    function scratchSanForLastMove(g, fallbackMove) {
+      try {
+        const san = String(g.curNode?.san || '').trim();
+        if (san) return san;
+      } catch {}
+      return uciForMove(fallbackMove);
+    }
+
+    function onePlyGameFromFenAndMove(fen, move) {
+      const g = createGame({ Event: 'Worksheet forcing candidate', Site: 'Local' });
+      g.loadFEN?.(fen || START_FEN);
+      if (!applyScratchMoveUCI(g, move)) throw new Error('makeMoveUCI failed for ' + uciForMove(move));
+      return g;
     }
 
     function generateSequenceBoards(boxIndex) {
@@ -1042,45 +1077,44 @@
       if (!host) return;
       clearHost(host);
 
-      const fen = safeFen();
-      const input = document.querySelector(`[data-box="${boxIndex}"][data-sequence-line]`);
-      const sequences = splitSequences(input?.value || '');
-
-      if (!sequences.length) {
-        host.appendChild(miniCard('no sequence', fen || START_FEN, 'Enter semicolon-separated forced sequences.'));
+      const fen = safeFen() || START_FEN;
+      let base;
+      try { base = makeGameFromFen(fen, 'forcing search root'); }
+      catch (e) {
+        host.appendChild(miniCard('bad FEN', START_FEN, String(e?.message || e)));
         return;
       }
 
-      let madeAny = false;
-      sequences.forEach((seq, si) => {
-        const tokens = tokenizePgnishMoves(seq);
-        if (!tokens.length) {
-          host.appendChild(miniCard(`seq ${si + 1}`, fen || START_FEN, 'No playable moves found.'));
-          madeAny = true;
-          return;
-        }
+      const moves = legalMovesForPosition(base);
+      const forcing = [];
 
-        for (let ply = 1; ply <= tokens.length; ply++) {
-          try {
-            const prefix = tokens.slice(0, ply);
-            const g = gameFromMovePrefix(fen, prefix);
-            const f = exportFen(g, fen || START_FEN);
-            const verdict = shouldShowPosition(g, ply === tokens.length);
-            if (verdict.show) {
-              host.appendChild(miniCard(`seq ${si + 1}, ply ${ply}`, f, verdict.note + ': ' + prefix.join(' ')));
-              madeAny = true;
-            }
-          } catch (e) {
-            host.appendChild(miniCard(`seq ${si + 1}: stopped`, fen || START_FEN, 'Could not parse/play prefix ending at ' + tokens[ply - 1]));
-            madeAny = true;
-            break;
-          }
+      for (const move of moves) {
+        try {
+          const after = onePlyGameFromFenAndMove(fen, move);
+          const san = scratchSanForLastMove(after, move);
+          const afterFen = exportFen(after, fen);
+          const replies = legalReplyCount(after);
+          if (replies <= 1) forcing.push({ san, uci: uciForMove(move), afterFen, replies });
+        } catch (e) {
+          // Keep search robust: one bad move application should not kill enumeration.
         }
-      });
-
-      if (!madeAny) {
-        host.appendChild(miniCard('no forced nodes', fen || START_FEN, 'No mate/one-reply positions detected.'));
       }
+
+      const input = document.querySelector(`[data-box="${boxIndex}"][data-sequence-line]`);
+      if (input) {
+        input.value = forcing.map(x => x.san).join('; ');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      if (!forcing.length) {
+        host.appendChild(miniCard('no forcing moves', fen, `${moves.length} legal moves checked with _allLegalMoves(${base.state?.side}); none left opponent with 0 or 1 legal replies.`));
+        return;
+      }
+
+      forcing.forEach((x, idx) => {
+        const note = x.replies === 0 ? `${x.san} (${x.uci}): mate / 0 replies` : `${x.san} (${x.uci}): opponent has exactly 1 legal reply`;
+        host.appendChild(miniCard(`${idx + 1}. ${x.san}`, x.afterFen, note));
+      });
     }
 
     document.addEventListener('input', ev => {
