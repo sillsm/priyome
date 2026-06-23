@@ -222,6 +222,53 @@
     }
     .errors.show { display: block; }
 
+
+    .mini-board-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .mini-board-card {
+      width: 138px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 6px;
+      overflow: hidden;
+    }
+
+    .mini-board-title {
+      font-size: 10px;
+      font-weight: 850;
+      color: var(--muted);
+      margin-bottom: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mini-board-host {
+      width: 124px;
+      height: 124px;
+    }
+
+    .mini-board-note {
+      margin-top: 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      color: var(--muted);
+      word-break: break-word;
+    }
+
+    .scratch-status {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
     .print-only { display: none; }
 
     @media (max-width: 1120px) {
@@ -273,15 +320,17 @@
               <div>
                 <label>Side to prove for</label>
                 <select id="side">
-                  <option value="white" selected>white</option>
+                  <option value="white">white</option>
                   <option value="black">black</option>
-                  <option value="side_to_move">side to move</option>
+                  <option value="side_to_move" selected>side to move</option>
                 </select>
               </div>
             </div>
 
             <label>Initial FEN</label>
             <input id="fen" value="">
+            <div id="initialFenBoardRow" class="mini-board-row"></div>
+            <div id="scratchStatus" class="scratch-status">ScratchChess: loading…</div>
 
             <label>Claim / target result</label>
             <textarea id="claim"></textarea>
@@ -345,7 +394,7 @@
 
     const schema = {
       $schema: 'https://json-schema.org/draft/2020-12/schema',
-      title: 'ChessProofWorksheet.v0',
+      title: 'ChessProofWorksheet.v1',
       type: 'object',
       required: ['title', 'side', 'claim', 'objective', 'boxes'],
       additionalProperties: false,
@@ -368,35 +417,35 @@
             value: { type: 'string', minLength: 1 }
           }
         },
-        boxes: {
-          type: 'array',
-          minItems: 1,
-          items: { $ref: '#/$defs/proofBox' }
-        }
+        boxes: { type: 'array', minItems: 1, items: { $ref: '#/$defs/proofBox' } }
       },
       $defs: {
         proofBox: {
           type: 'object',
-          required: ['label', 'opponentsThreat', 'observations', 'replyClasses', 'move', 'conclusion', 'next'],
+          required: ['label', 'opponentsThreat', 'observations', 'replyClasses', 'candidateMoves', 'forcedSequences', 'conclusion', 'next'],
           additionalProperties: false,
           properties: {
             label: { type: 'string', minLength: 1 },
             opponentsThreat: { type: 'string', minLength: 1 },
-            observations: {
-              type: 'array',
-              minItems: 3,
-              maxItems: 3,
-              items: { $ref: '#/$defs/observationLine' }
-            },
-            replyClasses: {
-              type: 'array',
-              minItems: 1,
-              items: { enum: ['block', 'capture', 'move_king', 'capture_back', 'decline_capture', 'forced', 'other'] }
-            },
-            move: { type: 'string', minLength: 1 },
+            observations: { type: 'array', minItems: 3, maxItems: 3, items: { $ref: '#/$defs/observationLine' } },
+            replyClasses: { type: 'array', minItems: 1, items: { enum: ['block', 'capture', 'move_king', 'capture_back', 'decline_capture', 'forced', 'other'] } },
+            candidateMoves: { $ref: '#/$defs/candidateMovesBox' },
+            forcedSequences: { $ref: '#/$defs/forcedSequencesBox' },
             conclusion: { type: 'string', minLength: 1 },
             next: { type: 'string', minLength: 1 }
           }
+        },
+        candidateMovesBox: {
+          type: 'object',
+          required: ['moves'],
+          additionalProperties: false,
+          properties: { moves: { type: 'string', minLength: 1 } }
+        },
+        forcedSequencesBox: {
+          type: 'object',
+          required: ['sequences'],
+          additionalProperties: false,
+          properties: { sequences: { type: 'string', minLength: 1 } }
         },
         observationLine: {
           type: 'object',
@@ -423,7 +472,8 @@
           opponentsThreat: b.opponentsThreat.trim(),
           observations: b.observations.map(o => ({ predicate: o.predicate, text: o.text.trim() })),
           replyClasses: REPLY_CLASSES.filter(k => b.replyClasses[k]),
-          move: b.move.trim(),
+          candidateMoves: { moves: b.candidateMoves.moves.trim() },
+          forcedSequences: { sequences: b.forcedSequences.sequences.trim() },
           conclusion: b.conclusion.trim(),
           next: b.next.trim()
         }))
@@ -449,8 +499,9 @@
         box.observations.forEach(o => out.push(`- ${o.predicate}: ${o.text}`));
         out.push('', 'enemy_reply_classes:');
         box.replyClasses.forEach(c => out.push(`- ${c}`));
-        out.push('', `line: ${box.move}`);
-        out.push(`conclusion: ${box.conclusion}`);
+        out.push('', `candidate_moves: ${box.candidateMoves.moves}`);
+        out.push(`candidate_forced_sequences: ${box.forcedSequences.sequences}`);
+        out.push('', `conclusion: ${box.conclusion}`);
         out.push(`next: ${box.next}`);
       });
       return out.join('\n');
@@ -471,7 +522,7 @@
             <label>Box label / path name</label>
             <input data-box="${i}" data-field="label" value="${escapeHtml(box.label)}">
 
-            <label>Opponent's threat / candidate forcing idea</label>
+            <label>Opponent's threat</label>
             <textarea data-box="${i}" data-field="opponentsThreat">${escapeHtml(box.opponentsThreat)}</textarea>
 
             <div class="worksheet-line">
@@ -484,9 +535,7 @@
                   <input data-box="${i}" data-obs="${j}" data-obs-field="text" value="${escapeHtml(o.text)}" placeholder="${predicatePlaceholder(o.predicate)}">
                 </div>
               `).join('')}
-            </div>
 
-            <div class="worksheet-line">
               <label>Enemy reply class breakup</label>
               <div class="checks">
                 ${REPLY_CLASSES.map(c => `
@@ -496,8 +545,17 @@
               <div class="hint">For check: block / capture / move king. For capture: capture back / decline capture.</div>
             </div>
 
-            <label>Line / calculation for this box</label>
-            <textarea data-box="${i}" data-field="move">${escapeHtml(box.move)}</textarea>
+            <label>Candidate moves</label>
+            <input data-box="${i}" data-candidate-line="true" value="${escapeHtml(box.candidateMoves.moves)}" placeholder="1. Qh3+; 1. Bxh6; 1. Qxh8">
+
+
+            <label>Candidate forced sequences</label>
+            <input data-box="${i}" data-sequence-line="true" value="${escapeHtml(box.forcedSequences.sequences)}" placeholder="1. Qh3+ Kg1 2. Qxh8; 1. Qh3+ gxh3 2. Bxh6">
+            <div class="buttons">
+              <button class="soft" type="button" data-generate-sequence-boards="${i}">Generate forced-sequence miniboards</button>
+            </div>
+            <div id="sequenceBoards-${i}" class="mini-board-row"></div>
+
 
             <label>Conclusion for this box</label>
             <textarea data-box="${i}" data-field="conclusion">${escapeHtml(box.conclusion)}</textarea>
@@ -580,7 +638,7 @@
       proof.boxes.forEach((box, i) => {
         box.observations.forEach((obs, j) => {
           if (!obs.text.trim()) return;
-          errors.push(...validatePredicateCall(obs.text, obs.predicate, `$.boxes[${i}].observations[${j}].text`));
+          errors.push(...validatePredicateCall(obs.text, obs.predicate, `$.boxes[${i}].opponentsThreat.observations[${j}].text`));
         });
       });
       return errors;
@@ -649,11 +707,14 @@
       if (!hasMeaningfulContent(proof)) return errors;
       proof.boxes.forEach((box, i) => {
         const boxStarted = Boolean(
-          box.label || box.opponentsThreat || box.move || box.conclusion || box.next ||
-          box.replyClasses.length || box.observations.some(o => o.text)
+          box.label || box.opponentsThreat || box.conclusion || box.next ||
+          box.replyClasses.length ||
+          box.observations.some(o => o.text) ||
+          box.candidateMoves.moves ||
+          box.forcedSequences.sequences
         );
         if (!boxStarted) return;
-        if (!box.replyClasses.length) errors.push(`$.boxes[${i}].replyClasses: choose at least one enemy reply class once you start using this box.`);
+        if (!box.replyClasses.length) errors.push(`$.boxes[${i}].opponentsThreat.replyClasses: choose at least one enemy reply class once you start using this box.`);
       });
       return errors;
     }
@@ -666,6 +727,23 @@
       return [...validateDraftCompleteness(proof), ...validateWorksheetSemantics(proof)];
     }
 
+    function blankBox(label) {
+      return {
+        label,
+        opponentsThreat: '',
+        observations: [
+          { predicate: 'check', text: '' },
+          { predicate: 'loose', text: '' },
+          { predicate: 'attacks', text: '' }
+        ],
+        replyClasses: { block: false, capture: false, move_king: false, capture_back: false, decline_capture: false, forced: false, other: false },
+        candidateMoves: { moves: '' },
+        forcedSequences: { sequences: '' },
+        conclusion: '',
+        next: ''
+      };
+    }
+
     function render() {
       const proof = proofFromForm();
       $('markdownOut').textContent = markdownFor(proof);
@@ -675,6 +753,7 @@
       $('errors').classList.toggle('show', errors.length > 0);
       $('status').textContent = errors.length ? `${errors.length} validation error(s)` : 'Valid proof JSON';
       $('status').classList.toggle('bad', errors.length > 0);
+      document.dispatchEvent(new CustomEvent('worksheet:rendered'));
     }
 
     function rerender() { renderBoxes(); render(); }
@@ -688,6 +767,8 @@
         if (t.dataset.field) box[t.dataset.field] = t.value;
         if (t.dataset.obsField) box.observations[Number(t.dataset.obs)][t.dataset.obsField] = t.value;
         if (t.dataset.reply) box.replyClasses[t.dataset.reply] = t.checked;
+        if (t.dataset.candidateLine) box.candidateMoves.moves = t.value;
+        if (t.dataset.sequenceLine) box.forcedSequences.sequences = t.value;
       }
       render();
     });
@@ -696,6 +777,7 @@
       const t = e.target;
       if (t.dataset.box !== undefined) {
         const box = state.boxes[Number(t.dataset.box)];
+        if (!box) return;
         if (t.dataset.obsField) box.observations[Number(t.dataset.obs)][t.dataset.obsField] = t.value;
         if (t.dataset.reply) box.replyClasses[t.dataset.reply] = t.checked;
       }
@@ -705,38 +787,15 @@
     document.addEventListener('click', e => {
       const t = e.target;
       if (t.id === 'addBox') {
-        state.boxes.push({
-          label: 'new path',
-          opponentsThreat: '',
-          observations: [
-            { predicate: 'check', text: '' },
-            { predicate: 'loose', text: '' },
-            { predicate: 'attacks', text: '' }
-          ],
-          replyClasses: { block: false, capture: false, move_king: false, capture_back: false, decline_capture: false, forced: false, other: false },
-          move: '',
-          conclusion: '',
-          next: ''
-        });
+        state.boxes.push(blankBox('new path'));
         rerender();
       }
       if (t.id === 'duplicateLastBox') {
-        const prev = state.boxes[state.boxes.length - 1] || {
-          label: 'new path',
-          opponentsThreat: '',
-          observations: [
-            { predicate: 'check', text: '' },
-            { predicate: 'loose', text: '' },
-            { predicate: 'attacks', text: '' }
-          ],
-          replyClasses: { block: false, capture: false, move_king: false, capture_back: false, decline_capture: false, forced: false, other: false },
-          move: '',
-          conclusion: '',
-          next: ''
-        };
+        const prev = state.boxes[state.boxes.length - 1] || blankBox('new path');
         const copy = JSON.parse(JSON.stringify(prev));
         copy.label = `next after ${prev.label || 'previous box'}`;
-        copy.move = '';
+        copy.candidateMoves = { moves: '' };
+        copy.forcedSequences = { sequences: '' };
         copy.conclusion = '';
         copy.next = '';
         state.boxes.push(copy);
@@ -748,7 +807,7 @@
       }
       if (t.id === 'clearWorksheet') {
         $('title').value = '';
-        $('side').value = 'white';
+        $('side').value = 'side_to_move';
         $('fen').value = '';
         $('claim').value = '';
         $('objectiveKind').value = 'eval_at_least';
@@ -758,7 +817,7 @@
       }
       if (t.id === 'loadWorksheetExample') {
         $('title').value = 'Two-reply check proof';
-        $('side').value = 'white';
+        $('side').value = 'side_to_move';
         $('fen').value = '';
         $('claim').value = 'Observe an alignment and a checking move. Split enemy replies. Prove each reply class reaches the same objective.';
         $('objectiveKind').value = 'wins_material';
@@ -773,7 +832,8 @@
               { predicate: 'fork', text: 'fork(Q@h3, K@h1, r@h8)' }
             ],
             replyClasses: { block: true, capture: true, move_king: true, capture_back: false, decline_capture: false, forced: false, other: false },
-            move: '1. Qh3+',
+            candidateMoves: { moves: '1. Qh3+' },
+            forcedSequences: { sequences: '1. Qh3+ {block/capture} continue in path A; 1. Qh3+ {king move} Qxh8' },
             conclusion: 'Enemy has two practical reply classes: block/capture or king move.',
             next: 'Work out each reply class in a separate following box.'
           },
@@ -786,7 +846,8 @@
               { predicate: 'defends', text: 'defends(K@g1, h2)' }
             ],
             replyClasses: { block: true, capture: true, move_king: false, capture_back: false, decline_capture: false, forced: false, other: false },
-            move: '# path A line here',
+            candidateMoves: { moves: '# path A candidate here' },
+            forcedSequences: { sequences: '# path A line here' },
             conclusion: 'This class reaches the target result.',
             next: 'QED for path A.'
           },
@@ -799,7 +860,8 @@
               { predicate: 'check', text: 'check(Qh3+)' }
             ],
             replyClasses: { block: false, capture: false, move_king: true, capture_back: false, decline_capture: false, forced: false, other: false },
-            move: '# path B line here',
+            candidateMoves: { moves: 'Qxh8' },
+            forcedSequences: { sequences: '1. Qh3+ Kg1 2. Qxh8 wins material' },
             conclusion: 'Qxh8 wins material, so this class also reaches the target result.',
             next: 'All reply classes covered. QED.'
           }
@@ -809,7 +871,235 @@
     });
 
     $('schemaOut').value = JSON.stringify(schema, null, 2);
+    $('side').value = 'side_to_move';
     rerender();
   </script>
+
+  <script type="module">
+    import { createGame, BoardView } from 'https://priyomes.com/scratchchess.js';
+
+    const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const statusEl = () => document.getElementById('scratchStatus');
+    const setScratchStatus = (msg) => { const el = statusEl(); if (el) el.textContent = msg; };
+    setScratchStatus('ScratchChess: loaded');
+
+    function clearHost(host) {
+      if (host) host.innerHTML = '';
+    }
+
+    function safeFen() {
+      return String(document.getElementById('fen')?.value || '').trim();
+    }
+
+    function fenSideToMove(fen) {
+      const parts = String(fen || '').trim().split(/\s+/g);
+      return parts[1] === 'b' ? 'black' : 'white';
+    }
+
+    function syncSideToMoveDefault() {
+      const side = document.getElementById('side');
+      if (side) side.value = 'side_to_move';
+    }
+
+    function orientGameFromFenSide(g, fen) {
+      const stm = fenSideToMove(fen);
+      try { g.ui = g.ui || {}; } catch {}
+      if (stm === 'black') {
+        try { g.toggleFlip?.(); } catch {}
+        try { g.ui._flipped = true; } catch {}
+      } else {
+        try { g.ui._flipped = false; } catch {}
+      }
+    }
+
+    function makeGameFromFen(fen, title = 'Worksheet') {
+      const g = createGame({ Event: title, Site: 'Worksheet' });
+      try {
+        if (fen) g.loadFEN?.(fen);
+        orientGameFromFenSide(g, fen || START_FEN);
+      } catch (e) {
+        throw new Error('Could not load FEN: ' + String(e?.message || e));
+      }
+      return g;
+    }
+
+    function miniCard(title, fen, note = '') {
+      const card = document.createElement('div');
+      card.className = 'mini-board-card';
+
+      const titleEl = document.createElement('div');
+      titleEl.className = 'mini-board-title';
+      titleEl.textContent = title;
+
+      const host = document.createElement('div');
+      host.className = 'mini-board-host';
+
+      const noteEl = document.createElement('div');
+      noteEl.className = 'mini-board-note';
+      noteEl.textContent = note || fen || '';
+
+      card.appendChild(titleEl);
+      card.appendChild(host);
+      card.appendChild(noteEl);
+
+      try {
+        const g = makeGameFromFen(fen || START_FEN, title);
+        g.toggleMini?.(true);
+        new BoardView(host, g, { minSizePx: 90 });
+      } catch (e) {
+        host.textContent = String(e?.message || e);
+      }
+      return card;
+    }
+
+    function renderInitialFenBoard() {
+      const host = document.getElementById('initialFenBoardRow');
+      if (!host) return;
+      clearHost(host);
+      const fen = safeFen();
+      if (!fen) return;
+      syncSideToMoveDefault();
+      const stm = fenSideToMove(fen);
+      host.appendChild(miniCard(`initial FEN — ${stm} to move at bottom`, fen, fen));
+    }
+
+    function splitSequences(text) {
+      return String(text || '')
+        .split(/\s*;\s*|\n+/g)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+
+    function tokenizePgnishMoves(sequence) {
+      return String(sequence || '')
+        .replace(/\{[^}]*\}/g, ' ')
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/\$\d+/g, ' ')
+        .split(/\s+/g)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .filter(s => !/^\d+\.{1,3}$/.test(s))
+        .filter(s => !/^(1-0|0-1|1\/2-1\/2|\*)$/.test(s))
+        .filter(s => !/^#/.test(s));
+    }
+
+    function pgnForPrefix(fen, tokens) {
+      const tags = fen
+        ? `[Event "Worksheet"]\n[Site "Local"]\n[SetUp "1"]\n[FEN "${fen}"]\n[Result "*"]\n\n`
+        : `[Event "Worksheet"]\n[Site "Local"]\n[Result "*"]\n\n`;
+      let body = '';
+      for (let i = 0; i < tokens.length; i += 2) {
+        const moveNo = Math.floor(i / 2) + 1;
+        body += `${moveNo}. ${tokens[i]} `;
+        if (tokens[i + 1]) body += `${tokens[i + 1]} `;
+      }
+      return tags + body.trim() + ' *';
+    }
+
+    function gameFromMovePrefix(fen, tokens) {
+      const g = createGame({ Event: 'Worksheet prefix', Site: 'Local' });
+      const pgn = pgnForPrefix(fen, tokens);
+      g.loadPGN?.(pgn);
+      try {
+        // Many ScratchChess views start at root after loadPGN; walk to the end if possible.
+        let guard = 0;
+        while (guard++ < tokens.length + 4 && g.nextMove?.()) {}
+      } catch {}
+      return g;
+    }
+
+    function exportFen(g, fallbackFen) {
+      try {
+        const f = String(g.exportFEN?.() || '').trim();
+        if (f) return f;
+      } catch {}
+      return fallbackFen || START_FEN;
+    }
+
+    function legalReplyCount(g) {
+      const names = ['legalMoves', 'moves', 'getLegalMoves', 'generateLegalMoves', 'legalReplies'];
+      for (const name of names) {
+        try {
+          const out = g?.[name]?.();
+          if (Array.isArray(out)) return out.length;
+        } catch {}
+      }
+      try {
+        if (g?.isMate?.() || g?.inCheckmate?.() || g?.checkmate?.()) return 0;
+      } catch {}
+      return null;
+    }
+
+    function shouldShowPosition(g, isFinal) {
+      const replies = legalReplyCount(g);
+      if (replies === 0 || replies === 1) return { show: true, note: replies === 0 ? 'mate / 0 replies' : '1 legal reply' };
+      if (replies === null && isFinal) return { show: true, note: 'reply count unavailable; showing final position' };
+      return { show: false, note: `${replies} replies` };
+    }
+
+    function generateSequenceBoards(boxIndex) {
+      const host = document.getElementById(`sequenceBoards-${boxIndex}`);
+      if (!host) return;
+      clearHost(host);
+
+      const fen = safeFen();
+      const input = document.querySelector(`[data-box="${boxIndex}"][data-sequence-line]`);
+      const sequences = splitSequences(input?.value || '');
+
+      if (!sequences.length) {
+        host.appendChild(miniCard('no sequence', fen || START_FEN, 'Enter semicolon-separated forced sequences.'));
+        return;
+      }
+
+      let madeAny = false;
+      sequences.forEach((seq, si) => {
+        const tokens = tokenizePgnishMoves(seq);
+        if (!tokens.length) {
+          host.appendChild(miniCard(`seq ${si + 1}`, fen || START_FEN, 'No playable moves found.'));
+          madeAny = true;
+          return;
+        }
+
+        for (let ply = 1; ply <= tokens.length; ply++) {
+          try {
+            const prefix = tokens.slice(0, ply);
+            const g = gameFromMovePrefix(fen, prefix);
+            const f = exportFen(g, fen || START_FEN);
+            const verdict = shouldShowPosition(g, ply === tokens.length);
+            if (verdict.show) {
+              host.appendChild(miniCard(`seq ${si + 1}, ply ${ply}`, f, verdict.note + ': ' + prefix.join(' ')));
+              madeAny = true;
+            }
+          } catch (e) {
+            host.appendChild(miniCard(`seq ${si + 1}: stopped`, fen || START_FEN, 'Could not parse/play prefix ending at ' + tokens[ply - 1]));
+            madeAny = true;
+            break;
+          }
+        }
+      });
+
+      if (!madeAny) {
+        host.appendChild(miniCard('no forced nodes', fen || START_FEN, 'No mate/one-reply positions detected.'));
+      }
+    }
+
+    document.addEventListener('input', ev => {
+      if (ev.target?.id === 'fen') renderInitialFenBoard();
+    });
+
+    document.addEventListener('worksheet:rendered', () => {
+      renderInitialFenBoard();
+    });
+
+    document.addEventListener('click', ev => {
+      const btn = ev.target.closest?.('[data-generate-sequence-boards]');
+      if (!btn) return;
+      ev.preventDefault();
+      generateSequenceBoards(Number(btn.dataset.generateSequenceBoards));
+    });
+
+    renderInitialFenBoard();
+  </script>
+
 </body>
 </html>
