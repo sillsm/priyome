@@ -15,9 +15,8 @@ function observationRefs(ob) {
 }
 
 function stableSide(piece) {
-  // Observations should describe the board, not the side to move.
-  // Use absolute color labels instead of ours/theirs, because ours/theirs
-  // changes when ctx.side changes.
+  // Tactical features should be invariant under "side to move."
+  // So do not use ours/theirs here.
   if (!piece) return 'neutral';
   if (piece.color === 'w') return 'white';
   if (piece.color === 'b') return 'black';
@@ -34,8 +33,10 @@ function refSquare(ref) {
 
 function refPiece(ctx, ref) {
   if (ref?.piece) return ref.piece;
+
   const sq = refSquare(ref);
   if (sq != null) return ctx.game.state.board[sq] || null;
+
   if (ref?.type && ref?.color) return ref;
   return null;
 }
@@ -59,6 +60,7 @@ function moveAttacksSquareByMover(ctx, after, move, sq) {
 
 function attacksAlongRay(piece, df, dr) {
   if (!piece) return false;
+
   const orthogonal = df === 0 || dr === 0;
   const diagonal = df !== 0 && dr !== 0;
 
@@ -89,8 +91,8 @@ function collectThreePieceAlignments(ctx) {
   const out = [];
   const seen = new Set();
 
-  // Four undirected line families. Scanning only these prevents duplicate
-  // reverse alignments.
+  // Four undirected line families. Scanning only these prevents
+  // duplicate reverse alignments.
   const dirs = [
     [1, 0],
     [0, 1],
@@ -114,6 +116,10 @@ function collectThreePieceAlignments(ctx) {
 
       const backPiece = board[back];
       if (!backPiece) continue;
+
+      // Three-piece alignments only count when the front and back
+      // pieces are opposing pieces. The middle piece may be either color.
+      if (frontPiece.color === backPiece.color) continue;
 
       // This is an alignment only if removing the middle piece creates
       // an attack between front and back in at least one direction.
@@ -164,6 +170,7 @@ function buildXrayAttackMap(alignments) {
       add(al.back, {
         attacker: al.front,
         middle: al.middle,
+        target: al.back,
         squares: [al.front, al.middle, al.back],
       });
     }
@@ -172,6 +179,7 @@ function buildXrayAttackMap(alignments) {
       add(al.front, {
         attacker: al.back,
         middle: al.middle,
+        target: al.front,
         squares: [al.front, al.middle, al.back],
       });
     }
@@ -248,12 +256,12 @@ export const TACTICAL_FEATURES = [
         const xrayAttacks = geometry.xrayAttacks.get(sq) || [];
         const zeroZero = attackerCount === 0 && defenderCount === 0;
 
-        // Loose means attackers >= defenders, except:
-        //
-        // 1. A pawn-defended piece is never loose.
-        // 2. A 0-attacker / 0-defender piece is only loose if it is the
-        //    front or back target of a qualifying three-piece alignment and
-        //    would be attacked if the middle piece moved.
+        // Loose:
+        // - attackers >= defenders
+        // - BUT a pawn-defended piece is never loose
+        // - AND 0/0 pieces are only loose if they are front/back targets
+        //   in a qualifying three-piece alignment and would be attacked
+        //   if the middle piece moved.
         if (pawnDefended) continue;
         if (attackerCount < defenderCount) continue;
         if (zeroZero && !xrayAttacks.length) continue;
@@ -301,7 +309,8 @@ export const TACTICAL_FEATURES = [
         const attackers = ctx.attackersOf(sq, ctx.other(p.color)) || [];
         const defenders = ctx.attackersOf(sq, p.color) || [];
 
-        // Hanging is the stricter version: more attackers than defenders.
+        // Hanging is stricter than loose:
+        // more attackers than defenders.
         if (!(attackers.length > defenders.length)) continue;
 
         out.push({
