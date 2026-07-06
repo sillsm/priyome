@@ -34,6 +34,10 @@ where: https://lichess.org/training/LEHbA
 fen: 2r1k2r/1bqnbpp1/p2p4/4p1B1/1p2N2P/1N3P2/PPPQ4/2KR1B1R b k - 0 18
 where: https://lichess.org/training/zr9a1
 
-## Queen Mobility Reply Class
+## Back rank threats
 fen: r5k1/1p4pp/8/1NqpP3/1R4PP/pPQ5/P6r/K4R2 b - - 7 28
 where: https://lichess.org/training/LBmg6
+
+## Queen Mobility Loose Knight
+fen: r3k2r/pp2bppp/1q2p3/3pP3/3n2B1/2N5/PP3PPP/1R1Q1RK1 w kq - 0 15
+where: https://lichess.org/training/mFTxg
