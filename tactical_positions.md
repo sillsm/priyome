@@ -22,7 +22,6 @@ theme: discovery, forks
 fen: 6k1/6pp/p1p3r1/3p4/P2P1Pq1/1R2PR2/2Q1K1P1/7r b - - 0 1
 solution: 1... Qxg2+ 2. Rf2 Qxf2+ 3. Kxf2 Rh2+ { And Black takes the queen: } 4. Kf3 Rxc2 { ✔ } *
 
-
 ## Pin weakens defender
 fen: 5r2/p2Q2bk/1p1N2np/2p1P2n/5P1q/4BR1P/PP6/3R2K1 b - - 4 27
 where: https://lichess.org/training/bfhHY
@@ -34,3 +33,7 @@ where: https://lichess.org/training/LEHbA
 ## Capture chain with alignment
 fen: 2r1k2r/1bqnbpp1/p2p4/4p1B1/1p2N2P/1N3P2/PPPQ4/2KR1B1R b k - 0 18
 where: https://lichess.org/training/zr9a1
+
+## Queen Mobility Reply Class
+fen: r5k1/1p4pp/8/1NqpP3/1R4PP/pPQ5/P6r/K4R2 b - - 7 28
+where: https://lichess.org/training/LBmg6
