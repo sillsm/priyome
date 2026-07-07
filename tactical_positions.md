@@ -41,3 +41,7 @@ where: https://lichess.org/training/LBmg6
 ## Queen Mobility Loose Knight
 fen: r3k2r/pp2bppp/1q2p3/3pP3/3n2B1/2N5/PP3PPP/1R1Q1RK1 w kq - 0 15
 where: https://lichess.org/training/mFTxg
+
+## Check to mate threat to alignment to capture.
+fen: 6rk/1p2q2p/p4R1Q/1b1pP2P/5P2/2P5/PP4P1/R5K1 b - - 0 29
+where: https://lichess.org/training/YtKLT
