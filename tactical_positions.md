@@ -45,3 +45,7 @@ where: https://lichess.org/training/mFTxg
 ## Check to mate threat to alignment to capture.
 fen: 6rk/1p2q2p/p4R1Q/1b1pP2P/5P2/2P5/PP4P1/R5K1 b - - 0 29
 where: https://lichess.org/training/YtKLT
+
+## Want queen but lose mate, fix by check that adds defender 
+fen: Q3r1k1/5ppp/8/1q6/8/P6P/1PPR2P1/3R2K1 b - - 4 31
+where: https://lichess.org/training/VRGbv
