@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Tactical Worksheet Session</title>
+  <style>
+    :root{
+      --bg:#080b0f; --panel:#10151c; --line:#2c3645; --text:#e9eef6;
+      --muted:#9aa7b8; --gold:#d4a92f; --blue:#55b9ff; --red:#ff7481;
+      --shadow:0 20px 60px rgba(0,0,0,.42);
+      font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; overflow:hidden; color:var(--text);
+      background:
+        radial-gradient(circle at 20% 0%,rgba(85,185,255,.11),transparent 32%),
+        radial-gradient(circle at 90% 0%,rgba(212,169,47,.10),transparent 34%),
+        linear-gradient(#0b0f15,#050608);
+    }
+    button,input,select,textarea{font:inherit}
+    button{
+      border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(rgba(255,255,255,.08),rgba(255,255,255,.035));
+      color:var(--text); border-radius:11px; padding:8px 10px; font-weight:850; cursor:pointer;
+    }
+    button:hover{border-color:rgba(212,169,47,.55)}
+    button.primary{background:linear-gradient(rgba(212,169,47,.28),rgba(212,169,47,.10));border-color:rgba(212,169,47,.48)}
+    button.tiny{font-size:12px;padding:6px 8px;border-radius:9px}
+    input,select,textarea{
+      width:100%; min-width:0; border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.24); color:var(--text); border-radius:11px; padding:8px 9px; outline:none;
+    }
+    textarea{
+      resize:none; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:12px; line-height:1.45;
+    }
+
+    .app{height:100dvh;display:grid;grid-template-rows:48px minmax(0,1fr);gap:14px;padding:14px;max-width:1420px;margin:0 auto}
+    .top{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+    .brand{display:flex;align-items:center;gap:10px;min-width:0}
+    .back{font-size:30px;color:#cbd3df}
+    .titleWrap{min-width:0}
+    h1{margin:0;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sub{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .topStats{display:flex;gap:8px;align-items:center;flex:0 0 auto}
+    .pill{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);border-radius:999px;padding:7px 10px;font-size:12px;white-space:nowrap}
+    .pill strong{color:var(--text)}
+
+    main{min-height:0;display:grid;grid-template-columns:minmax(370px,.9fr) minmax(470px,1.1fr);gap:14px}
+    .panel{min-height:0;background:rgba(16,21,28,.93);border:1px solid rgba(255,255,255,.08);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+
+    .boardPanel{display:grid;grid-template-rows:auto minmax(0,1fr)}
+    .tools{
+      border-bottom:1px solid var(--line);background:rgba(255,255,255,.025);
+      padding:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start;
+    }
+    .pick{display:grid;gap:8px;min-width:0}
+    .fenRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+    .btns{display:flex;gap:7px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+    .check{border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:6px 8px;color:var(--muted);font-size:12px;font-weight:850;display:flex;gap:7px;align-items:center;white-space:nowrap}
+    .check input{width:auto;accent-color:var(--gold)}
+    .status{color:var(--muted);font:800 11px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+    .stage{min-height:0;display:grid;place-items:center;padding:14px;background:#0b0f15;overflow:hidden}
+    .boardHost{width:min(100%,calc(100dvh - 170px),760px);aspect-ratio:1/1;min-width:260px;min-height:260px;max-width:100%;max-height:100%}
+
+    .study{display:grid;grid-template-rows:48px minmax(0,1fr)}
+    .tabs{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--line);background:rgba(255,255,255,.025)}
+    .tab{border:0;border-right:1px solid var(--line);border-radius:0;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:7px;font-weight:900;min-width:0}
+    .tab:last-child{border-right:0}
+    .tab.active{color:var(--text);background:rgba(255,255,255,.06);box-shadow:inset 0 -3px 0 var(--gold)}
+    .ico{width:23px;height:23px;border-radius:8px;background:rgba(255,255,255,.08);display:grid;place-items:center;flex:0 0 auto}
+    .tabLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tabBodies{min-height:0}
+    .tabPanel{display:none;height:100%;min-height:0;overflow:auto;padding:14px}
+    .tabPanel.active{display:block}
+
+    .movesLayout{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px}
+    .card{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:15px;padding:10px;min-width:0}
+    .cardHead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+    .pTitle{font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .theme{color:var(--muted);font-size:12px;margin-top:2px}
+    .lineActions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+    .fenText{margin-top:8px;color:#d3dce8;font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-word;background:rgba(0,0,0,.22);border-radius:10px;padding:8px;max-height:58px;overflow:auto}
+    .linePane{min-height:0;overflow:auto;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.16);border-radius:15px;padding:12px}
+    .empty{color:var(--muted);border:1px dashed #3d4858;border-radius:14px;padding:14px;line-height:1.45}
+
+    .pgnish{font-size:17px;line-height:2.15;overflow-wrap:anywhere}
+    .moveNo{color:var(--muted);font:850 14px ui-monospace,SFMono-Regular,Menlo,monospace;margin-right:5px}
+    .moveChip{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);border-radius:10px;padding:5px 7px;margin:2px 4px 2px 0;color:#eaf1fb;font-weight:950;cursor:pointer}
+    .moveChip.current{color:#d9f0ff;border-color:rgba(85,185,255,.72);box-shadow:0 0 0 3px rgba(85,185,255,.13);background:rgba(85,185,255,.1)}
+    .moveChip.main{color:#f3dfa0}
+    .moveChip.var{color:#bbe6ff}
+    .comment{display:inline;color:#bbc7d6;font-size:14px;margin:0 6px 0 2px}
+    .comment code,.logText code,.predCall{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffe6a3;background:rgba(0,0,0,.28);border-radius:7px;padding:2px 5px}
+    .anchorChip{
+      display:inline-flex;align-items:center;gap:4px;
+      border:1px solid rgba(85,185,255,.28);
+      background:rgba(85,185,255,.08);
+      color:#bfe7ff;
+      border-radius:999px;
+      padding:3px 7px;
+      margin:2px 6px 2px 0;
+      font-size:12px;
+      font-weight:950;
+      cursor:pointer;
+      vertical-align:middle;
+    }
+    .rootComments{
+      display:block;
+      margin:3px 0 8px;
+      color:#bbc7d6;
+      font-size:14px;
+      line-height:1.55;
+    }
+    .lineDepth{display:block;margin:0 0 5px 0}
+    .lineDepth.depth1{margin-left:24px}
+    .lineDepth.depth2{margin-left:48px}
+    .lineDepth.depth3{margin-left:72px}
+    .lineDepth.depth4{margin-left:96px}
+    .lineDepth.depth5{margin-left:120px}
+    .candidateBlock{
+      display:block;
+      margin:7px 0 7px 24px;
+      padding-left:12px;
+      border-left:2px solid rgba(85,185,255,.38);
+      color:#a8b5c7;
+      font-size:15px;
+      line-height:2.05;
+    }
+    .candLab{
+      display:inline-flex;
+      color:var(--blue);
+      font-weight:950;
+      margin-right:6px;
+    }
+
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .formRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
+    label.small{color:var(--muted);font-weight:900;font-size:12px;display:block;margin:0 0 5px}
+    .predGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}
+    .predCard{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:14px;padding:10px}
+    .predKind{font:900 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffe0a3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .predDesc{color:var(--muted);font-size:12px;line-height:1.35;margin-top:4px}
+    .found{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+    .foundItem{border:1px solid rgba(255,255,255,.08);border-radius:13px;background:rgba(0,0,0,.18);padding:9px;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}
+    .dot{width:10px;height:10px;border-radius:999px;background:var(--gold)}
+    .dot.pin{background:var(--red)}
+    .dot.manual{background:var(--blue)}
+
+    .logList{display:flex;flex-direction:column;gap:8px}
+    .logItem{display:grid;grid-template-columns:70px 1fr;gap:9px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);border-radius:13px;padding:9px}
+    .logItem.divider{display:block;text-align:center;color:#f0d893;border-color:rgba(212,169,47,.30);background:rgba(212,169,47,.07);font-weight:950}
+    .time{color:var(--muted);font:900 11px ui-monospace,SFMono-Regular,Menlo,monospace}
+    .logText{font-size:13px;line-height:1.42}
+
+    .algoText{border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.18);border-radius:14px;padding:12px;white-space:pre-wrap;line-height:1.45;color:#dce5f2;font-size:13px}
+    .algoSteps{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+    .algoStep{border-left:3px solid rgba(212,169,47,.7);background:rgba(212,169,47,.06);border-radius:10px;padding:9px 10px;font-size:13px;line-height:1.4}
+    .pgnPanel{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:9px}
+    .sessionList{display:flex;gap:7px;flex-wrap:wrap;max-height:58px;overflow:auto}
+    .gameBadge{border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);color:var(--muted);border-radius:999px;padding:5px 8px;font-size:12px;font-weight:850;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pgnBox{min-height:0;height:100%}
+    .pgnTools{display:flex;gap:8px;align-items:center;justify-content:space-between}
+    .note{color:var(--muted);font-size:12px;line-height:1.35}
+    .kbd{color:#10151c;background:#e8edf5;border-radius:6px;padding:1px 5px;font:900 11px ui-monospace,SFMono-Regular,Menlo,monospace}
+
+    @media(max-width:980px){
+      .app{height:100dvh;padding:0;gap:0;grid-template-rows:42px minmax(0,1fr)}
+      .top{height:42px;padding:0 10px;background:#0b0f14;border-bottom:1px solid #111823}
+      .back{font-size:28px} h1{font-size:17px}.sub,.topStats .pill:nth-child(n+2){display:none}
+      main{height:calc(100dvh - 42px);grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);gap:0}
+      .panel{border-radius:0;border-left:0;border-right:0;box-shadow:none}
+      .tools{grid-template-columns:1fr;gap:7px;padding:7px}
+      .pick{gap:6px}.fenRow{grid-template-columns:minmax(0,1fr) auto}
+      select#puzzleSelect,input#fenInput{padding:7px 8px;font-size:12px;border-radius:9px}
+      .status{font-size:10px}.btns{justify-content:space-between}.btns button.tiny{font-size:11px;padding:5px 7px}.check{font-size:11px;padding:5px 7px}
+      .stage{padding:0}
+      .boardHost{width:min(100vw,calc(100dvh - 390px));min-width:240px;min-height:240px}
+      .study{grid-template-rows:40px minmax(0,1fr)}
+      .tab{padding:8px 3px;font-size:11px}.ico{width:22px;height:22px}.tabLabel{display:none}
+      .tabPanel{padding:10px}.fenText{display:none}.linePane{padding:10px;border-radius:12px}
+      .pgnish{font-size:16px;line-height:2.08}.comment{font-size:12px}.candidateBlock{font-size:13px;margin-left:18px;padding-left:10px}.lineDepth.depth1{margin-left:18px}.lineDepth.depth2{margin-left:36px}.lineDepth.depth3{margin-left:54px}.lineDepth.depth4{margin-left:72px}.lineDepth.depth5{margin-left:90px}.anchorChip{font-size:11px;padding:2px 6px}
+      .predGrid,.grid2{grid-template-columns:1fr}.logItem{grid-template-columns:55px 1fr;padding:8px}
+    }
+    @media(max-height:720px) and (max-width:980px){
+      .app{grid-template-rows:38px minmax(0,1fr)}.top{height:38px}.tools{padding:5px;gap:5px}.status{display:none}
+      .boardHost{width:min(100vw,calc(100dvh - 330px));min-width:210px;min-height:210px}
+      .study{grid-template-rows:36px minmax(0,1fr)}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="back">‹</div>
+      <div class="titleWrap">
+        <h1>Tactical Worksheet Session</h1>
+        <div class="sub">Move pieces to create lines. Back up to root or any ply to add candidates.</div>
+      </div>
+    </div>
+    <div class="topStats">
+      <div class="pill">games: <strong id="gameCount">1</strong></div>
+      <div class="pill">ply: <strong id="plyTop">root</strong></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel boardPanel">
+      <div class="tools">
+        <div class="pick">
+          <select id="puzzleSelect" aria-label="Puzzle library"></select>
+          <div class="fenRow">
+            <input id="fenInput" placeholder="Paste any FEN, then Load FEN…" />
+            <button class="tiny primary" id="loadFen">Load FEN</button>
+          </div>
+          <div class="status" id="libStatus">library: loading tactical_positions.md…</div>
+        </div>
+        <div class="btns">
+          <label class="check"><input type="checkbox" id="solved" /> solved</label>
+          <button class="tiny" id="rootBtn">root</button>
+          <button class="tiny" id="prevBtn">← ply</button>
+          <button class="tiny" id="nextBtn">ply →</button>
+          <button class="tiny" id="flip">↕ flip</button>
+          <button class="tiny" id="clearMarks">clear marks</button>
+          <button class="tiny primary" id="notice">notice</button>
+        </div>
+      </div>
+      <div class="stage"><div id="board" class="boardHost"></div></div>
+    </section>
+
+    <section class="panel study">
+      <nav class="tabs">
+        <button class="tab active" data-tab="moves"><span class="ico">♟</span><span class="tabLabel">Line</span></button>
+        <button class="tab" data-tab="predicates"><span class="ico">◇</span><span class="tabLabel">Predicates</span></button>
+        <button class="tab" data-tab="log"><span class="ico">☷</span><span class="tabLabel">Log</span></button>
+        <button class="tab" data-tab="algo"><span class="ico">⚙</span><span class="tabLabel">Algo</span></button>
+        <button class="tab" data-tab="pgn"><span class="ico">♙</span><span class="tabLabel">PGN</span></button>
+      </nav>
+
+      <div class="tabBodies">
+        <section class="tabPanel active" id="tab-moves">
+          <div class="movesLayout">
+            <div class="card">
+              <div class="cardHead">
+                <div>
+                  <div class="pTitle" id="title">Loading…</div>
+                  <div class="theme" id="theme">theme: —</div>
+                </div>
+                <div class="lineActions">
+                  <button class="tiny" id="reset">reset</button>
+                </div>
+              </div>
+              <div class="fenText" id="fenText">—</div>
+            </div>
+            <div class="linePane" id="line">
+              <div class="empty">Move a piece on the board. Use root / ← ply or click any move chip, then move a different piece to add a candidate line.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="tabPanel" id="tab-predicates">
+          <div class="predGrid">
+            <div class="predCard"><div class="predKind">loose(piece@sq)</div><div class="predDesc">Attacked, attackers ≥ defenders, and no pawn defender.</div></div>
+            <div class="predCard"><div class="predKind">pin(piece, king)</div><div class="predDesc">Own piece sits between king and enemy slider.</div></div>
+            <div class="predCard"><div class="predKind">goal(x), threat(x)</div><div class="predDesc">Manual tactical objective and forcing threat.</div></div>
+            <div class="predCard"><div class="predKind">focal_square(x)</div><div class="predDesc">Manual anchor square for the tactic.</div></div>
+          </div>
+          <div class="grid2">
+            <div>
+              <label class="small">Attach manual predicate to current move/root</label>
+              <div class="formRow"><input id="predInput" value="focal_square(h7)" /><button id="attachPred">attach</button></div>
+            </div>
+            <div>
+              <label class="small">Board mark mode</label>
+              <div class="btns" style="justify-content:flex-start">
+                <button class="tiny" data-mode="moves">moves</button>
+                <button class="tiny" data-mark="Y">yellow sq</button>
+                <button class="tiny" data-mark="R">red sq</button>
+                <button class="tiny" data-arrow="G">green arrow</button>
+              </div>
+            </div>
+          </div>
+          <div class="found" id="findings"></div>
+        </section>
+
+        <section class="tabPanel" id="tab-log">
+          <div class="formRow" style="margin-bottom:10px">
+            <input id="logInput" value="I am testing this candidate line." />
+            <button id="addLog">log</button>
+          </div>
+          <div class="logList" id="log"></div>
+        </section>
+
+        <section class="tabPanel" id="tab-algo">
+          <div class="algoText" id="algoText"></div>
+          <div class="btns" style="justify-content:flex-start;margin:10px 0">
+            <button id="runAlgo" class="primary">run one human-like pass</button>
+            <button id="logAlgo">append algo output to log</button>
+          </div>
+          <div class="algoSteps" id="algoSteps"></div>
+        </section>
+
+        <section class="tabPanel" id="tab-pgn">
+          <div class="pgnPanel">
+            <div class="sessionList" id="sessionList"></div>
+            <textarea id="pgnText" class="pgnBox" spellcheck="false"></textarea>
+            <div class="pgnTools">
+              <div class="note">Session export includes every loaded position as a separate PGN game.</div>
+              <div style="display:flex;gap:7px">
+                <button class="tiny" id="refreshPGN">refresh</button>
+                <button class="tiny primary" id="copyPGN">copy</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module" id="predicates">
+  const FILES='abcdefgh';
+  const idx=(f,r)=>(7-r)*8+f;
+  const FR=i=>[i%8,7-Math.floor(i/8)];
+  const inB=(f,r)=>f>=0&&f<8&&r>=0&&r<8;
+  const sqName=i=>{const [f,r]=FR(i);return FILES[f]+(r+1)};
+  const other=c=>c==='w'?'b':'w';
+  const pieceLetter=p=>{if(!p)return'?';const L=({p:'P',n:'N',b:'B',r:'R',q:'Q',k:'K'})[p.type]||'?';return p.color==='w'?L:L.toLowerCase()};
+  const pieceAt=(p,i)=>`${pieceLetter(p)}@${sqName(i)}`;
+
+  function clearLine(board,from,to,df,dr){
+    let [f,r]=FR(from); f+=df; r+=dr;
+    while(inB(f,r)){ const k=idx(f,r); if(k===to)return true; if(board[k])return false; f+=df; r+=dr; }
+    return false;
+  }
+  function attacksSquare(board,from,to){
+    const p=board[from]; if(!p||from===to)return false;
+    const [ff,fr]=FR(from),[tf,tr]=FR(to),df=tf-ff,dr=tr-fr,adf=Math.abs(df),adr=Math.abs(dr);
+    if(p.type==='p'){const dir=p.color==='w'?1:-1;return adr===1&&adf===1&&dr===dir}
+    if(p.type==='n')return(adf===1&&adr===2)||(adf===2&&adr===1);
+    if(p.type==='k')return Math.max(adf,adr)===1;
+    if((p.type==='b'||p.type==='q')&&adf===adr&&adf>0)return clearLine(board,from,to,Math.sign(df),Math.sign(dr));
+    if((p.type==='r'||p.type==='q')&&((df===0&&adr>0)||(dr===0&&adf>0)))return clearLine(board,from,to,Math.sign(df),Math.sign(dr));
+    return false;
+  }
+  function attackersOf(game,squareIndex,byColor){
+    const board=game?.state?.board||[],out=[];
+    for(let i=0;i<64;i++){const p=board[i];if(p&&p.color===byColor&&attacksSquare(board,i,squareIndex))out.push({index:i,square:sqName(i),piece:p,label:pieceAt(p,i)})}
+    return out;
+  }
+  function defendedByPawn(game,squareIndex,color){
+    const board=game?.state?.board||[];
+    for(let i=0;i<64;i++){const p=board[i];if(p&&p.color===color&&p.type==='p'&&attacksSquare(board,i,squareIndex))return true}
+    return false;
+  }
+  function noticeLoosePieces(game){
+    const board=game?.state?.board||[],out=[];
+    for(let i=0;i<64;i++){
+      const p=board[i]; if(!p||p.type==='k')continue;
+      const attackers=attackersOf(game,i,other(p.color)); if(!attackers.length)continue;
+      const defenders=attackersOf(game,i,p.color); if(defendedByPawn(game,i,p.color))continue;
+      if(attackers.length>=defenders.length)out.push({kind:'loose',square:sqName(i),text:`loose(${pieceAt(p,i)})`,detail:`attackers=${attackers.length}, defenders=${defenders.length}${attackers.length>defenders.length?', hanging-ish':''}`,attackers,defenders});
+    }
+    return out;
+  }
+  function raySliderMatches(piece,df,dr){
+    if(!piece)return false;
+    const diag=Math.abs(df)===1&&Math.abs(dr)===1,ortho=(Math.abs(df)+Math.abs(dr))===1;
+    if(diag)return piece.type==='b'||piece.type==='q';
+    if(ortho)return piece.type==='r'||piece.type==='q';
+    return false;
+  }
+  function noticePins(game){
+    const board=game?.state?.board||[],out=[],dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+    for(const color of ['w','b']){
+      const kingIndex=board.findIndex(p=>p&&p.color===color&&p.type==='k'); if(kingIndex<0)continue;
+      const [kf,kr]=FR(kingIndex);
+      for(const [df,dr] of dirs){
+        let f=kf+df,r=kr+dr,candidate=null;
+        while(inB(f,r)){
+          const bi=idx(f,r),p=board[bi];
+          if(!p){f+=df;r+=dr;continue}
+          if(!candidate){
+            if(p.color===color&&p.type!=='k'){candidate={index:bi,piece:p};f+=df;r+=dr;continue}
+            break;
+          }
+          if(p.color!==color&&raySliderMatches(p,df,dr))out.push({kind:'pin',square:sqName(candidate.index),text:`pin(${pieceAt(candidate.piece,candidate.index)}, ${pieceAt(board[kingIndex],kingIndex)})`,detail:`pinned to king by ${pieceAt(p,bi)}`,attacker:{index:bi,square:sqName(bi),piece:p,label:pieceAt(p,bi)}});
+          break;
+        }
+      }
+    }
+    return out;
+  }
+  function dedupe(fs){const seen=new Set(),out=[];for(const f of fs){const k=`${f.kind}:${f.text}:${f.square}`;if(!seen.has(k)){seen.add(k);out.push(f)}}return out}
+  function notice(game){return dedupe([...noticePins(game),...noticeLoosePieces(game)])}
+  function applyMarks(game,findings){
+    const marks=game?.curNode?.marks;if(!marks)return;
+    for(const f of findings){
+      if(f.square)marks.sqMarks.set(f.square,f.kind==='pin'?'R':'Y');
+      if(f.attacker?.square&&f.square&&!marks.arrows.some(a=>a.from===f.attacker.square&&a.to===f.square))marks.arrows.push({from:f.attacker.square,to:f.square,color:f.kind==='pin'?'R':'Y'});
+    }
+    try{game._emit?.()}catch{}
+  }
+  window.predicates={notice,noticeLoosePieces,noticePins,applyMarks,attacksSquare,attackersOf,sqName,FR,idx,other,pieceAt};
+</script>
+
+<script type="module" id="algo">
+  function describe(){
+    return [
+      'Human-like tactical solving pass:',
+      '',
+      '1. Freeze the current node as the head position.',
+      '2. Notice static predicates first: pins, loose pieces, focal squares.',
+      '3. Enter candidate moves by moving pieces on the board.',
+      '4. To compare candidates, jump to root or a prior ply and make another move.',
+      '5. Only true sibling candidates become parenthesized variations.',
+      '6. Attach noticed predicates to the exact ply where they become relevant.',
+      '7. Switching positions appends the previous puzzle as another PGN game.'
+    ].join('\n');
+  }
+  function runOnePass(ctx){
+    const fs=ctx.findings||[];
+    return [
+      `Head FEN: ${ctx.fen}`,
+      `Static notice pass currently has ${fs.length} predicate(s): ${fs.length?fs.map(f=>f.text).join('; '):'none yet'}.`,
+      'Next action: move a forcing candidate on the board.',
+      'For ply-1 candidates: hit root, then move another legal piece.',
+      'For reply candidates: click the parent move, then play the alternate reply.'
+    ];
+  }
+  window.algo={describe,runOnePass};
+</script>
+
+<script type="module" id="app">
+  import { createGame, BoardView } from 'https://priyomes.com/scratchchess.js';
+
+  const START_FEN='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const POSITIONS_URL='https://priyomes.com/tactical_positions.md';
+  const FALLBACK_MD=`# Tactical Positions
+
+## Greek Gift Seed
+fen: r1bq1rk1/ppp2ppp/2n5/3np3/2B1P1b1/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 1
+theme: alignment
+solution: Bxh7+ Kxh7 Ng5+ Kg8 Qxg4
+
+## Loose Queen Punisher
+fen: r2q1rk1/ppp2ppp/2n2n2/3bp3/3P4/2PB1N2/PP3PPP/R1BQ1RK1 w - - 0 1
+theme: loose piece
+solution: dxe5 Nxe5 Bxh7+ Kxh7 Qxd8
+
+## Woodpecker 44
+fen: 2r2rk1/pQ1n1pp1/1p2p2p/3p4/P2P4/4P2P/1qB2PP1/2R2RK1 w - - 0 22
+theme: discovery
+
+## Svidler v Adams (2000) (Spanish)
+fen: 1r1q1rk1/2p2ppp/2Q5/P7/R2bB3/7P/4bPP1/2B2RK1 w - - 0 1
+theme: discovery, forks
+
+## Woodpecker 81
+fen: 6k1/6pp/p1p3r1/3p4/P2P1Pq1/1R2PR2/2Q1K1P1/7r b - - 0 1
+solution: 1... Qxg2+ 2. Rf2 Qxf2+ 3. Kxf2 Rh2+ { And Black takes the queen: } 4. Kf3 Rxc2 { ✔ } *
+
+## Pin weakens defender
+fen: 5r2/p2Q2bk/1p1N2np/2p1P2n/5P1q/4BR1P/PP6/3R2K1 b - - 4 27
+where: https://lichess.org/training/bfhHY
+
+## Checking the king into alignment with loose piece
+fen: 5r2/2p2p2/8/2K3p1/1R2P3/k1P1NP1p/5n2/8 w - - 0 34
+where: https://lichess.org/training/LEHbA
+`;
+
+  const $=id=>document.getElementById(id);
+  const state={game:null,view:null,puzzles:[],puzzleIndex:0,current:null,archive:[],sessionLog:[],findings:[],seen:new WeakSet(),algoSteps:[]};
+
+  function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function stamp(){return new Date().toLocaleTimeString([], {minute:'2-digit',second:'2-digit'})}
+  function fenSide(f){return String(f||'').trim().split(/\s+/)[1]==='b'?'b':'w'}
+
+  function parsePositions(md){
+    const out=[];let cur=null;
+    for(const raw of String(md||'').split(/\r?\n/)){
+      const line=raw.trim(),h=line.match(/^##\s+(.+)$/);
+      if(h){if(cur&&cur.fen)out.push(cur);cur={title:h[1].trim(),theme:'',solution:'',where:'',notes:[]};continue}
+      if(!cur||!line)continue;
+      const m=line.match(/^([a-zA-Z_]+):\s*(.*)$/);
+      if(m){const k=m[1].toLowerCase(),v=m[2].trim(); if(k==='fen')cur.fen=v; else if(k==='theme')cur.theme=v; else if(k==='solution')cur.solution=v; else if(k==='where')cur.where=v; else cur[k]=v}
+      else cur.notes.push(line);
+    }
+    if(cur&&cur.fen)out.push(cur);
+    return out;
+  }
+
+  async function loadLibrary(){
+    let md=FALLBACK_MD,live=false;
+    try{const r=await fetch(POSITIONS_URL,{cache:'no-store'}); if(r.ok){md=await r.text();live=true}}catch{}
+    state.puzzles=parsePositions(md);
+    if(!state.puzzles.length)state.puzzles=parsePositions(FALLBACK_MD);
+    $('libStatus').textContent=live?`library: live tactical_positions.md · ${state.puzzles.length} puzzles`:`library: fallback sample · ${state.puzzles.length} puzzles`;
+    $('puzzleSelect').innerHTML='';
+    state.puzzles.forEach((p,i)=>{const o=document.createElement('option');o.value=String(i);o.textContent=`${p.title}${p.theme?' · '+p.theme:''}`;$('puzzleSelect').appendChild(o)});
+    startPosition(state.puzzles[0],{archive:false,reason:'initial load'});
+  }
+
+  function divider(text){state.sessionLog.push({divider:true,text})}
+  function addLog(text,noRender=false){
+    const row={time:stamp(),text,ply:state.game?.curNode?.ply||0,title:state.current?.title||''};
+    if(state.current)state.current.gameLog.push(row);
+    state.sessionLog.push(row);
+    if(!noRender)renderAll();
+  }
+
+  function exportOne(game,rec){
+    if(!game||!rec)return'';
+    const result=rec.solved?(fenSide(rec.fen)==='w'?'1-0':'0-1'):'*';
+    const old=game.tags.Result; game.tags.Result=result;
+    let pgn=game.exportPGN(); game.tags.Result=old;
+    const solveLog=(rec.gameLog||[]).map((x,i)=>`${i+1}. ${x.text}`).join(' | ')||'empty';
+    pgn=pgn.replace(/\s+(1-0|0-1|1\/2-1\/2|\*)\s*$/,'').trim();
+    return `${pgn}\n\n{ SOLVE_LOG: ${solveLog} } ${result}`.trim();
+  }
+  function archiveCurrent(reason){
+    if(!state.game||!state.current)return;
+    state.archive.push({title:state.current.title,fen:state.current.fen,pgn:exportOne(state.game,state.current)});
+    divider(`PGN game ${state.archive.length} appended: ${state.current.title}`);
+    if(reason)divider(`new position: ${reason}`);
+  }
+
+  function startPosition(p,{archive=true,reason=''}={}){
+    if(archive)archiveCurrent(reason||p?.title||'new position');
+    state.findings=[];state.seen=new WeakSet();state.algoSteps=[];
+    const rec={title:p?.title||'Custom FEN',fen:p?.fen||START_FEN,theme:p?.theme||'',solution:p?.solution||'',where:p?.where||'',solved:false,gameLog:[]};
+    const g=createGame({Event:rec.title,Site:'Tactical Worksheet Session',White:'White',Black:'Black',Result:'*'});
+    try{g.loadFEN(rec.fen)}catch(e){alert('Could not load FEN: '+(e?.message||e));return}
+    g.tags.Event=rec.title;
+    state.current=rec; state.game=g;
+    $('fenInput').value=rec.fen; $('solved').checked=false;
+    if(!state.view)state.view=new BoardView($('board'),g,{minSizePx:180}); else state.view.setGame(g);
+    try{g.toggleFlip(fenSide(rec.fen)==='b')}catch{}
+    g.onChange(()=>{const n=g.curNode;if(n?.san&&!state.seen.has(n)){state.seen.add(n);addLog(`played \`${n.san}\``,true)}renderAll()});
+    divider(`position: ${rec.title}`);
+    addLog(`loaded FEN \`${rec.fen}\``,true);
+    renderAll();
+  }
+
+  function setTab(t){
+    document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===t));
+    document.querySelectorAll('.tabPanel').forEach(x=>x.classList.toggle('active',x.id===`tab-${t}`));
+    if(t==='pgn')refreshPGN();
+  }
+
+  function applyNode(n){
+    if(!n)return;
+    if(n.fenAfter)state.game._applyFENToState(n.fenAfter);
+    else if(state.game.initialSnap)state.game._applyFENToState(state.game.root.fenAfter);
+    state.game.curNode=n; state.game.sel.fromSq=null; state.game.sel.legalTo=[];
+    try{state.game._emit()}catch{renderAll()}
+  }
+  function pathToNode(path){let n=state.game.root;for(const i of path){n=n?.children?.[i];if(!n)return null}return n}
+  function jump(path,label='move'){
+    const n=pathToNode(path); if(!n)return;
+    applyNode(n); addLog(`jumped to ${label} \`${n.san||'root'}\``,true); renderAll();
+  }
+  function jumpRoot(){
+    const g=state.game; if(!g)return;
+    if(g.root?.fenAfter)g._applyFENToState(g.root.fenAfter); else if(g.initialSnap)g._applyFENToState(g.exportFEN());
+    g.curNode=g.root; g.sel.fromSq=null; g.sel.legalTo=[]; try{g._emit()}catch{}
+    addLog('jumped to root for candidate testing',true); renderAll();
+  }
+  function prevPly(){
+    if(state.game?.curNode===state.game?.root)return;
+    try{state.game.prevMove();addLog('backed up one ply',true)}catch{}
+    renderAll();
+  }
+  function nextPly(){
+    if(!state.game)return;
+    try{
+      const ok=state.game.nextMove();
+      if(ok)addLog('advanced one ply',true);
+    }catch{}
+    renderAll();
+  }
+
+  function sideAfter(side){return side==='w'?'b':'w'}
+  function moveNoAfter(side,no){return sideAfter(side)==='w'?no+1:no}
+  function prefix(side,no,first){return side==='w'?`${no}.`:first?`${no}...`:''}
+
+  function comments(n){
+    const cs=(n?.comments||[]).filter(Boolean);
+    if(!cs.length)return null;
+    const s=document.createElement('span');
+    s.className='comment';
+    s.innerHTML=cs.map(c=>`<code>${esc(c)}</code>`).join(' ');
+    return s;
+  }
+
+  function rootComments(){
+    const cs=(state.game?.root?.comments||[]).filter(Boolean);
+    if(!cs.length)return null;
+    const d=document.createElement('span');
+    d.className='rootComments';
+    d.innerHTML=cs.map(c=>`<code>${esc(c)}</code>`).join(' ');
+    return d;
+  }
+
+  function addAnchor(cont,path,label){
+    const a=document.createElement('button');
+    a.className='anchorChip';
+    a.dataset.anchorPath=path.join(',');
+    a.title=path.length?'Jump to this position and add a continuation':'Jump to root and add a first-move candidate';
+    a.textContent=label;
+    cont.appendChild(a);
+  }
+
+  function addMove(cont,n,path,side,no,first,cls='main'){
+    const pre=prefix(side,no,first);
+    if(pre){
+      const sp=document.createElement('span');
+      sp.className='moveNo';
+      sp.textContent=pre;
+      cont.appendChild(sp);
+    }
+    const b=document.createElement('button');
+    b.className=`moveChip ${cls}`+(n===state.game.curNode?' current':'');
+    b.dataset.path=path.join(',');
+    b.textContent=n.san||n.uci||'?';
+    cont.appendChild(b);
+
+    // Anchor after the move: click this to make the board equal the position after this move.
+    addAnchor(cont,path,'↳');
+
+    const c=comments(n);
+    if(c)cont.appendChild(c);
+  }
+
+  function addLineWrap(parent,depth){
+    const d=document.createElement('span');
+    d.className=`lineDepth depth${Math.min(5,Math.max(0,depth||0))}`;
+    parent.appendChild(d);
+    return d;
+  }
+
+  // Robust tree rendering:
+  // - A single child means "normal reply/continuation"; it stays on the same visual level.
+  // - Multiple children means "candidate set"; the main child stays in line and siblings become indented blocks.
+  // - Every position has an anchor: root before the first move, and ↳ after every move.
+  function appendFromPosition(cont,parent,pathToParent,side,no,opts={}){
+    const depth=opts.depth||0;
+    const forcePrefix=opts.forcePrefix!==false;
+    const variant=!!opts.variant;
+    let safety=opts.safety??240;
+
+    if(!parent?.children?.length||safety<=0)return;
+    const mainIdx=parent.mainChildIndex||0;
+    const main=parent.children[mainIdx];
+    const mainPath=pathToParent.concat(mainIdx);
+
+    addMove(cont,main,mainPath,side,no,forcePrefix,variant?'var':'main');
+
+    if(parent.children.length>1){
+      parent.children.forEach((sib,i)=>{
+        if(i===mainIdx)return;
+        const cand=addLineWrap(cont,depth+1);
+        cand.classList.add('candidateBlock');
+        const lab=document.createElement('span');
+        lab.className='candLab';
+        lab.textContent='candidate';
+        cand.appendChild(lab);
+
+        // Anchor for the parent position before this candidate is tried.
+        addAnchor(cand,pathToParent,pathToParent.length?'from ply '+parent.ply:'from root');
+
+        appendCandidateLine(cand,sib,pathToParent.concat(i),side,no,depth+1);
+      });
+    }
+
+    appendFromPosition(
+      cont,
+      main,
+      mainPath,
+      sideAfter(side),
+      moveNoAfter(side,no),
+      { depth, forcePrefix:false, variant, safety:safety-1 }
+    );
+  }
+
+  function appendCandidateLine(cont,startNode,path,side,no,depth){
+    let n=startNode,p=path.slice(),s=side,m=no,first=true,guard=0;
+    while(n&&guard++<60){
+      addMove(cont,n,p,s,m,first,'var');
+
+      if(n.children.length>1){
+        const mainIdx=n.mainChildIndex||0;
+        n.children.forEach((sib,i)=>{
+          if(i===mainIdx)return;
+          const nested=addLineWrap(cont,(depth||0)+1);
+          nested.classList.add('candidateBlock');
+          const lab=document.createElement('span');
+          lab.className='candLab';
+          lab.textContent='candidate';
+          nested.appendChild(lab);
+          addAnchor(nested,p,p.length?'from ply '+n.ply:'from root');
+          appendCandidateLine(nested,sib,p.concat(i),sideAfter(s),moveNoAfter(s,m),(depth||0)+1);
+          cont.appendChild(nested);
+        });
+      }
+
+      if(!n.children.length)break;
+      const nextIdx=n.mainChildIndex||0;
+      const ns=sideAfter(s), nm=moveNoAfter(s,m);
+      n=n.children[nextIdx];
+      p=p.concat(nextIdx);
+      s=ns;
+      m=nm;
+      first=false;
+    }
+  }
+
+  function renderLine(){
+    const pane=$('line');
+    pane.innerHTML='';
+    const root=state.game?.root;
+    if(!root?.children?.length){
+      const div=document.createElement('div');
+      div.className='empty';
+      div.innerHTML='Click <span class="kbd">root</span> or the <span class="kbd">from root</span> anchor, then move a piece. Use any ↳ anchor to add a continuation from that exact position.';
+      pane.appendChild(div);
+
+      const rootLine=document.createElement('div');
+      rootLine.className='pgnish';
+      addAnchor(rootLine,[],'from root');
+      const rc=rootComments();
+      if(rc)rootLine.appendChild(rc);
+      pane.appendChild(rootLine);
+      return;
+    }
+
+    const div=document.createElement('div');
+    div.className='pgnish';
+    addAnchor(div,[],'from root');
+
+    const rc=rootComments();
+    if(rc)div.appendChild(rc);
+
+    const side=state.game.initialSnap?.side||fenSide(state.current.fen);
+    const no=state.game.initialSnap?.fullmove||1;
+    appendFromPosition(div,root,[],side,no,{depth:0,forcePrefix:true,variant:false});
+    pane.appendChild(div);
+  }
+
+  function renderTop(){
+    $('title').textContent=state.current?.title||'Untitled';
+    $('theme').textContent=`theme: ${state.current?.theme||'—'}${state.current?.solution?' · solution in library':''}`;
+    $('fenText').textContent=state.game?.exportFEN?.()||state.current?.fen||START_FEN;
+    $('plyTop').textContent=state.game?.curNode===state.game?.root?'root':String(state.game?.curNode?.ply||0);
+    $('gameCount').textContent=String(state.archive.length+(state.current?1:0));
+  }
+  function renderFindings(){
+    const box=$('findings'); box.innerHTML='';
+    if(!state.findings.length){box.innerHTML='<div class="empty">No predicate scan results yet. Hit <span class="kbd">notice</span> to auto-detect loose pieces and pins, or attach a manual predicate.</div>';return}
+    for(const f of state.findings){
+      const d=document.createElement('div'); d.className='foundItem';
+      d.innerHTML=`<span class="dot ${esc(f.kind)}"></span><div><div><span class="predCall">${esc(f.text)}</span></div><div class="note">${esc(f.detail||'')}</div></div><button class="tiny" data-attach-found="${esc(f.text)}">attach</button>`;
+      box.appendChild(d);
+    }
+  }
+  function renderLog(){
+    const box=$('log'); box.innerHTML='';
+    for(const row of state.sessionLog){
+      const d=document.createElement('div');
+      if(row.divider){d.className='logItem divider';d.textContent=row.text}
+      else{d.className='logItem';d.innerHTML=`<div class="time">${esc(row.time)}</div><div class="logText">${esc(row.text).replace(/`([^`]+)`/g,'<code>$1</code>')}</div>`}
+      box.appendChild(d);
+    }
+  }
+  function renderAlgo(){
+    $('algoText').textContent=window.algo.describe();
+    const box=$('algoSteps'); box.innerHTML='';
+    if(!state.algoSteps.length){box.innerHTML='<div class="empty">Run one pass to see the human-like solve plan for the current node.</div>';return}
+    state.algoSteps.forEach((s,i)=>{const d=document.createElement('div');d.className='algoStep';d.textContent=`${i+1}. ${s}`;box.appendChild(d)});
+  }
+  function sessionPGN(){
+    const parts=state.archive.map(x=>x.pgn);
+    if(state.game&&state.current)parts.push(exportOne(state.game,state.current));
+    return parts.join('\n\n\n');
+  }
+  function refreshPGN(){
+    const l=$('sessionList'); l.innerHTML='';
+    state.archive.forEach((g,i)=>{const b=document.createElement('span');b.className='gameBadge';b.textContent=`${i+1}. ${g.title}`;l.appendChild(b)});
+    if(state.current){const b=document.createElement('span');b.className='gameBadge';b.textContent=`${state.archive.length+1}. ${state.current.title} ${state.current.solved?'✓':'· active'}`;l.appendChild(b)}
+    $('pgnText').value=sessionPGN();
+  }
+  function renderAll(){if(!state.game)return;renderTop();renderLine();renderFindings();renderLog();renderAlgo();refreshPGN()}
+
+  function attachPred(t){
+    const raw=String(t||'').trim(); if(!raw)return;
+    const n=state.game.curNode; if(!n.comments)n.comments=[]; n.comments.push(raw);
+    state.findings.unshift({kind:'manual',text:raw,detail:`attached to ${n===state.game.root?'root':'ply '+n.ply}`});
+    addLog(`noticed \`${raw}\` at ${n===state.game.root?'root':'ply '+n.ply}`);
+  }
+  function notice(){
+    const fs=window.predicates.notice(state.game); state.findings=fs; window.predicates.applyMarks(state.game,fs);
+    if(fs.length){
+      const sum=fs.map(f=>f.text).join('; ');
+      if(!state.game.curNode.comments)state.game.curNode.comments=[];
+      state.game.curNode.comments.push(`auto: ${sum}`);
+      addLog(`auto-noticed ${fs.length} predicate(s): \`${sum}\``);
+    } else addLog('auto-notice pass found no loose pieces or pins');
+    setTab('predicates'); renderAll();
+  }
+
+  document.addEventListener('click',e=>{
+    const tab=e.target.closest('.tab[data-tab]'); if(tab){setTab(tab.dataset.tab);return}
+    const anchor=e.target.closest('.anchorChip[data-anchor-path]');
+    if(anchor){
+      const path=anchor.dataset.anchorPath?anchor.dataset.anchorPath.split(',').filter(Boolean).map(Number):[];
+      if(path.length) jump(path,'anchor');
+      else jumpRoot();
+      return;
+    }
+    const mv=e.target.closest('.moveChip[data-path]'); if(mv){jump(mv.dataset.path?mv.dataset.path.split(',').filter(Boolean).map(Number):[],'move');return}
+    const f=e.target.closest('[data-attach-found]'); if(f){attachPred(f.dataset.attachFound);return}
+    const mode=e.target.closest('[data-mode]'); if(mode){state.game.setMode(mode.dataset.mode);addLog(`board mode: ${mode.dataset.mode}`);return}
+    const mark=e.target.closest('[data-mark]'); if(mark){state.game.setMode('squares');state.game.setPigment(mark.dataset.mark);addLog(`board mode: color squares ${mark.dataset.mark}`);return}
+    const ar=e.target.closest('[data-arrow]'); if(ar){state.game.setMode('arrows');state.game.setPigment(ar.dataset.arrow);addLog(`board mode: draw arrows ${ar.dataset.arrow}`)}
+  });
+
+  $('puzzleSelect').addEventListener('change',e=>{
+    const i=Number(e.target.value); state.puzzleIndex=i;
+    startPosition(state.puzzles[i],{archive:true,reason:`library position: ${state.puzzles[i]?.title||i}`});
+  });
+  $('loadFen').onclick=()=>{const fen=$('fenInput').value.trim(); if(fen)startPosition({title:`Custom FEN ${state.archive.length+1}`,fen,theme:'custom'},{archive:true,reason:'custom FEN loaded'})};
+  $('fenInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('loadFen').click()});
+  $('reset').onclick=()=>startPosition({...state.current},{archive:true,reason:`reset/reload: ${state.current?.title}`});
+  $('rootBtn').onclick=jumpRoot;
+  $('prevBtn').onclick=prevPly;
+  $('nextBtn').onclick=nextPly;
+  document.addEventListener('keydown',e=>{
+    if(e.target && ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
+    if(e.key==='ArrowLeft')prevPly();
+    if(e.key==='ArrowRight')nextPly();
+  });
+  $('flip').onclick=()=>{state.game.toggleFlip();renderAll()};
+  $('clearMarks').onclick=()=>{try{state.game.clearMarks()}catch{}addLog('cleared board marks')};
+  $('notice').onclick=notice;
+  $('solved').addEventListener('change',e=>{state.current.solved=!!e.target.checked;addLog(state.current.solved?'marked current puzzle solved':'marked current puzzle unsolved')});
+  $('attachPred').onclick=()=>attachPred($('predInput').value);
+  $('predInput').addEventListener('keydown',e=>{if(e.key==='Enter')attachPred(e.target.value)});
+  $('addLog').onclick=()=>addLog($('logInput').value);
+  $('logInput').addEventListener('keydown',e=>{if(e.key==='Enter')addLog(e.target.value)});
+  $('refreshPGN').onclick=refreshPGN;
+  $('copyPGN').onclick=async()=>{refreshPGN();try{await navigator.clipboard.writeText($('pgnText').value);addLog('copied session PGN to clipboard')}catch{addLog('copy failed; select PGN manually')}};
+  $('runAlgo').onclick=()=>{state.algoSteps=window.algo.runOnePass({fen:state.game.exportFEN(),findings:state.findings});renderAlgo();setTab('algo')};
+  $('logAlgo').onclick=()=>{if(!state.algoSteps.length)$('runAlgo').click();addLog('algo pass: '+state.algoSteps.join(' / '));setTab('log')};
+
+  $('algoText').textContent=window.algo.describe();
+  loadLibrary();
+</script>
+</body>
+</html>
