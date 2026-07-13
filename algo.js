@@ -46,6 +46,20 @@ const pieceLetter = (p) => {
 const pieceAt = (p, i) => `${pieceLetter(p)}@${sqName(i)}`;
 const stablePieceKey = (p, i) => `${p?.color || "?"}${p?.type || "?"}@${sqName(i)}`;
 
+function parsePieceKey(pieceKey) {
+  const m = String(pieceKey || "").match(/^([wb])([pnbrqk])@([a-h][1-8])$/);
+  if (!m) return null;
+  return { color: m[1], type: m[2], square: m[3], index: parseSq(m[3]) };
+}
+
+function pieceKeyMatchesAt(game, pieceKey, index = null) {
+  const parsed = parsePieceKey(pieceKey);
+  if (!parsed) return false;
+  const i = index == null ? parsed.index : index;
+  const p = game?.state?.board?.[i];
+  return Boolean(p && p.color === parsed.color && p.type === parsed.type && sqName(i) === parsed.square);
+}
+
 function clearLine(board, from, to, df, dr) {
   let [f, r] = FR(from);
   f += df;
@@ -508,6 +522,9 @@ function makeCandidate(createGame, game, move, looseObs, observations) {
     score,
     reasons,
     looseObs,
+    loosePieceKey: looseKey,
+    capturedLoosePiece: moveCapturesTarget(game, move, looseIndex),
+    landingSquare: sqName(move.to),
     ruleId: "loose_piece"
   };
 }
@@ -541,6 +558,22 @@ function relevantReplies(createGame, game, candidate) {
   const replies = legalMovesFor(game);
   const out = [];
 
+  const looseIndex = candidate?.looseObs?.pieceIndex;
+  const looseKey = candidate?.loosePieceKey || candidate?.looseObs?.args?.piece;
+
+  // Critical identity guard:
+  // relevantReplies is called AFTER the candidate has been played.
+  // If the candidate captured the loose piece, the candidate's own piece now
+  // occupies the old loose-piece square. The old code only checked that the
+  // square was occupied, so it mislabeled attacks on the new occupant as
+  // "still protects loose piece".
+  const loosePieceStillThere =
+    looseIndex != null &&
+    looseKey &&
+    pieceKeyMatchesAt(game, looseKey, looseIndex);
+
+  const candidateLandingIndex = candidate?.landingSquare ? parseSq(candidate.landingSquare) : null;
+
   for (const move of replies) {
     const san = sanForMove(createGame, game, move);
     const board = game.state.board;
@@ -548,13 +581,32 @@ function relevantReplies(createGame, game, candidate) {
 
     if (createsCheck(createGame, game, move)) reasons.push("gives check");
     if (createsMate(createGame, game, move)) reasons.push("creates mate");
-    if (board[move.to]) reasons.push("captures");
 
-    const after = afterMove(createGame, game, move);
-    if (after && candidate?.looseObs?.pieceIndex != null && after.state.board[candidate.looseObs.pieceIndex]) {
+    if (board[move.to]) {
+      if (candidateLandingIndex != null && move.to === candidateLandingIndex) {
+        reasons.push("captures candidate piece");
+      } else {
+        reasons.push("captures");
+      }
+    }
+
+    // Only ask whether a reply still protects the original loose piece if the
+    // same original piece still exists on its original square.
+    if (loosePieceStillThere) {
       const targetColor = candidate.looseObs.pieceColor;
-      const defenders = attackersOf(after, candidate.looseObs.pieceIndex, targetColor);
-      if (defenders.length) reasons.push("still protects loose piece");
+      const defenders = attackersOf(game, looseIndex, targetColor);
+      const beforeReplyDefenders = defenders.map(x => x.index);
+
+      const after = afterMove(createGame, game, move);
+      if (after && pieceKeyMatchesAt(after, looseKey, looseIndex)) {
+        const afterDefenders = attackersOf(after, looseIndex, targetColor).map(x => x.index);
+        const stillHasDefender = afterDefenders.length > 0;
+        const addedOrPreserved =
+          stillHasDefender &&
+          afterDefenders.some(i => beforeReplyDefenders.includes(i) || i === move.to);
+
+        if (addedOrPreserved) reasons.push("still protects loose piece");
+      }
     }
 
     if (reasons.length) {
@@ -576,7 +628,7 @@ function terminalState(game) {
 }
 
 export const ALGO = {
-  version: "0.5.0",
+  version: "0.5.1",
   objective: { materialAdvantagePawns: 2, opponentMayHaveThreat: false },
   observationPredicates: ["loose", "hanging", "pin", "attacks", "defends", "check", "mate_threat", "align", "goal", "threat", "focal_square"],
   humanVisibleObservationPredicates: ["loose", "hanging", "pin", "check", "mate_threat", "align", "goal", "threat", "focal_square"],
@@ -649,7 +701,8 @@ export function createReasoner({ createGame, maxSteps = 48 } = {}) {
     activeCandidate: null,
     replies: [],
     replyIndex: 0,
-    lastFen: ""
+    lastFen: "",
+    visitedPhaseFens: new Set()
   };
 
   function reset() {
@@ -664,6 +717,7 @@ export function createReasoner({ createGame, maxSteps = 48 } = {}) {
     state.replies = [];
     state.replyIndex = 0;
     state.lastFen = "";
+    state.visitedPhaseFens = new Set();
   }
 
   function observeWithCreateGame(game) {
@@ -696,6 +750,19 @@ export function createReasoner({ createGame, maxSteps = 48 } = {}) {
       state.status = "inconclusive";
       return { type: "terminal", status: "inconclusive", log: `Search exceeded ${maxSteps} steps. Remaining inconclusive.`, observations: humanVisibleObservations(state.observations) };
     }
+
+    const phaseFenKey = `${state.phase}|${game.exportFEN()}`;
+    if (state.visitedPhaseFens.has(phaseFenKey)) {
+      state.status = "inconclusive";
+      return {
+        type: "terminal",
+        status: "inconclusive",
+        verdict: "repeated_position",
+        log: `Search reached a repeated ${state.phase} position. Terminating instead of looping.`,
+        observations: humanVisibleObservations(state.observations)
+      };
+    }
+    state.visitedPhaseFens.add(phaseFenKey);
 
     const terminal = terminalState(game);
     if (terminal) {
@@ -780,8 +847,15 @@ export function createReasoner({ createGame, maxSteps = 48 } = {}) {
       state.replyIndex = 0;
 
       if (!state.replies.length) {
-        state.status = "inconclusive";
-        return { type: "replies", status: "inconclusive", comment: "reply scan: no retained replies", log: "Candidate was played, but no enemy reply matched the retained reply classes. Search remains inconclusive until deeper rules are added." };
+        state.status = "solved";
+        return {
+          type: "terminal",
+          status: "solved",
+          verdict: "candidate_unanswered",
+          comment: "reply scan: no retained replies",
+          log: `Candidate ${state.activeCandidate?.san || ""} was played and no enemy reply matched the retained reply classes. Branch complete under the current horizon.`,
+          observations: humanVisibleObservations(state.observations)
+        };
       }
 
       state.phase = "play_reply";
