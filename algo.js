@@ -11,17 +11,22 @@
  *   ALGO
  *     Declarative rule library and predicate names.
  *
- *   createReasoner({ createGame })
- *     Stateful one-step theorem-proving / tactical-reasoning driver.
- *
  *   observe(game)
  *     Static observation predicates for the current ScratchChess position.
+ *
+ *   createReasoner({ createGame })
+ *     Stateful one-step tactical-reasoning driver.
+ *
+ *   runOnePass({ createGame, game })
+ *     Non-mutating Algo-tab summary pass.
  *
  * The website owns the UI. This file owns the predicate vocabulary and the
  * human-shaped reasoning loop.
  */
 
 const FILES = "abcdefgh";
+
+export const MANUAL_OBSERVATION_PREDICATES = ["align", "pin", "goal", "threat", "focal_square"];
 
 const idx = (f, r) => (7 - r) * 8 + f;
 const FR = (i) => [i % 8, 7 - Math.floor(i / 8)];
@@ -31,7 +36,7 @@ const sqName = (i) => {
   const [f, r] = FR(i);
   return FILES[f] + (r + 1);
 };
-const parseSq = (s) => idx(s.charCodeAt(0) - 97, Number(s[1]) - 1);
+const parseSq = (s) => idx(String(s)[0].charCodeAt(0) - 97, Number(String(s)[1]) - 1);
 
 const pieceLetter = (p) => {
   if (!p) return "?";
@@ -39,10 +44,7 @@ const pieceLetter = (p) => {
   return p.color === "w" ? L : L.toLowerCase();
 };
 const pieceAt = (p, i) => `${pieceLetter(p)}@${sqName(i)}`;
-
-function stablePieceKey(p, i) {
-  return `${p?.color || "?"}${p?.type || "?"}@${sqName(i)}`;
-}
+const stablePieceKey = (p, i) => `${p?.color || "?"}${p?.type || "?"}@${sqName(i)}`;
 
 function clearLine(board, from, to, df, dr) {
   let [f, r] = FR(from);
@@ -59,7 +61,7 @@ function clearLine(board, from, to, df, dr) {
 }
 
 export function attacksSquare(board, from, to) {
-  const p = board[from];
+  const p = board?.[from];
   if (!p || from === to) return false;
 
   const [ff, fr] = FR(from);
@@ -73,18 +75,15 @@ export function attacksSquare(board, from, to) {
     const dir = p.color === "w" ? 1 : -1;
     return adf === 1 && adr === 1 && dr === dir;
   }
-
   if (p.type === "n") return (adf === 1 && adr === 2) || (adf === 2 && adr === 1);
   if (p.type === "k") return Math.max(adf, adr) === 1;
 
   if ((p.type === "b" || p.type === "q") && adf === adr && adf > 0) {
     return clearLine(board, from, to, Math.sign(df), Math.sign(dr));
   }
-
   if ((p.type === "r" || p.type === "q") && ((df === 0 && adr > 0) || (dr === 0 && adf > 0))) {
     return clearLine(board, from, to, Math.sign(df), Math.sign(dr));
   }
-
   return false;
 }
 
@@ -94,15 +93,14 @@ export function attackersOf(game, squareIndex, byColor) {
   for (let i = 0; i < 64; i++) {
     const p = board[i];
     if (!p || p.color !== byColor) continue;
-    if (attacksSquare(board, i, squareIndex)) {
-      out.push({
-        index: i,
-        square: sqName(i),
-        piece: p,
-        label: pieceAt(p, i),
-        key: stablePieceKey(p, i)
-      });
-    }
+    if (!attacksSquare(board, i, squareIndex)) continue;
+    out.push({
+      index: i,
+      square: sqName(i),
+      piece: p,
+      label: pieceAt(p, i),
+      key: stablePieceKey(p, i)
+    });
   }
   return out;
 }
@@ -189,18 +187,22 @@ function afterMove(createGame, game, move) {
   const clone = cloneGame(createGame, fen);
   const uci = uciForMove(move, moveNeedsPromotion(game, move) ? "q" : "");
   const ok = applyMoveUCI(clone, uci);
-  if (!ok) return null;
-  return clone;
+  return ok ? clone : null;
 }
 
 function makeObs(predicate, text, extra = {}) {
-  return {
-    predicate,
-    kind: predicate,
-    text,
-    humanVisible: true,
-    ...extra
-  };
+  return { predicate, kind: predicate, text, humanVisible: true, ...extra };
+}
+
+export function makeManualObservation(predicate, args = [], extra = {}) {
+  const name = String(predicate || "").trim();
+  if (!MANUAL_OBSERVATION_PREDICATES.includes(name)) {
+    throw new Error(`Unknown manual predicate: ${name}`);
+  }
+  const cleanArgs = Array.isArray(args)
+    ? args.map(x => String(x).trim()).filter(Boolean)
+    : [String(args).trim()].filter(Boolean);
+  return makeObs(name, `${name}(${cleanArgs.join(",")})`, { manual: true, args: cleanArgs, ...extra });
 }
 
 export function observe(game) {
@@ -217,79 +219,63 @@ export function observe(game) {
     const defenders = attackersOf(game, target, p.color);
 
     for (const a of attackers) {
-      observations.push(makeObs(
-        "attacks",
-        `attacks(${a.label}, ${pieceAt(p, target)})`,
-        {
-          humanVisible: false,
-          from: a.square,
-          to: sqName(target),
-          square: sqName(target),
-          args: { attacker: a.key, target: stablePieceKey(p, target), side: a.piece.color }
-        }
-      ));
+      observations.push(makeObs("attacks", `attacks(${a.label}, ${pieceAt(p, target)})`, {
+        humanVisible: false,
+        from: a.square,
+        to: sqName(target),
+        square: sqName(target),
+        args: { attacker: a.key, target: stablePieceKey(p, target), side: a.piece.color }
+      }));
     }
 
     for (const d of defenders) {
       if (d.index === target) continue;
-      observations.push(makeObs(
-        "defends",
-        `defends(${d.label}, ${pieceAt(p, target)})`,
-        {
-          humanVisible: false,
-          from: d.square,
-          to: sqName(target),
-          square: sqName(target),
-          args: { defender: d.key, target: stablePieceKey(p, target), side: d.piece.color }
-        }
-      ));
+      observations.push(makeObs("defends", `defends(${d.label}, ${pieceAt(p, target)})`, {
+        humanVisible: false,
+        from: d.square,
+        to: sqName(target),
+        square: sqName(target),
+        args: { defender: d.key, target: stablePieceKey(p, target), side: d.piece.color }
+      }));
     }
 
     if (p.type !== "k" && attackers.length > 0 && !defendedByPawn(game, target, p.color)) {
       if (attackers.length >= defenders.length) {
-        observations.push(makeObs(
-          "loose",
-          `loose(${pieceAt(p, target)})`,
-          {
-            square: sqName(target),
+        observations.push(makeObs("loose", `loose(${pieceAt(p, target)})`, {
+          square: sqName(target),
+          side: p.color === sideToMove ? "friendly" : "enemy",
+          pieceColor: p.color,
+          pieceIndex: target,
+          piece: p,
+          attackers,
+          defenders,
+          args: {
+            piece: stablePieceKey(p, target),
             side: p.color === sideToMove ? "friendly" : "enemy",
-            pieceColor: p.color,
-            pieceIndex: target,
-            piece: p,
-            attackers,
-            defenders,
-            args: {
-              piece: stablePieceKey(p, target),
-              side: p.color === sideToMove ? "friendly" : "enemy",
-              attackers: attackers.length,
-              defenders: defenders.length
-            },
-            detail: `attackers=${attackers.length}, defenders=${defenders.length}`
-          }
-        ));
+            attackers: attackers.length,
+            defenders: defenders.length
+          },
+          detail: `attackers=${attackers.length}, defenders=${defenders.length}`
+        }));
       }
 
       if (attackers.length > defenders.length) {
-        observations.push(makeObs(
-          "hanging",
-          `hanging(${pieceAt(p, target)})`,
-          {
-            square: sqName(target),
+        observations.push(makeObs("hanging", `hanging(${pieceAt(p, target)})`, {
+          square: sqName(target),
+          side: p.color === sideToMove ? "friendly" : "enemy",
+          pieceColor: p.color,
+          pieceIndex: target,
+          piece: p,
+          attackers,
+          defenders,
+          args: {
+            piece: stablePieceKey(p, target),
             side: p.color === sideToMove ? "friendly" : "enemy",
-            pieceColor: p.color,
-            pieceIndex: target,
-            piece: p,
-            attackers,
-            defenders,
-            args: {
-              piece: stablePieceKey(p, target),
-              side: p.color === sideToMove ? "friendly" : "enemy",
-              attackers: attackers.length,
-              defenders: defenders.length
-            },
-            detail: `attackers=${attackers.length}, defenders=${defenders.length}`
-          }
-        ));
+            attackers: attackers.length,
+            defenders: defenders.length
+          },
+          detail: `attackers=${attackers.length}, defenders=${defenders.length}`
+        }));
       }
     }
   }
@@ -316,7 +302,7 @@ export function observe(game) {
   return dedupeObservations(observations);
 }
 
-function observePins(game) {
+export function observePins(game) {
   const board = game?.state?.board || [];
   const sideToMove = game?.state?.side || "w";
   const out = [];
@@ -353,27 +339,23 @@ function observePins(game) {
         }
 
         if (p.color !== color && raySliderMatches(p, df, dr)) {
-          out.push(makeObs(
-            "pinned",
-            `pinned(${pieceAt(candidate.piece, candidate.index)}, ${pieceAt(board[kingIndex], kingIndex)})`,
-            {
-              square: sqName(candidate.index),
-              from: sqName(bi),
-              to: sqName(candidate.index),
-              side: candidate.piece.color === sideToMove ? "friendly" : "enemy",
-              pieceColor: candidate.piece.color,
-              pieceIndex: candidate.index,
-              piece: candidate.piece,
-              attacker: { index: bi, square: sqName(bi), piece: p, label: pieceAt(p, bi) },
-              king: { index: kingIndex, square: sqName(kingIndex), piece: board[kingIndex], label: pieceAt(board[kingIndex], kingIndex) },
-              args: {
-                piece: stablePieceKey(candidate.piece, candidate.index),
-                pinnedTo: stablePieceKey(board[kingIndex], kingIndex),
-                side: candidate.piece.color === sideToMove ? "friendly" : "enemy"
-              },
-              detail: `pinned to king by ${pieceAt(p, bi)}`
-            }
-          ));
+          out.push(makeObs("pin", `pin(${pieceAt(candidate.piece, candidate.index)}, ${pieceAt(board[kingIndex], kingIndex)})`, {
+            square: sqName(candidate.index),
+            from: sqName(bi),
+            to: sqName(candidate.index),
+            side: candidate.piece.color === sideToMove ? "friendly" : "enemy",
+            pieceColor: candidate.piece.color,
+            pieceIndex: candidate.index,
+            piece: candidate.piece,
+            attacker: { index: bi, square: sqName(bi), piece: p, label: pieceAt(p, bi) },
+            king: { index: kingIndex, square: sqName(kingIndex), piece: board[kingIndex], label: pieceAt(board[kingIndex], kingIndex) },
+            args: {
+              piece: stablePieceKey(candidate.piece, candidate.index),
+              pinnedTo: stablePieceKey(board[kingIndex], kingIndex),
+              side: candidate.piece.color === sideToMove ? "friendly" : "enemy"
+            },
+            detail: `pinned to king by ${pieceAt(p, bi)}`
+          }));
         }
         break;
       }
@@ -405,7 +387,11 @@ function mateInOneMoves(game) {
     if (!after) continue;
     const defender = after.state.side;
     if (isInCheck(after, defender) && legalMovesFor(after, defender).length === 0) {
-      out.push({ move, uci: uciForMove(move, moveNeedsPromotion(game, move) ? "q" : ""), san: String(after.curNode?.san || "").trim() });
+      out.push({
+        move,
+        uci: uciForMove(move, moveNeedsPromotion(game, move) ? "q" : ""),
+        san: String(after.curNode?.san || uciForMove(move)).trim()
+      });
     }
   }
   return out;
@@ -436,10 +422,8 @@ function moveAttackerDelta(createGame, game, move, targetIndex, attackingColor) 
   const before = attackersOf(game, targetIndex, attackingColor).length;
   const after = afterMove(createGame, game, move);
   if (!after) return 0;
-  const afterBoardTarget = after.state.board[targetIndex];
-  if (!afterBoardTarget) return 0;
-  const afterCount = attackersOf(after, targetIndex, attackingColor).length;
-  return afterCount - before;
+  if (!after.state.board[targetIndex]) return 0;
+  return attackersOf(after, targetIndex, attackingColor).length - before;
 }
 
 function defenderRemoved(createGame, game, move, defenderIndex, looseIndex, defenderColor) {
@@ -457,8 +441,7 @@ function defenderRemoved(createGame, game, move, defenderIndex, looseIndex, defe
 
 function createsCheck(createGame, game, move) {
   const after = afterMove(createGame, game, move);
-  if (!after) return false;
-  return isInCheck(after, after.state.side);
+  return after ? isInCheck(after, after.state.side) : false;
 }
 
 function createsMate(createGame, game, move) {
@@ -485,6 +468,7 @@ function makeCandidate(createGame, game, move, looseObs, observations) {
 
   for (const dk of defenderKeys) {
     const defenderIndex = indexFromPieceKey(dk);
+
     if (moveCapturesTarget(game, move, defenderIndex)) {
       reasons.push(`captures defender ${dk}`);
       score += 70;
@@ -517,10 +501,18 @@ function makeCandidate(createGame, game, move, looseObs, observations) {
   const after = afterMove(createGame, game, move);
   const san = after?.curNode?.san || uciForMove(move, moveNeedsPromotion(game, move) ? "q" : "");
 
-  return { move, uci: uciForMove(move, moveNeedsPromotion(game, move) ? "q" : ""), san, score, reasons, looseObs, ruleId: "loose_piece" };
+  return {
+    move,
+    uci: uciForMove(move, moveNeedsPromotion(game, move) ? "q" : ""),
+    san,
+    score,
+    reasons,
+    looseObs,
+    ruleId: "loose_piece"
+  };
 }
 
-function candidateMovesForLoosePieceRule(createGame, game, observations) {
+export function candidateMovesForLoosePieceRule(createGame, game, observations) {
   const looseTargets = enemyLoosePieces(observations);
   const moves = legalMovesFor(game);
   const out = [];
@@ -555,7 +547,7 @@ function relevantReplies(createGame, game, candidate) {
     const reasons = [];
 
     if (createsCheck(createGame, game, move)) reasons.push("gives check");
-    if (createsMate(createGame, game, move)) reasons.push("creates mate threat");
+    if (createsMate(createGame, game, move)) reasons.push("creates mate");
     if (board[move.to]) reasons.push("captures");
 
     const after = afterMove(createGame, game, move);
@@ -565,7 +557,9 @@ function relevantReplies(createGame, game, candidate) {
       if (defenders.length) reasons.push("still protects loose piece");
     }
 
-    if (reasons.length) out.push({ move, uci: uciForMove(move, moveNeedsPromotion(game, move) ? "q" : ""), san, reasons });
+    if (reasons.length) {
+      out.push({ move, uci: uciForMove(move, moveNeedsPromotion(game, move) ? "q" : ""), san, reasons });
+    }
   }
 
   return out.slice(0, ALGO.rulesById.loose_piece.replyConstraints.maximumPerClass);
@@ -578,14 +572,14 @@ function terminalState(game) {
   if (isInCheck(game, side)) {
     return { status: "solved", verdict: "checkmate", log: `${side} is checkmated. The tactic is solved at this leaf.` };
   }
-  return { status: "inconclusive", verdict: "stalemate", log: "No legal moves, but not checkmate. Search is inconclusive for tactic-solving purposes." };
+  return { status: "inconclusive", verdict: "stalemate", log: "No legal moves, but not checkmate. Search is inconclusive." };
 }
 
 export const ALGO = {
-  version: "0.4.0",
+  version: "0.5.0",
   objective: { materialAdvantagePawns: 2, opponentMayHaveThreat: false },
-  observationPredicates: ["loose", "hanging", "pinned", "attacks", "defends", "check", "mate_threat"],
-  humanVisibleObservationPredicates: ["loose", "hanging", "pinned", "check", "mate_threat"],
+  observationPredicates: ["loose", "hanging", "pin", "attacks", "defends", "check", "mate_threat", "align", "goal", "threat", "focal_square"],
+  humanVisibleObservationPredicates: ["loose", "hanging", "pin", "check", "mate_threat", "align", "goal", "threat", "focal_square"],
   candidatePredicates: ["adds_attacker", "removes_defender", "captures", "creates_check", "creates_mate_threat", "creates_higher_order_threat"],
   replyPredicates: ["still_defends", "answers_threat", "gives_check", "creates_threat"],
   rules: [
@@ -611,7 +605,10 @@ export const ALGO = {
       },
       candidateMarker: {
         label: "Loose-piece idea",
-        explain: ["This move acts against a loose piece or its defender.", "Prefer direct captures, checks, captures of defenders, and added attackers on defenders."]
+        explain: [
+          "This move acts against a loose piece or its defender.",
+          "Prefer direct captures, checks, captures of defenders, and added attackers on defenders."
+        ]
       },
       replyConstraints: {
         maximumPerClass: 5,
@@ -637,7 +634,9 @@ export function humanVisibleObservations(observations) {
 }
 
 export function createReasoner({ createGame, maxSteps = 48 } = {}) {
-  if (typeof createGame !== "function") throw new Error("createReasoner requires { createGame } from scratchchess.js");
+  if (typeof createGame !== "function") {
+    throw new Error("createReasoner requires { createGame } from scratchchess.js");
+  }
 
   const state = {
     phase: "observe",
@@ -716,13 +715,22 @@ export function createReasoner({ createGame, maxSteps = 48 } = {}) {
           status: "inconclusive",
           observations: visible,
           comment: visible.length ? `observed: ${visible.map(o => o.text).join("; ")}` : "",
-          log: visible.length ? `Observed ${visible.length} predicate(s), but no active rule matched. Search remains inconclusive.` : "No human-visible predicates and no active rule matched. Search remains inconclusive."
+          log: visible.length
+            ? `Observed ${visible.length} predicate(s), but no active rule matched. Search remains inconclusive.`
+            : "No human-visible predicates and no active rule matched. Search remains inconclusive."
         };
       }
 
       state.activeRule = ALGO.rulesById.loose_piece;
       state.phase = "candidates";
-      return { type: "observe", status: "searching", rule: state.activeRule, observations: visible, comment: visible.length ? `observed: ${visible.map(o => o.text).join("; ")}` : "", log: `${state.activeRule.hint} Found ${loose.length} enemy loose piece predicate(s).` };
+      return {
+        type: "observe",
+        status: "searching",
+        rule: state.activeRule,
+        observations: visible,
+        comment: visible.length ? `observed: ${visible.map(o => o.text).join("; ")}` : "",
+        log: `${state.activeRule.hint} Found ${loose.length} enemy loose piece predicate(s).`
+      };
     }
 
     if (state.phase === "candidates") {
@@ -777,7 +785,13 @@ export function createReasoner({ createGame, maxSteps = 48 } = {}) {
       }
 
       state.phase = "play_reply";
-      return { type: "replies", status: "searching", replies: state.replies, comment: `reply scan: ${state.replies.map(r => `${r.san} [${r.reasons.join(", ")}]`).join("; ")}`, log: `Retained ${state.replies.length} enemy repl${state.replies.length === 1 ? "y" : "ies"}: ${state.replies.map(r => r.san).join(", ")}.` };
+      return {
+        type: "replies",
+        status: "searching",
+        replies: state.replies,
+        comment: `reply scan: ${state.replies.map(r => `${r.san} [${r.reasons.join(", ")}]`).join("; ")}`,
+        log: `Retained ${state.replies.length} enemy repl${state.replies.length === 1 ? "y" : "ies"}: ${state.replies.map(r => r.san).join(", ")}.`
+      };
     }
 
     if (state.phase === "play_reply") {
@@ -802,6 +816,71 @@ export function createReasoner({ createGame, maxSteps = 48 } = {}) {
   return { state, reset, observe: observeWithCreateGame, step };
 }
 
+function scoreCandidateForDisplay(candidate) {
+  const base = Number(candidate?.score || 0);
+  let bonus = 0;
+  const reasons = candidate?.reasons || [];
+  if (reasons.some(r => /mate/.test(r))) bonus += 1000;
+  if (reasons.some(r => /check/.test(r))) bonus += 100;
+  if (reasons.some(r => /captures/.test(r))) bonus += 80;
+  if (reasons.some(r => /defender|attacker/.test(r))) bonus += 50;
+  return base + bonus;
+}
+
+export function runOnePass({ createGame, game, observations = null, maxCandidates = 5 } = {}) {
+  if (!game) {
+    return {
+      type: "algo_pass",
+      status: "error",
+      observations: [],
+      candidates: [],
+      steps: ["No ScratchChess game was provided."],
+      log: "algo pass failed: no game"
+    };
+  }
+
+  const obs = observations || (typeof createGame === "function" ? (() => {
+    game.__algoCreateGame = createGame;
+    return observe(game);
+  })() : observe(game));
+  const visible = humanVisibleObservations(obs);
+
+  let candidates = [];
+  if (typeof createGame === "function") {
+    candidates = candidateMovesForLoosePieceRule(createGame, game, obs)
+      .slice()
+      .sort((a, b) => scoreCandidateForDisplay(b) - scoreCandidateForDisplay(a) || String(a.san).localeCompare(String(b.san)))
+      .slice(0, maxCandidates);
+  }
+
+  const steps = [];
+  steps.push(`Head FEN: ${game.exportFEN?.() || "(unknown)"}`);
+  steps.push(`Side to move: ${game.state?.side === "b" ? "black" : "white"}.`);
+
+  if (visible.length) steps.push(`Notice: ${visible.map(o => o.text).join("; ")}.`);
+  else steps.push("Notice: no human-visible predicates fired yet.");
+
+  const loose = enemyLoosePieces(obs);
+  if (loose.length) steps.push(`Loose-piece rule is active: ${loose.map(o => o.text).join("; ")}.`);
+  else steps.push("No enemy loose piece rule matched, so the current reasoner has no forced tactic claim yet.");
+
+  if (candidates.length) {
+    steps.push(`Candidate moves: ${candidates.map(c => `${c.san} [${c.reasons.join(", ")}]`).join("; ")}.`);
+    steps.push("UI action: play the first candidate on the board; to compare siblings, click root or a ply anchor and play another candidate.");
+  } else {
+    steps.push("No retained candidate moves under the current human-sized constraints.");
+  }
+
+  return {
+    type: "algo_pass",
+    status: candidates.length ? "searching" : "inconclusive",
+    observations: visible,
+    candidates,
+    steps,
+    log: `algo pass: ${steps.join(" / ")}`
+  };
+}
+
 export function describeAlgorithm() {
   return [
     "Automated human-like theorem-proving stepper:",
@@ -811,13 +890,35 @@ export function describeAlgorithm() {
     "3. Retain only a few candidate moves that match the rule.",
     "4. Play one candidate, then retain only important enemy replies.",
     "5. Play one retained reply and rescan from the new position.",
-    "6. End as solved, not_true, or inconclusive when the current search can no longer proceed."
+    "6. Use the UI anchors/root/ply navigation to branch candidates without losing the tree.",
+    "7. End as solved, not_true, or inconclusive when the current search can no longer proceed."
   ].join("\n");
 }
+
+export const describe = describeAlgorithm;
 
 export default ALGO;
 
 if (typeof window !== "undefined") {
   window.ALGO = ALGO;
-  window.ALGO_MODULE = { ALGO, observe, humanVisibleObservations, createReasoner, describeAlgorithm };
+  window.ALGO_MODULE = {
+    ALGO,
+    observe,
+    observePins,
+    humanVisibleObservations,
+    makeManualObservation,
+    candidateMovesForLoosePieceRule,
+    createReasoner,
+    runOnePass,
+    describeAlgorithm,
+    describe
+  };
+  window.algo = {
+    ALGO,
+    observe,
+    humanVisibleObservations,
+    createReasoner,
+    runOnePass,
+    describe: describeAlgorithm
+  };
 }
