@@ -49,3 +49,7 @@ where: https://lichess.org/training/YtKLT
 ## Want queen but lose mate, fix by check that adds defender 
 fen: Q3r1k1/5ppp/8/1q6/8/P6P/1PPR2P1/3R2K1 b - - 4 31
 where: https://lichess.org/training/VRGbv
+
+## Harass loose piece defender to royal fork
+fen: r2q1rk1/ppp2pbp/2np2p1/5b2/2P1N3/1P2P1P1/PBQP1PBP/R3K2R b KQ - 0 12
+where: https://lichess.org/training/hLWP1
