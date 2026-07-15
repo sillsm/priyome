@@ -1,6 +1,6 @@
 {
-  "version": "tactics-policy/v1",
-  "name": "six-ply-loose-piece-proof",
+  "version": "tactics-policy/v2",
+  "name": "predicate-gated-forcing-threats",
   "objective": {
     "anyOf": [
       {
@@ -9,113 +9,177 @@
       {
         "type": "material",
         "minimumAdvantagePawns": 2,
-        "requireNoOpponentThreat": true
+        "settlement": "after_opponent_reply"
       }
     ]
   },
   "budget": {
-    "maxPlies": 6
-  },
-  "observe": {
-    "atEveryNode": [
-      "position_predicates",
-      "threats_us",
-      "threats_them"
-    ],
-    "storeHistory": true
-  },
-  "threatRanking": {
-    "order": [
-      "mate",
-      "mate_in_1",
-      "check",
-      "pin",
-      "mobility_trap"
-    ],
-    "compound": {
-      "minimumDistinctTypes": 2,
-      "rank": "immediately_above_strongest_component"
-    }
+    "maxPlies": 6,
+    "maxCandidatesPerRule": 8,
+    "maxRelevantReplies": 64
   },
   "search": {
+    "mode": "threat_space",
+    "ruleSelection": "first_match",
     "ourNodes": "exists",
-    "opponentNodes": "forall",
-    "opponentReplies": "all_legal",
-    "candidatePriority": [
-      "achieve_objective",
-      "answer_immediate_threat",
-      "create_compound_threat",
-      "create_highest_threat",
-      "advance_matching_pattern",
-      "other_legal_move"
-    ],
+    "opponentNodes": "forall_relevant",
+    "candidateGate": "matched_rule_and_verified_threat",
+    "replyGate": "answers_active_threat_or_forcing_counterthreat",
+    "unmatchedReply": "must_be_discharged_by_verified_witness",
+    "rescanAfterEveryPly": true,
     "stop": [
       "objective_proven",
       "depth_exhausted",
-      "quiet_no_progress"
+      "no_rule_matches",
+      "no_verified_candidate"
     ]
   },
-  "branchResult": {
-    "proven": "objective_reached_against_every_legal_reply",
-    "refutedWithinPolicy": "one_legal_reply_has_no_proven_continuation_within_budget",
-    "unresolvedLeaf": "depth_exhausted_without_proof"
+  "threats": {
+    "priority": [
+      "mate",
+      "mate_in_1",
+      "check",
+      "winning_capture",
+      "fork",
+      "harass_defender",
+      "pin",
+      "mobility_trap"
+    ],
+    "alwaysRetainCounterThreats": [
+      "mate",
+      "mate_in_1",
+      "check"
+    ],
+    "otherwiseRetain": "payoff_at_least_active_threat"
   },
-  "pruning": {
-    "quietNoProgress": {
-      "whenAll": [
-        "no_material_gain",
-        "no_threat_created",
-        "no_threat_answered",
-        "no_pattern_advanced"
-      ]
-    }
-  },
-  "rules": [
+  "predicates": [
     {
-      "id": "answer-threat-to-own-loose-piece",
-      "when": {
-        "threat": "capture",
-        "target": {
-          "predicate": "loose",
-          "side": "us"
-        }
-      },
-      "considerFirst": [
-        "achieve_objective",
-        "move_target",
-        "defend_target",
-        "capture_attacker",
-        "remove_attack",
-        "force_then_save_target"
-      ],
-      "mustAchieveOneBeforeOpponentCanExecuteThreat": [
-        "objective_proven",
-        "target_saved",
-        "capture_made_unprofitable"
-      ],
-      "rejectIfAnyLegalReply": {
-        "canExecuteThreat": true,
-        "objectiveStillUnproven": true
-      }
+      "id": "loose",
+      "source": "position",
+      "definition": "A non-king is attacked and has no pawn defender."
     },
     {
-      "id": "attack-defender-of-enemy-loose-piece",
+      "id": "defends",
+      "source": "position",
+      "definition": "A friendly piece attacks the occupied target square."
+    },
+    {
+      "id": "shared_defender",
+      "source": "position",
+      "definition": "One piece defends two or more loose pieces."
+    },
+    {
+      "id": "in_check",
+      "source": "position",
+      "definition": "The side to move is in check."
+    },
+    {
+      "id": "winning_capture_available",
+      "source": "legal_moves",
+      "definition": "A legal capture reaches the material objective even after every immediate recapture."
+    },
+    {
+      "id": "fork_available",
+      "source": "legal_moves",
+      "definition": "A legal move attacks the king and a valuable piece, or two valuable pieces, with enough payoff to reach the objective."
+    },
+    {
+      "id": "harass_defender",
+      "source": "one_ply_result",
+      "definition": "A legal move attacks a defender of one or more loose pieces; ignoring the attack permits an objective-winning capture."
+    },
+    {
+      "id": "capture_recapture_fork",
+      "source": "legal_move_sequence",
+      "definition": "Capture a loose piece; every immediate recapture permits a verified fork that reaches the objective."
+    },
+    {
+      "id": "forcing_counterthreat",
+      "source": "opponent_reply",
+      "definition": "A reply gives mate, mate in one, check, or a threat with payoff at least as large as the active threat."
+    }
+  ],
+  "rules": [
+    {
+      "id": "answer-check",
       "when": {
-        "predicate": "loose",
-        "side": "enemy"
+        "all": [
+          {
+            "predicate": "in_check",
+            "side": "us"
+          }
+        ]
       },
       "consider": [
-        "capture_target",
-        "add_attacker_to_defender"
+        "answer_check_and_preserve_verified_threat"
       ],
-      "orderOpponentRepliesFirst": [
-        "protect_target",
-        "move_target",
-        "remove_attacker",
-        "capture_attacker",
-        "create_equal_or_higher_threat"
+      "candidateMust": [
+        "answers_check",
+        "result_has_verified_threat_or_objective"
+      ]
+    },
+    {
+      "id": "winning-capture",
+      "when": {
+        "all": [
+          {
+            "predicate": "winning_capture_available",
+            "side": "us"
+          }
+        ]
+      },
+      "consider": [
+        "play_stable_winning_capture"
       ],
-      "prove": "every_legal_reply_reaches_objective_within_budget"
+      "candidateMust": [
+        "move_result_has_named_predicate",
+        "threat_has_verified_witness"
+      ]
+    },
+    {
+      "id": "loose-piece",
+      "when": {
+        "all": [
+          {
+            "predicate": "loose",
+            "side": "enemy"
+          }
+        ]
+      },
+      "consider": [
+        "harass_shared_defender",
+        "capture_loose_with_recapture_fork",
+        "capture_loose_with_rule_continuation",
+        "play_stable_winning_capture"
+      ],
+      "candidateMust": [
+        "move_result_has_named_predicate",
+        "threat_has_verified_witness",
+        "threat_payoff_reaches_objective"
+      ]
+    },
+    {
+      "id": "fork",
+      "when": {
+        "all": [
+          {
+            "predicate": "fork_available",
+            "side": "us"
+          }
+        ]
+      },
+      "consider": [
+        "play_verified_fork"
+      ],
+      "candidateMust": [
+        "move_result_has_named_predicate",
+        "threat_has_verified_witness"
+      ]
     }
-  ]
+  ],
+  "branchResult": {
+    "proven": "one_rule_generated_candidate_survives_every_relevant_reply",
+    "refutedWithinPolicy": "a_relevant_reply_refutes_every_rule_generated_continuation",
+    "unresolvedLeaf": "depth_or_rule_vocabulary_exhausted_without_proof"
+  }
 }
