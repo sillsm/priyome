@@ -1,125 +1,207 @@
 /*
  * algo.js
  *
- * THREATS-FIRST HUMAN TACTICAL STATE MACHINE
- * ===========================================
+ * PREDICATE-GATED THREAT-SPACE SEARCH
+ * ===================================
  *
  * ScratchChess owns legality, SAN, FEN transitions, and the variation tree.
- * This module follows a deliberately human routine:
+ * This module owns a deliberately human-shaped tactical proof procedure:
  *
- *   observe both sides' immediate threats -> answer check or mate danger ->
- *   try our threats from most forcing to least forcing -> inspect the
- *   defender's most forcing answers -> rescan after every ply -> use quiet
- *   position rules only after every first-order try has been stopped.
+ *   observe predicates -> select one matching rule -> generate only moves
+ *   whose one-ply result has a named predicate -> attach a verified threat
+ *   witness -> inspect only replies that answer that threat or create a
+ *   forcing counter-threat -> rescan.
  *
- * The internal search stores continuations so the worksheet can explain each
- * branch, but the policy and visible trace use ordinary chess language.
+ * There is no fallback to "all legal moves as candidates". Legal moves are
+ * enumerated only to prove or refute a named predicate/threat contract.
  */
 
 export const DEFAULT_POLICY_URL = "https://priyomes.com/policy.json";
-export const POLICY_VERSION = "tactics-policy/v3";
+export const POLICY_VERSION = "tactics-policy/v2";
 
 const FILES = "abcdefgh";
 const COLORS = Object.freeze(["w", "b"]);
 const PROMOTIONS = Object.freeze(["q", "r", "b", "n"]);
 const PIECE_VALUES = Object.freeze({ p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 });
 
-const THREAT_KIND_TO_POLICY = Object.freeze({
-  mate: "mate",
-  stop_mate_in_1: "stop_their_mate_in_one",
-  check: "check",
-  mate_in_1: "threaten_mate_in_one",
-  winning_capture: "take_material",
-  fork: "double_attack",
-  capture_recapture_fork: "double_attack",
-  harass_defender: "quiet_idea",
-  pin: "quiet_idea",
-  mobility_trap: "quiet_idea",
-  root_repair: "repair_once"
-});
-
 export const POLICY_OPTIONS = Object.freeze({
-  settlement: Object.freeze(["after_defender_reply", "after_opponent_reply"]),
+  searchModes: Object.freeze(["threat_space"]),
+  ruleSelection: Object.freeze(["first_match"]),
+  ourNodes: Object.freeze(["exists"]),
+  opponentNodes: Object.freeze(["forall_relevant"]),
+  candidateGates: Object.freeze(["matched_rule_and_verified_threat"]),
+  replyGates: Object.freeze(["answers_active_threat_or_forcing_counterthreat"]),
+  unmatchedReplies: Object.freeze(["must_be_discharged_by_verified_witness"]),
+  settlement: Object.freeze(["after_opponent_reply"]),
   threatKinds: Object.freeze([
     "mate",
-    "stop_their_mate_in_one",
+    "mate_in_1",
     "check",
-    "threaten_mate_in_one",
-    "take_material",
-    "double_attack"
-  ]),
-  checkOrder: Object.freeze([
-    "mate",
-    "one_legal_reply",
-    "check_and_take_queen",
-    "fewest_legal_replies",
-    "check_and_take_rook",
-    "largest_capture",
-    "move_name"
-  ]),
-  defenderReplyOrder: Object.freeze([
-    "mate",
-    "check",
-    "create_mate_in_one",
-    "stop_the_threat",
-    "counterattack_same_or_more",
-    "other_legal_answer"
+    "winning_capture",
+    "fork",
+    "harass_defender",
+    "pin",
+    "mobility_trap"
   ]),
   predicateIds: Object.freeze([
-    "mate",
-    "mate_in_1_available",
-    "check_available",
-    "mate_threat_available",
-    "opponent_mate_in_1",
-    "in_check",
-    "losing_material",
-    "material_needed",
-    "quiet",
     "loose",
     "defends",
     "shared_defender",
+    "in_check",
     "winning_capture_available",
     "fork_available",
     "harass_defender",
     "capture_recapture_fork",
     "forcing_counterthreat"
   ]),
-  ruleIds: Object.freeze(["answer-check", "loose-piece"]),
+  ruleIds: Object.freeze([
+    "answer-check",
+    "winning-capture",
+    "loose-piece",
+    "fork"
+  ]),
   generators: Object.freeze([
-    "answer_check_and_create_threat",
-    "attack_the_defender",
-    "capture_then_double_attack",
-    "capture_then_rescan",
-    "take_the_loose_piece"
+    "answer_check_and_preserve_verified_threat",
+    "play_stable_winning_capture",
+    "harass_shared_defender",
+    "capture_loose_with_recapture_fork",
+    "capture_loose_with_rule_continuation",
+    "play_verified_fork"
+  ]),
+  candidateRequirements: Object.freeze([
+    "answers_check",
+    "result_has_verified_threat_or_objective",
+    "move_result_has_named_predicate",
+    "threat_has_verified_witness",
+    "threat_payoff_reaches_objective"
+  ]),
+  stopReasons: Object.freeze([
+    "objective_proven",
+    "depth_exhausted",
+    "no_rule_matches",
+    "no_verified_candidate"
   ])
 });
 
 export const PREDICATE_CATALOG = Object.freeze([
-  { name: "mate", signature: "mate(winner)", description: "The side to move has no legal answer to check.", humanVisible: true },
-  { name: "mate_in_1_available", signature: "mate_in_1_available(side, moves)", description: "A legal move mates now.", humanVisible: true },
-  { name: "check_available", signature: "check_available(move, legal_answers, extra_target)", description: "A legal move gives check; legal answers and any extra attacked piece are recorded.", humanVisible: true },
-  { name: "mate_threat_available", signature: "mate_threat_available(move, mating_moves)", description: "A legal move threatens mate on the next move.", humanVisible: true },
-  { name: "opponent_mate_in_1", signature: "opponent_mate_in_1(side, moves)", description: "The other side would have a mating move if allowed to move now.", humanVisible: true },
-  { name: "in_check", signature: "in_check(side)", description: "The side to move is in check.", humanVisible: true },
-  { name: "losing_material", signature: "losing_material(side, deficit)", description: "The fighting side is behind and must recover the deficit before a material line can win.", humanVisible: true },
-  { name: "material_needed", signature: "material_needed(side, pawns)", description: "The fighting side has not yet reached the configured material objective.", humanVisible: true },
-  { name: "quiet", signature: "quiet(side)", description: "Every enabled first-order try has been stopped, so position rules may be tried.", humanVisible: true },
-  { name: "loose", signature: "loose(piece)", description: "A non-king is attacked and has no pawn defender.", humanVisible: true },
-  { name: "hanging", signature: "hanging(piece)", description: "A loose piece has more attackers than defenders.", humanVisible: true },
-  { name: "attacks", signature: "attacks(attacker, target)", description: "A piece attacks an occupied target square.", humanVisible: false },
-  { name: "defends", signature: "defends(defender, target)", description: "A friendly piece attacks an occupied target square.", humanVisible: false },
-  { name: "shared_defender", signature: "shared_defender(defender, loose_targets)", description: "One piece defends two or more loose pieces.", humanVisible: true },
-  { name: "winning_capture_available", signature: "winning_capture_available(move, target)", description: "A legal capture reaches the material objective after immediate recapture choices.", humanVisible: true },
-  { name: "fork_available", signature: "fork_available(move, targets)", description: "A legal move creates an objective-relevant double attack.", humanVisible: true },
-  { name: "harass_defender", signature: "harass_defender(attacker, defender, loose_targets)", description: "A move attacks the defender of loose pieces; ignoring it loses enough material.", humanVisible: true },
-  { name: "capture_recapture_fork", signature: "capture_recapture_fork(capture, recapture, fork)", description: "A loose-piece capture invites a recapture that permits a double attack.", humanVisible: true },
-  { name: "forcing_counterthreat", signature: "forcing_counterthreat(reply, kind)", description: "A reply mates, checks, creates mate in one, or counterattacks for enough value.", humanVisible: true },
-  { name: "pin", signature: "pin(piece, king)", description: "A piece is absolutely pinned to its king.", humanVisible: true },
-  { name: "mobility_trap", signature: "mobility_trap(piece)", description: "An attacked non-pawn, non-king has no legal move of its own.", humanVisible: true },
-  { name: "align", signature: "align(a, b, line)", description: "Manual alignment observation.", humanVisible: true, manual: true },
-  { name: "goal", signature: "goal(x)", description: "Manual tactical objective.", humanVisible: true, manual: true },
-  { name: "threat", signature: "threat(x)", description: "Manual forcing-threat observation.", humanVisible: true, manual: true },
-  { name: "focal_square", signature: "focal_square(square)", description: "Manual focal square.", humanVisible: true, manual: true }
+  {
+    name: "loose",
+    signature: "loose(piece)",
+    description: "A non-king is attacked and has no pawn defender.",
+    humanVisible: true
+  },
+  {
+    name: "hanging",
+    signature: "hanging(piece)",
+    description: "A loose piece has more attackers than defenders.",
+    humanVisible: true
+  },
+  {
+    name: "attacks",
+    signature: "attacks(attacker, target)",
+    description: "A piece attacks an occupied target square.",
+    humanVisible: false
+  },
+  {
+    name: "defends",
+    signature: "defends(defender, target)",
+    description: "A friendly piece attacks an occupied target square.",
+    humanVisible: false
+  },
+  {
+    name: "shared_defender",
+    signature: "shared_defender(defender, loose_targets)",
+    description: "One piece defends two or more loose pieces.",
+    humanVisible: true
+  },
+  {
+    name: "in_check",
+    signature: "in_check(side)",
+    description: "The side to move is in check.",
+    humanVisible: true
+  },
+  {
+    name: "mate",
+    signature: "mate(winner)",
+    description: "The side to move is checkmated.",
+    humanVisible: true
+  },
+  {
+    name: "mate_in_1_available",
+    signature: "mate_in_1_available(side, moves)",
+    description: "A legal move checkmates immediately.",
+    humanVisible: true
+  },
+  {
+    name: "winning_capture_available",
+    signature: "winning_capture_available(move, target)",
+    description: "A legal capture reaches the material objective even after every immediate recapture.",
+    humanVisible: true
+  },
+  {
+    name: "fork_available",
+    signature: "fork_available(move, targets)",
+    description: "A legal move creates an objective-relevant fork.",
+    humanVisible: true
+  },
+  {
+    name: "harass_defender",
+    signature: "harass_defender(attacker, defender, loose_targets)",
+    description: "A one-ply move attacks a defender of loose pieces and carries an objective-winning witness.",
+    humanVisible: true
+  },
+  {
+    name: "capture_recapture_fork",
+    signature: "capture_recapture_fork(capture, recapture, fork)",
+    description: "A loose-piece capture forces a recapture into a verified fork.",
+    humanVisible: true
+  },
+  {
+    name: "forcing_counterthreat",
+    signature: "forcing_counterthreat(reply, kind)",
+    description: "A reply gives mate, mate in one, check, or a counter-threat with sufficient payoff.",
+    humanVisible: true
+  },
+  {
+    name: "pin",
+    signature: "pin(piece, king)",
+    description: "A piece is absolutely pinned to its king.",
+    humanVisible: true
+  },
+  {
+    name: "mobility_trap",
+    signature: "mobility_trap(piece)",
+    description: "An attacked non-pawn, non-king has no legal move of its own.",
+    humanVisible: true
+  },
+  {
+    name: "align",
+    signature: "align(a, b, line)",
+    description: "Manual alignment observation.",
+    humanVisible: true,
+    manual: true
+  },
+  {
+    name: "goal",
+    signature: "goal(x)",
+    description: "Manual tactical objective.",
+    humanVisible: true,
+    manual: true
+  },
+  {
+    name: "threat",
+    signature: "threat(x)",
+    description: "Manual forcing-threat observation.",
+    humanVisible: true,
+    manual: true
+  },
+  {
+    name: "focal_square",
+    signature: "focal_square(square)",
+    description: "Manual focal square.",
+    humanVisible: true,
+    manual: true
+  }
 ]);
 
 export const MANUAL_OBSERVATION_PREDICATES = Object.freeze(
@@ -129,6 +211,85 @@ export const MANUAL_OBSERVATION_PREDICATES = Object.freeze(
 export const HUMAN_VISIBLE_PREDICATES = Object.freeze(
   PREDICATE_CATALOG.filter((item) => item.humanVisible).map((item) => item.name)
 );
+
+export const FALLBACK_POLICY = deepFreeze({
+  version: "tactics-policy/v2",
+  name: "predicate-gated-forcing-threats",
+  objective: {
+    anyOf: [
+      { type: "mate" },
+      { type: "material", minimumAdvantagePawns: 2, settlement: "after_opponent_reply" }
+    ]
+  },
+  budget: { maxPlies: 6, maxCandidatesPerRule: 8, maxRelevantReplies: 24 },
+  search: {
+    mode: "threat_space",
+    ruleSelection: "first_match",
+    ourNodes: "exists",
+    opponentNodes: "forall_relevant",
+    candidateGate: "matched_rule_and_verified_threat",
+    replyGate: "answers_active_threat_or_forcing_counterthreat",
+    unmatchedReply: "must_be_discharged_by_verified_witness",
+    rescanAfterEveryPly: true,
+    stop: ["objective_proven", "depth_exhausted", "no_rule_matches", "no_verified_candidate"]
+  },
+  threats: {
+    priority: ["mate", "mate_in_1", "check", "winning_capture", "fork", "harass_defender", "pin", "mobility_trap"],
+    alwaysRetainCounterThreats: ["mate", "mate_in_1", "check"],
+    otherwiseRetain: "payoff_at_least_active_threat"
+  },
+  predicates: [
+    { id: "loose", source: "position", definition: "A non-king is attacked and has no pawn defender." },
+    { id: "defends", source: "position", definition: "A friendly piece attacks the occupied target square." },
+    { id: "shared_defender", source: "position", definition: "One piece defends two or more loose pieces." },
+    { id: "in_check", source: "position", definition: "The side to move is in check." },
+    { id: "winning_capture_available", source: "legal_moves", definition: "A legal capture reaches the material objective even after every immediate recapture." },
+    { id: "fork_available", source: "legal_moves", definition: "A legal move creates an objective-relevant fork." },
+    { id: "harass_defender", source: "one_ply_result", definition: "A legal move attacks a defender of loose pieces and carries a verified witness." },
+    { id: "capture_recapture_fork", source: "legal_move_sequence", definition: "Capture, recapture, fork." },
+    { id: "forcing_counterthreat", source: "opponent_reply", definition: "A reply creates a forcing counter-threat." }
+  ],
+  rules: [
+    {
+      id: "answer-check",
+      when: { all: [{ predicate: "in_check", side: "us" }] },
+      consider: ["answer_check_and_preserve_verified_threat"],
+      candidateMust: ["answers_check", "result_has_verified_threat_or_objective"]
+    },
+    {
+      id: "winning-capture",
+      when: { all: [{ predicate: "winning_capture_available", side: "us" }] },
+      consider: ["play_stable_winning_capture"],
+      candidateMust: ["move_result_has_named_predicate", "threat_has_verified_witness"]
+    },
+    {
+      id: "loose-piece",
+      when: { all: [{ predicate: "loose", side: "enemy" }] },
+      consider: [
+        "harass_shared_defender",
+        "capture_loose_with_recapture_fork",
+        "capture_loose_with_rule_continuation",
+        "play_stable_winning_capture"
+      ],
+      candidateMust: [
+        "move_result_has_named_predicate",
+        "threat_has_verified_witness",
+        "threat_payoff_reaches_objective"
+      ]
+    },
+    {
+      id: "fork",
+      when: { all: [{ predicate: "fork_available", side: "us" }] },
+      consider: ["play_verified_fork"],
+      candidateMust: ["move_result_has_named_predicate", "threat_has_verified_witness"]
+    }
+  ],
+  branchResult: {
+    proven: "one_rule_generated_candidate_survives_every_relevant_reply",
+    refutedWithinPolicy: "a_relevant_reply_refutes_every_rule_generated_continuation",
+    unresolvedLeaf: "depth_or_rule_vocabulary_exhausted_without_proof"
+  }
+});
 
 function deepFreeze(value) {
   if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
@@ -151,8 +312,12 @@ function exactKeys(value, path, keys, errors) {
     return false;
   }
   const allowed = new Set(keys);
-  for (const key of Object.keys(value)) if (!allowed.has(key)) errors.push(`${path}.${key}: is not allowed`);
-  for (const key of keys) if (!(key in value)) errors.push(`${path}.${key}: is required`);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) errors.push(`${path}.${key}: is not allowed`);
+  }
+  for (const key of keys) {
+    if (!(key in value)) errors.push(`${path}.${key}: is required`);
+  }
   return true;
 }
 
@@ -170,291 +335,17 @@ function enumArray(value, path, allowed, errors, { min = 1, unique = true } = {}
   for (const item of value) enumValue(item, path, allowed, errors);
 }
 
-export const FALLBACK_POLICY = deepFreeze({
-  "version": "tactics-policy/v3",
-  "name": "threats-first-human-state-machine",
-  "objective": {
-    "fightingSide": "side_to_move_at_start",
-    "defendingSide": "other_side",
-    "startingMaterialState": "auto",
-    "anyOf": [
-      {
-        "type": "mate"
-      },
-      {
-        "type": "material",
-        "minimumAdvantagePawns": 2,
-        "settlement": "after_defender_reply"
-      }
-    ]
-  },
-  "budget": {
-    "maxPlies": 8,
-    "maxMovesPerState": 12,
-    "maxDefenderReplies": 64,
-    "maxPositions": 5000
-  },
-  "stateMachine": {
-    "start": "observe",
-    "afterEveryPly": "observe",
-    "states": [
-      {
-        "id": "observe",
-        "instruction": "Write down the material state, whether either king is in check, and the immediate threats available to both sides.",
-        "next": "answer_danger"
-      },
-      {
-        "id": "answer_danger",
-        "instruction": "If our king is in check, answer it. If they have mate in one, mate now or play a forcing move that removes every mate in one.",
-        "next": "try_threats"
-      },
-      {
-        "id": "try_threats",
-        "instruction": "Try our moves in the configured threat order. Finish one threat class before entering the quiet rules.",
-        "next": "test_defender"
-      },
-      {
-        "id": "test_defender",
-        "instruction": "The defender tries mate, checks, direct answers to our threat, and counterattacks that meet or beat our payoff. Explore those replies in that order.",
-        "next": "observe"
-      },
-      {
-        "id": "quiet",
-        "instruction": "After every enabled first-order threat has been tried and stopped, use a position rule such as attacking the defender of a loose piece.",
-        "next": "test_defender"
-      },
-      {
-        "id": "repair_once",
-        "instruction": "If an otherwise strong root line fails only because of one forcing reply, try one root move that makes that reply illegal and still creates a named threat.",
-        "next": "observe"
-      }
-    ]
-  },
-  "threats": {
-    "priority": [
-      "mate",
-      "stop_their_mate_in_one",
-      "check",
-      "threaten_mate_in_one",
-      "take_material",
-      "double_attack"
-    ],
-    "look": {
-      "mate": {
-        "throughPly": 8,
-        "maxMoves": 8,
-        "when": "always"
-      },
-      "stop_their_mate_in_one": {
-        "throughPly": 8,
-        "maxMoves": 8,
-        "when": "only when the defending side has mate in one"
-      },
-      "check": {
-        "throughPly": 8,
-        "maxMoves": 10,
-        "when": "unless our king is already mated; while in check, keep only legal check answers"
-      },
-      "threaten_mate_in_one": {
-        "throughPly": 6,
-        "maxMoves": 6,
-        "when": "when mate now is unavailable and the configured ply limit has not been reached"
-      },
-      "take_material": {
-        "throughPly": 8,
-        "maxMoves": 8,
-        "when": "when the capture reaches the material objective after the defender's immediate recaptures"
-      },
-      "double_attack": {
-        "throughPly": 8,
-        "maxMoves": 8,
-        "when": "when the smaller target is valuable enough to reach the material objective"
-      }
-    },
-    "checkOrder": [
-      "mate",
-      "one_legal_reply",
-      "check_and_take_queen",
-      "fewest_legal_replies",
-      "check_and_take_rook",
-      "largest_capture",
-      "move_name"
-    ],
-    "defenderReplyOrder": [
-      "mate",
-      "check",
-      "create_mate_in_one",
-      "stop_the_threat",
-      "counterattack_same_or_more",
-      "other_legal_answer"
-    ],
-    "quietWhen": "No enabled mate, check, mate-in-one threat, objective-winning capture, or objective-relevant double attack survives its defender test."
-  },
-  "cycles": {
-    "perpetualCheck": {
-      "enabled": true,
-      "throughPly": 8,
-      "repetitions": 3,
-      "lookBackPlies": 12,
-      "result": "defending_side_holds"
-    }
-  },
-  "repair": {
-    "enabled": true,
-    "attempts": 1,
-    "scope": "root",
-    "trigger": "one_forcing_reply_is_the_only_reason_a_material_win_fails",
-    "moveMust": [
-      "make_that_reply_illegal_on_the_repaired_branch",
-      "create_mate_check_mate_in_one_material_win_or_double_attack"
-    ],
-    "maxMoves": 6
-  },
-  "predicates": [
-    {
-      "id": "mate",
-      "source": "position",
-      "definition": "The side to move has no legal answer to check."
-    },
-    {
-      "id": "mate_in_1_available",
-      "source": "legal_moves",
-      "definition": "A legal move mates now."
-    },
-    {
-      "id": "check_available",
-      "source": "legal_moves",
-      "definition": "A legal move gives check; record how many legal answers it allows and what else it attacks."
-    },
-    {
-      "id": "mate_threat_available",
-      "source": "legal_moves",
-      "definition": "A legal move threatens mate on the next move."
-    },
-    {
-      "id": "opponent_mate_in_1",
-      "source": "position",
-      "definition": "If the other side could move now, it has a mating move."
-    },
-    {
-      "id": "in_check",
-      "source": "position",
-      "definition": "The side to move is in check."
-    },
-    {
-      "id": "losing_material",
-      "source": "position",
-      "definition": "The fighting side is behind in material, so a material line must recover the deficit and still reach the objective."
-    },
-    {
-      "id": "material_needed",
-      "source": "position",
-      "definition": "The fighting side has not yet reached the configured material objective."
-    },
-    {
-      "id": "quiet",
-      "source": "threat_scan",
-      "definition": "Every enabled first-order threat has been tried and stopped; position rules may now be tried."
-    },
-    {
-      "id": "loose",
-      "source": "position",
-      "definition": "A non-king is attacked and has no pawn defender."
-    },
-    {
-      "id": "defends",
-      "source": "position",
-      "definition": "A friendly piece attacks the occupied target square."
-    },
-    {
-      "id": "shared_defender",
-      "source": "position",
-      "definition": "One piece defends two or more loose pieces."
-    },
-    {
-      "id": "winning_capture_available",
-      "source": "legal_moves",
-      "definition": "A legal capture reaches the material objective after the defender's immediate recapture choices."
-    },
-    {
-      "id": "fork_available",
-      "source": "legal_moves",
-      "definition": "A legal move attacks the king and a valuable piece, or two valuable pieces, with enough payoff to reach the objective."
-    },
-    {
-      "id": "harass_defender",
-      "source": "one_ply_result",
-      "definition": "A legal move attacks a defender of one or more loose pieces; ignoring it loses enough material to meet the objective."
-    },
-    {
-      "id": "capture_recapture_fork",
-      "source": "legal_move_sequence",
-      "definition": "Capture a loose piece; an immediate recapture permits a double attack."
-    },
-    {
-      "id": "forcing_counterthreat",
-      "source": "defender_reply",
-      "definition": "A defender reply mates, checks, creates mate in one, or counterattacks for at least the value of the active threat."
-    }
-  ],
-  "rules": [
-    {
-      "id": "answer-check",
-      "when": {
-        "all": [
-          {
-            "predicate": "in_check",
-            "side": "us"
-          }
-        ]
-      },
-      "instruction": "Answer the check and prefer the answer that creates the highest-ranked threat.",
-      "try": [
-        "answer_check_and_create_threat"
-      ]
-    },
-    {
-      "id": "loose-piece",
-      "when": {
-        "all": [
-          {
-            "predicate": "quiet",
-            "side": "us"
-          },
-          {
-            "predicate": "loose",
-            "side": "enemy"
-          }
-        ]
-      },
-      "instruction": "Name the loose piece and its defender. Try attacking the defender, then capture-recapture-double-attack ideas, then a direct capture.",
-      "try": [
-        "attack_the_defender",
-        "capture_then_double_attack",
-        "capture_then_rescan",
-        "take_the_loose_piece"
-      ]
-    }
-  ],
-  "outcomes": {
-    "fightingSideWins": "At least one fighting move reaches the objective against every ranked defender answer.",
-    "defendingSideHolds": "One ranked defender answer prevents the objective, or the configured perpetual cycle is reached.",
-    "notEnoughInformation": "The depth, move, position, or rule budget ends before either result is established."
-  }
-});
-
 export function validatePolicy(policy) {
   const errors = [];
-  const topKeys = ["version", "name", "objective", "budget", "stateMachine", "threats", "cycles", "repair", "predicates", "rules", "outcomes"];
-  if (!exactKeys(policy, "$", topKeys, errors)) return { valid: false, errors };
-
+  if (!exactKeys(policy, "$", ["version", "name", "objective", "budget", "search", "threats", "predicates", "rules", "branchResult"], errors)) {
+    return { valid: false, errors };
+  }
   if (policy.version !== POLICY_VERSION) errors.push(`$.version: must equal ${JSON.stringify(POLICY_VERSION)}`);
-  if (typeof policy.name !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(policy.name)) errors.push("$.name: must be lowercase kebab-case");
+  if (typeof policy.name !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(policy.name)) {
+    errors.push("$.name: must be lowercase kebab-case");
+  }
 
-  if (exactKeys(policy.objective, "$.objective", ["fightingSide", "defendingSide", "startingMaterialState", "anyOf"], errors)) {
-    if (policy.objective.fightingSide !== "side_to_move_at_start") errors.push("$.objective.fightingSide: must be side_to_move_at_start");
-    if (policy.objective.defendingSide !== "other_side") errors.push("$.objective.defendingSide: must be other_side");
-    if (policy.objective.startingMaterialState !== "auto") errors.push("$.objective.startingMaterialState: must be auto");
+  if (exactKeys(policy.objective, "$.objective", ["anyOf"], errors)) {
     if (!Array.isArray(policy.objective.anyOf) || policy.objective.anyOf.length !== 2) {
       errors.push("$.objective.anyOf: must contain mate and material objectives");
     } else {
@@ -463,70 +354,43 @@ export function validatePolicy(policy) {
       if (!mate) errors.push("$.objective.anyOf: mate objective is required");
       if (!material) errors.push("$.objective.anyOf: material objective is required");
       if (material) {
-        if (typeof material.minimumAdvantagePawns !== "number" || material.minimumAdvantagePawns < 0) errors.push("$.objective.anyOf.material.minimumAdvantagePawns: must be nonnegative");
+        if (typeof material.minimumAdvantagePawns !== "number" || material.minimumAdvantagePawns < 0) {
+          errors.push("$.objective.anyOf.material.minimumAdvantagePawns: must be nonnegative");
+        }
         enumValue(material.settlement, "$.objective.anyOf.material.settlement", POLICY_OPTIONS.settlement, errors);
       }
     }
   }
 
-  const budgetKeys = ["maxPlies", "maxMovesPerState", "maxDefenderReplies", "maxPositions"];
-  if (exactKeys(policy.budget, "$.budget", budgetKeys, errors)) {
-    for (const key of budgetKeys) if (!Number.isInteger(policy.budget[key]) || policy.budget[key] < 1) errors.push(`$.budget.${key}: must be a positive integer`);
-  }
-
-  if (exactKeys(policy.stateMachine, "$.stateMachine", ["start", "afterEveryPly", "states"], errors)) {
-    if (policy.stateMachine.start !== "observe") errors.push("$.stateMachine.start: must be observe");
-    if (policy.stateMachine.afterEveryPly !== "observe") errors.push("$.stateMachine.afterEveryPly: must be observe");
-    if (!Array.isArray(policy.stateMachine.states) || !policy.stateMachine.states.length) {
-      errors.push("$.stateMachine.states: must be a nonempty array");
-    } else {
-      const ids = new Set();
-      policy.stateMachine.states.forEach((state, index) => {
-        if (!exactKeys(state, `$.stateMachine.states[${index}]`, ["id", "instruction", "next"], errors)) return;
-        if (typeof state.id !== "string" || !state.id) errors.push(`$.stateMachine.states[${index}].id: must be nonempty`);
-        if (typeof state.instruction !== "string" || !state.instruction) errors.push(`$.stateMachine.states[${index}].instruction: must be nonempty`);
-        if (typeof state.next !== "string" || !state.next) errors.push(`$.stateMachine.states[${index}].next: must be nonempty`);
-        ids.add(state.id);
-      });
-      for (const id of ["observe", "answer_danger", "try_threats", "test_defender", "quiet", "repair_once"]) if (!ids.has(id)) errors.push(`$.stateMachine.states: missing ${id}`);
+  if (exactKeys(policy.budget, "$.budget", ["maxPlies", "maxCandidatesPerRule", "maxRelevantReplies"], errors)) {
+    for (const key of ["maxPlies", "maxCandidatesPerRule", "maxRelevantReplies"]) {
+      if (!Number.isInteger(policy.budget[key]) || policy.budget[key] < 1) errors.push(`$.budget.${key}: must be a positive integer`);
     }
   }
 
-  if (exactKeys(policy.threats, "$.threats", ["priority", "look", "checkOrder", "defenderReplyOrder", "quietWhen"], errors)) {
+  if (exactKeys(policy.search, "$.search", ["mode", "ruleSelection", "ourNodes", "opponentNodes", "candidateGate", "replyGate", "unmatchedReply", "rescanAfterEveryPly", "stop"], errors)) {
+    enumValue(policy.search.mode, "$.search.mode", POLICY_OPTIONS.searchModes, errors);
+    enumValue(policy.search.ruleSelection, "$.search.ruleSelection", POLICY_OPTIONS.ruleSelection, errors);
+    enumValue(policy.search.ourNodes, "$.search.ourNodes", POLICY_OPTIONS.ourNodes, errors);
+    enumValue(policy.search.opponentNodes, "$.search.opponentNodes", POLICY_OPTIONS.opponentNodes, errors);
+    enumValue(policy.search.candidateGate, "$.search.candidateGate", POLICY_OPTIONS.candidateGates, errors);
+    enumValue(policy.search.replyGate, "$.search.replyGate", POLICY_OPTIONS.replyGates, errors);
+    enumValue(policy.search.unmatchedReply, "$.search.unmatchedReply", POLICY_OPTIONS.unmatchedReplies, errors);
+    if (policy.search.rescanAfterEveryPly !== true) errors.push("$.search.rescanAfterEveryPly: must be true");
+    enumArray(policy.search.stop, "$.search.stop", POLICY_OPTIONS.stopReasons, errors);
+  }
+
+  if (exactKeys(policy.threats, "$.threats", ["priority", "alwaysRetainCounterThreats", "otherwiseRetain"], errors)) {
     enumArray(policy.threats.priority, "$.threats.priority", POLICY_OPTIONS.threatKinds, errors);
-    if (!isObject(policy.threats.look)) errors.push("$.threats.look: must be an object");
-    else for (const kind of POLICY_OPTIONS.threatKinds) {
-      const config = policy.threats.look[kind];
-      if (!config) { errors.push(`$.threats.look.${kind}: is required`); continue; }
-      if (!exactKeys(config, `$.threats.look.${kind}`, ["throughPly", "maxMoves", "when"], errors)) continue;
-      for (const key of ["throughPly", "maxMoves"]) if (!Number.isInteger(config[key]) || config[key] < 0) errors.push(`$.threats.look.${kind}.${key}: must be a nonnegative integer`);
-      if (typeof config.when !== "string" || !config.when) errors.push(`$.threats.look.${kind}.when: must be nonempty`);
-    }
-    enumArray(policy.threats.checkOrder, "$.threats.checkOrder", POLICY_OPTIONS.checkOrder, errors);
-    enumArray(policy.threats.defenderReplyOrder, "$.threats.defenderReplyOrder", POLICY_OPTIONS.defenderReplyOrder, errors);
-    if (typeof policy.threats.quietWhen !== "string" || !policy.threats.quietWhen) errors.push("$.threats.quietWhen: must be nonempty");
-  }
-
-  if (exactKeys(policy.cycles, "$.cycles", ["perpetualCheck"], errors)) {
-    const cycle = policy.cycles.perpetualCheck;
-    if (exactKeys(cycle, "$.cycles.perpetualCheck", ["enabled", "throughPly", "repetitions", "lookBackPlies", "result"], errors)) {
-      if (typeof cycle.enabled !== "boolean") errors.push("$.cycles.perpetualCheck.enabled: must be boolean");
-      for (const key of ["throughPly", "repetitions", "lookBackPlies"]) if (!Number.isInteger(cycle[key]) || cycle[key] < 1) errors.push(`$.cycles.perpetualCheck.${key}: must be a positive integer`);
-      if (cycle.result !== "defending_side_holds") errors.push("$.cycles.perpetualCheck.result: must be defending_side_holds");
+    enumArray(policy.threats.alwaysRetainCounterThreats, "$.threats.alwaysRetainCounterThreats", POLICY_OPTIONS.threatKinds, errors);
+    if (policy.threats.otherwiseRetain !== "payoff_at_least_active_threat") {
+      errors.push("$.threats.otherwiseRetain: must equal \"payoff_at_least_active_threat\"");
     }
   }
 
-  if (exactKeys(policy.repair, "$.repair", ["enabled", "attempts", "scope", "trigger", "moveMust", "maxMoves"], errors)) {
-    if (typeof policy.repair.enabled !== "boolean") errors.push("$.repair.enabled: must be boolean");
-    if (!Number.isInteger(policy.repair.attempts) || policy.repair.attempts < 0) errors.push("$.repair.attempts: must be a nonnegative integer");
-    if (policy.repair.scope !== "root") errors.push("$.repair.scope: must be root");
-    if (typeof policy.repair.trigger !== "string" || !policy.repair.trigger) errors.push("$.repair.trigger: must be nonempty");
-    if (!Array.isArray(policy.repair.moveMust) || !policy.repair.moveMust.length) errors.push("$.repair.moveMust: must be a nonempty array");
-    if (!Number.isInteger(policy.repair.maxMoves) || policy.repair.maxMoves < 1) errors.push("$.repair.maxMoves: must be a positive integer");
-  }
-
-  if (!Array.isArray(policy.predicates) || !policy.predicates.length) errors.push("$.predicates: must be a nonempty array");
-  else {
+  if (!Array.isArray(policy.predicates) || !policy.predicates.length) {
+    errors.push("$.predicates: must be a nonempty array");
+  } else {
     const ids = [];
     policy.predicates.forEach((predicate, index) => {
       if (!exactKeys(predicate, `$.predicates[${index}]`, ["id", "source", "definition"], errors)) return;
@@ -538,22 +402,33 @@ export function validatePolicy(policy) {
     if (new Set(ids).size !== ids.length) errors.push("$.predicates: ids must be unique");
   }
 
-  if (!Array.isArray(policy.rules) || !policy.rules.length) errors.push("$.rules: must be a nonempty array");
-  else {
+  if (!Array.isArray(policy.rules) || !policy.rules.length) {
+    errors.push("$.rules: must be a nonempty array");
+  } else {
     const ids = [];
     policy.rules.forEach((rule, index) => {
-      if (!exactKeys(rule, `$.rules[${index}]`, ["id", "when", "instruction", "try"], errors)) return;
+      if (!exactKeys(rule, `$.rules[${index}]`, ["id", "when", "consider", "candidateMust"], errors)) return;
       enumValue(rule.id, `$.rules[${index}].id`, POLICY_OPTIONS.ruleIds, errors);
       ids.push(rule.id);
-      if (!isObject(rule.when) || !Array.isArray(rule.when.all) || !rule.when.all.length) errors.push(`$.rules[${index}].when.all: must be a nonempty array`);
-      if (typeof rule.instruction !== "string" || !rule.instruction) errors.push(`$.rules[${index}].instruction: must be nonempty`);
-      enumArray(rule.try, `$.rules[${index}].try`, POLICY_OPTIONS.generators, errors);
+      if (!isObject(rule.when) || !Array.isArray(rule.when.all) || !rule.when.all.length) {
+        errors.push(`$.rules[${index}].when.all: must be a nonempty array`);
+      } else {
+        for (const [j, condition] of rule.when.all.entries()) {
+          if (!isObject(condition) || typeof condition.predicate !== "string") {
+            errors.push(`$.rules[${index}].when.all[${j}]: must name a predicate`);
+          }
+        }
+      }
+      enumArray(rule.consider, `$.rules[${index}].consider`, POLICY_OPTIONS.generators, errors);
+      enumArray(rule.candidateMust, `$.rules[${index}].candidateMust`, POLICY_OPTIONS.candidateRequirements, errors);
     });
     if (new Set(ids).size !== ids.length) errors.push("$.rules: ids must be unique");
   }
 
-  if (exactKeys(policy.outcomes, "$.outcomes", ["fightingSideWins", "defendingSideHolds", "notEnoughInformation"], errors)) {
-    for (const key of ["fightingSideWins", "defendingSideHolds", "notEnoughInformation"]) if (typeof policy.outcomes[key] !== "string" || !policy.outcomes[key]) errors.push(`$.outcomes.${key}: must be nonempty`);
+  if (exactKeys(policy.branchResult, "$.branchResult", ["proven", "refutedWithinPolicy", "unresolvedLeaf"], errors)) {
+    for (const key of ["proven", "refutedWithinPolicy", "unresolvedLeaf"]) {
+      if (typeof policy.branchResult[key] !== "string" || !policy.branchResult[key]) errors.push(`$.branchResult.${key}: must be nonempty`);
+    }
   }
 
   return { valid: errors.length === 0, errors };
@@ -583,7 +458,7 @@ export async function loadPolicy(url = DEFAULT_POLICY_URL, { allowFallback = tru
       policy: deepFreeze(cloneJson(fallbackPolicy)),
       source: "fallback",
       url,
-      warning: `Could not load ${url}; using the embedded v3 policy. ${error?.message || error}`
+      warning: `Could not load ${url}; using the embedded v2 policy. ${error?.message || error}`
     };
   }
 }
@@ -909,34 +784,9 @@ function moveByUci(moves, uci) {
   return (moves || []).find((move) => move.uci === uci) || null;
 }
 
-function policyThreatKind(kind) {
-  return THREAT_KIND_TO_POLICY[kind] || kind;
-}
-
 function threatPriorityScore(kind, policy) {
-  const policyKind = policyThreatKind(kind);
-  const index = policy.threats.priority.indexOf(policyKind);
+  const index = policy.threats.priority.indexOf(kind);
   return index < 0 ? 0 : policy.threats.priority.length - index;
-}
-
-function threatLook(policy, kind) {
-  return policy.threats.look?.[policyThreatKind(kind)] || { throughPly: -1, maxMoves: 0 };
-}
-
-function threatEnabledAtDepth(policy, kind, depth) {
-  return Number(depth) <= Number(threatLook(policy, kind).throughPly ?? -1);
-}
-
-function maxMovesForThreat(policy, kind) {
-  return Math.max(0, Number(threatLook(policy, kind).maxMoves ?? 0));
-}
-
-function maxMovesPerState(policy) {
-  return Math.max(1, Number(policy.budget.maxMovesPerState || 1));
-}
-
-function maxDefenderReplies(policy) {
-  return Math.max(1, Number(policy.budget.maxDefenderReplies || 1));
 }
 
 function result(status, reason, extra = {}) {
@@ -1269,104 +1119,6 @@ function mateInOneFactsForSide(createGame, game, side) {
   return output;
 }
 
-function checkFactMetric(fact, criterion) {
-  if (criterion === "mate") return fact.mate ? 1 : 0;
-  if (criterion === "one_legal_reply") return fact.replyCount === 1 ? 1 : 0;
-  if (criterion === "check_and_take_queen") return fact.extraTargets.some((target) => target.type === "q") ? 1 : 0;
-  if (criterion === "fewest_legal_replies") return -fact.replyCount;
-  if (criterion === "check_and_take_rook") return fact.extraTargets.some((target) => target.type === "r") ? 1 : 0;
-  if (criterion === "largest_capture") return fact.captureValue;
-  return 0;
-}
-
-function compareCheckFacts(a, b, policy) {
-  for (const criterion of policy.threats.checkOrder || []) {
-    if (criterion === "move_name") continue;
-    const difference = checkFactMetric(b, criterion) - checkFactMetric(a, criterion);
-    if (difference) return difference;
-  }
-  return a.san.localeCompare(b.san);
-}
-
-function checkingMoveFactsForSide(createGame, game, side, rootSide, policy) {
-  const analysisGame = side === game.state.side ? game : gameForSide(createGame, game, side);
-  const output = [];
-  for (const move of legalMoveRecords(createGame, analysisGame, side)) {
-    const after = afterMove(createGame, analysisGame, move);
-    if (!after || !safeInCheck(after, other(side))) continue;
-    const terminal = terminalInfo(createGame, after);
-    const movedPiece = boardOf(after)[move.to];
-    const extraTargets = movedPiece && movedPiece.color === side
-      ? attackedEnemyPieces(after, move.to, side)
-      : [];
-    const legalReplies = terminal?.kind === "mate" ? [] : legalMoveRecords(createGame, after, other(side));
-    const captureValue = PIECE_VALUES[move.captured?.type] || 0;
-    const extraTargetValue = extraTargets[0]?.value || 0;
-    const san = String(after.curNode?.san || move.uci).trim();
-    output.push({
-      move,
-      uci: move.uci,
-      san,
-      afterFen: after.exportFEN(),
-      mate: terminal?.kind === "mate" && terminal.winner === side,
-      replyCount: legalReplies.length,
-      legalReplyUcis: legalReplies.map((reply) => reply.uci),
-      checkerRef: movedPiece ? pieceRef(movedPiece, move.to) : null,
-      extraTargets,
-      captureValue,
-      payoffPawns: Math.max(captureValue, extraTargetValue),
-      resultPredicate: makeObservation(
-        "check_available",
-        `check_available(${san},${legalReplies.length},${extraTargets[0]?.label || "none"})`,
-        {
-          side: roleFor(side, rootSide),
-          from: squareName(move.from),
-          to: squareName(move.to),
-          square: squareName(move.to),
-          moveUci: move.uci,
-          targetRefs: extraTargets,
-          detail: `${legalReplies.length} legal answer(s)${extraTargets.length ? `; also attacks ${extraTargets.map((target) => target.label).join(", ")}` : ""}`
-        }
-      )
-    });
-  }
-  return output.sort((a, b) => compareCheckFacts(a, b, policy));
-}
-
-function mateThreatFactsForSide(createGame, game, side, rootSide) {
-  const analysisGame = side === game.state.side ? game : gameForSide(createGame, game, side);
-  const output = [];
-  for (const move of legalMoveRecords(createGame, analysisGame, side)) {
-    const after = afterMove(createGame, analysisGame, move);
-    if (!after || terminalInfo(createGame, after)) continue;
-    const mates = mateInOneFactsForSide(createGame, after, side);
-    if (!mates.length) continue;
-    const san = String(after.curNode?.san || move.uci).trim();
-    output.push({
-      move,
-      uci: move.uci,
-      san,
-      afterFen: after.exportFEN(),
-      mates,
-      payoffPawns: 100,
-      resultPredicate: makeObservation(
-        "mate_threat_available",
-        `mate_threat_available(${san},[${mates.map((mate) => mate.san).join(",")}])`,
-        {
-          side: roleFor(side, rootSide),
-          from: squareName(move.from),
-          to: squareName(move.to),
-          square: squareName(move.to),
-          moveUci: move.uci,
-          detail: `threatens ${mates.map((mate) => mate.san).join(", ")}`
-        }
-      )
-    });
-  }
-  output.sort((a, b) => b.mates.length - a.mates.length || a.san.localeCompare(b.san));
-  return output;
-}
-
 function basePositionSnapshot({ createGame, game, rootSide, policy, includeMoveFacts = true }) {
   const root = normalizeColor(rootSide);
   const sideToMove = normalizeColor(game.state.side);
@@ -1374,41 +1126,20 @@ function basePositionSnapshot({ createGame, game, rootSide, policy, includeMoveF
   const observations = [...relation.observations, ...observePins(game, root)];
   const terminal = terminalInfo(createGame, game);
   const inCheck = safeInCheck(game, sideToMove);
-  const advantageUs = materialAdvantage(game, root);
-  const target = materialTarget(policy);
 
   if (terminal?.kind === "mate") {
     observations.push(makeObservation("mate", `mate(${terminal.winner})`, {
-      side: roleFor(terminal.winner, root), winner: terminal.winner, loser: terminal.loser,
+      side: roleFor(terminal.winner, root),
+      winner: terminal.winner,
+      loser: terminal.loser,
       detail: `${terminal.loser} is checkmated`
     }));
   } else if (inCheck) {
     observations.push(makeObservation("in_check", `in_check(${sideToMove})`, {
-      side: roleFor(sideToMove, root), checkedSide: sideToMove,
+      side: roleFor(sideToMove, root),
+      checkedSide: sideToMove,
       detail: `${sideToMove} to move is in check`
     }));
-  }
-
-  if (advantageUs < 0) {
-    observations.push(makeObservation(
-      "losing_material", `losing_material(us,${Math.abs(advantageUs)})`,
-      { side: "us", detail: `behind by ${Math.abs(advantageUs)} pawn unit(s); need ${target - advantageUs} to reach the objective` }
-    ));
-  }
-  if (advantageUs < target) {
-    observations.push(makeObservation(
-      "material_needed", `material_needed(us,${target - advantageUs})`,
-      { side: "us", detail: `need ${target - advantageUs} more pawn unit(s) to reach +${target}` }
-    ));
-  }
-
-  const opponentMateInOneFacts = !terminal ? mateInOneFactsForSide(createGame, game, other(sideToMove)) : [];
-  if (opponentMateInOneFacts.length) {
-    observations.push(makeObservation(
-      "opponent_mate_in_1",
-      `opponent_mate_in_1(${other(sideToMove)},[${opponentMateInOneFacts.map((fact) => fact.san).join(",")}])`,
-      { side: roleFor(other(sideToMove), root), detail: opponentMateInOneFacts.map((fact) => fact.san).join(", ") }
-    ));
   }
 
   const snapshot = {
@@ -1421,10 +1152,7 @@ function basePositionSnapshot({ createGame, game, rootSide, policy, includeMoveF
     material: {
       w: materialFor(game, "w"),
       b: materialFor(game, "b"),
-      advantageUs,
-      target,
-      needed: Math.max(0, target - advantageUs),
-      state: advantageUs < 0 ? "losing_material" : advantageUs < target ? "material_needed" : "objective_ready"
+      advantageUs: materialAdvantage(game, root)
     },
     relations: relation.relations,
     loose: relation.loose,
@@ -1435,41 +1163,42 @@ function basePositionSnapshot({ createGame, game, rootSide, policy, includeMoveF
     winningCaptures: [],
     forkFacts: [],
     mateInOneFacts: [],
-    checkingMoves: [],
-    mateThreats: [],
-    opponentMateInOneFacts,
     _winningCaptureFactsComputed: false,
     _forkFactsComputed: false,
-    _mateInOneFactsComputed: false,
-    _checkingMovesComputed: false,
-    _mateThreatsComputed: false
+    _mateInOneFactsComputed: false
   };
 
   if (includeMoveFacts && !terminal) {
     snapshot.winningCaptures = winningCaptureFactsForSide(createGame, game, sideToMove, root, policy);
     snapshot.forkFacts = forkFactsForSide(createGame, game, sideToMove, root, policy);
     snapshot.mateInOneFacts = mateInOneFactsForSide(createGame, game, sideToMove);
-    snapshot.checkingMoves = checkingMoveFactsForSide(createGame, game, sideToMove, root, policy);
-    snapshot.mateThreats = mateThreatFactsForSide(createGame, game, sideToMove, root);
     snapshot._winningCaptureFactsComputed = true;
     snapshot._forkFactsComputed = true;
     snapshot._mateInOneFactsComputed = true;
-    snapshot._checkingMovesComputed = true;
-    snapshot._mateThreatsComputed = true;
 
     for (const fact of snapshot.winningCaptures) {
       observations.push(makeObservation(
-        "winning_capture_available", `winning_capture_available(${fact.san},${fact.targetRef.label})`,
-        { side: roleFor(sideToMove, root), from: squareName(fact.move.from), to: squareName(fact.move.to), square: squareName(fact.move.to), moveUci: fact.uci, detail: `after immediate recaptures the material score is at least ${fact.worstAfterRecapture}` }
+        "winning_capture_available",
+        `winning_capture_available(${fact.san},${fact.targetRef.label})`,
+        {
+          side: roleFor(sideToMove, root),
+          from: squareName(fact.move.from),
+          to: squareName(fact.move.to),
+          square: squareName(fact.move.to),
+          moveUci: fact.uci,
+          detail: `worst immediate-recapture material=${fact.worstAfterRecapture}`
+        }
       ));
     }
     for (const fact of snapshot.forkFacts) observations.push(fact.resultPredicate);
-    for (const fact of snapshot.checkingMoves) observations.push(fact.resultPredicate);
-    for (const fact of snapshot.mateThreats) observations.push(fact.resultPredicate);
     if (snapshot.mateInOneFacts.length) {
       observations.push(makeObservation(
-        "mate_in_1_available", `mate_in_1_available(${sideToMove},[${snapshot.mateInOneFacts.map((fact) => fact.san).join(",")}])`,
-        { side: roleFor(sideToMove, root), detail: snapshot.mateInOneFacts.map((fact) => fact.san).join(", ") }
+        "mate_in_1_available",
+        `mate_in_1_available(${sideToMove},[${snapshot.mateInOneFacts.map((fact) => fact.san).join(",")}])`,
+        {
+          side: roleFor(sideToMove, root),
+          detail: snapshot.mateInOneFacts.map((fact) => fact.san).join(", ")
+        }
       ));
     }
   }
@@ -1505,8 +1234,7 @@ function goalStatus(snapshot, policy) {
   }
 
   const objective = materialObjective(policy);
-  const settleAfterReply = ["after_opponent_reply", "after_defender_reply"].includes(objective?.settlement);
-  const settledTurn = !settleAfterReply || snapshot.sideToMove === snapshot.rootSide;
+  const settledTurn = objective?.settlement !== "after_opponent_reply" || snapshot.sideToMove === snapshot.rootSide;
   if (settledTurn && !snapshot.inCheck && snapshot.material.advantageUs >= Number(objective?.minimumAdvantagePawns ?? Infinity)) {
     return {
       achieved: true,
@@ -1525,7 +1253,7 @@ function goalStatus(snapshot, policy) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Quiet position rules and named tactical ideas                                */
+/* Rule-gated move predicates and threat certificates                          */
 /* -------------------------------------------------------------------------- */
 
 function enemyLooseTargets(snapshot, mover) {
@@ -1860,11 +1588,11 @@ function looseRuleCandidates({ createGame, game, snapshot, rootSide, policy, rul
   const output = [];
   const premises = enemyLooseTargets(snapshot, snapshot.sideToMove);
 
-  if (rule.try.includes("attack_the_defender")) {
+  if (rule.consider.includes("harass_shared_defender")) {
     for (const fact of harassDefenderFacts(createGame, game, snapshot, rootSide, policy)) {
       output.push(candidateRecord({
         rule,
-        idea: "attack_the_defender",
+        idea: "harass_defender",
         move: fact.move,
         san: fact.san,
         afterFen: fact.afterFen,
@@ -1893,11 +1621,11 @@ function looseRuleCandidates({ createGame, game, snapshot, rootSide, policy, rul
     }
   }
 
-  if (rule.try.includes("capture_then_double_attack")) {
+  if (rule.consider.includes("capture_loose_with_recapture_fork")) {
     for (const fact of directCaptureRecaptureForkFacts(createGame, game, snapshot, rootSide, policy)) {
       output.push(candidateRecord({
         rule,
-        idea: "capture_then_double_attack",
+        idea: "capture_recapture_fork",
         move: fact.move,
         san: fact.san,
         afterFen: fact.afterFen,
@@ -1920,18 +1648,18 @@ function looseRuleCandidates({ createGame, game, snapshot, rootSide, policy, rul
         score: 9000 + fact.score,
         reasons: [
           `I see ${fact.targetRef.label} is loose`,
-          `${fact.san} invites a recapture and then a double attack`,
+          `${fact.san} produces a capture-recapture-fork sequence`,
           ...fact.recaptureLines.map((line) => `${line.replySan} permits ${line.continuation.san}`)
         ]
       }));
     }
   }
 
-  if (rule.try.includes("capture_then_rescan")) {
+  if (rule.consider.includes("capture_loose_with_rule_continuation")) {
     for (const fact of captureWithRuleContinuationFacts(createGame, game, snapshot, rootSide, policy)) {
       output.push(candidateRecord({
         rule,
-        idea: "capture_then_rescan",
+        idea: "capture_rule_continuation",
         move: fact.move,
         san: fact.san,
         afterFen: fact.afterFen,
@@ -1954,18 +1682,18 @@ function looseRuleCandidates({ createGame, game, snapshot, rootSide, policy, rul
         score: 7500 + fact.score,
         reasons: [
           `I see ${fact.targetRef.label} is loose`,
-          `${fact.san} invites a recapture and then a fresh threat scan`,
+          `${fact.san} forces a recapture into another named rule`,
           ...fact.recaptureLines.map((line) => `${line.replySan} activates ${line.continuation.ruleId}:${line.continuation.san}`)
         ]
       }));
     }
   }
 
-  if (rule.try.includes("take_the_loose_piece")) {
+  if (rule.consider.includes("play_stable_winning_capture")) {
     for (const fact of stableLooseCaptureFacts(createGame, game, snapshot, rootSide, policy)) {
       output.push(candidateRecord({
         rule,
-        idea: "take_the_loose_piece",
+        idea: "stable_winning_capture",
         move: fact.move,
         san: fact.san,
         afterFen: fact.afterFen,
@@ -1977,12 +1705,12 @@ function looseRuleCandidates({ createGame, game, snapshot, rootSide, policy, rul
           payoffPawns: fact.payoffPawns,
           captureSquare: fact.captureSquare,
           targetRef: fact.targetRef,
-          witnesses: [{ type: "keep_material_gain", uci: fact.uci, san: fact.san }]
+          witnesses: [{ type: "candidate_is_stable_capture", uci: fact.uci, san: fact.san }]
         },
         score: 10000 + fact.payoffPawns * 100,
         reasons: [
           `I see ${fact.targetRef.label} is loose`,
-          `${fact.san} still reaches the material objective after every immediate recapture`
+          `${fact.san} remains objective-winning after every immediate recapture`
         ]
       }));
     }
@@ -1994,7 +1722,7 @@ function looseRuleCandidates({ createGame, game, snapshot, rootSide, policy, rul
 function winningCaptureRuleCandidates({ snapshot, policy, rule }) {
   return snapshot.winningCaptures.map((fact) => candidateRecord({
     rule,
-    idea: "take_the_loose_piece",
+    idea: "stable_winning_capture",
     move: fact.move,
     san: fact.san,
     afterFen: fact.afterFen,
@@ -2006,17 +1734,17 @@ function winningCaptureRuleCandidates({ snapshot, policy, rule }) {
       payoffPawns: fact.payoffPawns,
       captureSquare: fact.captureSquare,
       targetRef: fact.targetRef,
-      witnesses: [{ type: "keep_material_gain", uci: fact.uci, san: fact.san }]
+      witnesses: [{ type: "candidate_is_stable_capture", uci: fact.uci, san: fact.san }]
     },
     score: 6000 + fact.payoffPawns * 100,
-    reasons: [`${fact.san} still reaches the material objective after immediate recaptures`]
+    reasons: [`${fact.san} is a verified stable winning capture`]
   }));
 }
 
 function forkRuleCandidates({ snapshot, policy, rule }) {
   return snapshot.forkFacts.map((fact) => candidateRecord({
     rule,
-    idea: "double_attack",
+    idea: "verified_fork",
     move: fact.move,
     san: fact.san,
     afterFen: fact.afterFen,
@@ -2071,233 +1799,26 @@ function answerCheckCandidates({ createGame, game, snapshot, rootSide, policy, r
     const san = String(after.curNode?.san || move.uci).trim();
     output.push(candidateRecord({
       rule,
-      idea: "answer_check_and_create_threat",
+      idea: "answer_check_and_preserve_threat",
       move,
       san,
       afterFen: after.exportFEN(),
       premises: snapshot.predicates.filter((item) => item.predicate === "in_check"),
       resultPredicates: [makeObservation(
         standingThreat.kind === "winning_capture" ? "winning_capture_available" : "mate_in_1_available",
-        `new_threat(${standingThreat.kind},${standingThreat.witnesses.map((followUp) => followUp.san).join("|")})`,
-        { side: "us", moveUci: move.uci, detail: `after ${san}, ${standingThreat.witnesses.map((followUp) => followUp.san).join(", ")}` }
+        `preserved_threat(${standingThreat.kind},${standingThreat.witnesses.map((witness) => witness.san).join("|")})`,
+        { side: "us", moveUci: move.uci, detail: `after ${san}, ${standingThreat.witnesses.map((witness) => witness.san).join(", ")}` }
       )],
       threat: standingThreat,
       score: 7000 + standingThreat.priority * 100 + standingThreat.payoffPawns,
       reasons: [
         "I see our king is in check",
         `${san} answers the check`,
-        `the resulting position creates ${policyThreatKind(standingThreat.kind)}: ${standingThreat.witnesses.map((followUp) => followUp.san).join(", ")}`
+        `the resulting position preserves ${standingThreat.kind}: ${standingThreat.witnesses.map((witness) => witness.san).join(", ")}`
       ]
     }));
   }
   return output;
-}
-
-
-function appendMateInOneObservation(snapshot, rootSide) {
-  if (!snapshot.mateInOneFacts.length) return;
-  snapshot.predicates.push(makeObservation(
-    "mate_in_1_available",
-    `mate_in_1_available(${snapshot.sideToMove},[${snapshot.mateInOneFacts.map((fact) => fact.san).join(",")}])`,
-    { side: roleFor(snapshot.sideToMove, rootSide), detail: snapshot.mateInOneFacts.map((fact) => fact.san).join(", ") }
-  ));
-  snapshot.predicates = dedupeObservations(snapshot.predicates);
-}
-
-function appendCheckObservations(snapshot) {
-  for (const fact of snapshot.checkingMoves) snapshot.predicates.push(fact.resultPredicate);
-  snapshot.predicates = dedupeObservations(snapshot.predicates);
-}
-
-function appendMateThreatObservations(snapshot) {
-  for (const fact of snapshot.mateThreats) snapshot.predicates.push(fact.resultPredicate);
-  snapshot.predicates = dedupeObservations(snapshot.predicates);
-}
-
-function ensureThreatFacts(createGame, game, snapshot, rootSide, policy) {
-  if (!snapshot._mateInOneFactsComputed) {
-    snapshot.mateInOneFacts = mateInOneFactsForSide(createGame, game, snapshot.sideToMove);
-    snapshot._mateInOneFactsComputed = true;
-    appendMateInOneObservation(snapshot, rootSide);
-  }
-  if (!snapshot._checkingMovesComputed) {
-    snapshot.checkingMoves = checkingMoveFactsForSide(createGame, game, snapshot.sideToMove, rootSide, policy);
-    snapshot._checkingMovesComputed = true;
-    appendCheckObservations(snapshot);
-  }
-  if (!snapshot._mateThreatsComputed) {
-    snapshot.mateThreats = mateThreatFactsForSide(createGame, game, snapshot.sideToMove, rootSide);
-    snapshot._mateThreatsComputed = true;
-    appendMateThreatObservations(snapshot);
-  }
-  if (!snapshot._winningCaptureFactsComputed) {
-    snapshot.winningCaptures = winningCaptureFactsForSide(createGame, game, snapshot.sideToMove, rootSide, policy);
-    snapshot._winningCaptureFactsComputed = true;
-    appendWinningCaptureObservations(snapshot, rootSide);
-  }
-  if (!snapshot._forkFactsComputed) {
-    snapshot.forkFacts = forkFactsForSide(createGame, game, snapshot.sideToMove, rootSide, policy);
-    snapshot._forkFactsComputed = true;
-    appendForkObservations(snapshot);
-  }
-}
-
-function threatScanRule() {
-  return { id: "try-threats", instruction: "Try enabled first-order threats in order.", try: [] };
-}
-
-function mateNowCandidates(snapshot, policy, rule) {
-  return snapshot.mateInOneFacts.map((fact) => candidateRecord({
-    rule,
-    idea: "mate",
-    move: fact.move,
-    san: fact.san,
-    afterFen: fact.afterFen,
-    premises: snapshot.predicates.filter((item) => item.predicate === "mate_in_1_available"),
-    resultPredicates: [makeObservation("mate", `mate(${snapshot.sideToMove})`, { side: "us", moveUci: fact.uci })],
-    threat: { kind: "mate", priority: threatPriorityScore("mate", policy), payoffPawns: 100, followUps: [] },
-    score: 1_000_000,
-    reasons: [`${fact.san} mates now`]
-  }));
-}
-
-function checkingCandidates(snapshot, policy, rule) {
-  return snapshot.checkingMoves.filter((fact) => !fact.mate).map((fact, index) => {
-    const extra = fact.extraTargets[0] || null;
-    return candidateRecord({
-      rule,
-      idea: "check",
-      move: fact.move,
-      san: fact.san,
-      afterFen: fact.afterFen,
-      premises: snapshot.predicates.filter((item) => item.predicate === "check_available" && item.moveUci === fact.uci),
-      resultPredicates: [fact.resultPredicate],
-      threat: {
-        kind: "check",
-        priority: threatPriorityScore("check", policy),
-        payoffPawns: Math.max(1, fact.payoffPawns),
-        checkerRef: fact.checkerRef,
-        targetRefs: fact.extraTargets,
-        legalReplyUcis: fact.legalReplyUcis,
-        replyCount: fact.replyCount,
-        followUps: extra ? [{ type: "take_extra_target", targetRef: extra }] : []
-      },
-      score: 900_000 - index * 100,
-      reasons: [
-        `${fact.san} gives check and allows ${fact.replyCount} legal answer${fact.replyCount === 1 ? "" : "s"}`,
-        ...(extra ? [`the checking piece also attacks ${extra.label}`] : [])
-      ],
-      tags: extra ? [extra.type === "q" ? "royal_fork" : "check_double_attack"] : []
-    });
-  });
-}
-
-function mateThreatCandidates(snapshot, policy, rule) {
-  return snapshot.mateThreats.map((fact) => candidateRecord({
-    rule,
-    idea: "threaten_mate_in_one",
-    move: fact.move,
-    san: fact.san,
-    afterFen: fact.afterFen,
-    premises: snapshot.predicates.filter((item) => item.predicate === "mate_threat_available" && item.moveUci === fact.uci),
-    resultPredicates: [fact.resultPredicate],
-    threat: {
-      kind: "mate_in_1",
-      priority: threatPriorityScore("mate_in_1", policy),
-      payoffPawns: 100,
-      followUps: fact.mates.map((mate) => ({ type: "mate", uci: mate.uci, san: mate.san })),
-      witnesses: fact.mates.map((mate) => ({ type: "mate", uci: mate.uci, san: mate.san }))
-    },
-    score: 800_000 + fact.mates.length * 100,
-    reasons: [`${fact.san} threatens ${fact.mates.map((mate) => mate.san).join(" or ")}`]
-  }));
-}
-
-function materialCandidates(snapshot, policy, rule) {
-  return snapshot.winningCaptures.map((fact) => candidateRecord({
-    rule,
-    idea: "take_material",
-    move: fact.move,
-    san: fact.san,
-    afterFen: fact.afterFen,
-    premises: snapshot.predicates.filter((item) => item.predicate === "winning_capture_available" && item.moveUci === fact.uci),
-    resultPredicates: snapshot.predicates.filter((item) => item.predicate === "winning_capture_available" && item.moveUci === fact.uci),
-    threat: {
-      kind: "winning_capture",
-      priority: threatPriorityScore("winning_capture", policy),
-      payoffPawns: fact.payoffPawns,
-      captureSquare: fact.captureSquare,
-      targetRef: fact.targetRef,
-      followUps: [{ type: "keep_material_gain", uci: fact.uci, san: fact.san }],
-      witnesses: [{ type: "candidate_is_objective_capture", uci: fact.uci, san: fact.san }]
-    },
-    score: 700_000 + fact.payoffPawns * 100,
-    reasons: [`${fact.san} reaches the material objective after immediate recaptures`]
-  }));
-}
-
-function doubleAttackCandidates(snapshot, policy, rule) {
-  return snapshot.forkFacts.filter((fact) => !fact.check).map((fact) => candidateRecord({
-    rule,
-    idea: "double_attack",
-    move: fact.move,
-    san: fact.san,
-    afterFen: fact.afterFen,
-    premises: snapshot.predicates.filter((item) => item.predicate === "fork_available" && item.moveUci === fact.uci),
-    resultPredicates: [fact.resultPredicate],
-    threat: {
-      kind: "fork",
-      priority: threatPriorityScore("fork", policy),
-      payoffPawns: fact.payoffPawns,
-      forkerRef: fact.forkerRef,
-      targetRefs: fact.targets,
-      check: false,
-      followUps: fact.targets.map((target) => ({ type: "take_target", from: fact.forkerRef.index, to: target.index, targetRef: target })),
-      witnesses: fact.targets.map((target) => ({ type: "capture_forked_target", from: fact.forkerRef.index, to: target.index, targetRef: target }))
-    },
-    score: 600_000 + fact.payoffPawns * 100,
-    reasons: [`${fact.san} attacks ${fact.targets.map((target) => target.label).join(" and ")}`]
-  }));
-}
-
-function candidateStopsMateDanger(createGame, candidate, rootSide) {
-  const after = cloneGame(createGame, candidate.afterFen);
-  const terminal = terminalInfo(createGame, after);
-  if (terminal?.kind === "mate" && terminal.winner === rootSide) return true;
-  return mateInOneFactsForSide(createGame, after, other(rootSide)).length === 0;
-}
-
-function firstOrderThreatCandidates({ createGame, game, snapshot, rootSide, policy, depth }) {
-  ensureThreatFacts(createGame, game, snapshot, rootSide, policy);
-  const rule = threatScanRule();
-  const groups = [];
-
-  if (snapshot.inCheck && snapshot.sideToMove === rootSide) {
-    const answerRule = policy.rules.find((item) => item.id === "answer-check") || rule;
-    groups.push(...answerCheckCandidates({ createGame, game, snapshot, rootSide, policy, rule: answerRule }));
-  }
-  if (threatEnabledAtDepth(policy, "mate", depth)) groups.push(...mateNowCandidates(snapshot, policy, rule).slice(0, maxMovesForThreat(policy, "mate")));
-  if (threatEnabledAtDepth(policy, "check", depth)) groups.push(...checkingCandidates(snapshot, policy, rule).slice(0, maxMovesForThreat(policy, "check")));
-  if (threatEnabledAtDepth(policy, "mate_in_1", depth)) groups.push(...mateThreatCandidates(snapshot, policy, rule).slice(0, maxMovesForThreat(policy, "mate_in_1")));
-  if (threatEnabledAtDepth(policy, "winning_capture", depth)) groups.push(...materialCandidates(snapshot, policy, rule).slice(0, maxMovesForThreat(policy, "winning_capture")));
-  if (threatEnabledAtDepth(policy, "fork", depth)) groups.push(...doubleAttackCandidates(snapshot, policy, rule).slice(0, maxMovesForThreat(policy, "fork")));
-
-  const danger = snapshot.sideToMove === rootSide && snapshot.opponentMateInOneFacts.length > 0;
-  const filtered = danger
-    ? groups.filter((candidate) => candidateStopsMateDanger(createGame, candidate, rootSide)).map((candidate) => ({
-        ...candidate,
-        threat: candidate.threat.kind === "mate" ? candidate.threat : { ...candidate.threat, priority: threatPriorityScore("stop_mate_in_1", policy) },
-        reasons: [...candidate.reasons, "this move also removes every immediate mate"]
-      }))
-    : groups;
-
-  filtered.sort((a, b) => (b.threat.priority || 0) - (a.threat.priority || 0) || b.score - a.score || a.san.localeCompare(b.san));
-  const seen = new Set();
-  return filtered.filter((candidate) => {
-    if (seen.has(candidate.uci)) return false;
-    seen.add(candidate.uci);
-    return true;
-  }).slice(0, maxMovesPerState(policy));
 }
 
 
@@ -2347,8 +1868,8 @@ function ensureRuleFacts(createGame, game, snapshot, rootSide, policy, ruleId) {
     snapshot._forkFactsComputed = true;
     appendForkObservations(snapshot);
   }
-  // The loose-piece rule can use direct objective-winning captures, but only
-  // after the board fact loose has selected that rule.
+  // The loose-piece rule can use stable loose captures, but only after the
+  // board predicate loose has selected that rule.
   if (ruleId === "loose-piece" && !snapshot._winningCaptureFactsComputed) {
     snapshot.winningCaptures = winningCaptureFactsForSide(
       createGame,
@@ -2408,15 +1929,17 @@ function rulePremises(rule, snapshot) {
   return dedupeObservations(output);
 }
 
-function generateCandidates({ createGame, game, snapshot, rootSide, policy, match, expectedContinuation = null, depth = 0 }) {
+function generateCandidates({ createGame, game, snapshot, rootSide, policy, match, expectedContinuation = null }) {
   const rule = match.rule;
   let candidates = [];
-  if (match.forcing && Array.isArray(match.candidates)) {
-    candidates = match.candidates.slice();
-  } else if (rule.id === "answer-check") {
+  if (rule.id === "answer-check") {
     candidates = answerCheckCandidates({ createGame, game, snapshot, rootSide, policy, rule });
+  } else if (rule.id === "winning-capture") {
+    candidates = winningCaptureRuleCandidates({ snapshot, policy, rule });
   } else if (rule.id === "loose-piece") {
     candidates = looseRuleCandidates({ createGame, game, snapshot, rootSide, policy, rule });
+  } else if (rule.id === "fork") {
+    candidates = forkRuleCandidates({ snapshot, policy, rule });
   }
 
   if (expectedContinuation?.uci) {
@@ -2424,20 +1947,17 @@ function generateCandidates({ createGame, game, snapshot, rootSide, policy, matc
     if (preferred.length) candidates = preferred;
   }
 
-  candidates.sort((a, b) => {
-    const priorityDifference = (b.threat?.priority || 0) - (a.threat?.priority || 0);
-    return priorityDifference || b.score - a.score || a.san.localeCompare(b.san);
-  });
+  candidates.sort((a, b) => b.score - a.score || a.san.localeCompare(b.san));
   const seen = new Set();
   return candidates.filter((candidate) => {
     if (seen.has(candidate.uci)) return false;
     seen.add(candidate.uci);
     return true;
-  }).slice(0, maxMovesPerState(policy));
+  }).slice(0, policy.budget.maxCandidatesPerRule);
 }
 
 /* -------------------------------------------------------------------------- */
-/* Defender replies                                                            */
+/* Relevant-reply proof                                                        */
 /* -------------------------------------------------------------------------- */
 
 function counterThreatAfterReply(createGame, afterReply, opponentSide, rootSide, activeThreat, policy, reply = null) {
@@ -2485,7 +2005,7 @@ function verifiedCaptureWitness(createGame, afterReply, rootSide, from, to, poli
   const fact = captureFact(createGame, analysisGame, move, rootSide, policy);
   if (!fact || fact.afterAdvantage < materialTarget(policy)) return null;
   return {
-    type: "available_capture",
+    type: "capture_witness",
     uci: move.uci,
     san: fact.san,
     targetRef: fact.targetRef,
@@ -2523,7 +2043,7 @@ function directSequenceWitness(createGame, afterReply, rootSide, targetIndices, 
     .find((item) => targetSet.has(item.captureSquare));
   if (!fact) return null;
   return {
-    type: "capture_then_double_attack_line",
+    type: "rule_sequence_witness",
     uci: fact.move.uci,
     san: fact.san,
     line: fact.recaptureLines.map((line) => `${line.replySan} ${line.continuation.san}`),
@@ -2649,7 +2169,7 @@ function analyzeHarassReply({ createGame, afterReply, reply, candidate, rootSide
       return {
         disposition: "discharged",
         predicates: [makeObservation("capture_recapture_fork", `abandoned_target_sequence(${reply.uci})`, { detail: `${sequenceWitness.san}: ${sequenceWitness.line.join("; ")}` })],
-        reason: "reply abandons a target to a recorded capture-then-double-attack line",
+        reason: "reply abandons a target to a certified capture-recapture-fork",
         witness: sequenceWitness
       };
     }
@@ -2663,15 +2183,15 @@ function analyzeHarassReply({ createGame, afterReply, reply, candidate, rootSide
   if (!harassRemains) {
     return {
       disposition: "relevant",
-      predicates: [makeObservation("defends", `refute_harass(${reply.uci})`, { detail: "the direct capture is no longer available" })],
-      reason: "reply stops the attack on the defender"
+      predicates: [makeObservation("defends", `refute_harass(${reply.uci})`, { detail: "the direct capture witness is no longer legal" })],
+      reason: "reply neutralizes the harass witness"
     };
   }
 
   return {
     disposition: "refutation",
     predicates: [],
-    reason: "reply stops the stated idea and is not one of the allowed defender answers"
+    reason: "reply was neither answered by a verified witness nor classified by an allowed reply predicate"
   };
 }
 
@@ -2688,14 +2208,14 @@ function analyzeSequenceReply({ createGame, afterReply, reply, candidate, rootSi
 
   const line = (threat.recaptureLines || []).find((item) => item.replyUci === reply.uci);
   if (line) {
-    // At the boundary, the recorded line is enough. Away from the boundary,
-    // expose every reasoning move in the
+    // At the boundary, the already-verified sequence predicate is itself the
+    // certificate. Away from the boundary, expose every reasoning move in the
     // stepper by descending to the bound continuation.
     if (depth + 1 >= policy.budget.maxPlies) {
       return {
         disposition: "discharged",
-        predicates: [makeObservation("capture_recapture_fork", `boundary_follow_up(${line.continuation.san})`, { detail: "the recorded follow-up settles the line at the ply boundary" })],
-        reason: `recapture is met by the recorded follow-up ${line.continuation.san}`,
+        predicates: [makeObservation("capture_recapture_fork", `verified_boundary_continuation(${line.continuation.san})`, { detail: "sequence predicate proves the continuation at the ply boundary" })],
+        reason: `recapture is met by certified ${line.continuation.san}`,
         witness: line.continuation
       };
     }
@@ -2721,8 +2241,8 @@ function analyzeSequenceReply({ createGame, afterReply, reply, candidate, rootSi
   if (reply.to === threat.captureSquare && Boolean(reply.captured)) {
     return {
       disposition: "relevant",
-      predicates: [makeObservation("capture_recapture_fork", `unbound_recapture(${reply.uci})`, { detail: "recapture was not one of the recorded replies" })],
-      reason: "reply recaptures, but this recapture was not in the recorded line"
+      predicates: [makeObservation("capture_recapture_fork", `unbound_recapture(${reply.uci})`, { detail: "recapture was not covered by the sequence certificate" })],
+      reason: "reply recaptures, but this recapture was not in the verified sequence"
     };
   }
 
@@ -2732,7 +2252,7 @@ function analyzeSequenceReply({ createGame, afterReply, reply, candidate, rootSi
       disposition: "discharged",
       predicates: [makeObservation(
         standing.kind === "winning_capture" ? "winning_capture_available" : "mate_in_1_available",
-        `declined_reavailable_capture(${reply.uci})`,
+        `declined_recapture_witness(${reply.uci})`,
         { detail: standing.witnesses.map((witness) => witness.san).join(", ") }
       )],
       reason: `reply declines the recapture and leaves ${standing.kind}`,
@@ -2743,59 +2263,7 @@ function analyzeSequenceReply({ createGame, afterReply, reply, candidate, rootSi
   return {
     disposition: "refutation",
     predicates: [],
-    reason: "declining the expected recapture did not leave the objective or another stated threat"
-  };
-}
-
-function analyzeCheckReply({ createGame, afterReply, reply, candidate, rootSide, policy }) {
-  const threat = candidate.threat;
-  const counter = counterThreatAfterReply(createGame, afterReply, other(rootSide), rootSide, threat, policy, reply);
-  if (counter.relevant) {
-    return {
-      disposition: "relevant",
-      predicates: [makeObservation("forcing_counterthreat", `forcing_counterthreat(${reply.uci},${counter.kind})`, { detail: counter.text })],
-      reason: counter.text,
-      replyRank: counter.kind === "mate" ? 600 : counter.kind === "check" ? 550 : counter.kind === "mate_in_1" ? 500 : 350
-    };
-  }
-
-  if (threat.checkerRef && reply.to === threat.checkerRef.index && Boolean(reply.captured)) {
-    return {
-      disposition: "relevant",
-      predicates: [makeObservation("check_available", `capture_checker(${reply.uci})`, { detail: "reply captures the checking piece" })],
-      reason: "reply captures the checking piece",
-      replyRank: 450
-    };
-  }
-
-  const movedTarget = (threat.targetRefs || []).some((target) => reply.from === target.index);
-  if (movedTarget) {
-    return {
-      disposition: "relevant",
-      predicates: [makeObservation("check_available", `save_extra_target(${reply.uci})`, { detail: "reply answers the check and moves the extra target" })],
-      reason: "reply answers the check and saves the extra target",
-      replyRank: 425
-    };
-  }
-
-  for (const target of threat.targetRefs || []) {
-    const followUp = verifiedCaptureWitness(createGame, afterReply, rootSide, threat.checkerRef?.index, target.index, policy);
-    if (followUp) {
-      return {
-        disposition: "discharged",
-        predicates: [makeObservation("check_available", `check_follow_up(${reply.uci})`, { detail: `${followUp.san} reaches the objective` })],
-        reason: `reply answers the check but leaves ${followUp.san}`,
-        witness: followUp,
-        replyRank: 0
-      };
-    }
-  }
-
-  return {
-    disposition: "relevant",
-    predicates: [makeObservation("check_available", `legal_check_answer(${reply.uci})`, { detail: "legal answer to the check; rescan the position" })],
-    reason: "legal answer to the check; rescan the position",
-    replyRank: 300
+    reason: "declining the certified recapture did not leave a settled objective or another verified threat"
   };
 }
 
@@ -2848,8 +2316,8 @@ function analyzeForkReply({ createGame, afterReply, reply, candidate, rootSide, 
 
   return {
     disposition: "relevant",
-    predicates: [makeObservation("fork_available", `refute_fork(${reply.uci})`, { detail: "neither forked target can still be taken" })],
-    reason: "reply stops the double attack"
+    predicates: [makeObservation("fork_available", `refute_fork(${reply.uci})`, { detail: "no fork capture witness remains" })],
+    reason: "reply neutralizes the fork witness"
   };
 }
 
@@ -2890,7 +2358,7 @@ function analyzeStandingThreatReply({ createGame, afterReply, reply, candidate, 
   }
   return {
     disposition: "relevant",
-    predicates: [makeObservation("winning_capture_available", `refute_standing_threat(${reply.uci})`, { detail: "the stated follow-up is no longer available" })],
+    predicates: [makeObservation("winning_capture_available", `refute_standing_threat(${reply.uci})`, { detail: "the named witness is no longer legal" })],
     reason: "reply neutralizes the standing threat"
   };
 }
@@ -2934,8 +2402,6 @@ function classifyOpponentReplies({ createGame, game, candidate, rootSide, policy
       analysis = analyzeHarassReply({ createGame, afterReply, reply, candidate, rootSide, policy });
     } else if (candidate.threat.kind === "capture_recapture_fork") {
       analysis = analyzeSequenceReply({ createGame, afterReply, reply, candidate, rootSide, policy, depth });
-    } else if (candidate.threat.kind === "check") {
-      analysis = analyzeCheckReply({ createGame, afterReply, reply, candidate, rootSide, policy });
     } else if (candidate.threat.kind === "fork") {
       analysis = analyzeForkReply({ createGame, afterReply, reply, candidate, rootSide, policy });
     } else if (["winning_capture", "mate_in_1"].includes(candidate.threat.kind)) {
@@ -2954,8 +2420,7 @@ function classifyOpponentReplies({ createGame, game, candidate, rootSide, policy
       predicates: analysis.predicates || [],
       reason: analysis.reason,
       witness: analysis.witness || null,
-      expectedContinuation: analysis.expectedContinuation || null,
-      replyRank: Number(analysis.replyRank || 0)
+      expectedContinuation: analysis.expectedContinuation || null
     };
     if (analysis.disposition === "relevant") relevant.push(entry);
     else if (analysis.disposition === "discharged") discharged.push(entry);
@@ -2963,24 +2428,16 @@ function classifyOpponentReplies({ createGame, game, candidate, rootSide, policy
   }
 
   relevant.sort((a, b) => {
-    const rankDifference = (b.replyRank || 0) - (a.replyRank || 0);
-    if (rankDifference) return rankDifference;
     const aCheck = a.predicates.some((item) => item.text.includes("check")) ? 1 : 0;
     const bCheck = b.predicates.some((item) => item.text.includes("check")) ? 1 : 0;
     return bCheck - aCheck || a.san.localeCompare(b.san);
   });
 
-  const limit = maxDefenderReplies(policy);
-  const overflow = relevant.slice(limit);
-  const kept = relevant.slice(0, limit);
-
   return {
     total: replies.length,
-    relevant: kept,
+    relevant,
     discharged,
-    refutations,
-    truncated: overflow.length > 0,
-    overflow: overflow.map((entry) => ({ uci: entry.uci, san: entry.san, reason: entry.reason }))
+    refutations
   };
 }
 
@@ -2998,10 +2455,9 @@ function candidateSummary(candidate) {
     premises: candidate.premises.map((item) => item.text),
     resultPredicates: candidate.resultPredicates.map((item) => item.text),
     threat: {
-      kind: policyThreatKind(candidate.threat.kind),
+      kind: candidate.threat.kind,
       payoffPawns: candidate.threat.payoffPawns,
-      legalReplies: candidate.threat.replyCount ?? null,
-      followUps: (candidate.threat.followUps || candidate.threat.witnesses || []).map((item) => item.san || item.targetRef?.label || item.type)
+      witnesses: (candidate.threat.witnesses || []).map((witness) => witness.san || witness.type)
     },
     score: candidate.score
   };
@@ -3022,7 +2478,7 @@ function replySummary(reply) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* One-operation human state-machine stepper                                   */
+/* One-operation threat-space stepper                                          */
 /* -------------------------------------------------------------------------- */
 
 function syncGameToFrame(game, frame) {
@@ -3047,152 +2503,6 @@ function syncGameToFrame(game, frame) {
   }
 }
 
-function isForcingMoveSummary(move) {
-  if (!move?.uci) return false;
-  const text = `${move.san || ""} ${(move.tags || []).join(" ")} ${move.category || ""} ${(move.reasons || []).join(" ")}`;
-  return /[+#]/.test(move.san || "") || /check|mate|forcing_counterthreat/i.test(text);
-}
-
-function findSingleForcingBlocker(childResults) {
-  const choices = [];
-  for (const child of childResults || []) {
-    const failedMove = child?.move || null;
-    const branch = child?.result || null;
-    const blocker = branch?.move || null;
-    const directSingleReply = ["one_relevant_reply_was_not_proved", "one_defender_reply_holds"].includes(branch?.reason) &&
-      Number(branch?.relevantReplyCount || 0) === 1;
-    if (failedMove?.ideaId !== "take_material") continue;
-    if (!directSingleReply || !isForcingMoveSummary(blocker)) continue;
-    choices.push({
-      blocker,
-      failedMove,
-      materialWin: 1,
-      payoff: Number(failedMove?.threat?.payoffPawns || 0),
-      score: Number(failedMove?.score || 0)
-    });
-  }
-  choices.sort((a, b) => b.materialWin - a.materialWin || b.payoff - a.payoff || b.score - a.score);
-  return choices[0] || null;
-}
-
-function blockerDisabledBySetup(createGame, afterSetup, blocker, rootSide) {
-  const opponent = other(rootSide);
-  const same = moveByUci(legalMoveRecords(createGame, afterSetup, opponent), blocker.uci);
-  if (!same) return true;
-  const originalSan = String(blocker.san || "");
-  if (originalSan.includes("x") && !same.captured) return true;
-  const afterBlocker = afterMove(createGame, afterSetup, same);
-  if (!afterBlocker) return true;
-  if (/[+#]/.test(originalSan) && !safeInCheck(afterBlocker, rootSide)) return true;
-  return false;
-}
-
-function namedThreatAfterSetup(createGame, afterSetup, setupMove, rootSide, policy) {
-  const opponent = other(rootSide);
-  if (safeInCheck(afterSetup, opponent)) {
-    const checkingFacts = checkingMoveFactsForSide(createGame, gameForSide(createGame, afterSetup, rootSide), rootSide, rootSide, policy);
-    const fact = checkingFacts.find((item) => item.uci === setupMove.uci) || null;
-    const movedPiece = boardOf(afterSetup)[setupMove.to];
-    const replies = legalMoveRecords(createGame, afterSetup, opponent);
-    return {
-      threat: {
-        kind: "check",
-        priority: threatPriorityScore("check", policy),
-        payoffPawns: Math.max(1, PIECE_VALUES[setupMove.captured?.type] || 0),
-        checkerRef: movedPiece ? pieceRef(movedPiece, setupMove.to) : null,
-        targetRefs: fact?.extraTargets || [],
-        replyCount: replies.length,
-        legalReplyUcis: replies.map((reply) => reply.uci),
-        followUps: []
-      },
-      predicate: makeObservation("check_available", `repair_check(${setupMove.uci},${replies.length})`, { side: "us", moveUci: setupMove.uci, detail: `${replies.length} legal answer(s)` }),
-      text: "gives check",
-      score: 900_000 - replies.length * 100
-    };
-  }
-
-  const rootTurn = gameForSide(createGame, afterSetup, rootSide);
-  const mates = mateInOneFactsForSide(createGame, rootTurn, rootSide);
-  if (mates.length) {
-    return {
-      threat: { kind: "mate_in_1", priority: threatPriorityScore("mate_in_1", policy), payoffPawns: 100, followUps: mates.map((mate) => ({ type: "mate", uci: mate.uci, san: mate.san })), witnesses: mates },
-      predicate: makeObservation("mate_threat_available", `repair_mate_threat([${mates.map((mate) => mate.san).join(",")}])`, { side: "us", detail: `threatens ${mates.map((mate) => mate.san).join(", ")}` }),
-      text: `threatens ${mates.map((mate) => mate.san).join(" or ")}`,
-      score: 800_000
-    };
-  }
-
-  const captures = winningCaptureFactsForSide(createGame, rootTurn, rootSide, rootSide, policy);
-  if (captures.length) {
-    const fact = captures[0];
-    return {
-      threat: { kind: "winning_capture", priority: threatPriorityScore("winning_capture", policy), payoffPawns: fact.payoffPawns, attackerRef: fact.attackerRef, targetRef: fact.targetRef, followUps: [{ type: "take_target", uci: fact.uci, san: fact.san }], witnesses: [{ type: "capture_target", uci: fact.uci, san: fact.san }] },
-      predicate: makeObservation("winning_capture_available", `repair_material_threat(${fact.san},${fact.targetRef.label})`, { side: "us", moveUci: fact.uci, detail: `${fact.san} reaches the material objective` }),
-      text: `threatens ${fact.san}`,
-      score: 700_000 + fact.payoffPawns * 100
-    };
-  }
-
-  const forks = forkFactsForSide(createGame, rootTurn, rootSide, rootSide, policy).filter((fact) => !fact.check);
-  if (forks.length) {
-    const fact = forks[0];
-    return {
-      threat: { kind: "fork", priority: threatPriorityScore("fork", policy), payoffPawns: fact.payoffPawns, forkerRef: fact.forkerRef, targetRefs: fact.targets, followUps: fact.targets.map((target) => ({ type: "take_target", from: fact.forkerRef.index, to: target.index, targetRef: target })), witnesses: [] },
-      predicate: fact.resultPredicate,
-      text: `sets up a double attack on ${fact.targets.map((target) => target.label).join(" and ")}`,
-      score: 600_000 + fact.payoffPawns * 100
-    };
-  }
-  return null;
-}
-
-function rootRepairCandidates({ createGame, rootFen, rootSide, policy, blocker, alreadyTried = [] }) {
-  if (!policy.repair?.enabled || !blocker?.uci) return [];
-  const rootGame = cloneGame(createGame, rootFen);
-  const tried = new Set(alreadyTried);
-  const rule = { id: "repair-once", instruction: `Make ${blocker.san || blocker.uci} unavailable and keep a named threat.`, try: [] };
-  const output = [];
-  for (const move of legalMoveRecords(createGame, rootGame, rootSide)) {
-    if (tried.has(move.uci)) continue;
-    const afterSetup = afterMove(createGame, rootGame, move);
-    if (!afterSetup || !blockerDisabledBySetup(createGame, afterSetup, blocker, rootSide)) continue;
-    const named = namedThreatAfterSetup(createGame, afterSetup, move, rootSide, policy);
-    if (!named) continue;
-    const san = String(afterSetup.curNode?.san || move.uci).trim();
-    output.push(candidateRecord({
-      rule,
-      idea: "repair_once",
-      move,
-      san,
-      afterFen: afterSetup.exportFEN(),
-      premises: [makeObservation("forcing_counterthreat", `only_blocker(${blocker.san || blocker.uci})`, { side: "enemy", detail: `${blocker.san || blocker.uci} was the sole forcing reply` })],
-      resultPredicates: [named.predicate],
-      threat: { ...named.threat, repairedBlocker: blocker },
-      score: named.score,
-      reasons: [
-        `${blocker.san || blocker.uci} was the sole forcing reply to the material win`,
-        `${san} makes that reply unavailable on this branch`,
-        named.text
-      ],
-      tags: ["repair_once", "block_forcing_reply"]
-    }));
-  }
-  output.sort((a, b) => (b.threat.priority || 0) - (a.threat.priority || 0) || b.score - a.score || a.san.localeCompare(b.san));
-  return output.slice(0, Math.max(1, Number(policy.repair.maxMoves || 1)));
-}
-
-function repeatedPositionCycle(stack, policy) {
-  const config = policy.cycles?.perpetualCheck;
-  if (!config?.enabled || !stack.length) return null;
-  const current = stack[stack.length - 1];
-  if (current.depth > config.throughPly) return null;
-  const start = Math.max(0, stack.length - Number(config.lookBackPlies || 12));
-  const key = normalizedPositionKey(current.fen);
-  const matches = stack.slice(start).filter((frame) => normalizedPositionKey(frame.fen) === key);
-  if (matches.length < Number(config.repetitions || 3)) return null;
-  return { key, repetitions: matches.length };
-}
-
 function makeFrame({
   fen,
   depth,
@@ -3211,17 +2521,13 @@ function makeFrame({
     snapshot: null,
     kind: null,
     stage: "enter",
-    phase: "",
     match: null,
     candidates: [],
     replies: [],
     dischargedReplies: [],
     nextIndex: 0,
     childResults: [],
-    result: null,
-    quietAttempted: false,
-    repairAttempted: false,
-    repairBlocker: null
+    result: null
   };
 }
 
@@ -3234,10 +2540,8 @@ function visibleFrameObservations(frame) {
 }
 
 function matchedPremiseText(match, snapshot) {
-  if (match?.forcing) return "an enabled first-order threat is available";
   const premises = rulePremises(match.rule, snapshot);
-  const fallback = (match.rule.when?.all || []).map((item) => item.predicate).join(" + ");
-  return premises.length ? premises.map((item) => item.text).join("; ") : fallback || match.rule.id;
+  return premises.length ? premises.map((item) => item.text).join("; ") : match.rule.when.all.map((item) => item.predicate).join(" + ");
 }
 
 function finishFrame(frame, frameResult) {
@@ -3247,31 +2551,38 @@ function finishFrame(frame, frameResult) {
 
 function aggregateOurFrame(frame) {
   const proven = frame.childResults.find((item) => item.result.status === "proven");
-  if (proven) return result("proven", "one_ranked_move_reaches_the_objective", { move: proven.move, child: proven.result });
+  if (proven) {
+    return result("proven", "one_rule_generated_candidate_proved", { move: proven.move, child: proven.result });
+  }
   const unresolved = frame.childResults.find((item) => item.result.status === "unresolvedLeaf");
-  if (unresolved) return result("unresolvedLeaf", "no_move_won_and_at_least_one_line_reached_a_budget", { children: frame.childResults });
-  return result("refutedWithinPolicy", "every_ranked_move_was_stopped", { children: frame.childResults });
+  if (unresolved) {
+    return result("unresolvedLeaf", "no_candidate_proved_and_at_least_one_remained_unresolved", { children: frame.childResults });
+  }
+  return result("refutedWithinPolicy", "every_rule_generated_candidate_was_refuted", { children: frame.childResults });
 }
 
 function attachChildResult(parent, child) {
-  const item = { move: child.incomingMove?.summary || child.incomingMove || null, result: child.result };
+  const item = {
+    move: child.incomingMove?.summary || child.incomingMove || null,
+    result: child.result
+  };
   parent.childResults.push(item);
 
   if (parent.kind === "our") {
-    if (child.result.status === "proven") finishFrame(parent, result("proven", "one_ranked_move_reaches_the_objective", { move: item.move, child: child.result }));
+    if (child.result.status === "proven") {
+      finishFrame(parent, result("proven", "one_rule_generated_candidate_proved", { move: item.move, child: child.result }));
+    } else if (parent.nextIndex >= parent.candidates.length) {
+      finishFrame(parent, aggregateOurFrame(parent));
+    }
     return;
   }
 
   if (child.result.status !== "proven") {
-    finishFrame(parent, result(child.result.status, "one_defender_reply_holds", {
-      move: item.move,
-      child: child.result,
-      relevantReplyCount: parent.replies.length
-    }));
+    finishFrame(parent, result(child.result.status, "one_relevant_reply_was_not_proved", { move: item.move, child: child.result }));
   } else if (parent.nextIndex >= parent.replies.length) {
-    finishFrame(parent, result("proven", "every_defender_reply_still_loses", {
+    finishFrame(parent, result("proven", "every_relevant_reply_was_proved_or_discharged", {
       children: parent.childResults,
-      alreadyLosingReplies: parent.dischargedReplies.length
+      discharged: parent.dischargedReplies.length
     }));
   }
 }
@@ -3291,8 +2602,7 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
     stack: [],
     history: [],
     finalResult: null,
-    lastEvent: null,
-    repairAttempts: 0
+    lastEvent: null
   };
 
   function start(game) {
@@ -3306,7 +2616,6 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
     })];
     state.status = "searching";
     state.finalResult = null;
-    state.repairAttempts = 0;
   }
 
   function reset(game = null) {
@@ -3320,7 +2629,6 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
     state.history = [];
     state.finalResult = null;
     state.lastEvent = null;
-    state.repairAttempts = 0;
     if (game) start(game);
   }
 
@@ -3360,7 +2668,7 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
         type: "done",
         status: state.status,
         result: state.finalResult,
-        log: `Search already ended: ${state.status}. Restart the state machine to search again.`
+        log: `Search already ended: ${state.status}. Restart the proof to search again.`
       });
     }
 
@@ -3395,32 +2703,6 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
       frame.kind = frame.snapshot.sideToMove === state.rootSide ? "our" : "opponent";
       state.nodes += 1;
 
-      if (state.nodes > Number(policy.budget.maxPositions || Infinity)) {
-        finishFrame(frame, result("unresolvedLeaf", "position_budget_exhausted", { maxPositions: policy.budget.maxPositions }));
-        return recordEvent({
-          type: "leaf",
-          status: "unresolvedLeaf",
-          depth: frame.depth,
-          path: framePath(state.stack),
-          observations: visibleFrameObservations(frame),
-          log: `The configured position budget ${policy.budget.maxPositions} was reached.`
-        });
-      }
-
-      const cycle = repeatedPositionCycle(state.stack, policy);
-      if (cycle) {
-        finishFrame(frame, result("refutedWithinPolicy", "perpetual_cycle", { cycle }));
-        return recordEvent({
-          type: "leaf",
-          status: "refutedWithinPolicy",
-          depth: frame.depth,
-          path: framePath(state.stack),
-          observations: visibleFrameObservations(frame),
-          cycle,
-          log: `The position repeated ${cycle.repetitions} times inside the configured cycle window. The defending side holds.`
-        });
-      }
-
       const goal = goalStatus(frame.snapshot, policy);
       if (goal.achieved) {
         finishFrame(frame, result("proven", "objective_proven", { goal }));
@@ -3454,7 +2736,7 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
           depth: frame.depth,
           path: framePath(state.stack),
           observations: visibleFrameObservations(frame),
-          log: `Maximum depth ${policy.budget.maxPlies} reached before the fighting side established the objective.`
+          log: `Maximum depth ${policy.budget.maxPlies} reached before another rule-backed threat could be played.`
         });
       }
 
@@ -3469,76 +2751,12 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
         path: framePath(state.stack),
         observations: visible,
         comment: `observe ply ${frame.depth}: ${visible.map((item) => item.text).join("; ") || "no visible predicate"}`,
-        log: `${synchronization.restarted ? `${synchronization.reason}; ` : ""}Observe ply ${frame.depth}: material state ${frame.snapshot.material.state}; ${visible.length} visible fact(s). Next, answer danger and try threats in order.`
+        log: `${synchronization.restarted ? `${synchronization.reason}; ` : ""}Observed ${visible.length} named predicate(s) at ply ${frame.depth}. No move will be expanded until a rule matches.`
       });
     }
 
     if (frame.stage === "select_rule") {
       const ruleGame = cloneGame(createGame, frame.fen);
-      const forcing = firstOrderThreatCandidates({
-        createGame,
-        game: ruleGame,
-        snapshot: frame.snapshot,
-        rootSide: state.rootSide,
-        policy,
-        depth: frame.depth
-      });
-
-      if (forcing.length) {
-        frame.match = { rule: threatScanRule(), forcing: true, candidates: forcing, expected: false };
-        frame.phase = "forcing";
-        frame.stage = "generate_candidates";
-        const first = forcing[0];
-        return recordEvent({
-          type: "state",
-          state: frame.snapshot.inCheck ? "answer_danger" : "try_threats",
-          status: "searching",
-          depth: frame.depth,
-          path: framePath(state.stack),
-          rule: frame.match.rule,
-          observations: visibleFrameObservations(frame),
-          candidates: forcing.map(candidateSummary),
-          comment: `threat scan: ${forcing.map((item) => `${item.san}[${item.ideaId}]`).join("; ")}`,
-          log: `${frame.snapshot.inCheck ? "Our king is in check. " : ""}Threat scan found ${forcing.length} move(s), ranked by forcing class. First: ${first.san} [${first.ideaId}].`
-        });
-      }
-
-      const immediateDanger = frame.snapshot.sideToMove === state.rootSide && frame.snapshot.opponentMateInOneFacts.length > 0;
-      if (immediateDanger) {
-        finishFrame(frame, result("refutedWithinPolicy", "opponent_mate_in_one_not_removed", {
-          mates: frame.snapshot.opponentMateInOneFacts.map((fact) => fact.san)
-        }));
-        return recordEvent({
-          type: "state",
-          state: "answer_danger",
-          status: "refutedWithinPolicy",
-          depth: frame.depth,
-          path: framePath(state.stack),
-          observations: visibleFrameObservations(frame),
-          log: `The defending side threatens mate in one (${frame.snapshot.opponentMateInOneFacts.map((fact) => fact.san).join(", ")}), and no enabled move removes every mate.`
-        });
-      }
-
-      if (frame.snapshot.inCheck) {
-        finishFrame(frame, result("refutedWithinPolicy", "check_answer_does_not_continue_the_objective"));
-        return recordEvent({
-          type: "state",
-          state: "answer_danger",
-          status: "refutedWithinPolicy",
-          depth: frame.depth,
-          path: framePath(state.stack),
-          observations: visibleFrameObservations(frame),
-          log: "The check can be answered legally, but no ranked answer continues the tactical objective. The defending side holds this line."
-        });
-      }
-
-      frame.snapshot.predicates.push(makeObservation(
-        "quiet",
-        `quiet(${frame.snapshot.sideToMove})`,
-        { side: roleFor(frame.snapshot.sideToMove, state.rootSide), detail: policy.threats.quietWhen }
-      ));
-      frame.snapshot.predicates = dedupeObservations(frame.snapshot.predicates);
-      frame.quietAttempted = true;
       frame.match = matchingRule({
         createGame,
         game: ruleGame,
@@ -3548,38 +2766,34 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
         expectedContinuation: frame.expectedContinuation
       });
       if (!frame.match) {
-        finishFrame(frame, result("unresolvedLeaf", "quiet_without_matching_rule", {
+        finishFrame(frame, result("unresolvedLeaf", "no_rule_matches", {
           predicates: visibleFrameObservations(frame).map((item) => item.text)
         }));
         return recordEvent({
-          type: "state",
-          state: "quiet",
+          type: "rule",
           status: "unresolvedLeaf",
           depth: frame.depth,
           path: framePath(state.stack),
           observations: visibleFrameObservations(frame),
-          log: "Every enabled first-order try was stopped, and no quiet position rule matches. Stop this branch."
+          log: "No policy rule matches the observed predicates. The node is not searched."
         });
       }
-      frame.phase = "quiet";
       frame.stage = "generate_candidates";
       const premiseText = matchedPremiseText(frame.match, frame.snapshot);
       return recordEvent({
-        type: "state",
-        state: frame.match.rule.id === "answer-check" ? "answer_danger" : "quiet",
+        type: "rule",
         status: "searching",
         depth: frame.depth,
         path: framePath(state.stack),
         rule: frame.match.rule,
         observations: visibleFrameObservations(frame),
-        comment: `state ${frame.match.rule.id}: ${premiseText}`,
-        log: `Threats are exhausted. I see ${premiseText}. Apply ${frame.match.rule.id}: ${frame.match.rule.instruction}`
+        comment: `rule ${frame.match.rule.id}: ${premiseText}`,
+        log: `I see ${premiseText}. Therefore I apply only rule ${frame.match.rule.id}.`
       });
     }
 
     if (frame.stage === "generate_candidates") {
       const positionGame = cloneGame(createGame, frame.fen);
-      const alreadyTried = new Set(frame.childResults.map((item) => item.move?.uci).filter(Boolean));
       frame.candidates = generateCandidates({
         createGame,
         game: positionGame,
@@ -3587,22 +2801,20 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
         rootSide: state.rootSide,
         policy,
         match: frame.match,
-        expectedContinuation: frame.expectedContinuation,
-        depth: frame.depth
-      }).filter((candidate) => !alreadyTried.has(candidate.uci));
+        expectedContinuation: frame.expectedContinuation
+      });
       frame.nextIndex = 0;
       frame.stage = "candidate_children";
 
       if (!frame.candidates.length) {
-        const dangerState = frame.snapshot.inCheck || frame.snapshot.opponentMateInOneFacts.length > 0;
-        finishFrame(frame, result(dangerState ? "refutedWithinPolicy" : "unresolvedLeaf", "state_has_no_move", { stateId: frame.match.rule.id }));
+        finishFrame(frame, result("unresolvedLeaf", "no_verified_candidate", { ruleId: frame.match.rule.id }));
         return recordEvent({
           type: "candidates",
-          status: dangerState ? "refutedWithinPolicy" : "unresolvedLeaf",
+          status: "unresolvedLeaf",
           depth: frame.depth,
           path: framePath(state.stack),
           observations: visibleFrameObservations(frame),
-          log: `State ${frame.match.rule.id} matched, but no legal move carries out the instruction and continues the objective.`
+          log: `Rule ${frame.match.rule.id} matched, but no legal move produced a named predicate with a verified threat witness.`
         });
       }
 
@@ -3614,15 +2826,15 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
         path: framePath(state.stack),
         candidates: summaries,
         observations: visibleFrameObservations(frame),
-        comment: `state candidates: ${summaries.map((item) => `${item.san}[${item.ideaId}]`).join("; ")}`,
-        log: `State ${frame.match.rule.id} produced ${summaries.length} move(s) in ranked order. First: ${summaries[0].san} [${summaries[0].ideaId}].`
+        comment: `rule candidates: ${summaries.map((item) => `${item.san}[${item.ideaId}]`).join("; ")}`,
+        log: `Rule ${frame.match.rule.id} admitted ${summaries.length} candidate(s). Every candidate has explicit premises, a move-result predicate, and a threat witness. First: ${summaries[0].san}.`
       });
     }
 
     if (frame.stage === "classify_replies") {
       if (!frame.activeCandidate) {
-        finishFrame(frame, result("refutedWithinPolicy", "defender_node_without_active_threat"));
-        return recordEvent({ type: "error", status: "refutedWithinPolicy", depth: frame.depth, log: "The defending side reached a node with no stated threat to answer. The fighting line is not established." });
+        finishFrame(frame, result("refutedWithinPolicy", "opponent_node_without_active_threat"));
+        return recordEvent({ type: "error", status: "refutedWithinPolicy", depth: frame.depth, log: "Opponent node has no active threat contract." });
       }
       const positionGame = cloneGame(createGame, frame.fen);
       const classification = classifyOpponentReplies({
@@ -3638,24 +2850,8 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
       frame.nextIndex = 0;
       frame.stage = "reply_children";
 
-      if (classification.truncated) {
-        finishFrame(frame, result("unresolvedLeaf", "defender_reply_budget_exhausted", {
-          kept: frame.replies.map(replySummary),
-          overflow: classification.overflow
-        }));
-        return recordEvent({
-          type: "replies",
-          status: "unresolvedLeaf",
-          depth: frame.depth,
-          path: framePath(state.stack),
-          replies: frame.replies.map(replySummary),
-          dischargedReplies: classification.discharged.map(replySummary),
-          log: `The defender has more than ${maxDefenderReplies(policy)} relevant replies. The reply budget ends this branch without a result.`
-        });
-      }
-
       if (classification.refutations.length) {
-        finishFrame(frame, result("refutedWithinPolicy", "legal_reply_stops_the_stated_idea", {
+        finishFrame(frame, result("refutedWithinPolicy", "legal_reply_not_explained_by_threat_contract", {
           refutations: classification.refutations.map(replySummary)
         }));
         return recordEvent({
@@ -3666,13 +2862,13 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
           replies: classification.relevant.map(replySummary),
           dischargedReplies: classification.discharged.map(replySummary),
           refutations: classification.refutations.map(replySummary),
-          log: `${policyThreatKind(frame.activeCandidate.threat.kind)} failed: ${classification.refutations.length} legal defender reply/replies stop the stated idea and do not leave the objective.`
+          log: `Threat ${frame.activeCandidate.threat.kind} failed: ${classification.refutations.length} legal reply/replies had neither an allowed answer predicate nor a verified losing witness.`
         });
       }
 
       if (!frame.replies.length) {
-        finishFrame(frame, result("proven", "every_legal_reply_loses_to_stated_follow_up", {
-          alreadyLosing: classification.discharged.map(replySummary)
+        finishFrame(frame, result("proven", "every_legal_reply_discharged_by_verified_witness", {
+          discharged: classification.discharged.map(replySummary)
         }));
         return recordEvent({
           type: "replies",
@@ -3681,12 +2877,14 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
           path: framePath(state.stack),
           replies: [],
           dischargedReplies: classification.discharged.map(replySummary),
-          log: `All ${classification.total} legal defender replies leave the stated winning follow-up. No extra reply position is explored.`
+          log: `All ${classification.total} legal replies fail a verified witness. No reply node is searched.`
         });
       }
 
       if (frame.depth >= policy.budget.maxPlies) {
-        finishFrame(frame, result("unresolvedLeaf", "depth_exhausted_with_relevant_replies", { replies: frame.replies.map(replySummary) }));
+        finishFrame(frame, result("unresolvedLeaf", "depth_exhausted_with_relevant_replies", {
+          replies: frame.replies.map(replySummary)
+        }));
         return recordEvent({
           type: "replies",
           status: "unresolvedLeaf",
@@ -3694,7 +2892,7 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
           path: framePath(state.stack),
           replies: frame.replies.map(replySummary),
           dischargedReplies: classification.discharged.map(replySummary),
-          log: `${frame.replies.length} relevant defender reply/replies remain at the depth boundary.`
+          log: `${frame.replies.length} predicate-classified relevant reply/replies remain at the depth boundary.`
         });
       }
 
@@ -3707,141 +2905,18 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
         dischargedReplies: classification.discharged.map(replySummary),
         totalMoves: classification.total,
         comment: `relevant replies: ${frame.replies.map((item) => `${item.san}[${item.reason}]`).join("; ")}`,
-        log: `Of ${classification.total} legal defender replies, ${classification.discharged.length} already lose to the stated follow-up. Explore only the ${frame.replies.length} replies that answer the threat or create a forcing counterattack.`
+        log: `Of ${classification.total} legal replies, ${classification.discharged.length} are discharged by explicit witnesses and only ${frame.replies.length} answer the threat or create a forcing counter-threat.`
       });
     }
 
     if (frame.stage === "candidate_children") {
       if (frame.result) {
         frame.stage = "done";
-        return recordEvent({ type: "aggregate", status: frame.result.status, depth: frame.depth, result: frame.result, log: `The fighting-side move state resolved ${frame.result.status}: ${frame.result.reason}.` });
+        return recordEvent({ type: "aggregate", status: frame.result.status, depth: frame.depth, result: frame.result, log: `EXISTS node resolved ${frame.result.status}: ${frame.result.reason}.` });
       }
-
-      // A human does not need to finish every lower-priority root idea before
-      // noticing that a strong material win failed to one forcing reply. Insert
-      // the one allowed repair immediately after that failure, then resume the
-      // remaining ranked threats if the repair also fails.
-      if (
-        frame.phase === "forcing" &&
-        frame.depth === 0 &&
-        policy.repair?.enabled &&
-        !frame.repairAttempted &&
-        state.repairAttempts < Number(policy.repair.attempts || 0) &&
-        frame.childResults.length
-      ) {
-        const latest = frame.childResults[frame.childResults.length - 1];
-        const finding = findSingleForcingBlocker([latest]);
-        if (finding?.blocker) {
-          const tried = frame.childResults.map((item) => item.move?.uci).filter(Boolean);
-          const repairs = rootRepairCandidates({
-            createGame,
-            rootFen: state.rootFen,
-            rootSide: state.rootSide,
-            policy,
-            blocker: finding.blocker,
-            alreadyTried: tried
-          });
-          if (repairs.length) {
-            frame.repairAttempted = true;
-            frame.repairBlocker = finding.blocker;
-            state.repairAttempts += 1;
-            frame.candidates.splice(frame.nextIndex, 0, ...repairs);
-            return recordEvent({
-              type: "repair",
-              state: "repair_once",
-              status: "searching",
-              depth: 0,
-              blocker: finding.blocker,
-              failedMove: finding.failedMove,
-              candidates: repairs.map(candidateSummary),
-              comment: `repair once: stop ${finding.blocker.san || finding.blocker.uci}`,
-              log: `${finding.failedMove?.san || "The material win"} failed only to ${finding.blocker.san || finding.blocker.uci}. Before trying lower-priority ideas, try ${repairs.length} root move(s) that make that reply unavailable and keep a named threat. First: ${repairs[0].san}.`
-            });
-          }
-        }
-      }
-
       if (frame.nextIndex >= frame.candidates.length) {
-        const forcingPhaseEnded = frame.phase === "forcing";
-
-        // Fallback: if the decisive one-reply failure was discovered only after
-        // the forcing list ended, append the repair moves rather than replacing
-        // the list. This preserves the state-machine order and the search trace.
-        if (forcingPhaseEnded && frame.depth === 0 && policy.repair?.enabled && !frame.repairAttempted && state.repairAttempts < Number(policy.repair.attempts || 0)) {
-          const finding = findSingleForcingBlocker(frame.childResults);
-          if (finding?.blocker) {
-            const tried = frame.childResults.map((item) => item.move?.uci).filter(Boolean);
-            const repairs = rootRepairCandidates({
-              createGame,
-              rootFen: state.rootFen,
-              rootSide: state.rootSide,
-              policy,
-              blocker: finding.blocker,
-              alreadyTried: tried
-            });
-            if (repairs.length) {
-              frame.repairAttempted = true;
-              frame.repairBlocker = finding.blocker;
-              state.repairAttempts += 1;
-              frame.candidates.push(...repairs);
-              return recordEvent({
-                type: "repair",
-                state: "repair_once",
-                status: "searching",
-                depth: 0,
-                blocker: finding.blocker,
-                failedMove: finding.failedMove,
-                candidates: repairs.map(candidateSummary),
-                comment: `repair once: stop ${finding.blocker.san || finding.blocker.uci}`,
-                log: `${finding.failedMove?.san || "The material win"} failed only to ${finding.blocker.san || finding.blocker.uci}. Try ${repairs.length} root move(s) that make that reply unavailable and keep a named threat. First: ${repairs[0].san}.`
-              });
-            }
-          }
-        }
-
-        if (forcingPhaseEnded && !frame.quietAttempted && !frame.snapshot.inCheck && !frame.snapshot.opponentMateInOneFacts.length) {
-          frame.quietAttempted = true;
-          frame.snapshot.predicates.push(makeObservation(
-            "quiet",
-            `quiet(${frame.snapshot.sideToMove})`,
-            { side: roleFor(frame.snapshot.sideToMove, state.rootSide), detail: policy.threats.quietWhen }
-          ));
-          frame.snapshot.predicates = dedupeObservations(frame.snapshot.predicates);
-          const quietGame = cloneGame(createGame, frame.fen);
-          const quietMatch = matchingRule({
-            createGame,
-            game: quietGame,
-            snapshot: frame.snapshot,
-            policy,
-            rootSide: state.rootSide,
-            expectedContinuation: frame.expectedContinuation
-          });
-          if (quietMatch && quietMatch.rule.id !== "answer-check") {
-            frame.match = quietMatch;
-            frame.phase = "quiet";
-            frame.stage = "generate_candidates";
-            const premiseText = matchedPremiseText(quietMatch, frame.snapshot);
-            return recordEvent({
-              type: "state",
-              state: "quiet",
-              status: "searching",
-              depth: frame.depth,
-              path: framePath(state.stack),
-              rule: quietMatch.rule,
-              observations: visibleFrameObservations(frame),
-              comment: `quiet after threats: ${premiseText}`,
-              log: `Every ranked first-order move was stopped. Now use the quiet rule ${quietMatch.rule.id}: ${quietMatch.rule.instruction}`
-            });
-          }
-        }
-
         finishFrame(frame, aggregateOurFrame(frame));
-        const repairText = frame.repairAttempted
-          ? frame.repairBlocker
-            ? ` One repair pass looked for a root move that stops ${frame.repairBlocker.san || frame.repairBlocker.uci}.`
-            : " One repair pass found no single forcing blocker attached to a material win."
-          : "";
-        return recordEvent({ type: "aggregate", status: frame.result.status, depth: frame.depth, result: frame.result, log: `State ${frame.match?.rule?.id || frame.phase || "moves"} exhausted its ranked moves: ${frame.result.status}.${repairText}` });
+        return recordEvent({ type: "aggregate", status: frame.result.status, depth: frame.depth, result: frame.result, log: `Rule ${frame.match.rule.id} exhausted its verified candidates: ${frame.result.status}.` });
       }
 
       const candidate = frame.candidates[frame.nextIndex++];
@@ -3872,22 +2947,22 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
         path: framePath(state.stack),
         move: summary,
         playedMove: summary,
-        comment: `state ${candidate.ruleId}; observations: ${summary.premises.join("; ")}; result: ${summary.resultPredicates.join("; ")}; threat: ${policyThreatKind(candidate.threat.kind)}`,
-        log: `Played ${candidate.san}. ${candidate.reasons.join(" ")} Active threat: ${policyThreatKind(candidate.threat.kind)}.`
+        comment: `rule ${candidate.ruleId}; premises: ${summary.premises.join("; ")}; result: ${summary.resultPredicates.join("; ")}; threat: ${candidate.threat.kind}`,
+        log: `Played ${candidate.san}. I saw ${summary.premises.join("; ")}; the move creates ${summary.resultPredicates.join("; ")}; its verified threat is ${candidate.threat.kind}.`
       });
     }
 
     if (frame.stage === "reply_children") {
       if (frame.result) {
         frame.stage = "done";
-        return recordEvent({ type: "aggregate", status: frame.result.status, depth: frame.depth, result: frame.result, log: `The defender-reply state resolved ${frame.result.status}: ${frame.result.reason}.` });
+        return recordEvent({ type: "aggregate", status: frame.result.status, depth: frame.depth, result: frame.result, log: `FORALL-RELEVANT node resolved ${frame.result.status}: ${frame.result.reason}.` });
       }
       if (frame.nextIndex >= frame.replies.length) {
-        finishFrame(frame, result("proven", "every_defender_reply_still_loses", {
+        finishFrame(frame, result("proven", "every_relevant_reply_was_proved_or_discharged", {
           children: frame.childResults,
-          alreadyLosingReplies: frame.dischargedReplies.length
+          discharged: frame.dischargedReplies.length
         }));
-        return recordEvent({ type: "aggregate", status: "proven", depth: frame.depth, result: frame.result, log: `Every relevant defender reply still reaches the objective; ${frame.dischargedReplies.length} other legal replies already lose to the stated follow-up.` });
+        return recordEvent({ type: "aggregate", status: "proven", depth: frame.depth, result: frame.result, log: `Every relevant reply was proved; ${frame.dischargedReplies.length} other legal replies were discharged by witnesses.` });
       }
 
       const reply = frame.replies[frame.nextIndex++];
@@ -3895,7 +2970,7 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
       if (!applyMoveUCI(game, reply.uci)) {
         finishFrame(frame, result("refutedWithinPolicy", "scratchchess_rejected_reply", { move: replySummary(reply) }));
         state.expectedFen = game.exportFEN();
-        return recordEvent({ type: "error", status: "searching", move: replySummary(reply), log: `ScratchChess rejected defender reply ${reply.uci}.` });
+        return recordEvent({ type: "error", status: "searching", move: replySummary(reply), log: `ScratchChess rejected relevant reply ${reply.uci}.` });
       }
 
       const afterFen = game.exportFEN();
@@ -3918,8 +2993,8 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
         path: framePath(state.stack),
         move: summary,
         playedMove: summary,
-        comment: `defender reply: ${summary.predicates.join("; ")}; ${reply.reason}`,
-        log: `Played defender reply ${reply.san}: ${reply.reason}. Rescan the resulting position.`
+        comment: `relevant reply: ${summary.predicates.join("; ")}; ${reply.reason}`,
+        log: `Played relevant reply ${reply.san} because ${summary.predicates.join("; ")}: ${reply.reason}. Rescan next; no unrelated reply node is searched.`
       });
     }
 
@@ -3940,7 +3015,7 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
           nodes: state.nodes,
           steps: state.stepCount,
           path: [],
-          log: `Threats-first state machine ended ${state.status} after ${state.nodes} explored position(s): ${state.finalResult.reason}.`
+          log: `Predicate-gated proof ended ${state.status} after ${state.nodes} expanded position(s): ${state.finalResult.reason}.`
         });
       }
 
@@ -3962,54 +3037,44 @@ export function createReasoner({ createGame, policy = FALLBACK_POLICY, maxSteps 
     }
 
     frame.stage = "enter";
-    return recordEvent({ type: "repair_stage", status: "searching", log: "Unknown state repaired by returning to observation." });
+    return recordEvent({ type: "repair", status: "searching", log: "Unknown frame stage repaired by returning to observation." });
   }
 
   function preview(game, { maxCandidates = 8 } = {}) {
     const rootSide = normalizeColor(game.state.side);
     const snapshot = basePositionSnapshot({ createGame, game, rootSide, policy, includeMoveFacts: false });
     const goal = goalStatus(snapshot, policy);
-    let match = null;
-    let candidates = [];
-    let stateName = "observe";
-
-    if (!goal.achieved) {
-      candidates = firstOrderThreatCandidates({ createGame, game, snapshot, rootSide, policy, depth: 0 }).slice(0, maxCandidates);
-      if (candidates.length) {
-        match = { rule: threatScanRule(), forcing: true, candidates };
-        stateName = snapshot.inCheck || snapshot.opponentMateInOneFacts.length ? "answer_danger" : "try_threats";
-      } else if (!snapshot.inCheck && !snapshot.opponentMateInOneFacts.length) {
-        snapshot.predicates.push(makeObservation("quiet", `quiet(${snapshot.sideToMove})`, { side: "us", detail: policy.threats.quietWhen }));
-        snapshot.predicates = dedupeObservations(snapshot.predicates);
-        match = matchingRule({ createGame, game, snapshot, policy, rootSide, expectedContinuation: null });
-        candidates = match ? generateCandidates({ createGame, game, snapshot, rootSide, policy, match, depth: 0 }).slice(0, maxCandidates) : [];
-        stateName = "quiet";
-      } else {
-        stateName = "answer_danger";
-      }
-    }
-
+    const match = goal.achieved ? null : matchingRule({
+      createGame,
+      game,
+      snapshot,
+      policy,
+      rootSide,
+      expectedContinuation: null
+    });
+    const candidates = match
+      ? generateCandidates({ createGame, game, snapshot, rootSide, policy, match }).slice(0, maxCandidates)
+      : [];
     const visible = humanVisibleObservations(snapshot.predicates);
     const enemyLoose = snapshot.loose.filter((item) => item.side === "enemy");
     const steps = [
       `Root FEN: ${snapshot.fen}`,
-      `Observe: material state ${snapshot.material.state}; ${visible.map((item) => item.text).join("; ") || "no visible board fact"}.`,
+      `Observe: ${visible.map((item) => item.text).join("; ") || "no human-visible predicate"}.`,
       goal.achieved
-        ? `Objective already reached: ${goal.detail}.`
-        : stateName === "answer_danger" && snapshot.opponentMateInOneFacts.length && !candidates.length
-          ? `Danger: the defender threatens ${snapshot.opponentMateInOneFacts.map((fact) => fact.san).join(", ")}; no enabled move removes every mate.`
-          : match?.forcing
-            ? `State try_threats: ${candidates.length} ranked first-order move(s). If all are stopped, enter quiet.`
-            : match
-              ? `State quiet: ${match.rule.instruction}`
-              : "No state has an allowed move; stop this branch.",
-      enemyLoose.length ? `Enemy loose pieces: ${enemyLoose.map((item) => item.pieceRef.label).join(", ")}.` : "No enemy loose piece.",
-      candidates.length ? `Moves in order: ${candidates.map((candidate) => `${candidate.san} [${candidate.ideaId}]`).join("; ")}.` : "No move entered the configured search."
+        ? `Objective already proven: ${goal.detail}.`
+        : match
+          ? `First matching rule: ${match.rule.id}, because ${matchedPremiseText(match, snapshot)}.`
+          : "No rule matches; no legal move is searched.",
+      enemyLoose.length
+        ? `Enemy loose targets: ${enemyLoose.map((item) => item.pieceRef.label).join(", ")}.`
+        : "No enemy loose target.",
+      candidates.length
+        ? `Verified candidates only: ${candidates.map((candidate) => `${candidate.san} [${candidate.ideaId}: ${candidate.resultPredicates.map((item) => item.text).join(", ")}]`).join("; ")}.`
+        : "No move passed the matched rule's predicate and threat-witness gate."
     ];
     return {
       type: "policy_preview",
       status: goal.achieved ? "proven" : candidates.length ? "searching" : "inconclusive",
-      state: stateName,
       policy,
       snapshot,
       rule: match?.rule || null,
@@ -4048,22 +3113,19 @@ export function runOnePass({ createGame, game, policy = FALLBACK_POLICY, maxCand
 
 export function describeAlgorithm(policy = FALLBACK_POLICY) {
   assertPolicy(policy);
-  const states = new Map(policy.stateMachine.states.map((state) => [state.id, state.instruction]));
   return [
     `${policy.name} (${policy.version})`,
     "",
-    `OBSERVE — ${states.get("observe")}`,
-    `ANSWER DANGER — ${states.get("answer_danger")}`,
-    `TRY THREATS — ${states.get("try_threats")}`,
-    `TEST THE DEFENDER — ${states.get("test_defender")}`,
-    `QUIET — ${states.get("quiet")}`,
-    `REPAIR ONCE — ${states.get("repair_once")}`,
+    "1. Observe named board and legal-move predicates.",
+    "2. Select the first matching rule. Do not generate candidates from any other rule.",
+    "3. Admit a move only when its one-ply result has a named predicate and a verified threat witness.",
+    "4. The opponent node contains only replies that answer the active threat or create a forcing counter-threat.",
+    "5. Every other legal reply must be discharged by an explicit winning witness; otherwise the candidate is refuted.",
+    "6. Rescan after every played ply. Never fall back to ordinary legal-move search.",
+    `7. Stop after at most ${policy.budget.maxPlies} plies, or earlier when the objective is proved.`,
     "",
-    `Threat order: ${policy.threats.priority.join(" > ")}.`,
-    `Check order: ${policy.threats.checkOrder.join(" > ")}.`,
-    `Defender reply order: ${policy.threats.defenderReplyOrder.join(" > ")}.`,
-    `Search limits: ${policy.budget.maxPlies} plies, ${policy.budget.maxMovesPerState} moves per state, ${policy.budget.maxDefenderReplies} defender replies, ${policy.budget.maxPositions} positions.`,
-    `Quiet rules: ${policy.rules.map((rule) => `${rule.id} — ${rule.instruction}`).join(" | ")}.`
+    `Threat priority: ${policy.threats.priority.join(" > ")}.`,
+    `Rule order: ${policy.rules.map((rule) => rule.id).join(" -> ")}.`
   ].join("\n");
 }
 
@@ -4072,10 +3134,10 @@ export function predicateCatalog() {
 }
 
 export const ALGO = Object.freeze({
-  version: "3.0.0",
+  version: "2.0.0",
   policyVersion: POLICY_VERSION,
   policyUrl: DEFAULT_POLICY_URL,
-  mode: "threats-first-human-state-machine",
+  mode: "predicate-gated-threat-space",
   predicates: PREDICATE_CATALOG,
   options: POLICY_OPTIONS
 });

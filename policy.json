@@ -1,185 +1,58 @@
 {
-  "version": "tactics-policy/v3",
-  "name": "threats-first-human-state-machine",
+  "version": "tactics-policy/v2",
+  "name": "predicate-gated-forcing-threats",
   "objective": {
-    "fightingSide": "side_to_move_at_start",
-    "defendingSide": "other_side",
-    "startingMaterialState": "auto",
     "anyOf": [
-      { "type": "mate" },
+      {
+        "type": "mate"
+      },
       {
         "type": "material",
         "minimumAdvantagePawns": 2,
-        "settlement": "after_defender_reply"
+        "settlement": "after_opponent_reply"
       }
     ]
   },
   "budget": {
-    "maxPlies": 8,
-    "maxMovesPerState": 12,
-    "maxDefenderReplies": 64,
-    "maxPositions": 5000
+    "maxPlies": 6,
+    "maxCandidatesPerRule": 8,
+    "maxRelevantReplies": 64
   },
-  "stateMachine": {
-    "start": "observe",
-    "afterEveryPly": "observe",
-    "states": [
-      {
-        "id": "observe",
-        "instruction": "Write down the material state, whether either king is in check, and the immediate threats available to both sides.",
-        "next": "answer_danger"
-      },
-      {
-        "id": "answer_danger",
-        "instruction": "If our king is in check, answer it. If they have mate in one, mate now or play a forcing move that removes every mate in one.",
-        "next": "try_threats"
-      },
-      {
-        "id": "try_threats",
-        "instruction": "Try our moves in the configured threat order. Finish one threat class before entering the quiet rules.",
-        "next": "test_defender"
-      },
-      {
-        "id": "test_defender",
-        "instruction": "The defender tries mate, checks, direct answers to our threat, and counterattacks that meet or beat our payoff. Explore those replies in that order.",
-        "next": "observe"
-      },
-      {
-        "id": "quiet",
-        "instruction": "After every enabled first-order threat has been tried and stopped, use a position rule such as attacking the defender of a loose piece.",
-        "next": "test_defender"
-      },
-      {
-        "id": "repair_once",
-        "instruction": "If an otherwise strong root line fails only because of one forcing reply, try one root move that makes that reply illegal and still creates a named threat.",
-        "next": "observe"
-      }
+  "search": {
+    "mode": "threat_space",
+    "ruleSelection": "first_match",
+    "ourNodes": "exists",
+    "opponentNodes": "forall_relevant",
+    "candidateGate": "matched_rule_and_verified_threat",
+    "replyGate": "answers_active_threat_or_forcing_counterthreat",
+    "unmatchedReply": "must_be_discharged_by_verified_witness",
+    "rescanAfterEveryPly": true,
+    "stop": [
+      "objective_proven",
+      "depth_exhausted",
+      "no_rule_matches",
+      "no_verified_candidate"
     ]
   },
   "threats": {
     "priority": [
       "mate",
-      "stop_their_mate_in_one",
+      "mate_in_1",
       "check",
-      "threaten_mate_in_one",
+      "winning_capture",
+      "fork",
+      "harass_defender",
+      "pin",
+      "mobility_trap"
     ],
-    "look": {
-      "mate": {
-        "throughPly": 8,
-        "maxMoves": 8,
-        "when": "always"
-      },
-      "stop_their_mate_in_one": {
-        "throughPly": 8,
-        "maxMoves": 8,
-        "when": "only when the defending side has mate in one"
-      },
-      "check": {
-        "throughPly": 8,
-        "maxMoves": 10,
-        "when": "unless our king is already mated; while in check, keep only legal check answers"
-      },
-      "threaten_mate_in_one": {
-        "throughPly": 6,
-        "maxMoves": 6,
-        "when": "when mate now is unavailable and the configured ply limit has not been reached"
-      },
-      "take_material": {
-        "throughPly": 8,
-        "maxMoves": 8,
-        "when": "when the capture reaches the material objective after the defender's immediate recaptures"
-      },
-      "double_attack": {
-        "throughPly": 8,
-        "maxMoves": 8,
-        "when": "when the smaller target is valuable enough to reach the material objective"
-      }
-    },
-    "checkOrder": [
+    "alwaysRetainCounterThreats": [
       "mate",
-      "one_legal_reply",
-      "check_and_take_queen",
-      "fewest_legal_replies",
-      "check_and_take_rook",
-      "largest_capture",
-      "move_name"
+      "mate_in_1",
+      "check"
     ],
-    "defenderReplyOrder": [
-      "mate",
-      "check",
-      "create_mate_in_one",
-      "stop_the_threat",
-      "counterattack_same_or_more",
-      "other_legal_answer"
-    ],
-    "quietWhen": "No enabled mate, check, mate-in-one threat, objective-winning capture, or objective-relevant double attack survives its defender test."
-  },
-  "cycles": {
-    "perpetualCheck": {
-      "enabled": true,
-      "throughPly": 8,
-      "repetitions": 3,
-      "lookBackPlies": 12,
-      "result": "defending_side_holds"
-    }
-  },
-  "repair": {
-    "enabled": true,
-    "attempts": 1,
-    "scope": "root",
-    "trigger": "one_forcing_reply_is_the_only_reason_a_material_win_fails",
-    "moveMust": [
-      "make_that_reply_illegal_on_the_repaired_branch",
-      "create_mate_check_mate_in_one_material_win_or_double_attack"
-    ],
-    "maxMoves": 6
+    "otherwiseRetain": "payoff_at_least_active_threat"
   },
   "predicates": [
-    {
-      "id": "mate",
-      "source": "position",
-      "definition": "The side to move has no legal answer to check."
-    },
-    {
-      "id": "mate_in_1_available",
-      "source": "legal_moves",
-      "definition": "A legal move mates now."
-    },
-    {
-      "id": "check_available",
-      "source": "legal_moves",
-      "definition": "A legal move gives check; record how many legal answers it allows and what else it attacks."
-    },
-    {
-      "id": "mate_threat_available",
-      "source": "legal_moves",
-      "definition": "A legal move threatens mate on the next move."
-    },
-    {
-      "id": "opponent_mate_in_1",
-      "source": "position",
-      "definition": "If the other side could move now, it has a mating move."
-    },
-    {
-      "id": "in_check",
-      "source": "position",
-      "definition": "The side to move is in check."
-    },
-    {
-      "id": "losing_material",
-      "source": "position",
-      "definition": "The fighting side is behind in material, so a material line must recover the deficit and still reach the objective."
-    },
-    {
-      "id": "material_needed",
-      "source": "position",
-      "definition": "The fighting side has not yet reached the configured material objective."
-    },
-    {
-      "id": "quiet",
-      "source": "threat_scan",
-      "definition": "Every enabled first-order threat has been tried and stopped; position rules may now be tried."
-    },
     {
       "id": "loose",
       "source": "position",
@@ -196,9 +69,14 @@
       "definition": "One piece defends two or more loose pieces."
     },
     {
+      "id": "in_check",
+      "source": "position",
+      "definition": "The side to move is in check."
+    },
+    {
       "id": "winning_capture_available",
       "source": "legal_moves",
-      "definition": "A legal capture reaches the material objective after the defender's immediate recapture choices."
+      "definition": "A legal capture reaches the material objective even after every immediate recapture."
     },
     {
       "id": "fork_available",
@@ -208,17 +86,17 @@
     {
       "id": "harass_defender",
       "source": "one_ply_result",
-      "definition": "A legal move attacks a defender of one or more loose pieces; ignoring it loses enough material to meet the objective."
+      "definition": "A legal move attacks a defender of one or more loose pieces; ignoring the attack permits an objective-winning capture."
     },
     {
       "id": "capture_recapture_fork",
       "source": "legal_move_sequence",
-      "definition": "Capture a loose piece; an immediate recapture permits a double attack."
+      "definition": "Capture a loose piece; every immediate recapture permits a verified fork that reaches the objective."
     },
     {
       "id": "forcing_counterthreat",
-      "source": "defender_reply",
-      "definition": "A defender reply mates, checks, creates mate in one, or counterattacks for at least the value of the active threat."
+      "source": "opponent_reply",
+      "definition": "A reply gives mate, mate in one, check, or a threat with payoff at least as large as the active threat."
     }
   ],
   "rules": [
@@ -226,34 +104,82 @@
       "id": "answer-check",
       "when": {
         "all": [
-          { "predicate": "in_check", "side": "us" }
+          {
+            "predicate": "in_check",
+            "side": "us"
+          }
         ]
       },
-      "instruction": "Answer the check and prefer the answer that creates the highest-ranked threat.",
-      "try": [
-        "answer_check_and_create_threat"
+      "consider": [
+        "answer_check_and_preserve_verified_threat"
+      ],
+      "candidateMust": [
+        "answers_check",
+        "result_has_verified_threat_or_objective"
+      ]
+    },
+    {
+      "id": "winning-capture",
+      "when": {
+        "all": [
+          {
+            "predicate": "winning_capture_available",
+            "side": "us"
+          }
+        ]
+      },
+      "consider": [
+        "play_stable_winning_capture"
+      ],
+      "candidateMust": [
+        "move_result_has_named_predicate",
+        "threat_has_verified_witness"
       ]
     },
     {
       "id": "loose-piece",
       "when": {
         "all": [
-          { "predicate": "quiet", "side": "us" },
-          { "predicate": "loose", "side": "enemy" }
+          {
+            "predicate": "loose",
+            "side": "enemy"
+          }
         ]
       },
-      "instruction": "Name the loose piece and its defender. Try attacking the defender, then capture-recapture-double-attack ideas, then a direct capture.",
-      "try": [
-        "attack_the_defender",
-        "capture_then_double_attack",
-        "capture_then_rescan",
-        "take_the_loose_piece"
+      "consider": [
+        "harass_shared_defender",
+        "capture_loose_with_recapture_fork",
+        "capture_loose_with_rule_continuation",
+        "play_stable_winning_capture"
+      ],
+      "candidateMust": [
+        "move_result_has_named_predicate",
+        "threat_has_verified_witness",
+        "threat_payoff_reaches_objective"
+      ]
+    },
+    {
+      "id": "fork",
+      "when": {
+        "all": [
+          {
+            "predicate": "fork_available",
+            "side": "us"
+          }
+        ]
+      },
+      "consider": [
+        "play_verified_fork"
+      ],
+      "candidateMust": [
+        "move_result_has_named_predicate",
+        "threat_has_verified_witness"
       ]
     }
   ],
-  "outcomes": {
-    "fightingSideWins": "At least one fighting move reaches the objective against every ranked defender answer.",
-    "defendingSideHolds": "One ranked defender answer prevents the objective, or the configured perpetual cycle is reached.",
-    "notEnoughInformation": "The depth, move, position, or rule budget ends before either result is established."
+  "branchResult": {
+    "proven": "one_rule_generated_candidate_survives_every_relevant_reply",
+    "refutedWithinPolicy": "a_relevant_reply_refutes_every_rule_generated_continuation",
+    "unresolvedLeaf": "depth_or_rule_vocabulary_exhausted_without_proof"
   }
 }
