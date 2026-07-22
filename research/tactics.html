@@ -292,14 +292,14 @@
       <div class="back">‹</div>
       <div class="titleWrap">
         <h1>Tactical Policy Worksheet</h1>
-        <div class="sub">Human-readable predicates, six-ply AND/OR proof search, and a visible one-step DFS.</div>
+        <div class="sub">Threats first, defender answers second, quiet rules last — one visible state-machine step at a time.</div>
       </div>
     </div>
     <div class="topStats">
       <div class="pill">games: <strong id="gameCount">1</strong></div>
       <div class="pill">ply: <strong id="plyTop">root</strong></div>
       <div class="pill" id="policyPill">policy: <strong id="policyTop">loading</strong></div>
-      <div class="pill" id="proofPill">proof: <strong id="proofTop">idle</strong></div>
+      <div class="pill" id="proofPill">state: <strong id="proofTop">idle</strong></div>
     </div>
   </header>
 
@@ -307,14 +307,14 @@
     <section class="panel boardPanel">
       <div class="tools">
         <div class="btns topControls">
-          <button class="tiny primary" id="stepAlgo">step proof</button>
-          <button class="tiny primary" id="fullProof">full proof</button>
+          <button class="tiny primary" id="stepAlgo">step search</button>
+          <button class="tiny primary" id="fullProof">full search</button>
           <label class="check"><input type="checkbox" id="solved" /> solved</label>
           <button class="tiny" id="prevBtn">← ply</button>
           <button class="tiny" id="nextBtn">ply →</button>
           <button class="tiny" id="rootBtn">root</button>
           <button class="tiny primary" id="notice">notice</button>
-          <button class="tiny" id="restartProof">restart proof</button>
+          <button class="tiny" id="restartProof">restart search</button>
           <button class="tiny" id="flip">↕ flip</button>
           <button class="tiny" id="clearMarks">clear marks</button>
         </div>
@@ -361,7 +361,7 @@
               <div class="reasoningPanel" id="reasoningPanel"><div class="reasonEmpty">No comments on the selected node.</div></div>
             </div>
             <div class="linePane" id="line">
-              <div class="empty">Move manually, step once, or run <span class="kbd">full proof</span>. The active-ply comments stay above the organized lines.</div>
+              <div class="empty">Move manually, step once, or run <span class="kbd">full search</span>. The active-ply comments stay above the organized lines.</div>
             </div>
           </div>
         </section>
@@ -408,7 +408,7 @@
 
             <div class="btns" style="justify-content:flex-start">
               <button id="runAlgo">preview current root</button>
-              <button id="restartAlgo">restart proof here</button>
+              <button id="restartAlgo">restart search here</button>
               <button id="reloadPolicy">reload policy.json</button>
               <button id="logAlgo">append policy output to log</button>
             </div>
@@ -498,7 +498,7 @@
     loadPolicy,
     predicateCatalog,
     runOnePass
-  } from "https://priyomes.com/algo.js";
+  } from "./algo.js";
 
   // Deliberately instantiate ScratchChess's exported Game class directly.
   // scratchchess.js's createGame() helper starts the optional Lichess opening
@@ -507,7 +507,7 @@
 
   const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
   const POSITIONS_URL = "https://priyomes.com/tactical_positions.md";
-  const POLICY_URL = DEFAULT_POLICY_URL || "https://priyomes.com/policy.json";
+  const POLICY_URL = "./policy.json";
   const FALLBACK_MD = `# Tactical Positions
 
 ## Greek Gift Seed
@@ -578,6 +578,17 @@ where: https://lichess.org/training/LEHbA
 
   function fenSide(fen) {
     return String(fen || "").trim().split(/\s+/)[1] === "b" ? "b" : "w";
+  }
+
+  function statusLabel(status) {
+    return ({
+      idle: "idle",
+      searching: "searching",
+      proven: "fighting side wins",
+      refutedWithinPolicy: "defender holds",
+      inconclusive: "not enough information",
+      unresolvedLeaf: "not enough information"
+    })[status] || String(status || "idle").replace(/_/g, " ");
   }
 
   function parsePositions(markdown) {
@@ -662,7 +673,7 @@ where: https://lichess.org/training/LEHbA
     const proofDisabled = state.busy || !state.policy || !state.game;
     $("stepAlgo").disabled = proofDisabled;
     $("fullProof").disabled = proofDisabled;
-    $("fullProof").textContent = state.fullProofRunning ? "proving…" : "full proof";
+    $("fullProof").textContent = state.fullProofRunning ? "searching…" : "full search";
     $("restartProof").disabled = proofDisabled;
     $("reloadPolicy").disabled = state.busy;
   }
@@ -851,7 +862,7 @@ where: https://lichess.org/training/LEHbA
       state.current.proofExhausted = false;
       state.current.solutionUciPath = [];
     }
-    if (log) addLog("restarted policy proof at the current board node", true);
+    if (log) addLog("restarted the state-machine search at the current board node", true);
   }
 
   function ensureReasoner() {
@@ -1381,7 +1392,7 @@ where: https://lichess.org/training/LEHbA
       const icon = document.createElement("span");
       icon.className = `outcomeIcon ${outcome}`;
       icon.textContent = outcome === "proven" ? "✓" : "×";
-      icon.title = outcome === "proven" ? "Tactic proven" : "Search exhausted without a proof";
+      icon.title = outcome === "proven" ? "Fighting side reaches the objective" : "Defender holds within the configured search";
       button.appendChild(icon);
     }
     const san = document.createElement("span");
@@ -1519,7 +1530,7 @@ where: https://lichess.org/training/LEHbA
     if (!root?.children?.length) {
       const empty = document.createElement("div");
       empty.className = "empty";
-      empty.innerHTML = 'No explored line yet. Press <span class="kbd">step proof</span>, <span class="kbd">full proof</span>, or make a move on the board.';
+      empty.innerHTML = 'No explored line yet. Press <span class="kbd">step search</span>, <span class="kbd">full search</span>, or make a move on the board.';
       pane.appendChild(empty);
       const branch = document.createElement("div");
       addAnchor(branch, [], "branch from root");
@@ -1564,10 +1575,10 @@ where: https://lichess.org/training/LEHbA
     const source = state.policyLoad?.source || "none";
     $("policyTop").textContent = source;
     $("policyPill").className = `pill ${source === "live" ? "ok" : source === "fallback" ? "warn" : "bad"}`;
-    $("proofTop").textContent = state.proofStatus;
+    $("proofTop").textContent = statusLabel(state.proofStatus);
     $("proofPill").className = `pill ${state.proofStatus === "proven" ? "ok" : state.current?.proofExhausted ? "bad" : state.proofStatus === "inconclusive" ? "warn" : ""}`;
     $("lineProofBadge").className = `proofBadge ${state.current?.proofStatus || state.proofStatus}`;
-    $("lineProofBadge").textContent = state.current?.proofStatus || state.proofStatus;
+    $("lineProofBadge").textContent = statusLabel(state.current?.proofStatus || state.proofStatus);
 
     if (document.activeElement !== $("fenInput")) $("fenInput").value = state.current?.fen || currentFen;
     if (document.activeElement !== $("configTitle")) $("configTitle").value = state.current?.title || "";
@@ -1638,14 +1649,14 @@ where: https://lichess.org/training/LEHbA
       ? `${state.policy.version} · ${state.policy.budget.maxPlies} plies · ${source} from ${loaded?.url || POLICY_URL}${loaded?.warning ? ` · ${loaded.warning}` : ""}`
       : loaded?.warning || "Policy unavailable.";
     $("proofBadge").className = `proofBadge ${state.proofStatus}`;
-    $("proofBadge").textContent = state.proofStatus;
+    $("proofBadge").textContent = statusLabel(state.proofStatus);
     $("algoText").textContent = state.policy ? describeAlgorithm(state.policy) : "A valid policy is required before search can run.";
     $("policyJson").textContent = state.policy ? JSON.stringify(state.policy, null, 2) : "—";
 
     const box = $("algoSteps");
     box.innerHTML = "";
     if (!state.algoSteps.length) {
-      box.innerHTML = '<div class="empty">Preview the current root or press <span class="kbd">step proof</span>. Each click performs one observation, expansion, move, leaf decision, aggregation, or backtrack.</div>';
+      box.innerHTML = '<div class="empty">Preview the current root or press <span class="kbd">step search</span>. Each click performs one state transition, move, defender reply, or return to the previous state.</div>';
     } else {
       state.algoSteps.forEach((step, index) => {
         const item = document.createElement("div");
@@ -1824,7 +1835,7 @@ where: https://lichess.org/training/LEHbA
           state.current.proofStatus = "inconclusive";
           state.current.proofExhausted = true;
         }
-        const message = `full proof stopped after ${steps} UI steps without a terminal result`;
+        const message = `full search stopped after ${steps} UI steps without a final result`;
         state.algoSteps.push(message);
         addLog(message, true);
       }
