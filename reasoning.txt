@@ -330,3 +330,95 @@ PROVED.
 [Result "1-0"]
 
 27. Re1+ Kf5 28. Be4+ Kg5 29. Nxf6 (29. Bxh7 Kxh5) 29... Kxf6 30. Bxh7 1-0
+
+
+CTT/1
+id: check-alignment-skewer-pick-capture-sequence
+source: lichess:cPo8l
+fen: 5r2/5p1b/p3pb1p/1p2k2N/8/5B2/PPP4P/1K3R2 w - - 0 27
+objective: find a forcing material win for White
+status: solved
+main: 27.Re1+
+result: 1-0
+positions_entered: 9
+
+[rules]
+
+RULE opponent-reply-completeness: At every opponent node, every legal reply must be represented by REPLY and TRYed unless a named rule closes it using predicates visible in the reply position.
+RULE reply-class-closure: Legal replies sharing the same decisive predicates may be represented as one REPLY class.
+RULE first-refutation-stops: One opponent reply that defeats our candidate is enough to reject that candidate; the opponent's remaining replies need not be searched.
+RULE forcing-first: Search checks before non-checking moves.
+RULE rank-checks: Prefer a check with exactly one legal reply. If none has one reply, prefer the check that creates the most useful attacks.
+RULE check-reply-lookahead: After a check, inspect the predicates produced by every legal reply before deciding which replies remain live.
+RULE strongest-defense-first: TRY the live reply that preserves the most threatened material or creates the strongest counterthreat.
+RULE reply-concedes-objective: Close a reply when it permits a safe immediate capture that already meets the objective.
+RULE immediate-recapture-closure: Close a compensating capture when its capturing piece is immediately recaptured and the objective still holds.
+RULE capture-order-lookahead: When two captures are available against jointly attacked pieces, TRY each capture through one opponent reply.
+
+[trace]
+
+SAW alignment(R@f1,B@f3,bB@f6); attacked(B@f6,N@h5); sole_defender(K@e5,B@f6).
+CANDIDATES 27.Re1+: only_check, legal_replies=4.
+TRY 27.Re1+ BECAUSE forcing-first.
+
+REPLY 27...Kd4: B@f6 loses sole defender; Nxf6 safely captures it :: closed by reply-concedes-objective.
+REPLY 27...Kd6: B@f6 loses sole defender; Nxf6 safely captures it :: closed by reply-concedes-objective.
+REPLY 27...Be4: blocks_check; Rxe4+ captures the blocker; Kxe4 is illegal because B@f3 defends e4 :: closed by reply-concedes-objective.
+REPLY 27...Kf5: preserves_defense(B@f6).
+TRY 27...Kf5 BECAUSE strongest-defense-first.
+
+SAW attacked(B@f6,N@h5); alignment(K@f5,B@h7).
+CANDIDATES 28.Be4+: legal_replies=3, defended_by(R@e1), attacks(B@h7), preserves_attack(N@h5,B@f6); 28.Bg4+: legal_replies=3, allows(Kxg4); 28.Ng3+: legal_replies=3, abandons_attack(B@f6); 28.Ng7+: legal_replies=4, allows(Bxg7); 28.Re5+: legal_replies=3, allows(Bxe5) or Kxe5.
+TRY 28.Be4+ BECAUSE rank-checks; no check has one legal reply, and Be4+ creates the most useful attacks.
+
+REPLY 28...Ke5: Bxh7+ captures(B@h7) with discovered check :: closed by reply-concedes-objective.
+REPLY 28...Kg4: Nxf6+ safely captures(B@f6) with check :: closed by reply-concedes-objective.
+REPLY 28...Kg5: preserves_defense(B@f6), attacks(N@h5).
+TRY 28...Kg5 BECAUSE strongest-defense-first.
+
+SAW attacked(B@f6,N@h5); attacked(B@h7,B@e4); attacked(N@h5,K@g5).
+CANDIDATES 29.Bxh7: captures(B@h7), allows(Kxh5); 29.Nxf6: captures(B@f6), leaves(B@h7) attacked.
+TRY 29.Bxh7 BECAUSE capture-order-lookahead.
+
+REPLY 29...Kxh5: captures(N@h5), defeats the material objective.
+TRY 29...Kxh5 BECAUSE strongest-defense-first.
+SAW material objective not met.
+FROM 29...Kxh5.
+FROM 29.Bxh7 :: rejected.
+
+TRY 29.Nxf6 BECAUSE capture-order-lookahead; it is the remaining capture order.
+
+REPLY 29...Kxf6: recaptures(N@f6), leaves(B@h7) attacked by B@e4.
+REPLY 29...Bxe4: captures(B@e4), allows(Nxe4+) to recapture the remaining bishop :: closed by immediate-recapture-closure.
+REPLY other 16 legal moves: no_check; no_capture; B@f6 remains lost :: closed by reply-concedes-objective.
+TRY 29...Kxf6 BECAUSE strongest-defense-first.
+
+SAW loose(B@h7); attacked(B@h7,B@e4).
+CANDIDATES 30.Bxh7: captures the remaining bishop and meets the objective.
+TRY 30.Bxh7 BECAUSE it completes the capture sequence.
+PROVED.
+
+[final pgn]
+
+[Event "Check to alignment to skewer to pick capture sequence"]
+[Site "https://lichess.org/training/cPo8l"]
+[Date "2026.07.23"]
+[Round "1"]
+[White "White"]
+[Black "Black"]
+[Setup "1"]
+[FEN "5r2/5p1b/p3pb1p/1p2k2N/8/5B2/PPP4P/1K3R2 w - - 0 27"]
+[Result "1-0"]
+
+27. Re1+ Kf5
+    (27... Kd4 28. Nxf6)
+    (27... Kd6 28. Nxf6)
+    (27... Be4 28. Rxe4+)
+28. Be4+ Kg5
+    (28... Ke5 29. Bxh7+)
+    (28... Kg4 29. Nxf6+)
+29. Nxf6
+    (29. Bxh7 Kxh5)
+29... Kxf6
+    (29... Bxe4 30. Nxe4+)
+30. Bxh7 1-0
