@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <base href="https://priyomes.com/" />
-  <title>Tactical Policy Worksheet</title>
+  <title>Predicate Chess Worksheet</title>
   <style>
     :root{
       --bg:#080b0f;--panel:#10151c;--line:#2c3645;--text:#e9eef6;
@@ -193,7 +193,7 @@
        --------------------------------------------------------------- */
     .tools{grid-template-columns:1fr;align-items:center}
     .topControls{justify-content:flex-start}
-    .tabs{grid-template-columns:repeat(6,1fr)}
+    .tabs{grid-template-columns:repeat(7,1fr)}
     .movesLayout{grid-template-rows:104px 104px minmax(0,1fr);gap:12px}
     .desktopMeta{height:104px;overflow:hidden}
     .infoCard,.reasonCard{display:grid;grid-template-rows:auto minmax(0,1fr)}
@@ -238,6 +238,28 @@
     .configReasoning{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow:auto}
     .configLink{color:#bfe7ff;text-decoration:none;overflow-wrap:anywhere}
 
+    .referencePgn{border:1px solid rgba(212,169,47,.30);background:rgba(212,169,47,.035);border-radius:14px;overflow:hidden;flex:0 0 auto}
+    .referencePgnHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border-bottom:1px solid rgba(212,169,47,.18)}
+    .referencePgnTitle{font-weight:950;color:#f3dfa0}
+    .referencePgnMeta{color:var(--muted);font-size:11px;font-weight:850}
+    .referencePgnMoves{padding:10px 11px;line-height:2.1;overflow-wrap:anywhere}
+    .referenceVariation{display:block;margin:5px 0 5px 22px;padding-left:10px;border-left:2px solid rgba(85,185,255,.28)}
+    .referenceMove{display:inline-flex;align-items:center;border:1px solid rgba(212,169,47,.24);background:rgba(212,169,47,.07);border-radius:9px;padding:4px 6px;margin:2px 3px 2px 0;color:#f3e3ab;font-weight:900}
+    .referenceResult{color:var(--green);font-weight:950;margin-left:5px}
+    .explainLayout{display:grid;gap:12px;max-width:900px;margin:0 auto;padding-bottom:env(safe-area-inset-bottom)}
+    .explainBanner{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:15px;padding:11px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+    .explainStatus{border-radius:999px;padding:6px 9px;font:900 11px ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line);white-space:nowrap}
+    .explainStatus.ok{color:#bdf5d1;border-color:rgba(107,221,154,.5)}
+    .explainStatus.warn{color:#ffd3a4;border-color:rgba(255,185,107,.5)}
+    .plainSections{display:flex;flex-direction:column;gap:10px}
+    .plainSection{border:1px solid rgba(255,255,255,.09);background:rgba(0,0,0,.18);border-radius:14px;overflow:hidden}
+    .plainSectionHead{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.08);font:950 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1d98e;letter-spacing:.05em}
+    .plainSectionBody{padding:8px 10px;display:flex;flex-direction:column;gap:6px;color:#dce6f3;font-size:14px;line-height:1.42}
+    .plainBullet{position:relative;padding-left:16px}
+    .plainBullet:before{content:"";position:absolute;left:2px;top:.6em;width:6px;height:6px;border-radius:999px;background:var(--blue)}
+    .traceBox{max-height:330px;overflow:auto;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.24);border-radius:14px;padding:11px;color:#cad5e4;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
+    .testSummary{color:var(--muted);font-size:12px;line-height:1.45}
+
     @media(max-width:1000px){
       html,body{height:100dvh;min-height:100dvh}
       body{overflow:hidden}
@@ -254,7 +276,7 @@
       .boardHost{width:100%!important;height:auto!important;min-width:0!important;min-height:0!important;max-width:100%!important;max-height:100%!important}
       .threatRail{height:17px;min-height:17px;font-size:9px;padding:0 4px;gap:4px}
       .study{height:50dvh!important;min-height:0!important;display:grid!important;grid-template-rows:42px minmax(0,1fr)!important;border:0!important;border-top:2px solid rgba(85,185,255,.38)!important;background:#0e141c!important}
-      .tabs{height:42px!important;grid-template-columns:repeat(6,1fr)!important;background:#101720!important}
+      .tabs{height:42px!important;grid-template-columns:repeat(7,1fr)!important;background:#101720!important}
       .tab{padding:5px 2px!important;font-size:10px!important}
       .ico{width:21px!important;height:21px!important}
       .tabLabel{display:none!important}
@@ -291,8 +313,8 @@
     <div class="brand">
       <div class="back">‹</div>
       <div class="titleWrap">
-        <h1>Tactical Policy Worksheet</h1>
-        <div class="sub">Human-readable predicates, six-ply AND/OR proof search, and a visible one-step DFS.</div>
+        <h1>Predicate Chess Worksheet</h1>
+        <div class="sub">Forcing Clamp 1 · observable predicates · bounded CTT proofs · deterministic explanations.</div>
       </div>
     </div>
     <div class="topStats">
@@ -334,6 +356,7 @@
         <button class="tab" data-tab="predicates"><span class="ico">◇</span><span class="tabLabel">Predicates</span></button>
         <button class="tab" data-tab="log"><span class="ico">☷</span><span class="tabLabel">Log</span></button>
         <button class="tab" data-tab="algo"><span class="ico">⚙</span><span class="tabLabel">Policy</span></button>
+        <button class="tab" data-tab="explain"><span class="ico">≡</span><span class="tabLabel">Explain</span></button>
         <button class="tab" data-tab="pgn"><span class="ico">♙</span><span class="tabLabel">PGN</span></button>
         <button class="tab" data-tab="config"><span class="ico">☰</span><span class="tabLabel">Config</span></button>
       </nav>
@@ -422,12 +445,30 @@
           </div>
         </section>
 
+        <section class="tabPanel" id="tab-explain">
+          <div class="explainLayout">
+            <div class="explainBanner">
+              <div>
+                <div class="pTitle">Deterministic plain English</div>
+                <div class="testSummary" id="explainMeta">No trace loaded.</div>
+              </div>
+              <div class="explainStatus warn" id="explainStatus">—</div>
+            </div>
+            <div class="plainSections" id="plainSections"></div>
+            <details>
+              <summary>Executable CTT/1 trace</summary>
+              <pre class="traceBox" id="traceText">—</pre>
+            </details>
+          </div>
+        </section>
+
         <section class="tabPanel" id="tab-pgn">
           <div class="pgnPanel">
             <div class="pgnHeaderRow">
               <div class="sessionList" id="sessionList"></div>
               <select id="pgnMode" class="pgnMode" aria-label="PGN export mode">
-                <option value="comments">full lines + comments</option>
+                <option value="reference">canonical [final pgn]</option>
+                <option value="comments">explored lines + comments</option>
                 <option value="clean">full lines · no comments</option>
               </select>
             </div>
@@ -499,6 +540,13 @@
     predicateCatalog,
     runOnePass
   } from "https://priyomes.com/algo.js";
+  import {
+    DEFAULT_EXPLAIN_TEST_URL,
+    explainTrace,
+    parseExplainTestFile,
+    parseFinalPgn,
+    runExplainTests
+  } from "https://priyomes.com/explain.js";
 
   // Deliberately instantiate ScratchChess's exported Game class directly.
   // scratchchess.js's createGame() helper starts the optional Lichess opening
@@ -508,6 +556,7 @@
   const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
   const POSITIONS_URL = "https://priyomes.com/tactical_positions.md";
   const POLICY_URL = DEFAULT_POLICY_URL || "https://priyomes.com/policy.json";
+  const EXPLAIN_TEST_URL = DEFAULT_EXPLAIN_TEST_URL || "https://priyomes.com/explain_test.txt";
   const FALLBACK_MD = `# Tactical Positions
 
 ## Greek Gift Seed
@@ -557,13 +606,17 @@ where: https://lichess.org/training/LEHbA
     policy: null,
     policyLoad: null,
     proofStatus: "idle",
-    pgnMode: "comments",
+    pgnMode: "reference",
     fullProofRunning: false,
     inAlgoStep: false,
     busy: false,
     boardFlipped: false,
     policyThreats: new WeakMap(),
-    explorationReasons: new WeakMap()
+    explorationReasons: new WeakMap(),
+    explainTests: [],
+    explainTestReport: null,
+    generatedExplanation: null,
+    testBenchSource: "none"
   };
 
   function esc(value) {
@@ -578,6 +631,17 @@ where: https://lichess.org/training/LEHbA
 
   function fenSide(fen) {
     return String(fen || "").trim().split(/\s+/)[1] === "b" ? "b" : "w";
+  }
+
+  function positionKey(fen) {
+    return String(fen || "").trim().split(/\s+/).slice(0, 4).join(" ");
+  }
+
+  function tracePlanForCurrent() {
+    if (!state.current?.trace || !state.game) return "";
+    return positionKey(state.game.exportFEN()) === positionKey(state.current.fen)
+      ? state.current.trace
+      : "";
   }
 
   function parsePositions(markdown) {
@@ -634,19 +698,65 @@ where: https://lichess.org/training/LEHbA
   }
 
   async function loadLibrary() {
-    let markdown = FALLBACK_MD;
-    let live = false;
+    let testText = "";
+    let liveTests = false;
     try {
-      const response = await fetch(POSITIONS_URL, { cache: "no-store" });
+      const response = await fetch(EXPLAIN_TEST_URL, { cache: "no-store" });
       if (response.ok) {
-        markdown = await response.text();
-        live = true;
+        testText = await response.text();
+        liveTests = true;
       }
     } catch {}
 
-    state.puzzles = parsePositions(markdown);
-    if (!state.puzzles.length) state.puzzles = parsePositions(FALLBACK_MD);
-    $("libStatus").textContent = `${live ? "library: priyomes root" : "library: fallback"} tactical_positions.md · ${state.puzzles.length} puzzles · policy ${state.policyLoad?.source || "unavailable"}`;
+    if (testText) {
+      try {
+        state.explainTests = parseExplainTestFile(testText);
+        state.explainTestReport = runExplainTests(testText);
+        state.testBenchSource = liveTests ? "live" : "fallback";
+        state.puzzles = state.explainTests.map((test) => ({
+          title: `Exercise ${test.number}: ${test.title || test.id}`,
+          theme: String(test.id || "").replace(/^woodpecker-\d+-/, "").replace(/-/g, " "),
+          solution: test.main || "",
+          where: test.source || "",
+          fen: test.fen,
+          objective: test.objective || "",
+          trace: test.trace || "",
+          finalPgn: test.finalPgn || "",
+          expectedPlainEnglish: test.expectedPlainEnglish || "",
+          testNumber: test.number,
+          testId: test.id,
+          positionsEntered: Number(test.positions_entered || 0),
+          status: test.status || "",
+          result: test.result || "*"
+        }));
+      } catch (error) {
+        state.explainTests = [];
+        state.explainTestReport = null;
+        state.testBenchSource = "parse-error";
+        addLog(`explain_test.txt parse failed: ${error?.message || error}`, true);
+      }
+    }
+
+    if (!state.puzzles.length) {
+      let markdown = FALLBACK_MD;
+      let live = false;
+      try {
+        const response = await fetch(POSITIONS_URL, { cache: "no-store" });
+        if (response.ok) {
+          markdown = await response.text();
+          live = true;
+        }
+      } catch {}
+      state.puzzles = parsePositions(markdown);
+      if (!state.puzzles.length) state.puzzles = parsePositions(FALLBACK_MD);
+      state.testBenchSource = live ? "legacy-live" : "legacy-fallback";
+    }
+
+    const report = state.explainTestReport;
+    const testStatus = report
+      ? ` · explain tests ${report.passed}/${report.total}`
+      : " · no executable explain test bench";
+    $("libStatus").textContent = `${state.testBenchSource}: ${state.puzzles.length} puzzles${testStatus} · policy ${state.policyLoad?.source || "unavailable"}`;
     $("puzzleSelect").innerHTML = "";
     state.puzzles.forEach((puzzle, index) => {
       const option = document.createElement("option");
@@ -834,6 +944,7 @@ where: https://lichess.org/training/LEHbA
       fen: state.current.fen,
       proofStatus: state.current.proofStatus,
       proofExhausted: state.current.proofExhausted,
+      referencePgn: state.current.finalPgn || "",
       pgn: exportOne(state.game, state.current)
     });
     divider(`PGN game ${state.archive.length} appended: ${state.current.title}`);
@@ -842,8 +953,14 @@ where: https://lichess.org/training/LEHbA
 
   function resetReasonerAtCurrent({ log = true, clearOutcome = true } = {}) {
     if (!state.policy || !state.game) return;
-    state.reasoner = createReasoner({ createGame, policy: state.policy, maxSteps: 5000 });
-    state.reasoner.reset(state.game);
+    state.reasoner = createReasoner({
+      createGame,
+      policy: state.policy,
+      maxSteps: 5000,
+      tracePlan: tracePlanForCurrent(),
+      puzzle: state.current || null
+    });
+    state.reasoner.reset(state.game, { tracePlan: tracePlanForCurrent(), puzzle: state.current || null });
     state.proofStatus = clearOutcome ? "searching" : (state.current?.proofStatus || "searching");
     state.algoSteps = [];
     if (clearOutcome && state.current) {
@@ -901,10 +1018,20 @@ where: https://lichess.org/training/LEHbA
       theme: puzzle?.theme || "",
       solution: puzzle?.solution || "",
       where: puzzle?.where || "",
+      objective: puzzle?.objective || "",
+      trace: puzzle?.trace || "",
+      finalPgn: puzzle?.finalPgn || "",
+      expectedPlainEnglish: puzzle?.expectedPlainEnglish || "",
+      testNumber: puzzle?.testNumber || null,
+      testId: puzzle?.testId || "",
+      positionsEntered: Number(puzzle?.positionsEntered || 0),
+      result: puzzle?.result || "*",
       solved: false,
       proofStatus: "idle",
       proofExhausted: false,
       solutionUciPath: [],
+      generatedPlainEnglish: "",
+      explainMatches: null,
       gameLog: []
     };
     const game = createGame({
@@ -942,8 +1069,14 @@ where: https://lichess.org/training/LEHbA
         addLog(`played \`${node.san}\``, true);
       }
       if (state.policy) {
-        state.reasoner = createReasoner({ createGame, policy: state.policy, maxSteps: 5000 });
-        state.reasoner.reset(game);
+        state.reasoner = createReasoner({
+          createGame,
+          policy: state.policy,
+          maxSteps: 5000,
+          tracePlan: tracePlanForCurrent(),
+          puzzle: state.current || null
+        });
+        state.reasoner.reset(game, { tracePlan: tracePlanForCurrent(), puzzle: state.current || null });
         state.proofStatus = "searching";
         state.algoSteps = [];
         if (state.current) {
@@ -1512,9 +1645,125 @@ where: https://lichess.org/training/LEHbA
     }
   }
 
+  function appendReferencePgnItems(container, items, depth = 0) {
+    for (const item of items || []) {
+      if (item.type === "moveNumber") {
+        const span = document.createElement("span");
+        span.className = "moveNo";
+        span.textContent = item.text;
+        container.appendChild(span);
+      } else if (item.type === "move") {
+        const span = document.createElement("span");
+        span.className = "referenceMove";
+        span.textContent = item.san;
+        container.appendChild(span);
+      } else if (item.type === "result") {
+        const span = document.createElement("span");
+        span.className = "referenceResult";
+        span.textContent = item.text;
+        container.appendChild(span);
+      } else if (item.type === "variation") {
+        const variation = document.createElement("span");
+        variation.className = "referenceVariation";
+        appendReferencePgnItems(variation, item.items, depth + 1);
+        container.appendChild(variation);
+      }
+    }
+  }
+
+  function renderReferencePgn(pane) {
+    const pgn = state.current?.finalPgn || "";
+    if (!pgn) return;
+    let parsed;
+    try { parsed = parseFinalPgn(pgn); } catch { return; }
+    const card = document.createElement("section");
+    card.className = "referencePgn";
+    const head = document.createElement("div");
+    head.className = "referencePgnHead";
+    const number = state.current?.testNumber ? `Test ${state.current.testNumber}` : "Canonical line";
+    head.innerHTML = `<span class="referencePgnTitle">[final pgn] move list</span><span class="referencePgnMeta">${esc(number)}</span>`;
+    card.appendChild(head);
+    const body = document.createElement("div");
+    body.className = "referencePgnMoves pgnish";
+    appendReferencePgnItems(body, parsed.tree?.items || []);
+    card.appendChild(body);
+    pane.appendChild(card);
+  }
+
+  function currentTraceText() {
+    const active = state.reasoner?.getTraceText?.() || "";
+    if (tracePlanForCurrent()) return state.current?.trace || active;
+    return active || state.current?.trace || "";
+  }
+
+  function renderExplanation() {
+    const trace = currentTraceText();
+    const sectionsBox = $("plainSections");
+    const status = $("explainStatus");
+    const meta = $("explainMeta");
+    const traceBox = $("traceText");
+    if (!sectionsBox || !status || !meta || !traceBox) return;
+    sectionsBox.innerHTML = "";
+    traceBox.textContent = trace || "—";
+    if (!trace) {
+      status.className = "explainStatus warn";
+      status.textContent = "no trace";
+      meta.textContent = "Run the policy or load an executable CTT/1 test case.";
+      sectionsBox.innerHTML = '<div class="empty">No CTT/1 trace is available for this position.</div>';
+      return;
+    }
+
+    let generated;
+    try {
+      generated = explainTrace({ puzzle: state.current || {}, trace, policy: state.policy });
+    } catch (error) {
+      status.className = "explainStatus warn";
+      status.textContent = "explain error";
+      meta.textContent = error?.message || String(error);
+      return;
+    }
+    state.generatedExplanation = generated;
+    if (state.current) {
+      state.current.generatedPlainEnglish = generated.text;
+      const expected = String(state.current.expectedPlainEnglish || "").trim();
+      state.current.explainMatches = expected ? expected === generated.text.trim() : null;
+    }
+
+    const expected = String(state.current?.expectedPlainEnglish || "").trim();
+    const exact = expected ? expected === generated.text.trim() : null;
+    status.className = `explainStatus ${exact === false ? "warn" : "ok"}`;
+    status.textContent = exact === true ? "exact test match" : exact === false ? "test mismatch" : "deterministic";
+    const report = state.explainTestReport;
+    const suite = report ? ` · suite ${report.passed}/${report.total}` : "";
+    const positions = state.current?.positionsEntered ? ` · ${state.current.positionsEntered}/${state.policy?.profile?.try_budget || 10} TRY positions` : "";
+    meta.textContent = `${state.current?.testId || state.current?.title || "current puzzle"}${positions}${suite}`;
+
+    for (const section of generated.sections || []) {
+      const card = document.createElement("section");
+      card.className = "plainSection";
+      const head = document.createElement("div");
+      head.className = "plainSectionHead";
+      head.textContent = section.label;
+      card.appendChild(head);
+      if (section.lines?.length) {
+        const body = document.createElement("div");
+        body.className = "plainSectionBody";
+        section.lines.forEach((line) => {
+          const bullet = document.createElement("div");
+          bullet.className = "plainBullet";
+          bullet.textContent = line;
+          body.appendChild(bullet);
+        });
+        card.appendChild(body);
+      }
+      sectionsBox.appendChild(card);
+    }
+  }
+
   function renderLine() {
     const pane = $("line");
     pane.innerHTML = "";
+    renderReferencePgn(pane);
     const root = state.game?.root;
     if (!root?.children?.length) {
       const empty = document.createElement("div");
@@ -1572,9 +1821,11 @@ where: https://lichess.org/training/LEHbA
     if (document.activeElement !== $("fenInput")) $("fenInput").value = state.current?.fen || currentFen;
     if (document.activeElement !== $("configTitle")) $("configTitle").value = state.current?.title || "";
     if (document.activeElement !== $("configTheme")) $("configTheme").value = state.current?.theme || "";
-    $("configSolution").textContent = state.current?.solution
-      ? `Library solution: ${state.current.solution}`
-      : "No library solution supplied.";
+    $("configSolution").textContent = [
+      state.current?.objective ? `Objective: ${state.current.objective}` : "",
+      state.current?.solution ? `Main: ${state.current.solution}` : "",
+      state.current?.testNumber ? `Executable test ${state.current.testNumber} · ${state.current.positionsEntered || 0} TRY positions` : ""
+    ].filter(Boolean).join(" · ") || "No library solution supplied.";
     const where = $("configWhere");
     if (state.current?.where) {
       where.hidden = false;
@@ -1635,7 +1886,7 @@ where: https://lichess.org/training/LEHbA
     $("policyBanner").className = `policyBanner ${source === "live" ? "ok" : "warn"}`;
     $("policyName").textContent = state.policy?.name || "No valid policy";
     $("policyMeta").textContent = state.policy
-      ? `${state.policy.version} · ${state.policy.budget.maxPlies} plies · ${source} from ${loaded?.url || POLICY_URL}${loaded?.warning ? ` · ${loaded.warning}` : ""}`
+      ? `${state.policy.version} · TRY ${state.policy.profile.try_budget} · check horizon ${state.policy.profile.check_horizon} · ${source} from ${loaded?.url || POLICY_URL}${loaded?.warning ? ` · ${loaded.warning}` : ""}`
       : loaded?.warning || "Policy unavailable.";
     $("proofBadge").className = `proofBadge ${state.proofStatus}`;
     $("proofBadge").textContent = state.proofStatus;
@@ -1656,7 +1907,12 @@ where: https://lichess.org/training/LEHbA
     }
   }
 
-  function sessionPGN({ includeComments = true } = {}) {
+  function sessionPGN({ includeComments = true, reference = false } = {}) {
+    if (reference) {
+      const parts = state.archive.map((item) => item.referencePgn || item.pgn).filter(Boolean);
+      if (state.current) parts.push(state.current.finalPgn || exportOne(state.game, state.current, { includeComments: false }));
+      return parts.join("\n\n\n");
+    }
     const parts = state.archive.map((item) => includeComments ? item.pgn : stripPgnComments(item.pgn));
     if (state.game && state.current) parts.push(exportOne(state.game, state.current, { includeComments }));
     return parts.join("\n\n\n");
@@ -1679,9 +1935,12 @@ where: https://lichess.org/training/LEHbA
       badge.textContent = `${state.archive.length + 1}. ${state.current.title} ${proofMark}`;
       list.appendChild(badge);
     }
-    const mode = $("pgnMode")?.value || state.pgnMode || "comments";
+    const mode = $("pgnMode")?.value || state.pgnMode || "reference";
     state.pgnMode = mode;
-    $("pgnText").value = sessionPGN({ includeComments: mode !== "clean" });
+    $("pgnText").value = sessionPGN({
+      includeComments: mode === "comments",
+      reference: mode === "reference"
+    });
   }
 
   function renderAll() {
@@ -1695,6 +1954,7 @@ where: https://lichess.org/training/LEHbA
     renderFindings();
     renderLog();
     renderAlgo();
+    renderExplanation();
     refreshPGN();
     setBusy(state.busy);
   }
@@ -1729,6 +1989,7 @@ where: https://lichess.org/training/LEHbA
   }
 
   function formatPolicyEvent(event) {
+    if (event?.traceLine) return event.traceLine;
     const prefix = event.depth == null ? event.type : `${event.type} ply ${event.depth}`;
     if (event.move) {
       return `${prefix}: ${event.move.san} [${event.move.category || event.move.tags?.join("+") || "move"}] — ${event.log}`;
