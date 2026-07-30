@@ -1,0 +1,4064 @@
+PREDICATE CHESS EXPLAIN TEST BENCH
+Version: explain-test/v1
+Cases: 50 (Woodpecker Exercises 51-100)
+
+Each case is a cleaned executable CTT/1 contract.
+- Every TRY consumes one position and remains within try_budget: 10.
+- Every opponent reply block begins with THINK REPLIES.
+- Every named individual REPLY and every [final pgn] move is legality-checked.
+- [expected plain english] is the deterministic output of explain.js.
+- The exact test target uses normalized LF newlines and otherwise exact text equality.
+
+
+======================================================================
+TEST 51: Bishop capture to rook pin of the queen
+======================================================================
+
+CTT/1
+id: woodpecker-51-pin-queen-to-king-after-bishop-capture
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/JujNp3vR
+fen: 5rk1/ppp2ppp/6q1/2b1P3/3r4/2N1BQ1b/PP3PPP/R3R1K1 b - - 0 1
+objective: win the white queen for a rook and bishop
+status: solved
+main: 1...Bxg2
+result: *
+positions_entered: 7
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@g2,B@h3); alignment(R@d4,g4,Q@f3,K@g1); Q@f3 becomes exposed when B@h3 moves.
+CANDIDATES 1...Bxg2: captures(P@g2), attacks(Q@f3), prepares(Rg4), USES=[attacked,alignment].
+TRY 1...Bxg2 BECAUSE PICK-OUR-MOVE: the capture attacks the queen and activates the rook pin.
+THINK REPLIES(goal=win(Q@f3)).
+REPLY 2.Qg3: saves the queen from Bxf3 but places it on the g-file with K@g1 :: LIVE.
+REPLY 2.Qxg2: captures the bishop but permits 2...Rg4, pinning Q@g2 to K@g1 :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Rg4.
+REPLY CLASS all other legal replies: either leave Q@f3 capturable by Bxf3 or permit the same rook pin without improving on Qg3 :: CLOSED BY CLOSE-ABANDON WITH Bxf3 or Rg4.
+TRY 2.Qg3 BECAUSE TRY-REPLIES: it is the reply that preserves the queen longest.
+THINK OBSERVE.
+SAW alignment(R@d4,Q@g3,K@g1); Q@g3 has no safe capture of R@g4 because Q@g6 recaptures.
+CANDIDATES 2...Rg4: attacks(Q@g3), pins(Q@g3,K@g1), USES=[alignment].
+TRY 2...Rg4 BECAUSE PICK-OUR-MOVE: it converts the observed alignment into a pin.
+THINK REPLIES(goal=win(Q@g3)).
+REPLY 3.Bxc5: captures(B@c5) before the pinned queen is lost :: LIVE.
+REPLY 3.Qxg4: captures the rook but permits Qxg4, preserving the queen gain :: CLOSED BY CLOSE-RECAPTURE WITH 3...Qxg4.
+REPLY CLASS all other legal replies: do not remove the pin or give an equal forcing recovery :: CLOSED BY CLOSE-ABANDON WITH Rxg3.
+TRY 3.Bxc5 BECAUSE TRY-REPLIES: it is White's strongest intermezzo.
+THINK CASH(target=Q@g3).
+TRY 3...Rxg3 BECAUSE the pinned queen is now capturable.
+THINK REPLIES(goal=queen_for_rook_and_bishop).
+REPLY 4.fxg3: recaptures the rook; Black has still exchanged rook and bishop for queen and pawn :: LIVE.
+REPLY 4.hxg3: has the same material result :: CLOSED BY CLOSE-RECAPTURE WITH the recorded queen-for-rook-and-bishop balance.
+REPLY CLASS all other legal replies: leave the queen gone without recovering the rook :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 4.fxg3 BECAUSE TRY-REPLIES: capture the winning piece first.
+THINK CASH(target=material_gain).
+TRY 4...Re8 BECAUSE CASH-SAFETY: activate the remaining rook while the material gain is secure.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 51: Bishop capture to rook pin of the queen"]
+[Site "https://lichess.org/study/4gzGL3Gt/JujNp3vR"]
+[Date "????.??.??"]
+[Round "51"]
+[White "Easy Exercises"]
+[Black "Exercise 51"]
+[SetUp "1"]
+[FEN "5rk1/ppp2ppp/6q1/2b1P3/3r4/2N1BQ1b/PP3PPP/R3R1K1 b - - 0 1"]
+[Result "*"]
+
+1... Bxg2 2. Qg3 (2. Qxg2 Rg4) 2... Rg4 3. Bxc5 Rxg3 4. fxg3 Re8 *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on g2 is attacked by the bishop on h3
+  the rook on d4, the g4 square, the queen on f3, and the king on g1 are aligned
+  the queen on f3 becomes exposed when the bishop on h3 moves
+
+THREAT
+  Bxg2 attacks the queen and activates the rook pin
+
+REPLIES
+  Qg3 saves the queen from Bxf3 but places it on the g-file with the king on g1
+  Qxg2 captures the bishop but permits Rg4, pinning the queen on g2 to the king on g1
+  all other legal replies: either leave the queen on f3 capturable by Bxf3 or permit the same rook pin without improving on Qg3
+
+OBSERVE
+  the rook on d4, the queen on g3, and the king on g1 are aligned
+  the queen on g3 has no safe capture of the rook on g4 because the queen on g6 recaptures
+
+THREAT
+  Rg4 converts the observed alignment into a pin
+
+REPLIES
+  Bxc5 captures the bishop on c5 before the pinned queen is lost
+  Qxg4 captures the rook but permits Qxg4, preserving the queen gain
+  all other legal replies do not remove the pin or give an equal forcing recovery
+
+CASH
+  Rxg3 captures the pinned queen
+
+REPLIES
+  fxg3 recaptures the rook; Black has still exchanged rook and bishop for queen and pawn
+  hxg3 has the same material result
+  all other legal replies leave the queen gone without recovering the rook
+
+CASH
+  Re8 activates the remaining rook while the material gain is secure
+
+PROVED
+
+
+======================================================================
+TEST 52: Queen decoy to a pawn mate
+======================================================================
+
+CTT/1
+id: woodpecker-52-queen-decoy-to-pawn-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/0xdiaEHQ
+fen: 4r2k/ppp3pp/8/1PPb1p2/3P1P1b/P1Q2p1P/7R/R4KBq b - - 0 1
+objective: force checkmate
+status: solved
+main: 1...Qg2+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW restricted_mobility(K@f1); P@f3 controls(g2); R@h2 is the only piece able to capture a queen on g2.
+CANDIDATES 1...Qg2+: gives_check, legal_reply_classes=1, decoys(R@h2,g2), USES=[restricted_mobility,decoy].
+TRY 1...Qg2+ BECAUSE PICK-OUR-MOVE: it is a check with one legal reply.
+THINK REPLIES(goal=mate).
+REPLY 2.Rxg2: only_legal_reply; places R@g2 on the pawn's capture square :: LIVE.
+TRY 2.Rxg2 BECAUSE ALL-REPLIES.
+THINK CASH(target=K@f1).
+SAW mate_in_1(2...fxg2#).
+CANDIDATES 2...fxg2#: mate, USES=[pawn_control,restricted_mobility].
+TRY 2...fxg2# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 52: Queen decoy to a pawn mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/0xdiaEHQ"]
+[Date "????.??.??"]
+[Round "52"]
+[White "Easy Exercises"]
+[Black "Exercise 52"]
+[SetUp "1"]
+[FEN "4r2k/ppp3pp/8/1PPb1p2/3P1P1b/P1Q2p1P/7R/R4KBq b - - 0 1"]
+[Result "*"]
+
+1... Qg2+ 2. Rxg2 fxg2# *
+
+[expected plain english]
+
+OBSERVE
+  the king on f1 has restricted mobility
+  the pawn on f3 controls g2
+  the rook on h2 is the only piece able to capture a queen on g2
+
+THREAT
+  Qg2+ gives check, has one legal reply, decoys the rook on h2 to g2
+
+REPLIES
+  Rxg2 is the only legal reply; places the rook on g2 on the pawn's capture square
+
+CASH
+  fxg2# mates
+
+PROVED
+
+
+======================================================================
+TEST 53: Pawn check to queen sacrifice and back-rank mate
+======================================================================
+
+CTT/1
+id: woodpecker-53-pawn-check-to-queen-sacrifice-back-rank-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/xNFQIvEs
+fen: 3r1b1k/pp4p1/2p1Qp2/5N2/PP2Pp2/2Pq4/5PKP/5R2 b - - 0 1
+objective: force checkmate or win the rook on f1
+status: solved
+main: 1...f3+
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW restricted_mobility(K@g2); alignment(Q@d3,R@f1); R@d8 can enter d1 after K reaches f1.
+CANDIDATES 1...f3+: gives_check, drives(K@g2), preserves(Qxf1+), USES=[restricted_mobility,alignment].
+TRY 1...f3+ BECAUSE PICK-OUR-MOVE: the check moves the king while keeping the rook capture.
+THINK REPLIES(goal=mate_or_win(R@f1)).
+REPLY 2.Kg1: permits(Qxf1+) with a forced king recapture :: LIVE.
+REPLY 2.Kh1: permits(Qxf1#) :: CLOSED BY CLOSE-MATE-IN-ONE WITH 2...Qxf1#.
+REPLY CLASS [2.Kg3,2.Kh3]: leave R@f1 capturable by Qxf1, meeting the material objective :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Qxf1.
+TRY 2.Kg1 BECAUSE TRY-REPLIES: it is the defense that forces Black to prove the full mating line.
+THINK OBSERVE.
+SAW Q@d3 can capture R@f1 with check; K@g1 is the only recapturer.
+CANDIDATES 2...Qxf1+: captures(R@f1), gives_check, legal_reply_classes=1, USES=[alignment].
+TRY 2...Qxf1+ BECAUSE PICK-OUR-MOVE: checking capture with one reply.
+THINK REPLIES(goal=mate).
+REPLY 3.Kxf1: only_legal_reply; places K@f1 on the d1 rook line :: LIVE.
+TRY 3.Kxf1 BECAUSE ALL-REPLIES.
+THINK CASH(target=K@f1).
+SAW mate_in_1(3...Rd1#).
+TRY 3...Rd1# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 53: Pawn check to queen sacrifice and back-rank mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/xNFQIvEs"]
+[Date "????.??.??"]
+[Round "53"]
+[White "Easy Exercises"]
+[Black "Exercise 53"]
+[SetUp "1"]
+[FEN "3r1b1k/pp4p1/2p1Qp2/5N2/PP2Pp2/2Pq4/5PKP/5R2 b - - 0 1"]
+[Result "*"]
+
+1... f3+ 2. Kg1 (2. Kh1 Qxf1#) 2... Qxf1+ 3. Kxf1 Rd1# *
+
+[expected plain english]
+
+OBSERVE
+  the king on g2 has restricted mobility
+  the queen on d3 and the rook on f1 are aligned
+  the rook on d8 can enter d1 after K reaches f1
+
+THREAT
+  f3+ gives check, drives the king on g2, preserves Qxf1+
+
+REPLIES
+  Kg1 permits Qxf1+ with a forced king recapture
+  Kh1 permits Qxf1#
+  Kg3 and Kh3 leave the rook on f1 capturable by Qxf1, meeting the material objective
+
+OBSERVE
+  the queen on d3 can capture the rook on f1 with check
+  the king on g1 is the only recapturer
+
+THREAT
+  Qxf1+ is a checking capture with one reply
+
+REPLIES
+  Kxf1 is the only legal reply; places the king on f1 on the d1 rook line
+
+CASH
+  Rd1# mates
+
+PROVED
+
+
+======================================================================
+TEST 54: Bishop decoy to queen check and loose rook
+======================================================================
+
+CTT/1
+id: woodpecker-54-bishop-decoy-to-queen-check-and-loose-rook
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/RqwKWkd3
+fen: r1b2rk1/pp4pp/2pb4/3p1pq1/2PP4/1N1BPR2/PPQ3PP/4R1K1 b - - 0 1
+objective: win the rook on e1 by force
+status: solved
+main: 1...Bxh2+
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW loose(R@e1); Q@g5 has diagonal(h4,e1); K@g1 can be drawn toward h2; B@d6 can give Bxh2+.
+CANDIDATES 1...Bxh2+: gives_check, decoys(K@g1,h2), opens(Qh4+), USES=[loose,alignment,decoy].
+TRY 1...Bxh2+ BECAUSE PICK-OUR-MOVE: the check draws the king onto the queen's checking route.
+THINK REPLIES(goal=win(R@e1)).
+REPLY 2.Kxh2: captures the bishop and permits Qh4+ :: LIVE.
+REPLY CLASS [2.Kf1,2.Kh1]: decline the bishop but permit Qxg2+ while R@e1 remains loose :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Qxg2+.
+REPLY 2.Kf2: permits Qh4+ or Qxe3+, preserving the attack and material gain :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Qh4+.
+TRY 2.Kxh2 BECAUSE TRY-REPLIES: capture the attacker.
+THINK OBSERVE.
+SAW Q@g5 can check from h4 and remains aligned with R@e1.
+CANDIDATES 2...Qh4+: gives_check, attacks(R@e1), legal_reply_classes=2, USES=[alignment,loose].
+TRY 2...Qh4+ BECAUSE PICK-OUR-MOVE: the check keeps the rook capture attached.
+THINK REPLIES(goal=win(R@e1)).
+REPLY 3.Rh3: blocks the check but does not defend R@e1 :: LIVE.
+REPLY 3.Kg1: leaves R@e1 immediately capturable :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 3...Qxe1.
+TRY 3.Rh3 BECAUSE TRY-REPLIES: block while preserving the most material.
+THINK CASH(target=R@e1).
+TRY 3...Qxe1 BECAUSE the rook is loose and the check has ended.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: no forcing recovery of equal value exists within the clamp :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 54: Bishop decoy to queen check and loose rook"]
+[Site "https://lichess.org/study/4gzGL3Gt/RqwKWkd3"]
+[Date "????.??.??"]
+[Round "54"]
+[White "Easy Exercises"]
+[Black "Exercise 54"]
+[SetUp "1"]
+[FEN "r1b2rk1/pp4pp/2pb4/3p1pq1/2PP4/1N1BPR2/PPQ3PP/4R1K1 b - - 0 1"]
+[Result "*"]
+
+1... Bxh2+ 2. Kxh2 Qh4+ 3. Rh3 (3. Kg1 Qxe1) 3... Qxe1 *
+
+[expected plain english]
+
+OBSERVE
+  the rook on e1 is loose
+  the queen on g5 has the diagonal(h4, e1)
+  the king on g1 can be drawn toward h2
+  the bishop on d6 can give Bxh2+
+
+THREAT
+  Bxh2+ draws the king onto the queen's checking route
+
+REPLIES
+  Kxh2 captures the bishop and permits Qh4+
+  Kf1 and Kh1 decline the bishop but permit Qxg2+ while the rook on e1 remains loose
+  Kf2 permits Qh4+ or Qxe3+, preserving the attack and material gain
+
+OBSERVE
+  the queen on g5 can check from h4 and remains aligned with the rook on e1
+
+THREAT
+  Qh4+ keeps the rook capture attached
+
+REPLIES
+  Rh3 blocks the check but does not defend the rook on e1
+  Kg1 leaves the rook on e1 immediately capturable
+
+CASH
+  Qxe1 captures the loose rook once the check has ended
+
+REPLIES
+  every legal reply: no forcing recovery of equal value exists within the clamp
+
+PROVED
+
+
+======================================================================
+TEST 55: Exchange sacrifice clears the queen line
+======================================================================
+
+CTT/1
+id: woodpecker-55-exchange-sacrifice-clears-queen-line
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/9dpHUtaw
+fen: q6r/1b4bp/4k1p1/1p2Pn2/2pPp1Q1/2P5/1P1N2PP/2B2RK1 w - - 0 1
+objective: capture Nf5 and Bg7 while opening the black king
+status: solved
+main: 1.Rxf5
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(N@f5,R@f1); alignment(Q@g4,P@g6,B@g7); P@g6 blocks Q@g4 from B@g7.
+CANDIDATES 1.Rxf5: captures(N@f5), invites(gxf5), clears(Q@g4,B@g7), USES=[attacked,alignment,clearance].
+TRY 1.Rxf5 BECAUSE PICK-OUR-MOVE: the capture removes a knight and offers the rook to clear the queen's line.
+THINK REPLIES(goal=capture(N@f5,B@g7)).
+REPLY 1...gxf5: captures the rook and vacates g6 :: LIVE.
+REPLY 1...Bxe5: creates a countercapture but leaves R@f5 after it has won N@f5 :: CLOSED BY CLOSE-GAIN-CLAMP.
+REPLY CLASS all other legal replies: do not recover the captured knight and do not create an equal forcing threat :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...gxf5 BECAUSE TRY-REPLIES: capture the winning rook.
+THINK CASH(target=B@g7).
+SAW loose(B@g7); Q@g4 now attacks g7.
+CANDIDATES 2.Qxg7: captures(B@g7), checks the material objective, USES=[loose,clearance].
+TRY 2.Qxg7 BECAUSE the blocker has been deflected from g6.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the declared capture objective is complete; only forcing king counterplay is retained, and none restores both minor pieces :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 55: Exchange sacrifice clears the queen line"]
+[Site "https://lichess.org/study/4gzGL3Gt/9dpHUtaw"]
+[Date "????.??.??"]
+[Round "55"]
+[White "Easy Exercises"]
+[Black "Exercise 55"]
+[SetUp "1"]
+[FEN "q6r/1b4bp/4k1p1/1p2Pn2/2pPp1Q1/2P5/1P1N2PP/2B2RK1 w - - 0 1"]
+[Result "*"]
+
+1. Rxf5 gxf5 2. Qxg7 *
+
+[expected plain english]
+
+OBSERVE
+  the knight on f5 is attacked by the rook on f1
+  the queen on g4, the pawn on g6, and the bishop on g7 are aligned
+  the pawn on g6 blocks the queen on g4 from the bishop on g7
+
+THREAT
+  Rxf5 removes a knight and offers the rook to clear the queen's line
+
+REPLIES
+  gxf5 captures the rook and vacates g6
+  Bxe5 creates a countercapture but leaves the rook on f5 after it has won the knight on f5
+  all other legal replies do not recover the captured knight and do not create an equal forcing threat
+
+CASH
+  the bishop on g7 is loose
+  the queen on g4 now attacks g7
+  Qxg7 captures through the line opened from g6
+
+REPLIES
+  every legal reply: the declared capture objective is complete; only forcing king counterplay is retained, and none restores both minor pieces
+
+PROVED
+
+
+======================================================================
+TEST 56: Check deflects the king from its rook
+======================================================================
+
+CTT/1
+id: woodpecker-56-check-deflects-king-from-rook
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/RIsVvFO6
+fen: 5rk1/1b1p1ppp/1qr1p3/p2pP3/P4P2/Q2B4/1PP3PP/R4R1K w - - 0 1
+objective: win the rook on f8
+status: solved
+main: 1.Bxh7+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW sole_defender(K@g8,R@f8); Q@a3 attacks f8; B@d3 can give Bxh7+.
+CANDIDATES 1.Bxh7+: gives_check, attacks the sole defender of R@f8, USES=[sole_defender,alignment].
+TRY 1.Bxh7+ BECAUSE PICK-OUR-MOVE: the check forces the rook's king-defender to move.
+THINK REPLIES(goal=win(R@f8)).
+REPLY 1...Kxh7: captures the bishop and abandons R@f8 :: LIVE.
+REPLY 1...Kh8: also abandons R@f8 while leaving the bishop alive :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH 2.Qxf8+.
+TRY 1...Kxh7 BECAUSE TRY-REPLIES: capture the checking piece.
+THINK CASH(target=R@f8).
+SAW loose(R@f8); Q@a3 attacks f8.
+TRY 2.Qxf8 BECAUSE the sole defender has been displaced.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the rook has been won and no forcing reply restores equivalent material :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 56: Check deflects the king from its rook"]
+[Site "https://lichess.org/study/4gzGL3Gt/RIsVvFO6"]
+[Date "????.??.??"]
+[Round "56"]
+[White "Easy Exercises"]
+[Black "Exercise 56"]
+[SetUp "1"]
+[FEN "5rk1/1b1p1ppp/1qr1p3/p2pP3/P4P2/Q2B4/1PP3PP/R4R1K w - - 0 1"]
+[Result "*"]
+
+1. Bxh7+ Kxh7 (1... Kh8 2. Qxf8+) 2. Qxf8 *
+
+[expected plain english]
+
+OBSERVE
+  the king on g8 is the sole defender of the rook on f8
+  the queen on a3 attacks f8
+  the bishop on d3 can give Bxh7+
+
+THREAT
+  Bxh7+ forces the rook's king-defender to move
+
+REPLIES
+  Kxh7 captures the bishop and abandons the rook on f8
+  Kh8 also abandons the rook on f8 while leaving the bishop alive
+
+CASH
+  the rook on f8 is loose
+  the queen on a3 attacks f8
+  Qxf8 cashes in after the sole defender is displaced
+
+REPLIES
+  every legal reply: the rook has been won and no forcing reply restores equivalent material
+
+PROVED
+
+
+======================================================================
+TEST 57: Queen sacrifice to knight fork and conversion
+======================================================================
+
+CTT/1
+id: woodpecker-57-queen-sacrifice-to-knight-fork-and-conversion
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/34b6CgpX
+fen: 5r1k/pp4pp/2p5/8/4n3/5NPQ/P3Bq1P/4R2K b - - 0 1
+objective: win the white queen and emerge with a decisive material gain
+status: solved
+main: 1...Qxe1+
+result: *
+positions_entered: 9
+
+[trace]
+
+THINK OBSERVE.
+SAW loose(R@e1); fork_available(N@e4-f2,[K@h1,Q@h3]); Q@f2 can capture e1 with check.
+CANDIDATES 1...Qxe1+: captures(R@e1), gives_check, deflects(N@f3,e1), USES=[loose,fork].
+TRY 1...Qxe1+ BECAUSE PICK-OUR-MOVE: the checking capture removes the knight from the fork route.
+THINK REPLIES(goal=win(Q@h3)).
+REPLY 2.Nxe1: captures the queen and places N@e1 away from f3 :: LIVE.
+REPLY CLASS [2.Ng1,2.Qf1,2.Bf1,2.Kg2]: do not capture the black queen; Black keeps the rook gain and the attack :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Nxe1 BECAUSE TRY-REPLIES: capture the attacking queen.
+THINK OBSERVE.
+SAW fork_available(N@e4-f2,[K@h1,Q@h3]).
+CANDIDATES 2...Nf2+: gives_check, attacks(Q@h3), USES=[fork].
+TRY 2...Nf2+ BECAUSE PICK-OUR-MOVE: checking fork.
+THINK REPLIES(goal=win(Q@h3)).
+REPLY 3.Kg2: moves from check and keeps access to h3 :: LIVE.
+REPLY 3.Kg1: also leaves Q@h3 forked :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 3...Nxh3.
+TRY 3.Kg2 BECAUSE TRY-REPLIES: it gives the king the best chance to capture the forking knight.
+THINK CASH(target=Q@h3).
+TRY 3...Nxh3 BECAUSE the queen is forked.
+THINK REPLIES(goal=preserve_queen_gain).
+REPLY 4.Nf3: attacks the rook and tries to force another exchange :: LIVE.
+REPLY 4.Kxh3: captures the knight but permits Re8, keeping Black's decisive gain :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 4...Re8.
+REPLY CLASS all other legal replies: leave the queen lost without an equal forcing recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 4.Nf3 BECAUSE TRY-REPLIES: attack the rook that supports the gain.
+THINK OBSERVE.
+SAW R@f8 can capture N@f3; B@e2 can recapture; N@h3 can then retreat.
+TRY 4...Rxf3 BECAUSE the capture removes the counterattacking knight.
+THINK REPLIES(goal=preserve_queen_gain).
+REPLY 5.Bxf3: recaptures the rook :: LIVE.
+REPLY CLASS [5.Kxf3,5.Kxh3]: permit a knight check or retreat that preserves the queen gain :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH Ng1+ or Ng5.
+REPLY CLASS all other legal replies: fail to recover the rook and remain materially worse :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 5.Bxf3 BECAUSE TRY-REPLIES: recover the rook.
+THINK CASH(target=N@h3).
+TRY 5...Ng5 BECAUSE CASH-SAFETY: save the remaining knight and preserve the completed queen gain.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 57: Queen sacrifice to knight fork and conversion"]
+[Site "https://lichess.org/study/4gzGL3Gt/34b6CgpX"]
+[Date "????.??.??"]
+[Round "57"]
+[White "Easy Exercises"]
+[Black "Exercise 57"]
+[SetUp "1"]
+[FEN "5r1k/pp4pp/2p5/8/4n3/5NPQ/P3Bq1P/4R2K b - - 0 1"]
+[Result "*"]
+
+1... Qxe1+ 2. Nxe1 Nf2+ 3. Kg2 (3. Kg1 Nxh3) 3... Nxh3 4. Nf3 (4. Kxh3 Re8) 4... Rxf3 5. Bxf3 Ng5 *
+
+[expected plain english]
+
+OBSERVE
+  the rook on e1 is loose
+  Nf2 forks the king on h1 and the queen on h3
+  the queen on f2 can capture e1 with check
+
+THREAT
+  Qxe1+ removes the knight from the fork route
+
+REPLIES
+  Nxe1 captures the queen and places the knight on e1 away from f3
+  Ng1, Qf1, Bf1, and Kg2 do not capture the black queen; Black keeps the rook gain and the attack
+
+OBSERVE
+  Nf2 forks the king on h1 and the queen on h3
+
+THREAT
+  Nf2+ is a checking fork
+
+REPLIES
+  Kg2 moves from check and keeps access to h3
+  Kg1 also leaves the queen on h3 forked
+
+CASH
+  Nxh3 captures the forked queen
+
+REPLIES
+  Nf3 attacks the rook and tries to force another exchange
+  Kxh3 captures the knight but permits Re8, keeping Black's decisive gain
+  all other legal replies leave the queen lost without an equal forcing recovery
+
+OBSERVE
+  the rook on f8 can capture the knight on f3
+  the bishop on e2 can recapture
+  the knight on h3 can then retreat
+
+THREAT
+  Rxf3 removes the counterattacking knight
+
+REPLIES
+  Bxf3 recaptures the rook
+  Kxf3 and Kxh3 permit a knight check or retreat that preserves the queen gain
+  all other legal replies fail to recover the rook and remain materially worse
+
+CASH
+  Ng5 saves the remaining knight and preserves the completed queen gain
+
+PROVED
+
+
+======================================================================
+TEST 58: Capture to discovered double attack
+======================================================================
+
+CTT/1
+id: woodpecker-58-capture-to-discovered-double-attack
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/OZvM8skl
+fen: r4rk1/pp2bppp/1qp1p3/4Pb2/Q1P1nB2/2N5/PP1RBPPP/5RK1 w - - 0 1
+objective: win the bishop on e4 after exchanging knights
+status: solved
+main: 1.Nxe4
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(N@e4,N@c3); alignment(Q@a4,P@c4,B@e4_candidate); P@c4 can attack Q@b6 by c5.
+CANDIDATES 1.Nxe4: captures(N@e4), invites(Bxe4), prepares(c5) as a double attack, USES=[attacked,alignment].
+TRY 1.Nxe4 BECAUSE PICK-OUR-MOVE: the capture creates the one-ply discovered double-attack pattern.
+THINK REPLIES(goal=win(B@e4)).
+REPLY 1...Bxe4: recaptures the knight and occupies the queen's future line :: LIVE.
+REPLY 1...Qxf2+: countercheck, but the queen is capturable by Rxf2, Kxf2, or Nxf2 :: CLOSED BY CLOSE-RECAPTURE WITH 2.Rxf2.
+REPLY CLASS all other legal replies: leave N@e4 lost without an equal forcing recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...Bxe4 BECAUSE TRY-REPLIES: recapture the knight.
+THINK OBSERVE.
+SAW alignment(Q@a4,P@c4,B@e4); c5 attacks(Q@b6) and opens(Q@a4,B@e4).
+CANDIDATES 2.c5: attacks(Q@b6), discovered_attack(Q@a4,B@e4), USES=[alignment,double_attack].
+TRY 2.c5 BECAUSE PICK-OUR-MOVE: it attacks the queen and bishop at once.
+THINK REPLIES(goal=win(B@e4)).
+REPLY 2...Bxc5: removes the attacking pawn and saves Q@b6, but leaves B@e4 loose :: LIVE.
+REPLY CLASS all other legal replies: can save at most one of Q@b6 and B@e4 :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH Qxe4 or cxb6 as selected by the reply.
+TRY 2...Bxc5 BECAUSE TRY-REPLIES: save the queen while conceding the lesser bishop.
+THINK CASH(target=B@e4).
+TRY 3.Qxe4 BECAUSE the discovered attack has left the bishop loose.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the minor-piece objective is complete and no forcing recovery restores it :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 58: Capture to discovered double attack"]
+[Site "https://lichess.org/study/4gzGL3Gt/OZvM8skl"]
+[Date "????.??.??"]
+[Round "58"]
+[White "Easy Exercises"]
+[Black "Exercise 58"]
+[SetUp "1"]
+[FEN "r4rk1/pp2bppp/1qp1p3/4Pb2/Q1P1nB2/2N5/PP1RBPPP/5RK1 w - - 0 1"]
+[Result "*"]
+
+1. Nxe4 Bxe4 2. c5 Bxc5 3. Qxe4 *
+
+[expected plain english]
+
+OBSERVE
+  the knight on e4 is attacked by the knight on c3
+  the queen on a4, the pawn on c4, and the bishop on e4 are aligned
+  the pawn on c4 can attack the queen on b6 by c5
+
+THREAT
+  Nxe4 creates the one-ply discovered double-attack pattern
+
+REPLIES
+  Bxe4 recaptures the knight and occupies the queen's future line
+  Qxf2+ countercheck, but the queen is capturable by Rxf2, Kxf2, or Nxf2
+  all other legal replies leave the knight on e4 lost without an equal forcing recovery
+
+OBSERVE
+  the queen on a4, the pawn on c4, and the bishop on e4 are aligned
+  c5 attacks the queen on b6 and opens the queen on a4, the bishop on e4
+
+THREAT
+  c5 attacks the queen and bishop at once
+
+REPLIES
+  Bxc5 removes the attacking pawn and saves the queen on b6, but leaves the bishop on e4 loose
+  all other legal replies can save at most one of the queen on b6 and the bishop on e4
+
+CASH
+  Qxe4 captures the loose bishop
+
+REPLIES
+  every legal reply: the minor-piece objective is complete and no forcing recovery restores it
+
+PROVED
+
+
+======================================================================
+TEST 59: Check deflects a pawn to a knight fork
+======================================================================
+
+CTT/1
+id: woodpecker-59-check-deflects-pawn-to-knight-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/KwkoNfCH
+fen: 2r5/pp1bkp1Q/2nbpq2/3p1p2/3P1Pr1/2NBP1N1/PP4PP/2R2RK1 w - - 0 1
+objective: win the queen on f6 by a checking knight fork
+status: solved
+main: 1.Nxf5+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW P@e6 defends f5 and blocks N@c3-d5; Q@f6 will be forked by N@d5+ if P@e6 moves.
+CANDIDATES 1.Nxf5+: captures(P@f5), gives_check, invites(exf5), USES=[defender,clearance,fork].
+TRY 1.Nxf5+ BECAUSE PICK-OUR-MOVE: the checking capture can deflect the e6-pawn from the fork square.
+THINK REPLIES(goal=fork(Q@f6)).
+REPLY 1...exf5: captures the checking knight and vacates e6 :: LIVE.
+REPLY 1...Qxf5: captures the knight but permits Bxf5, winning the queen :: CLOSED BY CLOSE-RECAPTURE WITH 2.Bxf5.
+REPLY CLASS [1...Kd8,1...Ke8,1...Kf8]: decline the knight and leave White a pawn ahead with the attacking knight intact :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...exf5 BECAUSE TRY-REPLIES: capture the checker with the pawn that blocks the fork.
+THINK OBSERVE.
+SAW fork_available(N@c3-d5,[K@e7,Q@f6]).
+CANDIDATES 2.Nxd5+: captures(P@d5), gives_check, attacks(Q@f6), USES=[fork,clearance].
+TRY 2.Nxd5+ BECAUSE PICK-OUR-MOVE: checking queen fork.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal check answers: Q@f6 remains attacked and no answer captures N@d5 :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Nxf6 next.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 59: Check deflects a pawn to a knight fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/KwkoNfCH"]
+[Date "????.??.??"]
+[Round "59"]
+[White "Easy Exercises"]
+[Black "Exercise 59"]
+[SetUp "1"]
+[FEN "2r5/pp1bkp1Q/2nbpq2/3p1p2/3P1Pr1/2NBP1N1/PP4PP/2R2RK1 w - - 0 1"]
+[Result "*"]
+
+1. Nxf5+ exf5 (1... Qxf5 2. Bxf5) 2. Nxd5+ *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on e6 defends f5 and blocks Nd5
+  the queen on f6 will be forked by the knight on d5+ if the pawn on e6 moves
+
+THREAT
+  Nxf5+ captures the pawn on f5, gives check, invites exf5
+
+REPLIES
+  exf5 captures the checking knight and vacates e6
+  Qxf5 captures the knight but permits Bxf5, winning the queen
+  Kd8, Ke8, and Kf8 decline the knight and leave White a pawn ahead with the attacking knight intact
+
+OBSERVE
+  Nd5 forks the king on e7 and the queen on f6
+
+THREAT
+  Nxd5+ is a checking queen fork
+
+REPLIES
+  every legal check answer leaves the queen on f6 attacked and no answer captures the knight on d5
+
+PROVED
+
+
+======================================================================
+TEST 60: Capture deflects a pawn and traps the queen
+======================================================================
+
+CTT/1
+id: woodpecker-60-capture-deflects-pawn-and-traps-queen
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/K1bs3d7r
+fen: r1bqr1k1/1p1nbpp1/p1p3p1/3p4/3P1B2/2NBP2P/PP3PP1/2RQ1RK1 w - - 0 1
+objective: win the black queen by trapping it
+status: solved
+main: 1.Nxd5
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW restricted_mobility(Q@d8); P@c6 controls d5 and occupies the route to B@f4-c7; Bc7 would trap Q@d8 after P@c6 moves.
+CANDIDATES 1.Nxd5: captures(P@d5), attacks material, invites(cxd5), USES=[restricted_mobility,deflection].
+TRY 1.Nxd5 BECAUSE PICK-OUR-MOVE: the capture asks the c6-pawn to leave the queen's cage.
+THINK REPLIES(goal=trap(Q@d8)).
+REPLY 1...cxd5: recaptures the knight and vacates c6 :: LIVE.
+REPLY 1...Bd6: declines the recapture but permits Bxd6, leaving White a clean pawn up :: CLOSED BY CLOSE-GAIN-CLAMP WITH 2.Bxd6.
+REPLY CLASS all other legal replies: leave P@d5 lost and do not create an equal forcing recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...cxd5 BECAUSE TRY-REPLIES: recover the captured pawn and knight.
+THINK OBSERVE.
+SAW Q@d8 has restricted_mobility; B@f4 can reach c7 and cover all queen exits.
+CANDIDATES 2.Bc7: attacks(Q@d8), traps(Q@d8), USES=[restricted_mobility].
+TRY 2.Bc7 BECAUSE PICK-OUR-MOVE: direct attack on a trapped queen.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: Q@d8 has no safe square and cannot remove B@c7 without losing the queen :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH the ensuing queen capture.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 60: Capture deflects a pawn and traps the queen"]
+[Site "https://lichess.org/study/4gzGL3Gt/K1bs3d7r"]
+[Date "????.??.??"]
+[Round "60"]
+[White "Easy Exercises"]
+[Black "Exercise 60"]
+[SetUp "1"]
+[FEN "r1bqr1k1/1p1nbpp1/p1p3p1/3p4/3P1B2/2NBP2P/PP3PP1/2RQ1RK1 w - - 0 1"]
+[Result "*"]
+
+1. Nxd5 cxd5 (1... Bd6 2. Bxd6) 2. Bc7 *
+
+[expected plain english]
+
+OBSERVE
+  the queen on d8 has restricted mobility
+  the pawn on c6 controls d5 and occupies the route to Bc7
+  Bc7 would trap the queen on d8 after the pawn on c6 moves
+
+THREAT
+  Nxd5 asks the c6-pawn to leave the queen's cage
+
+REPLIES
+  cxd5 recaptures the knight and vacates c6
+  Bd6 declines the recapture but permits Bxd6, leaving White a clean pawn up
+  all other legal replies leave the pawn on d5 lost and do not create an equal forcing recovery
+
+OBSERVE
+  the queen on d8 has restricted mobility
+  the bishop on f4 can reach c7 and cover all queen exits
+
+THREAT
+  Bc7 directly attacks the trapped queen
+
+REPLIES
+  every legal reply leaves the queen on d8 with no safe square and cannot remove the bishop on c7 without losing the queen
+
+PROVED
+
+
+======================================================================
+TEST 61: Bishop sacrifice to queen trade and rook invasion
+======================================================================
+
+CTT/1
+id: woodpecker-61-bishop-sacrifice-to-queen-trade-and-rook-invasion
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/v1KR9ON6
+fen: 3r2k1/q1p1nppp/p3n3/1pb1p3/4P2N/1PP3PP/PBB1QPK1/7R b - - 0 1
+objective: win the bishop on c2 and emerge with extra material
+status: solved
+main: 1...Bxf2
+result: *
+positions_entered: 7
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@f2,B@c5); alignment(Q@a7,f2); R@d8 can enter d2 with check after the queens leave.
+CANDIDATES 1...Bxf2: captures(P@f2), invites(Qxf2), opens(Qxf2+), USES=[attacked,alignment,rook_invasion].
+TRY 1...Bxf2 BECAUSE PICK-OUR-MOVE: the capture offers the bishop to pull the queen onto f2.
+THINK REPLIES(goal=win(B@c2)).
+REPLY 2.Qxf2: captures the bishop and permits a forced queen trade :: LIVE.
+REPLY CLASS all other legal replies: leave P@f2 won and do not create an equal forcing recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Qxf2 BECAUSE TRY-REPLIES: capture the sacrificed bishop.
+THINK OBSERVE.
+SAW Q@a7 can capture Q@f2 with check; K@g2 is the only recapturer.
+CANDIDATES 2...Qxf2+: queen_trade, gives_check, legal_reply_classes=1, USES=[alignment].
+TRY 2...Qxf2+ BECAUSE PICK-OUR-MOVE: forcing queen exchange.
+THINK REPLIES(goal=win(B@c2)).
+REPLY 3.Kxf2: only_legal_reply :: LIVE.
+TRY 3.Kxf2 BECAUSE ALL-REPLIES.
+THINK OBSERVE.
+SAW open_file(R@d8,K@f2); R@d8 can check from d2 and then capture B@c2.
+CANDIDATES 3...Rd2+: gives_check, attacks(B@c2), USES=[open_file,double_attack].
+TRY 3...Rd2+ BECAUSE PICK-OUR-MOVE: check attached to the bishop capture.
+THINK REPLIES(goal=win(B@c2)).
+REPLY 4.Ke3: moves from check but leaves B@c2 attacked :: LIVE.
+REPLY CLASS [4.Ke1,4.Kf1,4.Kf3,4.Kg1]: every legal king move also leaves B@c2 capturable :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH 4...Rxc2.
+TRY 4.Ke3 BECAUSE TRY-REPLIES: centralize the king while keeping contact with the rook.
+THINK CASH(target=B@c2).
+TRY 4...Rxc2 BECAUSE the checking rook attack has won the bishop.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: no forcing recovery restores the bishop :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 61: Bishop sacrifice to queen trade and rook invasion"]
+[Site "https://lichess.org/study/4gzGL3Gt/v1KR9ON6"]
+[Date "????.??.??"]
+[Round "61"]
+[White "Easy Exercises"]
+[Black "Exercise 61"]
+[SetUp "1"]
+[FEN "3r2k1/q1p1nppp/p3n3/1pb1p3/4P2N/1PP3PP/PBB1QPK1/7R b - - 0 1"]
+[Result "*"]
+
+1... Bxf2 2. Qxf2 Qxf2+ 3. Kxf2 Rd2+ 4. Ke3 Rxc2 *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on f2 is attacked by the bishop on c5
+  the queen on a7 and the f2 square are aligned
+  the rook on d8 can enter d2 with check after the queens leave
+
+THREAT
+  Bxf2 offers the bishop to pull the queen onto f2
+
+REPLIES
+  Qxf2 captures the bishop and permits a forced queen trade
+  all other legal replies leave the pawn on f2 won and do not create an equal forcing recovery
+
+OBSERVE
+  the queen on a7 can capture the queen on f2 with check
+  the king on g2 is the only recapturer
+
+THREAT
+  Qxf2+ forces the queen exchange
+
+REPLIES
+  Kxf2 is the only legal reply
+
+OBSERVE
+  the d-file is open
+  the rook on d8 can check from d2 and then capture the bishop on c2
+
+THREAT
+  Rd2+ checks attached to the bishop capture
+
+REPLIES
+  Ke3 moves from check but leaves the bishop on c2 attacked
+  Ke1, Kf1, Kf3, and Kg1 all leave the bishop on c2 capturable
+
+CASH
+  Rxc2 captures the bishop
+
+REPLIES
+  every legal reply: no forcing recovery restores the bishop
+
+PROVED
+
+
+======================================================================
+TEST 62: Rook sacrifice to an unavoidable mate
+======================================================================
+
+CTT/1
+id: woodpecker-62-rook-sacrifice-to-unavoidable-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/H3pP3oU1
+fen: 1Q6/p4pkp/3p2p1/3P4/q7/P3rBbP/6P1/5R1K b - - 0 1
+objective: force checkmate
+status: solved
+main: 1...Rxf3
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW restricted_mobility(K@h1); B@g3 controls the king zone; Q@a4 can reach c2; R@e3 can remove B@f3.
+CANDIDATES 1...Rxf3: captures(B@f3), opens(Qc2), damages(g-pawn), USES=[mating_net,remove_defender].
+TRY 1...Rxf3 BECAUSE PICK-OUR-MOVE: the capture removes the key defender of the dark-square mate.
+THINK REPLIES(goal=mate).
+REPLY 2.gxf3: captures the rook but opens the king and leaves Qc2 :: LIVE.
+REPLY 2.Rxf3: captures the rook with the other rook, but permits Qd1+ 3.Rf1 Qxf1# :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Qd1+.
+REPLY 2.Qb2+: countercheck, answered by Be5 while preserving the mating net :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Be5.
+REPLY CLASS all other legal replies: leave B@f3 captured and do not stop Qc2 or Qh2# :: CLOSED BY CLOSE-MATE-IN-ONE WITH the appropriate queen entry.
+TRY 2.gxf3 BECAUSE TRY-REPLIES: capture the sacrificing rook while covering material.
+THINK OBSERVE.
+SAW mate_threat(Qh2#); Q@a4 can reach c2; B@g3 controls h2 and f2.
+CANDIDATES 2...Qc2: threatens(Qh2#), answers all nonchecking defenses, USES=[mating_net,restricted_mobility].
+TRY 2...Qc2 BECAUSE PICK-OUR-MOVE: direct mate-in-one threat.
+THINK REPLIES(goal=mate).
+REPLY CLASS nonchecking replies except Rf2: allow Qh2# :: CLOSED BY CLOSE-MATE-IN-ONE WITH Qh2#.
+REPLY 3.Rf2: covers h2 but permits a queen check on d1, b1, or c1 that restores the mating net :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 3...Qd1+.
+REPLY CLASS [3.Qf8+,3.Qg8+,3.Qh8+]: queen counterchecks are answered by Kxf8, Kxg8, or Kxh8, removing the checking queen :: CLOSED BY CLOSE-RECAPTURE.
+REPLY 3.Qb2+: countercheck, answered by Be5 while Qh2 remains unavoidable :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 3...Be5.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 62: Rook sacrifice to an unavoidable mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/H3pP3oU1"]
+[Date "????.??.??"]
+[Round "62"]
+[White "Easy Exercises"]
+[Black "Exercise 62"]
+[SetUp "1"]
+[FEN "1Q6/p4pkp/3p2p1/3P4/q7/P3rBbP/6P1/5R1K b - - 0 1"]
+[Result "*"]
+
+1... Rxf3 2. gxf3 (2. Rxf3 Qd1+ 3. Rf1 Qxf1#) (2. Qb2+ Be5) 2... Qc2 *
+
+[expected plain english]
+
+OBSERVE
+  the king on h1 has restricted mobility
+  the bishop on g3 controls the king zone
+  the queen on a4 can reach c2
+  the rook on e3 can remove the bishop on f3
+
+THREAT
+  Rxf3 removes the key defender of the dark-square mate
+
+REPLIES
+  gxf3 captures the rook but opens the king and leaves Qc2
+  Rxf3 captures the rook with the other rook, but permits Qd1+ Rf1 Qxf1#
+  Qb2+ countercheck, answered by Be5 while preserving the mating net
+  all other legal replies leave the bishop on f3 captured and do not stop Qc2 or Qh2#
+
+OBSERVE
+  Qh2# creates a mate threat
+  the queen on a4 can reach c2
+  the bishop on g3 controls h2 and f2
+
+THREAT
+  Qc2 threatens Qh2#, answers all nonchecking defenses
+
+REPLIES
+  nonchecking replies except Rf2 allow Qh2#
+  Rf2 covers h2 but permits a queen check on d1, b1, or c1 that restores the mating net
+  Qf8+, Qg8+, and Qh8+ queen counterchecks are answered by Kxf8, Kxg8, or Kxh8, removing the checking queen
+  Qb2+ countercheck, answered by Be5 while Qh2 remains unavoidable
+
+PROVED
+
+
+======================================================================
+TEST 63: Queen sacrifice to bishop mate
+======================================================================
+
+CTT/1
+id: woodpecker-63-queen-sacrifice-to-bishop-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/3tIKWdY1
+fen: r1bqk2r/p1pn1pp1/1p2pn1p/8/3P4/B1PB4/P1P1QPPP/R3K1NR w KQkq - 0 1
+objective: force checkmate
+status: solved
+main: 1.Qxe6+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW restricted_mobility(K@e8); P@f7 is the only piece that can capture Q@e6; B@d3 can mate from g6 after P@f7 moves.
+CANDIDATES 1.Qxe6+: captures(P@e6), gives_check, deflects(P@f7), USES=[restricted_mobility,deflection,mating_net].
+TRY 1.Qxe6+ BECAUSE PICK-OUR-MOVE: the queen sacrifice removes the pawn that blocks the mating bishop.
+THINK REPLIES(goal=mate).
+REPLY 1...fxe6: captures the checking queen and vacates f7 :: LIVE.
+REPLY CLASS all other legal replies: fail to capture the queen and leave White with the check and material gain :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...fxe6 BECAUSE TRY-REPLIES: capture the checking queen.
+THINK CASH(target=K@e8).
+SAW mate_in_1(2.Bg6#); B@d3 now has the g6-e8 diagonal.
+TRY 2.Bg6# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 63: Queen sacrifice to bishop mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/3tIKWdY1"]
+[Date "????.??.??"]
+[Round "63"]
+[White "Easy Exercises"]
+[Black "Exercise 63"]
+[SetUp "1"]
+[FEN "r1bqk2r/p1pn1pp1/1p2pn1p/8/3P4/B1PB4/P1P1QPPP/R3K1NR w KQkq - 0 1"]
+[Result "*"]
+
+1. Qxe6+ fxe6 2. Bg6# *
+
+[expected plain english]
+
+OBSERVE
+  the king on e8 has restricted mobility
+  the pawn on f7 is the only piece that can capture the queen on e6
+  the bishop on d3 can mate from g6 after the pawn on f7 moves
+
+THREAT
+  Qxe6+ removes the pawn that blocks the mating bishop
+
+REPLIES
+  fxe6 captures the checking queen and vacates f7
+  all other legal replies fail to capture the queen and leave White with the check and material gain
+
+CASH
+  the bishop on d3 now has the g6-e8 diagonal
+  Bg6# mates
+
+PROVED
+
+
+======================================================================
+TEST 64: Interference sacrifice to queen mate
+======================================================================
+
+CTT/1
+id: woodpecker-64-interference-sacrifice-to-queen-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/pJqPAS9t
+fen: r2qk2r/1p1b1pp1/p1pBpn1p/2P1N3/1n1P4/3B4/PPQ2PPP/2KR3R w kq - 0 1
+objective: force mate or a decisive queen win
+status: solved
+main: 1.Bg6
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW mating_net(Q@c2,K@e8); P@f7 shields g6; B@d3 can occupy g6 and force the f-pawn to move.
+CANDIDATES 1.Bg6: threatens(Qxg6#), attacks the f7 shield, USES=[mating_net,interference].
+TRY 1.Bg6 BECAUSE PICK-OUR-MOVE: it creates a direct mate threat and forces a pawn decision.
+THINK REPLIES(goal=mate_or_win_queen).
+REPLY 1...fxg6: captures the bishop but opens Q@c2-g6 :: LIVE.
+REPLY 1...Qa5: moves the queen to create luft, but permits Bxf7+ and a decisive attack :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2.Bxf7+.
+REPLY CLASS all other legal replies: fail to stop Qxg6# :: CLOSED BY CLOSE-MATE-IN-ONE WITH 2.Qxg6#.
+TRY 1...fxg6 BECAUSE TRY-REPLIES: capture the mating bishop.
+THINK CASH(target=K@e8).
+SAW mate_in_1(2.Qxg6#).
+TRY 2.Qxg6# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 64: Interference sacrifice to queen mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/pJqPAS9t"]
+[Date "????.??.??"]
+[Round "64"]
+[White "Easy Exercises"]
+[Black "Exercise 64"]
+[SetUp "1"]
+[FEN "r2qk2r/1p1b1pp1/p1pBpn1p/2P1N3/1n1P4/3B4/PPQ2PPP/2KR3R w kq - 0 1"]
+[Result "*"]
+
+1. Bg6 fxg6 (1... Qa5 2. Bxf7+ Kd8) 2. Qxg6# *
+
+[expected plain english]
+
+OBSERVE
+  the queen on c2 form a mating net around the king on e8
+  the pawn on f7 shields g6
+  the bishop on d3 can occupy g6 and force the f-pawn to move
+
+THREAT
+  Bg6 threatens Qxg6#, attacks the f7 shield
+
+REPLIES
+  fxg6 captures the bishop but opens Qg6
+  Qa5 moves the queen to create luft, but permits Bxf7+ and a decisive attack
+  all other legal replies fail to stop Qxg6#
+
+CASH
+  Qxg6# mates
+
+PROVED
+
+
+======================================================================
+TEST 65: Bishop interference to mate
+======================================================================
+
+CTT/1
+id: woodpecker-65-bishop-interference-to-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/wFwiIQNR
+fen: 1r2r1k1/p1pbqppp/Q2b1n2/3p4/P2P4/2P5/1P2BPPP/R1B1KN1R b KQ - 0 1
+objective: force checkmate on e2
+status: solved
+main: 1...Bb5
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW Q@a6 defends B@e2 along a6-b5-c4-d3-e2; Q@e7 can capture e2 with mate if that line is blocked.
+CANDIDATES 1...Bb5: attacks(Q@a6), interferes(Q@a6,B@e2), threatens(Qxe2#), USES=[alignment,interference,mating_net].
+TRY 1...Bb5 BECAUSE PICK-OUR-MOVE: the bishop both attacks the queen and blocks its defense of e2.
+THINK REPLIES(goal=mate).
+REPLY 2.axb5: captures the bishop but leaves P@b5 blocking Q@a6-e2 :: LIVE.
+REPLY 2.Qxb5: captures the bishop with the queen and restores the diagonal, but permits Qxe2+ with decisive gain :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Qxe2+.
+REPLY CLASS all other legal replies: leave the a6-e2 line blocked and permit Qxe2# :: CLOSED BY CLOSE-MATE-IN-ONE WITH 2...Qxe2#.
+TRY 2.axb5 BECAUSE TRY-REPLIES: capture the interfering bishop with a pawn while trying to keep the queen in place.
+THINK CASH(target=K@e1).
+SAW mate_in_1(2...Qxe2#); P@b5 still blocks Q@a6.
+TRY 2...Qxe2# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 65: Bishop interference to mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/wFwiIQNR"]
+[Date "????.??.??"]
+[Round "65"]
+[White "Easy Exercises"]
+[Black "Exercise 65"]
+[SetUp "1"]
+[FEN "1r2r1k1/p1pbqppp/Q2b1n2/3p4/P2P4/2P5/1P2BPPP/R1B1KN1R b KQ - 0 1"]
+[Result "*"]
+
+1... Bb5 2. axb5 (2. Qxb5 Qxe2+) 2... Qxe2# *
+
+[expected plain english]
+
+OBSERVE
+  the queen on a6 defends the bishop on e2 along a6-b5-c4-d3-e2
+  the queen on e7 can capture e2 with mate if that line is blocked
+
+THREAT
+  Bb5: the bishop both attacks the queen and blocks its defense of e2
+
+REPLIES
+  axb5 captures the bishop but leaves the pawn on b5 blocking Qe2
+  Qxb5 captures the bishop with the queen and restores the diagonal, but permits Qxe2+ with decisive gain
+  all other legal replies leave the a6-e2 line blocked and permit Qxe2#
+
+CASH
+  the pawn on b5 still blocks the queen on a6
+  Qxe2# mates
+
+PROVED
+
+
+======================================================================
+TEST 66: Rook check to deflection and queen capture
+======================================================================
+
+CTT/1
+id: woodpecker-66-rook-check-to-deflection-and-queen-capture
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/VMWyfA2W
+fen: 1r4k1/pqp2pbp/2Q2np1/1N2p3/8/1P5P/PBP2PP1/3R2K1 w - - 0 1
+objective: win the knight on f6 or the queen on b7
+status: solved
+main: 1.Rd8+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW Q@c6 attacks N@f6 and Q@b7; R@d1 can check on d8; blocking pieces on e8 or f8 become overloaded.
+CANDIDATES 1.Rd8+: gives_check, legal_reply_classes=3, attacks the back rank, USES=[check,overload,alignment].
+TRY 1.Rd8+ BECAUSE PICK-OUR-MOVE: the forcing rook entry makes every defense abandon a major target.
+THINK REPLIES(goal=win_material).
+REPLY 1...Bf8: blocks the check and leaves N@f6 loose to Qxf6 :: LIVE.
+REPLY 1...Rxd8: captures the checking rook but leaves Q@b7 capturable :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2.Qxb7.
+REPLY 1...Ne8: blocks with the knight but permits Qxe8+ or Rxe8+, winning material with check :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH 2.Qxe8+.
+TRY 1...Bf8 BECAUSE TRY-REPLIES: it blocks while preserving the queen and rook.
+THINK CASH(target=N@f6).
+SAW loose(N@f6); Q@c6 attacks f6.
+TRY 2.Qxf6 BECAUSE the blocking bishop no longer helps the knight.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the knight has been won and no forcing recovery restores it :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 66: Rook check to deflection and queen capture"]
+[Site "https://lichess.org/study/4gzGL3Gt/VMWyfA2W"]
+[Date "????.??.??"]
+[Round "66"]
+[White "Easy Exercises"]
+[Black "Exercise 66"]
+[SetUp "1"]
+[FEN "1r4k1/pqp2pbp/2Q2np1/1N2p3/8/1P5P/PBP2PP1/3R2K1 w - - 0 1"]
+[Result "*"]
+
+1. Rd8+ Bf8 (1... Rxd8 2. Qxb7) (1... Ne8 2. Qxe8+) 2. Qxf6 *
+
+[expected plain english]
+
+OBSERVE
+  the queen on c6 attacks the knight on f6 and the queen on b7
+  the rook on d1 can check on d8
+  blocking pieces on e8 or f8 become overloaded
+
+THREAT
+  Rd8+ makes every defense abandon a major target
+
+REPLIES
+  Bf8 blocks the check and leaves the knight on f6 loose to Qxf6
+  Rxd8 captures the checking rook but leaves the queen on b7 capturable
+  Ne8 blocks with the knight but permits Qxe8+ or Rxe8+, winning material with check
+
+CASH
+  the knight on f6 is loose
+  the queen on c6 attacks f6
+  Qxf6: the blocking bishop no longer helps the knight
+
+REPLIES
+  every legal reply: the knight has been won and no forcing recovery restores it
+
+PROVED
+
+
+======================================================================
+TEST 67: Knight fork sacrifice to king exposure
+======================================================================
+
+CTT/1
+id: woodpecker-67-knight-fork-sacrifice-to-king-exposure
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/K7FCsm3s
+fen: rn1qkb1r/pp3p1b/2p1pnpp/4N3/2B4P/6N1/PPPPQPP1/R1B1K2R w KQkq - 0 1
+objective: win the queen or force a mating attack
+status: solved
+main: 1.Nxf7
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW fork_available(N@e5-f7,[Q@d8,R@h8]); P@e6 shields K@e8 from Q@e2; K@e8 can capture on f7.
+CANDIDATES 1.Nxf7: captures(P@f7), forks(Q@d8,R@h8), invites(Kxf7), USES=[fork,king_exposure].
+TRY 1.Nxf7 BECAUSE PICK-OUR-MOVE: the fork forces the king to choose between capture and major-piece loss.
+THINK REPLIES(goal=win_queen_or_mate).
+REPLY 1...Kxf7: captures the forking knight and exposes the king to Qxe6+ :: LIVE.
+REPLY CLASS all other legal replies: leave N@f7 attacking Q@d8 and R@h8 :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH Nxd8 or Nxh8.
+TRY 1...Kxf7 BECAUSE TRY-REPLIES: capture the forking knight.
+THINK OBSERVE.
+SAW Q@e2 can capture P@e6 with check; after Qxe6+ the threat Qf7# is attached.
+CANDIDATES 2.Qxe6+: captures(P@e6), gives_check, threatens(Qf7#), USES=[king_exposure,mating_net].
+TRY 2.Qxe6+ BECAUSE PICK-OUR-MOVE: forcing check with a mate threat.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: either allow Qf7# or lose decisive material while answering the check :: CLOSED BY CLOSE-MATE-IN-ONE WITH Qf7# where legal.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 67: Knight fork sacrifice to king exposure"]
+[Site "https://lichess.org/study/4gzGL3Gt/K7FCsm3s"]
+[Date "????.??.??"]
+[Round "67"]
+[White "Easy Exercises"]
+[Black "Exercise 67"]
+[SetUp "1"]
+[FEN "rn1qkb1r/pp3p1b/2p1pnpp/4N3/2B4P/6N1/PPPPQPP1/R1B1K2R w KQkq - 0 1"]
+[Result "*"]
+
+1. Nxf7 Kxf7 2. Qxe6+ Kg7 3. Qf7# *
+
+[expected plain english]
+
+OBSERVE
+  Nf7 forks the queen on d8 and the rook on h8
+  the pawn on e6 shields the king on e8 from the queen on e2
+  the king on e8 can capture on f7
+
+THREAT
+  Nxf7 captures the pawn on f7, forks the queen on d8, the rook on h8, invites Kxf7
+
+REPLIES
+  Kxf7 captures the forking knight and exposes the king to Qxe6+
+  all other legal replies leave the knight on f7 attacking the queen on d8 and the rook on h8
+
+OBSERVE
+  the queen on e2 can capture the pawn on e6 with check
+  after Qxe6+ the threat Qf7# is attached
+
+THREAT
+  Qxe6+ captures the pawn on e6, gives check, threatens Qf7#
+
+REPLIES
+  every legal reply either allows Qf7# or loses decisive material while answering the check
+
+PROVED
+
+
+======================================================================
+TEST 68: Pawn capture exploits overloaded rooks
+======================================================================
+
+CTT/1
+id: woodpecker-68-pawn-capture-exploits-overloaded-rooks
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/lnKPVErt
+fen: 3n4/2prR1pk/p2r1p1p/1p5P/5P1P/P1B2K2/1PP5/4R3 w - - 0 1
+objective: win at least a pawn without allowing a sound recapture
+status: solved
+main: 1.Bxf6
+result: *
+positions_entered: 1
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@f6,B@c3); R@d6 can recapture on f6 but then R@d7 becomes loose to R@e7; the two black rooks are overloaded.
+CANDIDATES 1.Bxf6: captures(P@f6), invites(Rxf6), USES=[attacked,overload,loose].
+TRY 1.Bxf6 BECAUSE PICK-OUR-MOVE: the pawn is tactically loose because its apparent recapture abandons a rook.
+THINK REPLIES(goal=win_pawn_or_exchange).
+REPLY 1...Rxf6: recaptures the bishop but permits Rxd7, winning a rook for the bishop :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2.Rxd7.
+REPLY 1...Rxe7: captures White's rook but permits Bxe7, restoring the exchange and keeping the pawn gain :: CLOSED BY CLOSE-RECAPTURE WITH 2.Bxe7.
+REPLY CLASS all other legal replies: leave P@f6 captured and create no equal forcing recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 68: Pawn capture exploits overloaded rooks"]
+[Site "https://lichess.org/study/4gzGL3Gt/lnKPVErt"]
+[Date "????.??.??"]
+[Round "68"]
+[White "Easy Exercises"]
+[Black "Exercise 68"]
+[SetUp "1"]
+[FEN "3n4/2prR1pk/p2r1p1p/1p5P/5P1P/P1B2K2/1PP5/4R3 w - - 0 1"]
+[Result "*"]
+
+1. Bxf6 Rxf6 (1... Rxe7 2. Bxe7) 2. Rxd7 *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on f6 is attacked by the bishop on c3
+  the rook on d6 can recapture on f6 but then the rook on d7 becomes loose to the rook on e7
+  the two black rooks are overloaded
+
+THREAT
+  Bxf6 takes the tactically loose pawn because its apparent recapture abandons a rook
+
+REPLIES
+  Rxf6 recaptures the bishop but permits Rxd7, winning a rook for the bishop
+  Rxe7 captures White's rook but permits Bxe7, restoring the exchange and keeping the pawn gain
+  all other legal replies leave the pawn on f6 captured and create no equal forcing recovery
+
+PROVED
+
+
+======================================================================
+TEST 69: Deflect a rook, then use a discovered-check fork
+======================================================================
+
+CTT/1
+id: woodpecker-69-deflect-rook-then-discovered-check-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/gMFoWidI
+fen: 6r1/1p2R3/p5k1/2p5/4Nr1P/8/PP5P/6K1 b - - 0 1
+objective: win the knight on e4 and the recapturing rook
+status: solved
+main: 1...Rxe4
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(N@e4,R@f4); alignment(R@g8,K@g6,K@g1); K@g6 blocks the rook's g-file check and can attack e4 from f5.
+CANDIDATES 1...Rxe4: captures(N@e4), invites(Rxe4), places the recapturing rook on the king's attack square, USES=[attacked,alignment,deflection].
+TRY 1...Rxe4 BECAUSE PICK-OUR-MOVE: the capture lures a rook to e4 before the discovered check.
+THINK REPLIES(goal=win(N@e4,R@e4)).
+REPLY 2.Rxe4: recaptures the rook and occupies e4 :: LIVE.
+REPLY CLASS all other legal replies: leave N@e4 captured without equal forcing recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Rxe4 BECAUSE TRY-REPLIES: recover the exchanged rook.
+THINK OBSERVE.
+SAW clearance(K@g6-f5,R@g8,K@g1); K@f5 attacks(R@e4).
+CANDIDATES 2...Kf5+: gives discovered_check from R@g8, attacks(R@e4), USES=[clearance,double_attack].
+TRY 2...Kf5+ BECAUSE PICK-OUR-MOVE: the king move opens a rook check and attacks the recapturing rook.
+THINK REPLIES(goal=win(R@e4)).
+REPLY 3.Kf2: answers the check but cannot save R@e4 :: LIVE.
+REPLY CLASS all other legal check answers: also leave R@e4 within K@f5's capture :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Kxe4.
+TRY 3.Kf2 BECAUSE TRY-REPLIES: approach the center while answering check.
+THINK CASH(target=R@e4).
+TRY 3...Kxe4 BECAUSE the discovered check forced the king move and the rook remains attacked.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the knight and rook sequence has been converted without an equal forcing recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 69: Deflect a rook, then use a discovered-check fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/gMFoWidI"]
+[Date "????.??.??"]
+[Round "69"]
+[White "Easy Exercises"]
+[Black "Exercise 69"]
+[SetUp "1"]
+[FEN "6r1/1p2R3/p5k1/2p5/4Nr1P/8/PP5P/6K1 b - - 0 1"]
+[Result "*"]
+
+1... Rxe4 2. Rxe4 Kf5+ 3. Kf2 Kxe4 *
+
+[expected plain english]
+
+OBSERVE
+  the knight on e4 is attacked by the rook on f4
+  the rook on g8, the king on g6, and the king on g1 are aligned
+  the king on g6 blocks the rook's g-file check and can attack e4 from f5
+
+THREAT
+  Rxe4 lures a rook to e4 before the discovered check
+
+REPLIES
+  Rxe4 recaptures the rook and occupies e4
+  all other legal replies leave the knight on e4 captured without equal forcing recovery
+
+OBSERVE
+  moving the king from g6 to f5 clears the rook on g8
+  the king on f5 attacks the rook on e4
+
+THREAT
+  Kf5+ opens a rook check and attacks the recapturing rook
+
+REPLIES
+  Kf2 answers the check but cannot save the rook on e4
+  all other legal replies also leave the rook on e4 within the king on f5's capture
+
+CASH
+  Kxe4 captures the rook after the discovered check forces the king move
+
+REPLIES
+  every legal reply: the knight and rook sequence has been converted without an equal forcing recovery
+
+PROVED
+
+
+======================================================================
+TEST 70: Check removes a knight defender
+======================================================================
+
+CTT/1
+id: woodpecker-70-check-removes-knight-defender
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/gG6pSnc0
+fen: r1b2rk1/ppqnbppp/2p1pn2/3p2B1/2PP4/2NBPN2/PPQ2PPP/R3K2R w KQ - 0 1
+objective: win a pawn by exchanging bishops and removing the defender of e7
+status: solved
+main: 1.Bxh7+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW B@e7 is defended by N@f6; B@g5 can capture h7 with check and invite Nxh7, removing that defender.
+CANDIDATES 1.Bxh7+: captures(P@h7), gives_check, attacks the N@f6 defender by deflection, USES=[defender,deflection].
+TRY 1.Bxh7+ BECAUSE PICK-OUR-MOVE: the check asks the defending knight to leave f6.
+THINK REPLIES(goal=win_pawn_and_B@e7).
+REPLY 1...Nxh7: captures the checking bishop and abandons B@e7 :: LIVE.
+REPLY 1...Kh8: declines the bishop but leaves N@f6 capturable by Bxf6 :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2.Bxf6.
+TRY 1...Nxh7 BECAUSE TRY-REPLIES: capture the bishop with the defender.
+THINK CASH(target=B@e7).
+SAW loose(B@e7); B@d? can capture e7.
+TRY 2.Bxe7 BECAUSE the knight defender has been displaced to h7.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the bishop exchange plus h7-pawn gain survives the forcing clamp :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 70: Check removes a knight defender"]
+[Site "https://lichess.org/study/4gzGL3Gt/gG6pSnc0"]
+[Date "????.??.??"]
+[Round "70"]
+[White "Easy Exercises"]
+[Black "Exercise 70"]
+[SetUp "1"]
+[FEN "r1b2rk1/ppqnbppp/2p1pn2/3p2B1/2PP4/2NBPN2/PPQ2PPP/R3K2R w KQ - 0 1"]
+[Result "*"]
+
+1. Bxh7+ Nxh7 (1... Kh8 2. Bxf6) 2. Bxe7 *
+
+[expected plain english]
+
+OBSERVE
+  the bishop on e7 is defended by the knight on f6
+  the bishop on g5 can capture h7 with check and invite Nxh7, removing that defender
+
+THREAT
+  Bxh7+ asks the defending knight to leave f6
+
+REPLIES
+  Nxh7 captures the checking bishop and abandons the bishop on e7
+  Kh8 declines the bishop but leaves the knight on f6 capturable by Bxf6
+
+CASH
+  the bishop on e7 is loose
+  a bishop on the d-file can capture e7
+  Bxe7 captures the piece left behind after the knight is displaced to h7
+
+REPLIES
+  every legal reply: the bishop exchange plus h7-pawn gain survives the forcing clamp
+
+PROVED
+
+
+======================================================================
+TEST 71: Knight sacrifice opens a mating battery
+======================================================================
+
+CTT/1
+id: woodpecker-71-knight-sacrifice-opens-mating-battery
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/ug0LMZnx
+fen: r1b1qrk1/pppp1ppp/1bn3n1/3Np1BQ/2B1P3/3P1N2/PPP2PPP/R3K2R w KQ - 0 1
+objective: force checkmate
+status: solved
+main: 1.Nf6+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW restricted_mobility(K@g8); P@g7 shields the king; Q@h5 and B@g5 form a mating battery if the g-pawn moves.
+CANDIDATES 1.Nf6+: gives_check, attacks the g-pawn shield, invites(gxf6), USES=[restricted_mobility,mating_net,deflection].
+TRY 1.Nf6+ BECAUSE PICK-OUR-MOVE: the check forces the g-pawn or king to abandon the mating squares.
+THINK REPLIES(goal=mate).
+REPLY 1...gxf6: captures the checking knight and opens the g-file/diagonal :: LIVE.
+REPLY 1...Kh8: declines the knight but permits Qxh7# :: CLOSED BY CLOSE-MATE-IN-ONE WITH 2.Qxh7#.
+TRY 1...gxf6 BECAUSE TRY-REPLIES: capture the checking knight.
+THINK OBSERVE.
+SAW B@g5 can capture f6; after Bxf6 the threats on g7 cannot all be met.
+CANDIDATES 2.Bxf6: captures(P@f6), creates_mate_threat(g7), USES=[mating_net,clearance].
+TRY 2.Bxf6 BECAUSE PICK-OUR-MOVE: it restores the bishop battery and makes the g7 mate unavoidable.
+THINK REPLIES(goal=mate).
+REPLY CLASS all legal replies: fail to stop every queen-bishop mate on g7/h7; checks are answered without abandoning the net :: CLOSED BY CLOSE-MATE-IN-ONE WITH the available g7 or h7 mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 71: Knight sacrifice opens a mating battery"]
+[Site "https://lichess.org/study/4gzGL3Gt/ug0LMZnx"]
+[Date "????.??.??"]
+[Round "71"]
+[White "Easy Exercises"]
+[Black "Exercise 71"]
+[SetUp "1"]
+[FEN "r1b1qrk1/pppp1ppp/1bn3n1/3Np1BQ/2B1P3/3P1N2/PPP2PPP/R3K2R w KQ - 0 1"]
+[Result "*"]
+
+1. Nf6+ gxf6 (1... Kh8 2. Qxh7#) 2. Bxf6 *
+
+[expected plain english]
+
+OBSERVE
+  the king on g8 has restricted mobility
+  the pawn on g7 shields the king
+  the queen on h5 and the bishop on g5 form a mating battery if the g-pawn moves
+
+THREAT
+  Nf6+ forces the g-pawn or king to abandon the mating squares
+
+REPLIES
+  gxf6 captures the checking knight and opens the g-file/diagonal
+  Kh8 declines the knight but permits Qxh7#
+
+OBSERVE
+  the bishop on g5 can capture f6
+  after Bxf6 the threats on g7 cannot all be met
+
+THREAT
+  Bxf6 captures the pawn on f6, creates mate threat(g7)
+
+REPLIES
+  every legal reply fails to stop every queen-bishop mate on g7/h7; checks are answered without abandoning the net
+
+PROVED
+
+
+======================================================================
+TEST 72: Knight sacrifice to mate or queen win
+======================================================================
+
+CTT/1
+id: woodpecker-72-knight-sacrifice-to-mate-or-queen-win
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/4QqPI7vf
+fen: r2qrbk1/1bp2ppp/p2p1n2/2p2NB1/4P3/2N2Q2/PPP2PPP/R3R1K1 w - - 0 1
+objective: force mate or win the black queen
+status: solved
+main: 1.Nh6+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW alignment(B@g5,N@f6,Q@d8); P@g7 shields K@g8; N@f5 can check from h6 and invite gxh6.
+CANDIDATES 1.Nh6+: gives_check, attacks the g-pawn shield, prepares(Bxf6), USES=[alignment,mating_net,deflection].
+TRY 1.Nh6+ BECAUSE PICK-OUR-MOVE: the check removes the pawn that protects the king and knight chain.
+THINK REPLIES(goal=mate_or_win(Q@d8)).
+REPLY 1...gxh6: captures the checking knight and leaves N@f6 on the bishop-queen alignment :: LIVE.
+REPLY 1...Kh8: leaves the knight on h6 and permits Nxf7+ with a continuing fork/mating attack :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2.Nxf7+.
+TRY 1...gxh6 BECAUSE TRY-REPLIES: capture the checking knight.
+THINK OBSERVE.
+SAW alignment(B@g5,N@f6,Q@d8); Bxf6 attacks Q@d8 and preserves mating threats.
+CANDIDATES 2.Bxf6: captures(N@f6), attacks(Q@d8), threatens mate, USES=[alignment,mating_net].
+TRY 2.Bxf6 BECAUSE PICK-OUR-MOVE: capture the middle piece of the alignment with a mate threat.
+THINK REPLIES(goal=mate_or_win(Q@d8)).
+REPLY 2...Qxf6: captures the bishop but permits Qxf6, exchanging queens after White has won the knight :: CLOSED BY CLOSE-RECAPTURE WITH 3.Qxf6.
+REPLY CLASS all other legal replies: either allow the queen to be captured or fail to stop the mating attack :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 72: Knight sacrifice to mate or queen win"]
+[Site "https://lichess.org/study/4gzGL3Gt/4QqPI7vf"]
+[Date "????.??.??"]
+[Round "72"]
+[White "Easy Exercises"]
+[Black "Exercise 72"]
+[SetUp "1"]
+[FEN "r2qrbk1/1bp2ppp/p2p1n2/2p2NB1/4P3/2N2Q2/PPP2PPP/R3R1K1 w - - 0 1"]
+[Result "*"]
+
+1. Nh6+ gxh6 (1... Kh8 2. Nxf7+) 2. Bxf6 *
+
+[expected plain english]
+
+OBSERVE
+  the bishop on g5, the knight on f6, and the queen on d8 are aligned
+  the pawn on g7 shields the king on g8
+  the knight on f5 can check from h6 and invite gxh6
+
+THREAT
+  Nh6+ removes the pawn that protects the king and knight chain
+
+REPLIES
+  gxh6 captures the checking knight and leaves the knight on f6 on the bishop-queen alignment
+  Kh8 leaves the knight on h6 and permits Nxf7+ with a continuing fork/mating attack
+
+OBSERVE
+  the bishop on g5, the knight on f6, and the queen on d8 are aligned
+  Bxf6 attacks the queen on d8 and preserves mating threats
+
+THREAT
+  Bxf6 captures the middle piece of the alignment with a mate threat
+
+REPLIES
+  Qxf6 captures the bishop but permits Qxf6, exchanging queens after White has won the knight
+  all other legal replies either allow the queen to be captured or fail to stop the mating attack
+
+PROVED
+
+
+======================================================================
+TEST 73: Knight decoy to rook mate
+======================================================================
+
+CTT/1
+id: woodpecker-73-knight-decoy-to-rook-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/RoNz5Z8n
+fen: r4r1k/ppn1NBpp/4b3/4P3/3p1R2/1P6/P1P3PP/R5K1 w - - 0 1
+objective: force checkmate
+status: solved
+main: 1.Ng6+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW restricted_mobility(K@h8); P@h7 blocks R@f4-h4; N@e7 can sacrifice on g6 to force h-pawn movement.
+CANDIDATES 1.Ng6+: gives_check, legal_reply_classes=1, deflects(P@h7), USES=[restricted_mobility,deflection,mating_net].
+TRY 1.Ng6+ BECAUSE PICK-OUR-MOVE: check with one reply that clears the rook's mating square.
+THINK REPLIES(goal=mate).
+REPLY 1...hxg6: only_legal_reply; moves P@h7 away from h7 and opens h4 :: LIVE.
+TRY 1...hxg6 BECAUSE ALL-REPLIES.
+THINK CASH(target=K@h8).
+SAW mate_in_1(2.Rh4#).
+TRY 2.Rh4# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 73: Knight decoy to rook mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/RoNz5Z8n"]
+[Date "????.??.??"]
+[Round "73"]
+[White "Easy Exercises"]
+[Black "Exercise 73"]
+[SetUp "1"]
+[FEN "r4r1k/ppn1NBpp/4b3/4P3/3p1R2/1P6/P1P3PP/R5K1 w - - 0 1"]
+[Result "*"]
+
+1. Ng6+ hxg6 2. Rh4# *
+
+[expected plain english]
+
+OBSERVE
+  the king on h8 has restricted mobility
+  the pawn on h7 blocks Rh4
+  the knight on e7 can sacrifice on g6 to force h-pawn movement
+
+THREAT
+  Ng6+ checks with one reply that clears the rook's mating square
+
+REPLIES
+  hxg6 is the only legal reply; moves the pawn on h7 away from h7 and opens h4
+
+CASH
+  Rh4# mates
+
+PROVED
+
+
+======================================================================
+TEST 74: Queen sacrifice to a knight fork of the queen
+======================================================================
+
+CTT/1
+id: woodpecker-74-queen-sacrifice-to-knight-queen-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/hAFFnz1G
+fen: 2r2rk1/pp1bnp2/3q1n1Q/3p1P2/4p2N/1BPP4/P1P3PP/R4RK1 b - - 0 1
+objective: win the white queen and simplify the position
+status: solved
+main: 1...Qxh2+
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW Q@h6 is vulnerable to N@f6-g4-h6; K@g1 can be decoyed to h2 by Qxh2+.
+CANDIDATES 1...Qxh2+: captures(P@h2), gives_check, invites(Kxh2), prepares(Ng4+), USES=[decoy,fork].
+TRY 1...Qxh2+ BECAUSE PICK-OUR-MOVE: the queen sacrifice places the king on the knight-fork route.
+THINK REPLIES(goal=win(Q@h6)).
+REPLY 2.Kxh2: captures the queen and permits Ng4+ :: LIVE.
+REPLY 2.Kf2: declines the queen but permits Qxh4+, winning the knight while keeping the attack :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Qxh4+.
+TRY 2.Kxh2 BECAUSE TRY-REPLIES: capture the checking queen.
+THINK OBSERVE.
+SAW fork_available(N@f6-g4,[K@h2,Q@h6]).
+CANDIDATES 2...Ng4+: gives_check, attacks(Q@h6), USES=[fork].
+TRY 2...Ng4+ BECAUSE PICK-OUR-MOVE: checking queen fork.
+THINK REPLIES(goal=win(Q@h6)).
+REPLY 3.Kg3: answers the check while approaching the knight :: LIVE.
+REPLY CLASS [3.Kg1,3.Kh1,3.Kh3]: every king move leaves Q@h6 attacked by N@g4 :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 3...Nxh6.
+TRY 3.Kg3 BECAUSE TRY-REPLIES: approach the forking knight.
+THINK CASH(target=Q@h6).
+TRY 3...Nxh6 BECAUSE the queen remains forked.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the queens have been exchanged and Black has also won the h-pawn; no forcing reply restores the queen :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 74: Queen sacrifice to a knight fork of the queen"]
+[Site "https://lichess.org/study/4gzGL3Gt/hAFFnz1G"]
+[Date "????.??.??"]
+[Round "74"]
+[White "Easy Exercises"]
+[Black "Exercise 74"]
+[SetUp "1"]
+[FEN "2r2rk1/pp1bnp2/3q1n1Q/3p1P2/4p2N/1BPP4/P1P3PP/R4RK1 b - - 0 1"]
+[Result "*"]
+
+1... Qxh2+ 2. Kxh2 (2. Kf2 Qxh4+) 2... Ng4+ 3. Kg3 Nxh6 *
+
+[expected plain english]
+
+OBSERVE
+  the queen on h6 is vulnerable to Ng4-h6
+  the king on g1 can be decoyed to h2 by Qxh2+
+
+THREAT
+  Qxh2+ places the king on the knight-fork route
+
+REPLIES
+  Kxh2 captures the queen and permits Ng4+
+  Kf2 declines the queen but permits Qxh4+, winning the knight while keeping the attack
+
+OBSERVE
+  Ng4 forks the king on h2 and the queen on h6
+
+THREAT
+  Ng4+ is a checking queen fork
+
+REPLIES
+  Kg3 answers the check while approaching the knight
+  Kg1, Kh1, and Kh3 every king move leaves the queen on h6 attacked by the knight on g4
+
+CASH
+  Nxh6: the queen remains forked
+
+REPLIES
+  every legal reply: the queens have been exchanged and Black has also won the h-pawn; no forcing reply restores the queen
+
+PROVED
+
+
+======================================================================
+TEST 75: Bishop decoy to a rook double attack
+======================================================================
+
+CTT/1
+id: woodpecker-75-bishop-decoy-to-rook-double-attack
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/9GuON3Fx
+fen: 5rk1/pbp2ppp/qr6/8/5Q2/1PP5/P4PP1/R1B2RK1 b - - 0 1
+objective: win the queen on f4 or the rook on f1
+status: solved
+main: 1...Bxg2
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@g2,B@b7); B@g2 would attack R@f1; Q@f4 is exposed on the f-file to R@f8; R@b6 can give Rg6+ after K moves to g2.
+CANDIDATES 1...Bxg2: captures(P@g2), attacks(R@f1), invites(Kxg2), USES=[attacked,alignment,double_attack].
+TRY 1...Bxg2 BECAUSE PICK-OUR-MOVE: the capture forces a choice between the bishop and the rook.
+THINK REPLIES(goal=win(Q@f4_or_R@f1)).
+REPLY 2.Kxg2: captures the bishop and places the king on the g-file :: LIVE.
+REPLY CLASS all other legal replies: leave B@g2 attacking R@f1; Qxf1+ or Bxf1 wins the rook with check :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH Qxf1+.
+TRY 2.Kxg2 BECAUSE TRY-REPLIES: capture the bishop before it takes the rook.
+THINK OBSERVE.
+SAW R@f8 attacks Q@f4; R@b6 can check from g6; K@g2 cannot answer both attacks.
+CANDIDATES 2...Rg6+: gives_check, keeps attack(Q@f4), creates double_attack(Q@f4,R@f1), USES=[check,double_attack].
+TRY 2...Rg6+ BECAUSE PICK-OUR-MOVE: the check denies White time to save both major pieces.
+THINK REPLIES(goal=win(Q@f4_or_R@f1)).
+REPLY CLASS all legal check answers: after the king answers, Q@f4 remains attacked by R@f8 or R@f1 becomes capturable; no move saves both :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH the appropriate rook capture.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 75: Bishop decoy to a rook double attack"]
+[Site "https://lichess.org/study/4gzGL3Gt/9GuON3Fx"]
+[Date "????.??.??"]
+[Round "75"]
+[White "Easy Exercises"]
+[Black "Exercise 75"]
+[SetUp "1"]
+[FEN "5rk1/pbp2ppp/qr6/8/5Q2/1PP5/P4PP1/R1B2RK1 b - - 0 1"]
+[Result "*"]
+
+1... Bxg2 2. Kxg2 Rg6+ *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on g2 is attacked by the bishop on b7
+  the bishop on g2 would attack the rook on f1
+  the queen on f4 is exposed on the f-file to the rook on f8
+  the rook on b6 can give Rg6+ after K moves to g2
+
+THREAT
+  Bxg2 forces a choice between the bishop and the rook
+
+REPLIES
+  Kxg2 captures the bishop and places the king on the g-file
+  all other legal replies leave the bishop on g2 attacking the rook on f1; Qxf1+ or Bxf1 wins the rook with check
+
+OBSERVE
+  the rook on f8 attacks the queen on f4
+  the rook on b6 can check from g6
+  the king on g2 cannot answer both attacks
+
+THREAT
+  Rg6+ denies White time to save both major pieces
+
+REPLIES
+  every legal check answer: after the king answers, the queen on f4 remains attacked by the rook on f8 or the rook on f1 becomes capturable; no move saves both
+
+PROVED
+
+
+======================================================================
+TEST 76: Queen sacrifice to a knight fork
+======================================================================
+
+CTT/1
+id: woodpecker-76-queen-sacrifice-to-knight-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/actEuD0M
+fen: r1b2rk1/pp1p1ppp/2n2n2/q7/2P5/P1N2NP1/3QPKBP/R1B4R b - - 0 1
+objective: win a pawn by forcing a queen exchange and knight recapture
+status: solved
+main: 1...Qxc3
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(N@c3,Q@a5); after Q@d2 recaptures on c3, N@f6-e4+ forks(K@f2,Q@c3).
+CANDIDATES 1...Qxc3: captures(N@c3), invites(Qxc3), USES=[attacked,fork,decoy].
+TRY 1...Qxc3 BECAUSE PICK-OUR-MOVE: the queen sacrifice places White's queen on the knight-fork square.
+THINK REPLIES(goal=win(Q@c3)).
+REPLY 2.Qxc3: captures the black queen and occupies c3 :: LIVE.
+REPLY CLASS all other legal replies: leave N@c3 captured while Black's queen survives, meeting the material objective :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Qxc3 BECAUSE TRY-REPLIES: accept the queen sacrifice.
+THINK OBSERVE.
+SAW fork_available(N@f6-e4,[K@f2,Q@c3]).
+CANDIDATES 2...Ne4+: gives_check, attacks(Q@c3), USES=[fork].
+TRY 2...Ne4+ BECAUSE PICK-OUR-MOVE: checking queen fork.
+THINK REPLIES(goal=win(Q@c3)).
+REPLY 3.Kf1: answers the check but leaves Q@c3 attacked :: LIVE.
+REPLY CLASS all other legal check answers: also leave Q@c3 attacked by N@e4 :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Nxc3.
+TRY 3.Kf1 BECAUSE TRY-REPLIES: move to the safest king square.
+THINK CASH(target=Q@c3).
+TRY 3...Nxc3 BECAUSE the queen is forked.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the queens and knights have been exchanged and Black has retained the extra pawn :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 76: Queen sacrifice to a knight fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/actEuD0M"]
+[Date "????.??.??"]
+[Round "76"]
+[White "Easy Exercises"]
+[Black "Exercise 76"]
+[SetUp "1"]
+[FEN "r1b2rk1/pp1p1ppp/2n2n2/q7/2P5/P1N2NP1/3QPKBP/R1B4R b - - 0 1"]
+[Result "*"]
+
+1... Qxc3 2. Qxc3 Ne4+ 3. Kf1 Nxc3 *
+
+[expected plain english]
+
+OBSERVE
+  the knight on c3 is attacked by the queen on a5
+  after the queen on d2 recaptures on c3, Ne4+ forks the king on f2, the queen on c3
+
+THREAT
+  Qxc3 places White's queen on the knight-fork square
+
+REPLIES
+  Qxc3 captures the black queen and occupies c3
+  all other legal replies leave the knight on c3 captured while Black's queen survives, meeting the material objective
+
+OBSERVE
+  Ne4 forks the king on f2 and the queen on c3
+
+THREAT
+  Ne4+ is a checking queen fork
+
+REPLIES
+  Kf1 answers the check but leaves the queen on c3 attacked
+  all other legal replies also leave the queen on c3 attacked by the knight on e4
+
+CASH
+  Nxc3 captures the forked queen
+
+REPLIES
+  every legal reply: the queens and knights have been exchanged and Black has retained the extra pawn
+
+PROVED
+
+
+======================================================================
+TEST 77: Queen sacrifice to knight fork and pawn ending
+======================================================================
+
+CTT/1
+id: woodpecker-77-queen-sacrifice-to-knight-fork-and-pawn-ending
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/Xx7fcbRh
+fen: 3Q4/p4pkp/1p3np1/2q5/4p3/4P1N1/PP3PPP/6K1 w - - 0 1
+objective: win a pawn by forcing a queen trade through a knight fork
+status: solved
+main: 1.Qxf6+
+result: *
+positions_entered: 6
+
+[trace]
+
+THINK OBSERVE.
+SAW Q@c5 can be forked by N@g3-e4+; K@g7 can be drawn to f6 by Qxf6+.
+CANDIDATES 1.Qxf6+: captures(N@f6), gives_check, invites(Kxf6), USES=[decoy,fork].
+TRY 1.Qxf6+ BECAUSE PICK-OUR-MOVE: the queen sacrifice pulls the king onto the knight-check route.
+THINK REPLIES(goal=win(Q@c5)).
+REPLY 1...Kxf6: captures the queen and places K@f6 in range of Nxe4+ :: LIVE.
+REPLY CLASS [1...Kf8,1...Kg8,1...Kh6]: decline the queen and leave White with N@f6 captured and the queen intact :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...Kxf6 BECAUSE TRY-REPLIES: capture the checking queen.
+THINK OBSERVE.
+SAW fork_available(N@g3-e4,[K@f6,Q@c5]).
+CANDIDATES 2.Nxe4+: captures(P@e4), gives_check, attacks(Q@c5), USES=[fork].
+TRY 2.Nxe4+ BECAUSE PICK-OUR-MOVE: checking queen fork.
+THINK REPLIES(goal=win(Q@c5)).
+REPLY 2...Ke5: answers the check but leaves Q@c5 attacked :: LIVE.
+REPLY CLASS all other legal check answers: also leave Q@c5 within N@e4's attack :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Nxc5.
+TRY 2...Ke5 BECAUSE TRY-REPLIES: move toward the forking knight.
+THINK CASH(target=Q@c5).
+TRY 3.Nxc5 BECAUSE the queen is forked.
+THINK REPLIES(goal=win_pawn_after_queen_trade).
+REPLY 3...bxc5: captures the winning knight and completes the forced exchanges :: LIVE.
+REPLY CLASS all other legal replies: leave the queen captured without recovering the knight :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 3...bxc5 BECAUSE TRY-REPLIES: recapture the knight.
+SAW queenless_pawn_ending; White has won the e4-pawn and reached the declared pawn objective.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 77: Queen sacrifice to knight fork and pawn ending"]
+[Site "https://lichess.org/study/4gzGL3Gt/Xx7fcbRh"]
+[Date "????.??.??"]
+[Round "77"]
+[White "Easy Exercises"]
+[Black "Exercise 77"]
+[SetUp "1"]
+[FEN "3Q4/p4pkp/1p3np1/2q5/4p3/4P1N1/PP3PPP/6K1 w - - 0 1"]
+[Result "*"]
+
+1. Qxf6+ Kxf6 2. Nxe4+ Ke5 3. Nxc5 bxc5 4. Kf1 *
+
+[expected plain english]
+
+OBSERVE
+  the queen on c5 can be forked by Ne4+
+  the king on g7 can be drawn to f6 by Qxf6+
+
+THREAT
+  Qxf6+ pulls the king onto the knight-check route
+
+REPLIES
+  Kxf6 captures the queen and places the king on f6 in range of Nxe4+
+  Kf8, Kg8, and Kh6 decline the queen and leave White with the knight on f6 captured and the queen intact
+
+OBSERVE
+  Ne4 forks the king on f6 and the queen on c5
+
+THREAT
+  Nxe4+ is a checking queen fork
+
+REPLIES
+  Ke5 answers the check but leaves the queen on c5 attacked
+  all other legal replies also leave the queen on c5 within the knight on e4's attack
+
+CASH
+  Nxc5 captures the forked queen
+
+REPLIES
+  bxc5 captures the winning knight and completes the forced exchanges
+  all other legal replies leave the queen captured without recovering the knight
+
+OBSERVE
+  queenless pawn ending
+  white has won the e4-pawn and reached the declared pawn objective
+
+PROVED
+
+
+======================================================================
+TEST 78: Capture, then bishop forks queen and knight
+======================================================================
+
+CTT/1
+id: woodpecker-78-capture-then-bishop-forks-queen-and-knight
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/w95Erfss
+fen: 3r4/p2q1pkp/1pn1bnp1/2p1p3/P1N1P3/1PP1Q1PP/5PK1/4RBN1 b - - 0 1
+objective: win the e4-pawn and recover the sacrificed knight
+status: solved
+main: 1...Nxe4
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@e4,N@f6); if Q@e3 recaptures on e4, B@e6-d5 attacks Q@e4 and N@c4.
+CANDIDATES 1...Nxe4: captures(P@e4), invites(Qxe4), USES=[attacked,fork].
+TRY 1...Nxe4 BECAUSE PICK-OUR-MOVE: the pawn capture sets up the bishop fork one ply later.
+THINK REPLIES(goal=win_pawn_and_recover_knight).
+REPLY 2.Qxe4: captures the knight and places the queen on the fork square :: LIVE.
+REPLY 2.Kh2: declines the recapture; Black keeps the extra pawn with several safe retreats :: CLOSED BY CLOSE-GAIN-CLAMP.
+REPLY CLASS all other legal replies: leave P@e4 captured and do not win equal material :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Qxe4 BECAUSE TRY-REPLIES: recover the captured pawn and knight.
+THINK OBSERVE.
+SAW fork_available(B@e6-d5,[Q@e4,N@c4]).
+CANDIDATES 2...Bd5: attacks(Q@e4), attacks(N@c4), USES=[fork].
+TRY 2...Bd5 BECAUSE PICK-OUR-MOVE: bishop fork of queen and knight.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal queen moves: N@c4 remains capturable after the queen escapes :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH Bxc4.
+REPLY CLASS all other legal replies: do not move Q@e4 and therefore permit Bxe4, winning the queen :: CLOSED BY CLOSE-ABANDON WITH Bxe4.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 78: Capture, then bishop forks queen and knight"]
+[Site "https://lichess.org/study/4gzGL3Gt/w95Erfss"]
+[Date "????.??.??"]
+[Round "78"]
+[White "Easy Exercises"]
+[Black "Exercise 78"]
+[SetUp "1"]
+[FEN "3r4/p2q1pkp/1pn1bnp1/2p1p3/P1N1P3/1PP1Q1PP/5PK1/4RBN1 b - - 0 1"]
+[Result "*"]
+
+1... Nxe4 2. Qxe4 (2. Kh2 f5) 2... Bd5 *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on e4 is attacked by the knight on f6
+  if the queen on e3 recaptures on e4, Bd5 attacks the queen on e4 and the knight on c4
+
+THREAT
+  Nxe4 captures the pawn on e4, invites Qxe4
+
+REPLIES
+  Qxe4 captures the knight and places the queen on the fork square
+  Kh2 declines the recapture; Black keeps the extra pawn with several safe retreats
+  all other legal replies leave the pawn on e4 captured and do not win equal material
+
+OBSERVE
+  Bd5 forks the queen on e4 and the knight on c4
+
+THREAT
+  Bd5 forks the queen and knight
+
+REPLIES
+  every legal queen move leaves the knight on c4 capturable after the queen escapes
+  all other legal replies do not move the queen on e4 and therefore permit Bxe4, winning the queen
+
+PROVED
+
+
+======================================================================
+TEST 79: Exchange sequence to pin and win a rook
+======================================================================
+
+CTT/1
+id: woodpecker-79-exchange-sequence-to-pin-and-win-rook
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/QozVdx1v
+fen: 2kr4/p1p2ppp/3rb3/8/2P5/1R1BR3/P4PPP/5K2 b - - 0 1
+objective: win a bishop, pawn, and rook through a forced exchange sequence
+status: solved
+main: 1...Rxd3
+result: *
+positions_entered: 7
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(B@d3,R@d6); two white rooks can recapture on d3; B@e6 can later attack d3 through c4.
+CANDIDATES 1...Rxd3: captures(B@d3), invites a rook recapture, USES=[attacked,capture_order,alignment].
+TRY 1...Rxd3 BECAUSE PICK-OUR-MOVE: begin the forced rook exchange while taking the bishop.
+THINK REPLIES(goal=win_exchange_sequence).
+REPLY 2.Rexd3: recaptures the rook with R@e3 :: LIVE.
+REPLY 2.Rbxd3: has the same exchange structure :: CLOSED BY REPLY-CLASS WITH 2...Rxd3 and the remaining rook recapture.
+REPLY CLASS all other legal replies: leave B@d3 captured without equal recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Rexd3 BECAUSE TRY-REPLIES: recapture with the rook that preserves the b-file rook.
+THINK CASH(target=R@d3).
+TRY 2...Rxd3 BECAUSE the second black rook continues the forced exchange.
+THINK REPLIES(goal=win_remaining_rook).
+REPLY 3.Rxd3: the remaining rook recaptures :: LIVE.
+REPLY CLASS all other legal replies: leave a full rook captured :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 3.Rxd3 BECAUSE TRY-REPLIES: recover the exchanged rook.
+THINK OBSERVE.
+SAW alignment(B@e6,P@c4,R@d3,K@f1); Bxc4 attacks R@d3 and pins it to K@f1 along c4-d3-e2-f1.
+CANDIDATES 3...Bxc4: captures(P@c4), pins(R@d3,K@f1), USES=[alignment,pin].
+TRY 3...Bxc4 BECAUSE PICK-OUR-MOVE: the capture creates an absolute pin on the final rook.
+THINK REPLIES(goal=win(R@d3)).
+REPLY 4.Ke2: moves the king off the pin line but leaves R@d3 attacked :: LIVE.
+REPLY CLASS all other legal replies: cannot move the pinned rook safely and do not save it after the king moves :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH Bxd3+.
+TRY 4.Ke2 BECAUSE TRY-REPLIES: release the absolute pin.
+THINK CASH(target=R@d3).
+TRY 4...Bxd3+ BECAUSE the rook is now capturable with check.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal check answers: the exchange sequence is complete and Black retains the extra pawn :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 79: Exchange sequence to pin and win a rook"]
+[Site "https://lichess.org/study/4gzGL3Gt/QozVdx1v"]
+[Date "????.??.??"]
+[Round "79"]
+[White "Easy Exercises"]
+[Black "Exercise 79"]
+[SetUp "1"]
+[FEN "2kr4/p1p2ppp/3rb3/8/2P5/1R1BR3/P4PPP/5K2 b - - 0 1"]
+[Result "*"]
+
+1... Rxd3 2. Rexd3 (2. Rbxd3 Rxd3 3. Rxd3 Bxc4) 2... Rxd3 3. Rxd3 Bxc4 4. Ke2 Bxd3+ *
+
+[expected plain english]
+
+OBSERVE
+  the bishop on d3 is attacked by the rook on d6
+  two white rooks can recapture on d3
+  the bishop on e6 can later attack d3 through c4
+
+THREAT
+  Rxd3 captures the bishop on d3, invites a rook recapture
+
+REPLIES
+  Rexd3 recaptures the rook with the rook on e3
+  Rbxd3 has the same exchange structure
+  all other legal replies leave the bishop on d3 captured without equal recovery
+
+CASH
+  Rxd3: the second black rook continues the forced exchange
+
+REPLIES
+  Rxd3 the remaining rook recaptures
+  all other legal replies leave a full rook captured
+
+OBSERVE
+  the bishop on e6, the pawn on c4, the rook on d3, and the king on f1 are aligned
+  Bxc4 attacks the rook on d3 and pins it to the king on f1 along c4-d3-e2-f1
+
+THREAT
+  Bxc4 creates an absolute pin on the final rook
+
+REPLIES
+  Ke2 moves the king off the pin line but leaves the rook on d3 attacked
+  all other legal replies cannot move the pinned rook safely and do not save it after the king moves
+
+CASH
+  Bxd3+ captures the rook
+
+REPLIES
+  every legal check answer: the exchange sequence is complete and Black retains the extra pawn
+
+PROVED
+
+
+======================================================================
+TEST 80: Rook decoy to queen mate
+======================================================================
+
+CTT/1
+id: woodpecker-80-rook-decoy-to-queen-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/vj7lgWf4
+fen: 6k1/3q3p/p1p3pQ/1p1p4/3P2RP/1P3P2/r3r1P1/5R1K b - - 0 1
+objective: force checkmate
+status: solved
+main: 1...Rxg2
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW mating_net(Q@d7,R@a2,K@h1); R@e2 can capture P@g2 and draw R@g4 onto g2; Qh3+ then attacks the king.
+CANDIDATES 1...Rxg2: captures(P@g2), attacks the king zone, invites(Rxg2), USES=[decoy,mating_net].
+TRY 1...Rxg2 BECAUSE PICK-OUR-MOVE: the rook sacrifice pulls the defending rook onto the queen's mating file.
+THINK REPLIES(goal=mate).
+REPLY 2.Rxg2: captures the sacrificing rook and occupies g2 :: LIVE.
+REPLY CLASS all other legal replies: fail to remove the rook and permit a direct queen or rook mate :: CLOSED BY CLOSE-MATE-IN-ONE WITH the available mating entry.
+TRY 2.Rxg2 BECAUSE TRY-REPLIES: capture the attacking rook.
+THINK OBSERVE.
+SAW Q@d7 can give Qh3+; K@h1 has reply classes Kg1 and Rh2; R@a2 controls the second rank.
+CANDIDATES 2...Qh3+: gives_check, legal_reply_classes=2, USES=[mating_net,restricted_mobility].
+TRY 2...Qh3+ BECAUSE PICK-OUR-MOVE: forcing queen check that keeps both mating pieces active.
+THINK REPLIES(goal=mate).
+REPLY 3.Kg1: moves the king to the g-file and permits Qxg2# :: LIVE.
+REPLY 3.Rh2: blocks with the rook but permits Qxh2# or Qxf1# :: CLOSED BY CLOSE-MATE-IN-ONE WITH 3...Qxh2#.
+TRY 3.Kg1 BECAUSE TRY-REPLIES: move the king rather than interpose the rook.
+THINK CASH(target=K@g1).
+TRY 3...Qxg2# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 80: Rook decoy to queen mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/vj7lgWf4"]
+[Date "????.??.??"]
+[Round "80"]
+[White "Easy Exercises"]
+[Black "Exercise 80"]
+[SetUp "1"]
+[FEN "6k1/3q3p/p1p3pQ/1p1p4/3P2RP/1P3P2/r3r1P1/5R1K b - - 0 1"]
+[Result "*"]
+
+1... Rxg2 2. Rxg2 Qh3+ 3. Kg1 (3. Rh2 Qxh2#) 3... Qxg2# *
+
+[expected plain english]
+
+OBSERVE
+  the queen on d7 form a mating net around the rook on a2
+  the rook on e2 can capture the pawn on g2 and draw the rook on g4 onto g2
+  Qh3+ then attacks the king
+
+THREAT
+  Rxg2 pulls the defending rook onto the queen's mating file
+
+REPLIES
+  Rxg2 captures the sacrificing rook and occupies g2
+  all other legal replies fail to remove the rook and permit a direct queen or rook mate
+
+OBSERVE
+  the queen on d7 can give Qh3+
+  the king on h1 has reply classes Kg1 and Rh2
+  the rook on a2 controls the second rank
+
+THREAT
+  Qh3+ gives check, has 2 legal reply classes
+
+REPLIES
+  Kg1 moves the king to the g-file and permits Qxg2#
+  Rh2 blocks with the rook but permits Qxh2# or Qxf1#
+
+CASH
+  Qxg2# mates
+
+PROVED
+
+
+======================================================================
+TEST 81: Queen sacrifice to a rook skewer of the queen
+======================================================================
+
+CTT/1
+id: woodpecker-81-queen-sacrifice-to-rook-skewer
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/SohCvaRS
+fen: 6k1/6pp/p1p3r1/3p4/P2P1Pq1/1R2PR2/2Q1K1P1/7r b - - 0 1
+objective: win the white queen on c2
+status: solved
+main: 1...Qxg2+
+result: *
+positions_entered: 7
+
+[trace]
+
+THINK OBSERVE.
+SAW alignment(R@h1,K@e2,Q@c2); Q@g4 can give Qxg2+ and force the king or R@f3 to move.
+CANDIDATES 1...Qxg2+: captures(P@g2), gives_check, prepares(Rh2+), USES=[alignment,decoy,skewer].
+TRY 1...Qxg2+ BECAUSE PICK-OUR-MOVE: the queen sacrifice clears the h-file rook's checking route.
+THINK REPLIES(goal=win(Q@c2)).
+REPLY 2.Rf2: blocks the queen check and permits Qxf2+ :: LIVE.
+REPLY 2.Kd3: moves from check but permits Qxc2+, winning the queen immediately :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH 2...Qxc2+.
+TRY 2.Rf2 BECAUSE TRY-REPLIES: interpose a rook and keep the queen defended.
+THINK OBSERVE.
+SAW Q@g2 can capture R@f2 with check; K@e2 is the only piece that can recapture while preserving Q@c2.
+CANDIDATES 2...Qxf2+: captures(R@f2), gives_check, USES=[decoy,alignment].
+TRY 2...Qxf2+ BECAUSE PICK-OUR-MOVE: continue the forcing queen sacrifice.
+THINK REPLIES(goal=win(Q@c2)).
+REPLY 3.Kxf2: captures the queen and places K@f2 on the h-file rook route :: LIVE.
+REPLY 3.Kd3: declines the queen but permits Qxc2, winning the target :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 3...Qxc2.
+TRY 3.Kxf2 BECAUSE TRY-REPLIES: accept the queen sacrifice.
+THINK OBSERVE.
+SAW R@h1 can check from h2; every king reply leaves Q@c2 on the second rank.
+CANDIDATES 3...Rh2+: gives_check, attacks(Q@c2) along rank after king moves, USES=[skewer,alignment].
+TRY 3...Rh2+ BECAUSE PICK-OUR-MOVE: rook check skewers the king from the queen.
+THINK REPLIES(goal=win(Q@c2)).
+REPLY 4.Kf3: answers the check and leaves Q@c2 attacked :: LIVE.
+REPLY CLASS [4.Ke1,4.Kf1]: also leave Q@c2 capturable by Rxc2 :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Rxc2.
+TRY 4.Kf3 BECAUSE TRY-REPLIES: approach the rook while answering check.
+THINK CASH(target=Q@c2).
+TRY 4...Rxc2 BECAUSE the rook check has displaced the king.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the queen has been won and no forcing recovery restores it :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 81: Queen sacrifice to a rook skewer of the queen"]
+[Site "https://lichess.org/study/4gzGL3Gt/SohCvaRS"]
+[Date "????.??.??"]
+[Round "81"]
+[White "Easy Exercises"]
+[Black "Exercise 81"]
+[SetUp "1"]
+[FEN "6k1/6pp/p1p3r1/3p4/P2P1Pq1/1R2PR2/2Q1K1P1/7r b - - 0 1"]
+[Result "*"]
+
+1... Qxg2+ 2. Rf2 (2. Kd3 Qxc2+) 2... Qxf2+ 3. Kxf2 Rh2+ 4. Kf3 Rxc2 *
+
+[expected plain english]
+
+OBSERVE
+  the rook on h1, the king on e2, and the queen on c2 are aligned
+  the queen on g4 can give Qxg2+ and force the king or the rook on f3 to move
+
+THREAT
+  Qxg2+ clears the h-file rook's checking route
+
+REPLIES
+  Rf2 blocks the queen check and permits Qxf2+
+  Kd3 moves from check but permits Qxc2+, winning the queen immediately
+
+OBSERVE
+  the queen on g2 can capture the rook on f2 with check
+  the king on e2 is the only piece that can recapture while preserving the queen on c2
+
+THREAT
+  Qxf2+ continues the forcing queen sacrifice
+
+REPLIES
+  Kxf2 captures the queen and places the king on f2 on the h-file rook route
+  Kd3 declines the queen but permits Qxc2, winning the target
+
+OBSERVE
+  the rook on h1 can check from h2
+  every king reply leaves the queen on c2 on the second rank
+
+THREAT
+  Rh2+ gives check, attacks the queen on c2 along rank after king moves
+
+REPLIES
+  Kf3 answers the check and leaves the queen on c2 attacked
+  Ke1 and Kf1 also leave the queen on c2 capturable by Rxc2
+
+CASH
+  Rxc2: the rook check has displaced the king
+
+REPLIES
+  every legal reply: the queen has been won and no forcing recovery restores it
+
+PROVED
+
+
+======================================================================
+TEST 82: Rook deflection to queen capture
+======================================================================
+
+CTT/1
+id: woodpecker-82-rook-deflection-to-queen-capture
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/P0EVzLS5
+fen: 1r2nrk1/p1p2pp1/4bb1p/3p4/q4B2/P1PB1Q1P/1P2NPP1/1R1R2K1 b - - 0 1
+objective: win a pawn by deflecting the b1-rook from d1
+status: solved
+main: 1...Rxb2
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@b2,R@b8); Q@a4 attacks R@d1; R@b1 is the recapturing defender of d1.
+CANDIDATES 1...Rxb2: captures(P@b2), invites(Rxb2), deflects(R@b1), USES=[attacked,deflection,alignment].
+TRY 1...Rxb2 BECAUSE PICK-OUR-MOVE: the rook capture pulls the defender away from d1.
+THINK REPLIES(goal=win_pawn_and_R@d1).
+REPLY 2.Rxb2: captures the rook and vacates b1 :: LIVE.
+REPLY CLASS all other legal replies: leave P@b2 captured while Black's rook survives :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Rxb2 BECAUSE TRY-REPLIES: recover the sacrificing rook.
+THINK CASH(target=R@d1).
+SAW loose(R@d1); Q@a4 attacks d1 with check; R@b1 no longer defends it.
+TRY 2...Qxd1+ BECAUSE the defender has been deflected.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal check answers: Black has won the b2-pawn through the forced exchange and no forcing recovery restores it :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 82: Rook deflection to queen capture"]
+[Site "https://lichess.org/study/4gzGL3Gt/P0EVzLS5"]
+[Date "????.??.??"]
+[Round "82"]
+[White "Easy Exercises"]
+[Black "Exercise 82"]
+[SetUp "1"]
+[FEN "1r2nrk1/p1p2pp1/4bb1p/3p4/q4B2/P1PB1Q1P/1P2NPP1/1R1R2K1 b - - 0 1"]
+[Result "*"]
+
+1... Rxb2 2. Rxb2 Qxd1+ *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on b2 is attacked by the rook on b8
+  the queen on a4 attacks the rook on d1
+  the rook on b1 is the recapturing defender of d1
+
+THREAT
+  Rxb2 pulls the defender away from d1
+
+REPLIES
+  Rxb2 captures the rook and vacates b1
+  all other legal replies leave the pawn on b2 captured while Black's rook survives
+
+CASH
+  the rook on d1 is loose
+  the queen on a4 attacks d1 with check
+  the rook on b1 no longer defends it
+  Qxd1+ captures the target after the defender is deflected
+
+REPLIES
+  every legal check answer: black has won the b2-pawn through the forced exchange and no forcing recovery restores it
+
+PROVED
+
+
+======================================================================
+TEST 83: Exchange sacrifice to a double-rook fork
+======================================================================
+
+CTT/1
+id: woodpecker-83-exchange-sacrifice-to-double-rook-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/YtI4OTPT
+fen: 5rk1/p4ppp/b3p3/2n1N3/Pp2P3/1P1r4/3N1PPP/R2R2K1 b - - 0 1
+objective: win a pawn by forcing a knight fork of both rooks
+status: solved
+main: 1...Rxd2
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(N@d2,R@d3); after R@d1 recaptures on d2, N@c5-b3 captures P@b3 and forks(R@a1,R@d2).
+CANDIDATES 1...Rxd2: captures(N@d2), invites(Rxd2), USES=[attacked,deflection,fork].
+TRY 1...Rxd2 BECAUSE PICK-OUR-MOVE: the exchange sacrifice places a rook on the knight-fork square.
+THINK REPLIES(goal=win_pawn_and_exchange_back).
+REPLY 2.Rxd2: captures the sacrificing rook and places R@d2 in the fork :: LIVE.
+REPLY CLASS all other legal replies: leave N@d2 captured and Black a piece ahead :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Rxd2 BECAUSE TRY-REPLIES: recover the rook.
+THINK OBSERVE.
+SAW fork_available(N@c5-b3,[R@a1,R@d2]); P@b3 is capturable.
+CANDIDATES 2...Nxb3: captures(P@b3), forks both rooks, USES=[fork,attacked].
+TRY 2...Nxb3 BECAUSE PICK-OUR-MOVE: capture with a double-rook fork.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: at least one rook is lost after the fork, restoring Black's exchange and leaving the extra pawn :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH Nxa1 or Nxd2.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 83: Exchange sacrifice to a double-rook fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/YtI4OTPT"]
+[Date "????.??.??"]
+[Round "83"]
+[White "Easy Exercises"]
+[Black "Exercise 83"]
+[SetUp "1"]
+[FEN "5rk1/p4ppp/b3p3/2n1N3/Pp2P3/1P1r4/3N1PPP/R2R2K1 b - - 0 1"]
+[Result "*"]
+
+1... Rxd2 2. Rxd2 Nxb3 *
+
+[expected plain english]
+
+OBSERVE
+  the knight on d2 is attacked by the rook on d3
+  after the rook on d1 recaptures on d2, Nb3 captures the pawn on b3 and forks the rook on a1, the rook on d2
+
+THREAT
+  Rxd2 places a rook on the knight-fork square
+
+REPLIES
+  Rxd2 captures the sacrificing rook and places the rook on d2 in the fork
+  all other legal replies leave the knight on d2 captured and Black a piece ahead
+
+OBSERVE
+  Nb3 forks the rook on a1 and the rook on d2
+  the pawn on b3 is capturable
+
+THREAT
+  Nxb3 captures with a double-rook fork
+
+REPLIES
+  every legal reply loses at least one rook after the fork, restoring Black's exchange and leaving the extra pawn
+
+PROVED
+
+
+======================================================================
+TEST 84: Capture sequence clears a queen mate
+======================================================================
+
+CTT/1
+id: woodpecker-84-capture-sequence-clears-queen-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/YEzU9qqi
+fen: 2r1r2k/p4pp1/2pBnb1p/q1Pp4/3P4/P2R4/2Q1NPPP/3R2K1 b - - 0 1
+objective: force checkmate on e1
+status: solved
+main: 1...Nxd4
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW Q@a5 has mating_line(a5-e1); R@d4_candidate and B@f6 can be exchanged from the d-file; K@g1 has no defense to Qe1# once d2 is clear.
+CANDIDATES 1...Nxd4: captures(P@d4), invites(Rxd4), begins clearance of the queen diagonal, USES=[clearance,mating_net,capture_order].
+TRY 1...Nxd4 BECAUSE PICK-OUR-MOVE: the knight capture lures the first rook onto d4.
+THINK REPLIES(goal=mate).
+REPLY 2.Rxd4: captures the knight and occupies d4 :: LIVE.
+REPLY CLASS all other legal replies: leave P@d4 and the knight gain without stopping the e1 mating idea :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Rxd4 BECAUSE TRY-REPLIES: recover the captured pawn and knight.
+THINK CASH(target=R@d4).
+TRY 2...Bxd4 BECAUSE the bishop continues the forced capture sequence.
+THINK REPLIES(goal=mate).
+REPLY 3.Rxd4: captures the bishop and places the last rook on d4 :: LIVE.
+REPLY CLASS all other legal replies: leave a rook captured and permit the same queen entry :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 3.Rxd4 BECAUSE TRY-REPLIES: recover the bishop.
+THINK OBSERVE.
+SAW mate_in_1(3...Qe1#); the capture sequence has cleared the a5-e1 diagonal.
+TRY 3...Qe1# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 84: Capture sequence clears a queen mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/YEzU9qqi"]
+[Date "????.??.??"]
+[Round "84"]
+[White "Easy Exercises"]
+[Black "Exercise 84"]
+[SetUp "1"]
+[FEN "2r1r2k/p4pp1/2pBnb1p/q1Pp4/3P4/P2R4/2Q1NPPP/3R2K1 b - - 0 1"]
+[Result "*"]
+
+1... Nxd4 2. Rxd4 Bxd4 3. Rxd4 Qe1# *
+
+[expected plain english]
+
+OBSERVE
+  the queen on a5 has mating line(a5-e1)
+  the rook on d4 and the bishop on f6 can be exchanged from the d-file
+  the king on g1 has no defense to Qe1# once d2 is clear
+
+THREAT
+  Nxd4 lures the first rook onto d4
+
+REPLIES
+  Rxd4 captures the knight and occupies d4
+  all other legal replies leave the pawn on d4 and the knight gain without stopping the e1 mating idea
+
+CASH
+  Bxd4: the bishop continues the forced capture sequence
+
+REPLIES
+  Rxd4 captures the bishop and places the last rook on d4
+  all other legal replies leave a rook captured and permit the same queen entry
+
+OBSERVE
+  there is mate in one with Qe1#
+  the capture sequence has cleared the a5-e1 diagonal
+
+THREAT
+  Qe1# mates
+
+PROVED
+
+
+======================================================================
+TEST 85: Pawn capture with a tactical recapture ban
+======================================================================
+
+CTT/1
+id: woodpecker-85-pawn-capture-with-tactical-recapture-ban
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/zPSjxLKy
+fen: r1bn1b1r/pp2k1pp/5p2/1B2p3/5B2/5N2/PPP2PPP/2KR3R w - - 0 1
+objective: win the e5-pawn and save the capturing knight
+status: solved
+main: 1.Nxe5
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@e5,N@f3); apparent_recapture(fxe5) permits(Bg5+) with a forcing material gain; N@d8 can attack e6 and the capturing knight.
+CANDIDATES 1.Nxe5: captures(P@e5), USES=[attacked,pin_or_check_tactic].
+TRY 1.Nxe5 BECAUSE PICK-OUR-MOVE: the pawn is tactically loose because its pawn recapture fails to a check.
+THINK REPLIES(goal=win_pawn).
+REPLY 1...Ne6: attacks the capturing knight while declining the pawn recapture :: LIVE.
+REPLY 1...fxe5: recaptures the knight but permits Bg5+, winning decisive material through the exposed king :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH 2.Bg5+.
+REPLY CLASS all other legal replies: leave P@e5 captured and do not attack N@e5 with greater force :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...Ne6 BECAUSE TRY-REPLIES: attack the winning knight.
+THINK CASH(target=N@e5).
+SAW safe_retreat(N@e5-d3); the e5-pawn gain remains.
+TRY 2.Nd3 BECAUSE CASH-SAFETY: save the piece that produced the pawn gain.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the pawn gain survives and no forcing recovery restores it :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 85: Pawn capture with a tactical recapture ban"]
+[Site "https://lichess.org/study/4gzGL3Gt/zPSjxLKy"]
+[Date "????.??.??"]
+[Round "85"]
+[White "Easy Exercises"]
+[Black "Exercise 85"]
+[SetUp "1"]
+[FEN "r1bn1b1r/pp2k1pp/5p2/1B2p3/5B2/5N2/PPP2PPP/2KR3R w - - 0 1"]
+[Result "*"]
+
+1. Nxe5 Ne6 (1... fxe5 2. Bg5+) 2. Nd3 *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on e5 is attacked by the knight on f3
+  apparent recapture(fxe5) permits Bg5+ with a forcing material gain
+  the knight on d8 can attack e6 and the capturing knight
+
+THREAT
+  Nxe5 takes the tactically loose pawn because its pawn recapture fails to a check
+
+REPLIES
+  Ne6 attacks the capturing knight while declining the pawn recapture
+  fxe5 recaptures the knight but permits Bg5+, winning decisive material through the exposed king
+  all other legal replies leave the pawn on e5 captured and do not attack the knight on e5 with greater force
+
+CASH
+  the knight can retreat safely from e5 to d3
+  the e5-pawn gain remains
+  Nd3 saves the piece that produced the pawn gain
+
+REPLIES
+  every legal reply: the pawn gain survives and no forcing recovery restores it
+
+PROVED
+
+
+======================================================================
+TEST 86: Knight check deflects the queen defender
+======================================================================
+
+CTT/1
+id: woodpecker-86-knight-check-deflects-queen-defender
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/MrjT4CjA
+fen: 2r2rk1/5ppp/p1pp4/2p1n1q1/4P2b/1PN4P/PBPRQPP1/R5K1 b - - 0 1
+objective: win the rook on d2
+status: solved
+main: 1...Nf3+
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW Q@g5 attacks R@d2 along g5-f4-e3-d2; Q@e2 defends R@d2; N@e5-f3+ attacks R@d2 and can force Q@e2 to move.
+CANDIDATES 1...Nf3+: gives_check, attacks(R@d2), invites(Qxf3), USES=[alignment,deflection,double_attack].
+TRY 1...Nf3+ BECAUSE PICK-OUR-MOVE: the check removes the queen defender from e2.
+THINK REPLIES(goal=win(R@d2)).
+REPLY 2.Qxf3: captures the checking knight and abandons R@d2 :: LIVE.
+REPLY CLASS all other legal check answers: leave N@f3 attacking R@d2 or permit Qxd2, meeting the exchange objective :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Nxd2 or Qxd2.
+TRY 2.Qxf3 BECAUSE TRY-REPLIES: capture the checking knight.
+THINK CASH(target=R@d2).
+SAW loose(R@d2); Q@g5 attacks d2; Q@f3 no longer defends d2.
+TRY 2...Qxd2 BECAUSE the defender has been deflected.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: Black has won the exchange and no forcing recovery restores the rook :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 86: Knight check deflects the queen defender"]
+[Site "https://lichess.org/study/4gzGL3Gt/MrjT4CjA"]
+[Date "????.??.??"]
+[Round "86"]
+[White "Easy Exercises"]
+[Black "Exercise 86"]
+[SetUp "1"]
+[FEN "2r2rk1/5ppp/p1pp4/2p1n1q1/4P2b/1PN4P/PBPRQPP1/R5K1 b - - 0 1"]
+[Result "*"]
+
+1... Nf3+ 2. Qxf3 Qxd2 *
+
+[expected plain english]
+
+OBSERVE
+  the queen on g5 attacks the rook on d2 along g5-f4-e3-d2
+  the queen on e2 defends the rook on d2
+  Nf3+ attacks the rook on d2 and can force the queen on e2 to move
+
+THREAT
+  Nf3+ removes the queen defender from e2
+
+REPLIES
+  Qxf3 captures the checking knight and abandons the rook on d2
+  all other legal replies leave the knight on f3 attacking the rook on d2 or permit Qxd2, meeting the exchange objective
+
+CASH
+  the rook on d2 is loose
+  the queen on g5 attacks d2
+  the queen on f3 no longer defends d2
+  Qxd2 captures the target after the defender is deflected
+
+REPLIES
+  every legal reply: black has won the exchange and no forcing recovery restores the rook
+
+PROVED
+
+
+======================================================================
+TEST 87: Capture and check skewer a knight
+======================================================================
+
+CTT/1
+id: woodpecker-87-capture-and-check-skewer-knight
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/7hhgpwAQ
+fen: 8/2q3pk/1p2p2p/2n5/2B5/P3PQ2/5PKP/8 w - - 0 1
+objective: win a pawn by exchanging bishop for knight
+status: solved
+main: 1.Bxe6
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@e6,B@c4); N@c5 can recapture on e6; Q@f3 can check from f5 and then capture N@e6.
+CANDIDATES 1.Bxe6: captures(P@e6), invites(Nxe6), USES=[attacked,skewer_setup].
+TRY 1.Bxe6 BECAUSE PICK-OUR-MOVE: the capture lures the knight onto the queen-check diagonal.
+THINK REPLIES(goal=win_pawn_through_exchange).
+REPLY 1...Nxe6: captures the bishop and occupies e6 :: LIVE.
+REPLY CLASS all other legal replies: leave P@e6 captured without equal forcing recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...Nxe6 BECAUSE TRY-REPLIES: recover the bishop.
+THINK OBSERVE.
+SAW Q@f3-f5+ checks K@h7 and attacks N@e6.
+CANDIDATES 2.Qf5+: gives_check, attacks(N@e6), USES=[skewer,double_attack].
+TRY 2.Qf5+ BECAUSE PICK-OUR-MOVE: checking attack on the recapturing knight.
+THINK REPLIES(goal=win(N@e6)).
+REPLY 2...Kh8: answers the check and leaves N@e6 attacked :: LIVE.
+REPLY CLASS all other legal check answers: also leave N@e6 capturable by Qxe6 :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Qxe6.
+TRY 2...Kh8 BECAUSE TRY-REPLIES: move to the only safe corner square.
+THINK CASH(target=N@e6).
+TRY 3.Qxe6 BECAUSE the check has displaced the king.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the bishop-for-knight exchange plus pawn gain survives the forcing clamp :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 87: Capture and check skewer a knight"]
+[Site "https://lichess.org/study/4gzGL3Gt/7hhgpwAQ"]
+[Date "????.??.??"]
+[Round "87"]
+[White "Easy Exercises"]
+[Black "Exercise 87"]
+[SetUp "1"]
+[FEN "8/2q3pk/1p2p2p/2n5/2B5/P3PQ2/5PKP/8 w - - 0 1"]
+[Result "*"]
+
+1. Bxe6 Nxe6 2. Qf5+ (2. Qe4+) 2... Kh8 3. Qxe6 *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on e6 is attacked by the bishop on c4
+  the knight on c5 can recapture on e6
+  the queen on f3 can check from f5 and then capture the knight on e6
+
+THREAT
+  Bxe6 lures the knight onto the queen-check diagonal
+
+REPLIES
+  Nxe6 captures the bishop and occupies e6
+  all other legal replies leave the pawn on e6 captured without equal forcing recovery
+
+OBSERVE
+  Qf5+ checks the king on h7 and attacks the knight on e6
+
+THREAT
+  Qf5+ is a checking attack on the recapturing knight
+
+REPLIES
+  Kh8 answers the check and leaves the knight on e6 attacked
+  all other legal replies also leave the knight on e6 capturable by Qxe6
+
+CASH
+  Qxe6: the check has displaced the king
+
+REPLIES
+  every legal reply: the bishop-for-knight exchange plus pawn gain survives the forcing clamp
+
+PROVED
+
+
+======================================================================
+TEST 88: Exchange to a passed-pawn rook trap
+======================================================================
+
+CTT/1
+id: woodpecker-88-exchange-to-passed-pawn-rook-trap
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/1KSruczZ
+fen: r7/3k3p/6p1/N1P2p2/1p2p2P/3bPP2/5KP1/R7 b - - 0 1
+objective: win the knight and force the recapturing rook to be sacrificed against the passed pawn
+status: solved
+main: 1...Rxa5
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW loose(N@a5); passed_pawn(P@b4); after R@a1 recaptures on a5, b3 creates an immediate promotion race that ties the rook.
+CANDIDATES 1...Rxa5: captures(N@a5), invites(Rxa5), USES=[loose,passed_pawn,deflection].
+TRY 1...Rxa5 BECAUSE PICK-OUR-MOVE: take the knight and draw the rook in front of the passed pawn.
+THINK REPLIES(goal=win_knight_and_rook_for_pawn).
+REPLY 2.Rxa5: captures the rook and places R@a5 away from the b-pawn's promotion route :: LIVE.
+REPLY CLASS all other legal replies: leave N@a5 captured while Black's rook survives :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Rxa5 BECAUSE TRY-REPLIES: recover the sacrificing rook.
+THINK OBSERVE.
+SAW passed_pawn(P@b4); advance(b3) creates promotion_threat(b2-b1=Q); R@a5 is the only major piece able to stop it and must give itself up.
+CANDIDATES 2...b3: advances_passed_pawn, restricts(R@a5), USES=[passed_pawn,mobility].
+TRY 2...b3 BECAUSE PICK-OUR-MOVE: immediate promotion threat that traps the rook in a defensive task.
+THINK REPLIES(goal=win_rook_or_promote).
+REPLY CLASS all legal replies: either allow b2-b1=Q or force R@a5 to sacrifice itself to stop the pawn; no forcing counterplay outruns promotion :: CLOSED BY CLOSE-PROMOTION WITH b2-b1=Q or Rxb1.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 88: Exchange to a passed-pawn rook trap"]
+[Site "https://lichess.org/study/4gzGL3Gt/1KSruczZ"]
+[Date "????.??.??"]
+[Round "88"]
+[White "Easy Exercises"]
+[Black "Exercise 88"]
+[SetUp "1"]
+[FEN "r7/3k3p/6p1/N1P2p2/1p2p2P/3bPP2/5KP1/R7 b - - 0 1"]
+[Result "*"]
+
+1... Rxa5 2. Rxa5 b3 *
+
+[expected plain english]
+
+OBSERVE
+  the knight on a5 is loose
+  the pawn on b4 is a passed pawn
+  after the rook on a1 recaptures on a5, b3 creates an immediate promotion race that ties the rook
+
+THREAT
+  Rxa5 takes the knight and draws the rook in front of the passed pawn
+
+REPLIES
+  Rxa5 captures the rook and places the rook on a5 away from the b-pawn's promotion route
+  all other legal replies leave the knight on a5 captured while Black's rook survives
+
+OBSERVE
+  the pawn on b4 is a passed pawn
+  advance(b3) creates promotion threat(b2-b1=Q)
+  the rook on a5 is the only major piece able to stop it and must give itself up
+
+THREAT
+  b3 advances passed pawn, restricts(the rook on a5)
+
+REPLIES
+  every legal reply either allows b2-b1=Q or forces the rook on a5 to sacrifice itself to stop the pawn; no forcing counterplay outruns promotion
+
+PROVED
+
+
+======================================================================
+TEST 89: Remove a defender to enable a knight fork
+======================================================================
+
+CTT/1
+id: woodpecker-89-remove-defender-to-knight-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/TLY3VdlN
+fen: 4rrk1/pp2p3/2pqP1p1/4Rp1p/P2P1n1P/6Q1/1P3PP1/1N1R2K1 b - - 0 1
+objective: win the white queen on g3
+status: solved
+main: 1...Qxe5
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW fork_available(N@f4-e2,[K@g1,Q@g3]); R@e5 and P@d4 prevent the queen from being forced onto the e-file; Q@d6 can capture R@e5.
+CANDIDATES 1...Qxe5: captures(R@e5), invites(dxe5), clears(e2_fork), USES=[remove_defender,fork,deflection].
+TRY 1...Qxe5 BECAUSE PICK-OUR-MOVE: the queen capture removes the defender and pulls the d-pawn away from the fork route.
+THINK REPLIES(goal=win(Q@g3)).
+REPLY 2.dxe5: captures the queen and vacates d4/e-file controls :: LIVE.
+REPLY CLASS all other legal replies: leave R@e5 captured while Black's queen survives :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.dxe5 BECAUSE TRY-REPLIES: accept the queen sacrifice.
+THINK OBSERVE.
+SAW fork_available(N@f4-e2,[K@g1,Q@g3]).
+CANDIDATES 2...Ne2+: gives_check, attacks(Q@g3), USES=[fork].
+TRY 2...Ne2+ BECAUSE PICK-OUR-MOVE: checking queen fork.
+THINK REPLIES(goal=win(Q@g3)).
+REPLY 3.Kh2: answers the check and leaves Q@g3 attacked :: LIVE.
+REPLY CLASS all other legal check answers: also leave Q@g3 within N@e2's attack :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Nxg3.
+TRY 3.Kh2 BECAUSE TRY-REPLIES: move toward the edge while preserving king safety.
+THINK CASH(target=Q@g3).
+TRY 3...Nxg3 BECAUSE the queen is forked.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the queen has been won and no forcing recovery restores it :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 89: Remove a defender to enable a knight fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/TLY3VdlN"]
+[Date "????.??.??"]
+[Round "89"]
+[White "Easy Exercises"]
+[Black "Exercise 89"]
+[SetUp "1"]
+[FEN "4rrk1/pp2p3/2pqP1p1/4Rp1p/P2P1n1P/6Q1/1P3PP1/1N1R2K1 b - - 0 1"]
+[Result "*"]
+
+1... Qxe5 2. dxe5 Ne2+ 3. Kh2 Nxg3 *
+
+[expected plain english]
+
+OBSERVE
+  Ne2 forks the king on g1 and the queen on g3
+  the rook on e5 and the pawn on d4 prevent the queen from being forced onto the e-file
+  the queen on d6 can capture the rook on e5
+
+THREAT
+  Qxe5 removes the defender and pulls the d-pawn away from the fork route
+
+REPLIES
+  dxe5 captures the queen and vacates d4/e-file controls
+  all other legal replies leave the rook on e5 captured while Black's queen survives
+
+OBSERVE
+  Ne2 forks the king on g1 and the queen on g3
+
+THREAT
+  Ne2+ is a checking queen fork
+
+REPLIES
+  Kh2 answers the check and leaves the queen on g3 attacked
+  all other legal replies also leave the queen on g3 within the knight on e2's attack
+
+CASH
+  Nxg3 captures the forked queen
+
+REPLIES
+  every legal reply: the queen has been won and no forcing recovery restores it
+
+PROVED
+
+
+======================================================================
+TEST 90: Deflect a bishop to force promotion
+======================================================================
+
+CTT/1
+id: woodpecker-90-deflect-bishop-to-promotion
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/eBX6ECqp
+fen: 3r2k1/2q1b2p/ppnpPpp1/2pB4/2P2PPB/PP1R3P/3Q4/6K1 w - - 0 1
+objective: promote the e-pawn while winning the rook on d8
+status: solved
+main: 1.Bxf6
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW passed_pawn(P@e6); B@e7 blocks e7; P@f6 can be captured by B@h4 and invites B@e7xf6, clearing e7.
+CANDIDATES 1.Bxf6: captures(P@f6), attacks the bishop defender, invites(Bxf6), USES=[passed_pawn,deflection,clearance].
+TRY 1.Bxf6 BECAUSE PICK-OUR-MOVE: the capture pulls the blocking bishop off e7.
+THINK REPLIES(goal=promote(P@e6)).
+REPLY 1...Bxf6: captures the bishop and vacates e7 :: LIVE.
+REPLY CLASS all other legal replies: leave P@f6 captured and permit e7 with the bishop still overloaded :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...Bxf6 BECAUSE TRY-REPLIES: recover the captured pawn and bishop.
+THINK OBSERVE.
+SAW passed_pawn(P@e6); e7 gives check and attacks R@d8 by promotion capture.
+CANDIDATES 2.e7+: advances_passed_pawn, gives_check, threatens(exd8=Q), USES=[passed_pawn,check,promotion].
+TRY 2.e7+ BECAUSE PICK-OUR-MOVE: checking promotion threat.
+THINK REPLIES(goal=promote_and_win(R@d8)).
+REPLY 2...Kg7: answers the check but cannot stop exd8=Q :: LIVE.
+REPLY CLASS all other legal check answers: also leave the promotion capture on d8 available :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH exd8=Q.
+TRY 2...Kg7 BECAUSE TRY-REPLIES: move away from the promotion diagonal.
+THINK CASH(target=R@d8).
+TRY 3.exd8=Q BECAUSE the passed pawn captures the rook and promotes.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: the exchange has been converted into a new queen and no forcing recovery removes it :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 90: Deflect a bishop to force promotion"]
+[Site "https://lichess.org/study/4gzGL3Gt/eBX6ECqp"]
+[Date "????.??.??"]
+[Round "90"]
+[White "Easy Exercises"]
+[Black "Exercise 90"]
+[SetUp "1"]
+[FEN "3r2k1/2q1b2p/ppnpPpp1/2pB4/2P2PPB/PP1R3P/3Q4/6K1 w - - 0 1"]
+[Result "*"]
+
+1. Bxf6 Bxf6 2. e7+ Kg7 3. exd8=Q *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on e6 is a passed pawn
+  the bishop on e7 blocks e7
+  the pawn on f6 can be captured by the bishop on h4 and invites the bishop from e7 can capture on f6, clearing e7
+
+THREAT
+  Bxf6 pulls the blocking bishop off e7
+
+REPLIES
+  Bxf6 captures the bishop and vacates e7
+  all other legal replies leave the pawn on f6 captured and permit e7 with the bishop still overloaded
+
+OBSERVE
+  the pawn on e6 is a passed pawn
+  e7 gives check and attacks the rook on d8 by promotion capture
+
+THREAT
+  e7+ is a checking promotion threat
+
+REPLIES
+  Kg7 answers the check but cannot stop exd8=Q
+  all other legal replies also leave the promotion capture on d8 available
+
+CASH
+  exd8=Q captures the rook and promotes
+
+REPLIES
+  every legal reply: the exchange has been converted into a new queen and no forcing recovery removes it
+
+PROVED
+
+
+======================================================================
+TEST 91: Bishop capture deflects the queen for rook invasion
+======================================================================
+
+CTT/1
+id: woodpecker-91-bishop-capture-deflects-queen-for-rook-invasion
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/Lc6vvx0z
+fen: 3r2k1/p1q2pbp/1pn1p1p1/2p5/4P3/4B1P1/PPP1RPBP/2Q4K b - - 0 1
+objective: win the b2-pawn through a forced rook invasion
+status: solved
+main: 1...Bxb2
+result: *
+positions_entered: 7
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(B@b2,B@g7); Q@c1 guards the first rank; R@d8 can invade d1+ if Q@c1 is pulled to b2.
+CANDIDATES 1...Bxb2: captures(B@b2), invites(Qxb2), deflects(Q@c1), USES=[attacked,deflection,open_file].
+TRY 1...Bxb2 BECAUSE PICK-OUR-MOVE: the capture pulls the queen away from the rook's entry square.
+THINK REPLIES(goal=win_pawn_through_exchange).
+REPLY 2.Qxb2: captures the bishop and vacates c1 :: LIVE.
+REPLY CLASS all other legal replies: leave B@b2 captured and Black a pawn ahead :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Qxb2 BECAUSE TRY-REPLIES: recover the bishop.
+THINK OBSERVE.
+SAW open_file(R@d8,K@h1); Q@b2 no longer covers the first-rank entry; B@g2 is the only useful blocker.
+CANDIDATES 2...Rd1+: gives_check, forces a first-rank block, USES=[open_file,deflection].
+TRY 2...Rd1+ BECAUSE PICK-OUR-MOVE: rook invasion with check.
+THINK REPLIES(goal=preserve_pawn_gain).
+REPLY 3.Bf1: blocks the check and offers the bishop :: LIVE.
+REPLY 3.Re1: blocks the check with the rook but permits 3...Rxe1+ :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH 3...Rxe1+.
+TRY 3.Bf1 BECAUSE TRY-REPLIES: interpose the bishop.
+THINK CASH(target=B@f1).
+TRY 3...Rxf1+ BECAUSE the blocking bishop is capturable with check.
+THINK REPLIES(goal=preserve_pawn_gain).
+REPLY 4.Kg2: moves from check and leaves the rook free to return :: LIVE.
+TRY 4.Kg2 BECAUSE TRY-REPLIES: move toward the rook.
+THINK CASH(target=R@f1).
+TRY 4...Rd1 BECAUSE CASH-SAFETY: retreat the rook and preserve the pawn gain.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 91: Bishop capture deflects the queen for rook invasion"]
+[Site "https://lichess.org/study/4gzGL3Gt/Lc6vvx0z"]
+[Date "????.??.??"]
+[Round "91"]
+[White "Easy Exercises"]
+[Black "Exercise 91"]
+[SetUp "1"]
+[FEN "3r2k1/p1q2pbp/1pn1p1p1/2p5/4P3/4B1P1/PPP1RPBP/2Q4K b - - 0 1"]
+[Result "*"]
+
+1... Bxb2 2. Qxb2 Rd1+ 3. Bf1 Rxf1+ 4. Kg2 Rd1 *
+
+[expected plain english]
+
+OBSERVE
+  the bishop on b2 is attacked by the bishop on g7
+  the queen on c1 guards the first rank
+  the rook on d8 can invade d1+ if the queen on c1 is pulled to b2
+
+THREAT
+  Bxb2 pulls the queen away from the rook's entry square
+
+REPLIES
+  Qxb2 captures the bishop and vacates c1
+  all other legal replies leave the bishop on b2 captured and Black a pawn ahead
+
+OBSERVE
+  the d-file is open
+  the queen on b2 no longer covers the first-rank entry
+  the bishop on g2 is the only useful blocker
+
+THREAT
+  Rd1+ invades with check
+
+REPLIES
+  Bf1 blocks the check and offers the bishop
+  Re1 blocks the check with the rook but permits Rxe1+
+
+CASH
+  Rxf1+ captures the blocking bishop
+
+REPLIES
+  Kg2 moves from check and leaves the rook free to return
+
+CASH
+  Rd1 retreats the rook and preserves the pawn gain
+
+PROVED
+
+
+======================================================================
+TEST 92: Knight capture and mate threat force a queen trade
+======================================================================
+
+CTT/1
+id: woodpecker-92-knight-capture-mate-threat-forces-queen-trade
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/9RmgQsdN
+fen: 1k6/pp3pp1/rr6/3p2Np/2pPnP2/q1P1P2P/P1R3P1/K1QR4 b - - 0 1
+objective: win the c3-pawn and reach a favorable queen trade
+status: solved
+main: 1...Nxc3
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW P@c3 is attacked by N@e4; Q@a3 threatens Qxa2# if R@c2 is deflected; R@a6 can recapture Q@a3.
+CANDIDATES 1...Nxc3: captures(P@c3), attacks(R@d1), creates_mate_threat(Qxa2#) after Rxc3, USES=[attacked,mating_net,deflection].
+TRY 1...Nxc3 BECAUSE PICK-OUR-MOVE: the capture wins a pawn and makes the natural rook recapture impossible.
+THINK REPLIES(goal=win_pawn_and_trade_queens).
+REPLY 2.Qxa3: captures the black queen and permits Rxa3 :: LIVE.
+REPLY 2.Rxc3: captures the knight but permits Qxa2# :: CLOSED BY CLOSE-MATE-IN-ONE WITH 2...Qxa2#.
+REPLY CLASS all other legal replies: either allow Qxa2# or leave P@c3 captured without equal recovery :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Qxa3 BECAUSE TRY-REPLIES: remove the mating queen.
+THINK CASH(target=Q@a3).
+SAW R@a6 attacks Q@a3.
+TRY 2...Rxa3 BECAUSE immediate recapture completes the queen trade.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: Black retains the won c3-pawn and no forcing reply restores it :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 92: Knight capture and mate threat force a queen trade"]
+[Site "https://lichess.org/study/4gzGL3Gt/9RmgQsdN"]
+[Date "????.??.??"]
+[Round "92"]
+[White "Easy Exercises"]
+[Black "Exercise 92"]
+[SetUp "1"]
+[FEN "1k6/pp3pp1/rr6/3p2Np/2pPnP2/q1P1P2P/P1R3P1/K1QR4 b - - 0 1"]
+[Result "*"]
+
+1... Nxc3 2. Qxa3 (2. Rxc3 Qxa2#) 2... Rxa3 *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on c3 is attacked by the knight on e4
+  the queen on a3 threatens Qxa2# if the rook on c2 is deflected
+  the rook on a6 can recapture the queen on a3
+
+THREAT
+  Nxc3 wins a pawn and makes the natural rook recapture impossible
+
+REPLIES
+  Qxa3 captures the black queen and permits Rxa3
+  Rxc3 captures the knight but permits Qxa2#
+  all other legal replies either allow Qxa2# or leave the pawn on c3 captured without equal recovery
+
+CASH
+  the rook on a6 attacks the queen on a3
+  Rxa3 immediately recaptures and completes the queen trade
+
+REPLIES
+  every legal reply: black retains the won c3-pawn and no forcing reply restores it
+
+PROVED
+
+
+======================================================================
+TEST 93: Exchange sacrifice to a pinned fork
+======================================================================
+
+CTT/1
+id: woodpecker-93-exchange-sacrifice-to-pinned-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/M5itNQ6p
+fen: r3r1k1/ppp2ppp/2nb1q2/6Rn/2BP4/P1NQBP1P/1P3P2/2KR4 b - - 0 1
+objective: win the queen or rook by a bishop fork and pin
+status: solved
+main: 1...Rxe3
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(B@e3,R@e8); after Q@d3 recaptures on e3, B@d6-f4 attacks(Q@e3,R@g5) and pins Q@e3 to K@c1.
+CANDIDATES 1...Rxe3: captures(B@e3), invites(Qxe3), USES=[attacked,deflection,fork,pin].
+TRY 1...Rxe3 BECAUSE PICK-OUR-MOVE: the exchange sacrifice places the queen on the fork-and-pin square.
+THINK REPLIES(goal=win(Q@e3_or_R@g5)).
+REPLY 2.Qxe3: captures the rook and occupies e3 :: LIVE.
+REPLY 2.Rxg7+: countercheck, but N@h5 or Q@f6 can recapture on g7 while Black keeps the bishop gain :: CLOSED BY CLOSE-RECAPTURE WITH 2...Nxg7.
+REPLY CLASS all other legal replies: leave B@e3 captured without recovering the exchange :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Qxe3 BECAUSE TRY-REPLIES: accept the exchange sacrifice.
+THINK OBSERVE.
+SAW fork_available(B@d6-f4,[Q@e3,R@g5]); pin(B@f4,Q@e3,K@c1).
+CANDIDATES 2...Bf4: attacks(Q@e3), attacks(R@g5), pins(Q@e3,K@c1), USES=[fork,pin].
+TRY 2...Bf4 BECAUSE PICK-OUR-MOVE: the bishop creates both a fork and an absolute pin.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: White cannot save both Q@e3 and R@g5; capturing B@f4 fails because it is protected and the queen is pinned :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH Bxg5 or the queen capture.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 93: Exchange sacrifice to a pinned fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/M5itNQ6p"]
+[Date "????.??.??"]
+[Round "93"]
+[White "Easy Exercises"]
+[Black "Exercise 93"]
+[SetUp "1"]
+[FEN "r3r1k1/ppp2ppp/2nb1q2/6Rn/2BP4/P1NQBP1P/1P3P2/2KR4 b - - 0 1"]
+[Result "*"]
+
+1... Rxe3 2. Qxe3 (2. Rxg7+ Nxg7) 2... Bf4 *
+
+[expected plain english]
+
+OBSERVE
+  the bishop on e3 is attacked by the rook on e8
+  after the queen on d3 recaptures on e3, Bf4 attacks the queen on e3, the rook on g5 and pins the queen on e3 to the king on c1
+
+THREAT
+  Rxe3 places the queen on the fork-and-pin square
+
+REPLIES
+  Qxe3 captures the rook and occupies e3
+  Rxg7+ countercheck, but the knight on h5 or the queen on f6 can recapture on g7 while Black keeps the bishop gain
+  all other legal replies leave the bishop on e3 captured without recovering the exchange
+
+OBSERVE
+  Bf4 forks the queen on e3 and the rook on g5
+  the queen on e3 is pinned by the bishop on f4 to the king on c1
+
+THREAT
+  Bf4: the bishop creates both a fork and an absolute pin
+
+REPLIES
+  every legal reply: white cannot save both the queen on e3 and the rook on g5; capturing the bishop on f4 fails because it is protected and the queen is pinned
+
+PROVED
+
+
+======================================================================
+TEST 94: Interference supports a passed pawn
+======================================================================
+
+CTT/1
+id: woodpecker-94-interference-supports-passed-pawn
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/METyDbKr
+fen: 7k/p6p/6p1/2b2b2/2P5/2R1pBP1/P2rR1KP/8 b - - 0 1
+objective: force the e3-pawn through while winning material
+status: solved
+main: 1...Be4
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW passed_pawn(P@e3); R@c3 and B@f3 blockade or attack e3; R@d2 and R@e2 are exposed to a clearance move by B@f5-e4.
+CANDIDATES 1...Be4: attacks(B@f3), reinforces(P@e3), threatens(Rxe2+ or e2), USES=[passed_pawn,interference,remove_defender].
+TRY 1...Be4 BECAUSE PICK-OUR-MOVE: the forcing bishop move removes the blockade and supports the passed pawn.
+THINK REPLIES(goal=promote_or_win_exchange).
+REPLY 2.Bxe4: captures the bishop but permits Rxe2+ and leaves the e-pawn decisive :: LIVE.
+REPLY 2.Rxd2: captures the rook but permits exd2, after which the pawn queens :: CLOSED BY CLOSE-PROMOTION WITH 2...exd2.
+REPLY 2.Rxe3: captures the passed pawn but permits Bxe3, followed by the rook and bishop capture sequence :: CLOSED BY CLOSE-ONE-PLY-TACTIC WITH 2...Bxe3.
+REPLY CLASS all other legal replies: fail to stop Rxe2+ or e2 and leave the passed pawn advancing :: CLOSED BY CLOSE-PROMOTION.
+TRY 2.Bxe4 BECAUSE TRY-REPLIES: remove the bishop that supports the pawn.
+THINK CASH(target=R@e2).
+SAW R@d2 can capture R@e2 with check; B@e4 has cleared the route.
+TRY 2...Rxe2+ BECAUSE the defender has been removed and the passed pawn remains.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal check answers: Black wins the exchange and the bishop must later sacrifice itself for the e-pawn :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 94: Interference supports a passed pawn"]
+[Site "https://lichess.org/study/4gzGL3Gt/METyDbKr"]
+[Date "????.??.??"]
+[Round "94"]
+[White "Easy Exercises"]
+[Black "Exercise 94"]
+[SetUp "1"]
+[FEN "7k/p6p/6p1/2b2b2/2P5/2R1pBP1/P2rR1KP/8 b - - 0 1"]
+[Result "*"]
+
+1... Be4 2. Bxe4 (2. Rxd2 exd2) (2. Rxe3 Bxe3 3. Rxd2 Bxf3+ 4. Kxf3 Bxd2) 2... Rxe2+ *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on e3 is a passed pawn
+  the rook on c3 and the bishop on f3 blockade or attack e3
+  the rook on d2 and the rook on e2 are exposed to a clearance move by Be4
+
+THREAT
+  Be4: the forcing bishop move removes the blockade and supports the passed pawn
+
+REPLIES
+  Bxe4 captures the bishop but permits Rxe2+ and leaves the e-pawn decisive
+  Rxd2 captures the rook but permits exd2, after which the pawn queens
+  Rxe3 captures the passed pawn but permits Bxe3, followed by the rook and bishop capture sequence
+  all other legal replies fail to stop Rxe2+ or e2 and leave the passed pawn advancing
+
+CASH
+  the rook on d2 can capture the rook on e2 with check
+  the bishop on e4 has cleared the route
+  Rxe2+: the defender has been removed and the passed pawn remains
+
+REPLIES
+  every legal check answer: black wins the exchange and the bishop must later sacrifice itself for the e-pawn
+
+PROVED
+
+
+======================================================================
+TEST 95: Pawn capture protected by a back-rank mate
+======================================================================
+
+CTT/1
+id: woodpecker-95-pawn-capture-protected-by-back-rank-mate
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/AreoSJHk
+fen: 3q3k/1pp3pp/5p2/1P6/4PQ2/3B2P1/1r3b1P/R6K w - - 0 1
+objective: win the c7-pawn and a second pawn through the back-rank clamp
+status: solved
+main: 1.Qxc7
+result: *
+positions_entered: 3
+
+[trace]
+
+THINK OBSERVE.
+SAW restricted_mobility(K@h8); R@a1 can check on a8; Q@d8 is overloaded defending c7 and the back rank.
+CANDIDATES 1.Qxc7: captures(P@c7), attacks(Q@d8), threatens(Qxd8#), USES=[attacked,back_rank_clamp,overload].
+TRY 1.Qxc7 BECAUSE PICK-OUR-MOVE: the pawn capture attacks the queen while the recapture is poisoned by the back rank.
+THINK REPLIES(goal=win_two_pawns).
+REPLY 1...Qxc7: captures the attacking queen but permits Ra8+ and a forced queen block :: LIVE.
+REPLY 1...Rb1+: countercheck, but White answers and retains the c7-pawn gain while Q@d8 remains attacked :: CLOSED BY CLOSE-GAIN-CLAMP.
+REPLY CLASS all queen moves other than Qxc7: save the queen but leave P@c7 captured and permit Qxb7 or Qxd8 as available :: CLOSED BY CLOSE-GAIN-CLAMP.
+REPLY CLASS remaining legal replies: ignore the attack on Q@d8 and permit Qxd8# :: CLOSED BY CLOSE-MATE-IN-ONE WITH Qxd8#.
+TRY 1...Qxc7 BECAUSE TRY-REPLIES: capture the attacking queen.
+THINK OBSERVE.
+SAW back_rank_check(R@a1-a8+); K@h8 can answer only by interposing Q@c7 on b8, c8, or d8.
+CANDIDATES 2.Ra8+: gives_check, forces_queen_block, USES=[back_rank_clamp,skewer].
+TRY 2.Ra8+ BECAUSE PICK-OUR-MOVE: back-rank skewer of the queen.
+THINK REPLIES(goal=win_queen_or_pawns).
+REPLY CLASS [2...Qb8,2...Qc8,2...Qd8]: every legal block places the queen on the rook's capture line :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Rxb8+, Rxc8+, or Rxd8+.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 95: Pawn capture protected by a back-rank mate"]
+[Site "https://lichess.org/study/4gzGL3Gt/AreoSJHk"]
+[Date "????.??.??"]
+[Round "95"]
+[White "Easy Exercises"]
+[Black "Exercise 95"]
+[SetUp "1"]
+[FEN "3q3k/1pp3pp/5p2/1P6/4PQ2/3B2P1/1r3b1P/R6K w - - 0 1"]
+[Result "*"]
+
+1. Qxc7 Qxc7 2. Ra8+ *
+
+[expected plain english]
+
+OBSERVE
+  the king on h8 has restricted mobility
+  the rook on a1 can check on a8
+  the queen on d8 is overloaded defending c7 and the back rank
+
+THREAT
+  Qxc7 attacks the queen while the recapture is poisoned by the back rank
+
+REPLIES
+  Qxc7 captures the attacking queen but permits Ra8+ and a forced queen block
+  Rb1+ countercheck, but White answers and retains the c7-pawn gain while the queen on d8 remains attacked
+  all queen moves other than Qxc7 save the queen but leave the pawn on c7 captured and permit Qxb7 or Qxd8 as available
+  remaining legal replies ignore the attack on the queen on d8 and permit Qxd8#
+
+OBSERVE
+  back rank check Ra8+
+  the king on h8 can answer only by interposing the queen on c7 on b8, c8, or d8
+
+THREAT
+  Ra8+ gives check, forces queen block
+
+REPLIES
+  Qb8, Qc8, and Qd8 all place the queen on the rook's capture line
+
+PROVED
+
+
+======================================================================
+TEST 96: Knight attack deflects a pawn to a queen trade
+======================================================================
+
+CTT/1
+id: woodpecker-96-knight-attack-deflects-pawn-to-queen-trade
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/jQ7kvg0j
+fen: r4rk1/p3qpp1/2p2n2/3pb2p/3Q2B1/1PN1P3/PB3PPP/2R2RK1 w - - 0 1
+objective: win a pawn through a forced exchange sequence
+status: solved
+main: 1.Nxd5
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW attacked(P@d5,N@c3); N@d5 attacks(Q@e7); P@c6 can recapture and then Q@d4 can capture B@e5.
+CANDIDATES 1.Nxd5: captures(P@d5), attacks(Q@e7), invites(cxd5), USES=[attacked,deflection,double_attack].
+TRY 1.Nxd5 BECAUSE PICK-OUR-MOVE: the knight capture attacks the queen and forces the c-pawn decision.
+THINK REPLIES(goal=win_pawn).
+REPLY 1...cxd5: captures the knight and clears Q@d4-e5 :: LIVE.
+REPLY CLASS all queen moves: leave P@d5 captured and the knight active :: CLOSED BY CLOSE-GAIN-CLAMP.
+REPLY CLASS all other legal replies: fail to answer the queen attack or recover the d5-pawn :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 1...cxd5 BECAUSE TRY-REPLIES: recover the attacking knight.
+THINK OBSERVE.
+SAW B@e5 is loose to Q@d4; Q@e7 is its recapturing defender; B@b2 can recapture on e5 after a queen exchange.
+CANDIDATES 2.Qxe5: captures(B@e5), invites(Qxe5), USES=[loose,exchange_sequence].
+TRY 2.Qxe5 BECAUSE PICK-OUR-MOVE: force the queen exchange while taking the bishop.
+THINK REPLIES(goal=win_pawn).
+REPLY 2...Qxe5: captures the white queen and occupies e5 :: LIVE.
+REPLY CLASS all other legal replies: leave B@e5 captured and concede a full bishop :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2...Qxe5 BECAUSE TRY-REPLIES: recover the bishop through the queen exchange.
+THINK CASH(target=Q@e5).
+TRY 3.Bxe5 BECAUSE immediate recapture completes the sequence.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: White has exchanged knight for bishop and retained the d5-pawn gain :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 96: Knight attack deflects a pawn to a queen trade"]
+[Site "https://lichess.org/study/4gzGL3Gt/jQ7kvg0j"]
+[Date "????.??.??"]
+[Round "96"]
+[White "Easy Exercises"]
+[Black "Exercise 96"]
+[SetUp "1"]
+[FEN "r4rk1/p3qpp1/2p2n2/3pb2p/3Q2B1/1PN1P3/PB3PPP/2R2RK1 w - - 0 1"]
+[Result "*"]
+
+1. Nxd5 cxd5 2. Qxe5 Qxe5 3. Bxe5 *
+
+[expected plain english]
+
+OBSERVE
+  the pawn on d5 is attacked by the knight on c3
+  the knight on d5 attacks the queen on e7
+  the pawn on c6 can recapture and then the queen on d4 can capture the bishop on e5
+
+THREAT
+  Nxd5 attacks the queen and forces the c-pawn decision
+
+REPLIES
+  cxd5 captures the knight and clears Qe5
+  all queen moves leave the pawn on d5 captured and the knight active
+  all other legal replies fail to answer the queen attack or recover the d5-pawn
+
+OBSERVE
+  the bishop on e5 is loose to the queen on d4
+  the queen on e7 is its recapturing defender
+  the bishop on b2 can recapture on e5 after a queen exchange
+
+THREAT
+  Qxe5 forces the queen exchange while taking the bishop
+
+REPLIES
+  Qxe5 captures the white queen and occupies e5
+  all other legal replies leave the bishop on e5 captured and concede a full bishop
+
+CASH
+  Bxe5 immediately recaptures and completes the sequence
+
+REPLIES
+  every legal reply: white has exchanged knight for bishop and retained the d5-pawn gain
+
+PROVED
+
+
+======================================================================
+TEST 97: Queen sacrifice to a knight fork
+======================================================================
+
+CTT/1
+id: woodpecker-97-queen-sacrifice-to-knight-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/JTw5e6Zb
+fen: r4rk1/pp1b3p/2p4q/3p1p2/3P2n1/2NBP1PR/PP3PK1/R2Q4 b - - 0 1
+objective: win the white queen on d1
+status: solved
+main: 1...Qxh3+
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW R@h3 is capturable by Q@h6; after K@g2 captures on h3, N@g4-f2+ forks(K@h3,Q@d1).
+CANDIDATES 1...Qxh3+: captures(R@h3), gives_check, invites(Kxh3), USES=[decoy,fork].
+TRY 1...Qxh3+ BECAUSE PICK-OUR-MOVE: the queen sacrifice draws the king onto the knight-fork route.
+THINK REPLIES(goal=win(Q@d1)).
+REPLY 2.Kxh3: captures the queen and places K@h3 in range of Nf2+ :: LIVE.
+REPLY 2.Kf3: declines the queen but permits Qh5 or Qxh3 while Black keeps the rook gain :: CLOSED BY CLOSE-GAIN-CLAMP.
+REPLY 2.Kg1: declines the queen and leaves R@h3 captured :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.Kxh3 BECAUSE TRY-REPLIES: accept the queen sacrifice.
+THINK OBSERVE.
+SAW fork_available(N@g4-f2,[K@h3,Q@d1]).
+CANDIDATES 2...Nxf2+: captures(P@f2), gives_check, attacks(Q@d1), USES=[fork].
+TRY 2...Nxf2+ BECAUSE PICK-OUR-MOVE: checking queen fork.
+THINK REPLIES(goal=win(Q@d1)).
+REPLY 3.Kg2: answers the check but leaves Q@d1 attacked :: LIVE.
+REPLY CLASS all other legal check answers: also leave Q@d1 within N@f2's attack :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Nxd1.
+TRY 3.Kg2 BECAUSE TRY-REPLIES: return toward the center.
+THINK CASH(target=Q@d1).
+TRY 3...Nxd1 BECAUSE the queen is forked.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: Black has exchanged the queen for rook, queen, and pawn and no forcing recovery restores the queen :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 97: Queen sacrifice to a knight fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/JTw5e6Zb"]
+[Date "????.??.??"]
+[Round "97"]
+[White "Easy Exercises"]
+[Black "Exercise 97"]
+[SetUp "1"]
+[FEN "r4rk1/pp1b3p/2p4q/3p1p2/3P2n1/2NBP1PR/PP3PK1/R2Q4 b - - 0 1"]
+[Result "*"]
+
+1... Qxh3+ 2. Kxh3 Nxf2+ 3. Kg2 Nxd1 *
+
+[expected plain english]
+
+OBSERVE
+  the rook on h3 is capturable by the queen on h6
+  after the king on g2 captures on h3, Nf2+ forks the king on h3, the queen on d1
+
+THREAT
+  Qxh3+ draws the king onto the knight-fork route
+
+REPLIES
+  Kxh3 captures the queen and places the king on h3 in range of Nf2+
+  Kf3 declines the queen but permits Qh5 or Qxh3 while Black keeps the rook gain
+  Kg1 declines the queen and leaves the rook on h3 captured
+
+OBSERVE
+  Nf2 forks the king on h3 and the queen on d1
+
+THREAT
+  Nxf2+ is a checking queen fork
+
+REPLIES
+  Kg2 answers the check but leaves the queen on d1 attacked
+  all other legal replies also leave the queen on d1 within the knight on f2's attack
+
+CASH
+  Nxd1 captures the forked queen
+
+REPLIES
+  every legal reply: black has exchanged the queen for rook, queen, and pawn and no forcing recovery restores the queen
+
+PROVED
+
+
+======================================================================
+TEST 98: Queen sacrifice to a king-queen fork
+======================================================================
+
+CTT/1
+id: woodpecker-98-queen-sacrifice-to-king-queen-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/wtuhj41T
+fen: r3kr2/1p1b1pp1/p1n1p2p/8/4q3/1N6/PPP1BKPP/R2Q1R2 w q - 0 1
+objective: win the black queen and a bishop through a knight fork
+status: solved
+main: 1.Qxd7+
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW B@d7 is capturable by Q@d1; K@e8 is the only recapturer after Qxd7+; N@b3-c5+ then attacks Q@e4.
+CANDIDATES 1.Qxd7+: captures(B@d7), gives_check, legal_reply_classes=1, prepares(Nc5+), USES=[decoy,fork].
+TRY 1.Qxd7+ BECAUSE PICK-OUR-MOVE: check with one reply that places the king on the knight-fork line.
+THINK REPLIES(goal=win(Q@e4)).
+REPLY 1...Kxd7: only_legal_reply; captures the queen and places K@d7 in range of Nc5+ :: LIVE.
+TRY 1...Kxd7 BECAUSE ALL-REPLIES.
+THINK OBSERVE.
+SAW fork_available(N@b3-c5,[K@d7,Q@e4]).
+CANDIDATES 2.Nc5+: gives_check, attacks(Q@e4), USES=[fork].
+TRY 2.Nc5+ BECAUSE PICK-OUR-MOVE: checking queen fork.
+THINK REPLIES(goal=win(Q@e4)).
+REPLY 2...Ke7: answers the check but leaves Q@e4 attacked :: LIVE.
+REPLY CLASS all other legal check answers: also leave Q@e4 within N@c5's attack :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Nxe4.
+TRY 2...Ke7 BECAUSE TRY-REPLIES: move toward the forking knight while staying safe.
+THINK CASH(target=Q@e4).
+TRY 3.Nxe4 BECAUSE the queen is forked.
+THINK REPLIES(goal=verify_forcing_conversion).
+REPLY CLASS all legal replies: White has exchanged queens and won the bishop on d7 :: CLOSED BY CLOSE-GAIN-CLAMP.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 98: Queen sacrifice to a king-queen fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/wtuhj41T"]
+[Date "????.??.??"]
+[Round "98"]
+[White "Easy Exercises"]
+[Black "Exercise 98"]
+[SetUp "1"]
+[FEN "r3kr2/1p1b1pp1/p1n1p2p/8/4q3/1N6/PPP1BKPP/R2Q1R2 w q - 0 1"]
+[Result "*"]
+
+1. Qxd7+ Kxd7 2. Nc5+ Ke7 3. Nxe4 *
+
+[expected plain english]
+
+OBSERVE
+  the bishop on d7 is capturable by the queen on d1
+  the king on e8 is the only recapturer after Qxd7+
+  Nc5+ then attacks the queen on e4
+
+THREAT
+  Qxd7+ checks with one reply that places the king on the knight-fork line
+
+REPLIES
+  Kxd7 is the only legal reply; captures the queen and places the king on d7 in range of Nc5+
+
+OBSERVE
+  Nc5 forks the king on d7 and the queen on e4
+
+THREAT
+  Nc5+ is a checking queen fork
+
+REPLIES
+  Ke7 answers the check but leaves the queen on e4 attacked
+  all other legal replies also leave the queen on e4 within the knight on c5's attack
+
+CASH
+  Nxe4 captures the forked queen
+
+REPLIES
+  every legal reply: white has exchanged queens and won the bishop on d7
+
+PROVED
+
+
+======================================================================
+TEST 99: Rook sacrifice clears a mating net
+======================================================================
+
+CTT/1
+id: woodpecker-99-rook-sacrifice-clears-mating-net
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/oJtdc2MB
+fen: 4r1k1/5p1p/2Qb2p1/3P4/6Pn/2N1B2P/1P3P1q/3R1K2 b - - 0 1
+objective: force checkmate
+status: solved
+main: 1...Rxe3
+result: *
+positions_entered: 5
+
+[trace]
+
+THINK OBSERVE.
+SAW B@e3 and P@f2 defend the king; Q@h2 can check from g2 after P@f2 moves; N@h4 can mate from f3.
+CANDIDATES 1...Rxe3: captures(B@e3), invites(fxe3), clears(f2), USES=[remove_defender,clearance,mating_net].
+TRY 1...Rxe3 BECAUSE PICK-OUR-MOVE: the rook sacrifice pulls the f-pawn away from the knight's mating square.
+THINK REPLIES(goal=mate).
+REPLY 2.fxe3: captures the rook and moves P@f2 to e3 :: LIVE.
+REPLY CLASS all other legal replies: leave B@e3 captured and permit the queen-knight mating attack with the f2-pawn still overloaded :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2.fxe3 BECAUSE TRY-REPLIES: accept the rook sacrifice.
+THINK OBSERVE.
+SAW Q@h2-g2+ has exactly one legal reply; N@h4-f3# becomes available because f2 is clear.
+CANDIDATES 2...Qg2+: gives_check, legal_reply_classes=1, prepares(Nf3#), USES=[mating_net,restricted_mobility].
+TRY 2...Qg2+ BECAUSE PICK-OUR-MOVE: check with one reply.
+THINK REPLIES(goal=mate).
+REPLY 3.Ke1: only_legal_reply :: LIVE.
+TRY 3.Ke1 BECAUSE ALL-REPLIES.
+THINK CASH(target=K@e1).
+SAW mate_in_1(3...Nf3#).
+TRY 3...Nf3# BECAUSE PICK-OUR-MOVE: mate.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 99: Rook sacrifice clears a mating net"]
+[Site "https://lichess.org/study/4gzGL3Gt/oJtdc2MB"]
+[Date "????.??.??"]
+[Round "99"]
+[White "Easy Exercises"]
+[Black "Exercise 99"]
+[SetUp "1"]
+[FEN "4r1k1/5p1p/2Qb2p1/3P4/6Pn/2N1B2P/1P3P1q/3R1K2 b - - 0 1"]
+[Result "*"]
+
+1... Rxe3 2. fxe3 Qg2+ 3. Ke1 Nf3# *
+
+[expected plain english]
+
+OBSERVE
+  the bishop on e3 and the pawn on f2 defend the king
+  the queen on h2 can check from g2 after the pawn on f2 moves
+  the knight on h4 can mate from f3
+
+THREAT
+  Rxe3 pulls the f-pawn away from the knight's mating square
+
+REPLIES
+  fxe3 captures the rook and moves the pawn on f2 to e3
+  all other legal replies leave the bishop on e3 captured and permit the queen-knight mating attack with the f2-pawn still overloaded
+
+OBSERVE
+  Qg2+ has exactly one legal reply
+  Nf3# becomes available because f2 is clear
+
+THREAT
+  Qg2+ checks with one reply
+
+REPLIES
+  Ke1 is the only legal reply
+
+CASH
+  Nf3# mates
+
+PROVED
+
+
+======================================================================
+TEST 100: Rook check wins a rook or enables a knight fork
+======================================================================
+
+CTT/1
+id: woodpecker-100-rook-check-to-rook-win-or-knight-fork
+policy: forcing-clamp-1
+source: https://lichess.org/study/4gzGL3Gt/3CqSoTFV
+fen: r1b1k2r/1p3pp1/p3pn2/2p1q1N1/8/1B2P3/PPP1Q2P/2KR3R w kq - 0 1
+objective: win the rook on h8 while surviving the queen countercapture
+status: solved
+main: 1.Rd8+
+result: *
+positions_entered: 9
+
+[trace]
+
+THINK OBSERVE.
+SAW R@h8 is loose after K@e8 moves; if K@e8 captures R@d8, N@g5-f7+ forks(K@d8,Q@e5).
+CANDIDATES 1.Rd8+: gives_check, attacks the back rank, creates_reply_fork(Kxd8,Nf7+), USES=[loose,fork,deflection].
+TRY 1.Rd8+ BECAUSE PICK-OUR-MOVE: the check makes both king replies concede a tactical target.
+THINK REPLIES(goal=win(R@h8_or_Q@e5)).
+REPLY 1...Kxd8: captures the checking rook but enters the knight-fork line :: LIVE.
+REPLY 1...Ke7: moves away and abandons R@h8 :: LIVE.
+TRY 1...Kxd8 BECAUSE TRY-REPLIES: capture the checking rook first.
+THINK OBSERVE.
+SAW fork_available(N@g5-f7,[K@d8,Q@e5]).
+CANDIDATES 2.Nxf7+: captures(P@f7), gives_check, attacks(Q@e5), USES=[fork].
+TRY 2.Nxf7+ BECAUSE PICK-OUR-MOVE: checking queen fork.
+THINK REPLIES(goal=win(Q@e5)).
+REPLY 2...Ke7: answers the check but leaves Q@e5 attacked :: LIVE.
+REPLY CLASS all other legal check answers: also leave Q@e5 capturable by Nxe5 :: CLOSED BY CLOSE-WIN-WITH-CHECK WITH Nxe5.
+TRY 2...Ke7 BECAUSE TRY-REPLIES: move toward the knight while answering check.
+THINK CASH(target=Q@e5).
+TRY 3.Nxe5 BECAUSE the queen is forked.
+FROM 1...Kxd8 :: refuted by the knight fork.
+TRY 1...Ke7 BECAUSE ALL-REPLIES: the remaining legal reply to Rd8+.
+THINK CASH(target=R@h8).
+SAW loose(R@h8); R@d8 can capture h8 along the back rank.
+TRY 2.Rxh8 BECAUSE the king has abandoned the rook.
+THINK REPLIES(goal=preserve_exchange_gain).
+REPLY 2...Qxg5: captures(N@g5) and is the strongest forcing material recovery :: LIVE.
+REPLY CLASS all other legal replies: do not recover material equal to the rook and leave the exchange gain intact :: CLOSED BY CLOSE-GAIN-CLAMP.
+TRY 2...Qxg5 BECAUSE TRY-REPLIES: capture the loose knight.
+THINK CASH(target=material_gain).
+SAW Q@e2 is exposed to the active black queen; Qd2 preserves the exchange gain and coordinates the king.
+TRY 3.Qd2 BECAUSE CASH-SAFETY: save the queen and complete conversion of the exchange gain.
+PROVED.
+
+[final pgn]
+
+[Event "Predicate Chess — Exercise 100: Rook check wins a rook or enables a knight fork"]
+[Site "https://lichess.org/study/4gzGL3Gt/3CqSoTFV"]
+[Date "????.??.??"]
+[Round "100"]
+[White "Easy Exercises"]
+[Black "Exercise 100"]
+[SetUp "1"]
+[FEN "r1b1k2r/1p3pp1/p3pn2/2p1q1N1/8/1B2P3/PPP1Q2P/2KR3R w kq - 0 1"]
+[Result "*"]
+
+1. Rd8+ Ke7 (1... Kxd8 2. Nxf7+ Ke7 3. Nxe5) 2. Rxh8 Qxg5 3. Qd2 *
+
+[expected plain english]
+
+OBSERVE
+  the rook on h8 is loose after the king on e8 moves
+  if the king on e8 captures the rook on d8, Nf7+ forks the king on d8, the queen on e5
+
+THREAT
+  Rd8+ makes both king replies concede a tactical target
+
+REPLIES
+  Kxd8 captures the checking rook but enters the knight-fork line
+  Ke7 moves away and abandons the rook on h8
+
+OBSERVE
+  Nf7 forks the king on d8 and the queen on e5
+
+THREAT
+  Nxf7+ is a checking queen fork
+
+REPLIES
+  Ke7 answers the check but leaves the queen on e5 attacked
+  all other legal replies also leave the queen on e5 capturable by Nxe5
+
+CASH
+  Nxe5 captures the forked queen
+
+COMPARE
+  Kxd8 fails because refuted by the knight fork
+
+CASH
+  the rook on h8 is loose
+  the rook on d8 can capture h8 along the back rank
+  Rxh8 captures the abandoned rook
+
+REPLIES
+  Qxg5 captures the knight on g5 and is the strongest forcing material recovery
+  all other legal replies do not recover material equal to the rook and leave the exchange gain intact
+
+CASH
+  the queen on e2 is exposed to the active black queen
+  Qd2 preserves the exchange gain and coordinates the king
+  Qd2 saves the queen and completes conversion of the exchange gain
+
+PROVED

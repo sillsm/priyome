@@ -1,185 +1,372 @@
 {
-  "version": "tactics-policy/v2",
-  "name": "predicate-gated-forcing-threats",
+  "version": "predicate-chess-policy/v1",
+  "name": "forcing-clamp-1",
+  "description": "Predicate Chess: observe first, generate only predicate-using forcing moves, prove every legal opponent reply, and stop at the declared tactical boundary.",
+  "profile": {
+    "see_after": 1,
+    "try_budget": 10,
+    "check_horizon": 2,
+    "forcing_reply_probe": 1,
+    "quiet_budget": 0,
+    "repair_budget": 0,
+    "behind_quiet_budget": 0,
+    "gain_goal": "minor_piece"
+  },
   "objective": {
-    "anyOf": [
+    "mate_always_succeeds": true,
+    "default_material_delta_pawns": 3,
+    "settlement": "after_forcing_replies"
+  },
+  "proof": {
+    "our_nodes": "exists",
+    "opponent_nodes": "forall_legal",
+    "reply_mode": "exhaustive",
+    "unclassified_reply": "live",
+    "first_refutation_stops_our_candidate": true,
+    "stop_immediately_at_proved": true
+  },
+  "thought_states": [
+    {
+      "id": "OBSERVE",
+      "meaning": "List relevant current-position predicates before generating a move."
+    },
+    {
+      "id": "THREAT",
+      "meaning": "Choose a forcing move that explicitly USES observed predicates."
+    },
+    {
+      "id": "REPLIES",
+      "meaning": "Represent every legal opponent reply; close it by a named rule or TRY it."
+    },
+    {
+      "id": "CASH",
+      "meaning": "Convert an already visible loose, forked, skewered, pinned, trapped, promoting, or mating target."
+    },
+    {
+      "id": "COMPARE",
+      "meaning": "Compare visible capture orders through the strongest live reply."
+    },
+    {
+      "id": "FIX",
+      "meaning": "Cure one named defect in an otherwise successful idea; disabled because repair_budget is zero."
+    },
+    {
+      "id": "PROVED",
+      "meaning": "The declared objective is proved inside the forcing clamp."
+    },
+    {
+      "id": "HORIZON",
+      "meaning": "The policy cannot visualize a new theme beyond its check or one-ply horizon."
+    },
+    {
+      "id": "GIVEUP",
+      "meaning": "No policy-permitted forcing continuation remains."
+    }
+  ],
+  "candidate_selection": {
+    "instruction": "Choose the first nonempty group. Within that group prefer fewer legal reply classes; then keep deterministic move order.",
+    "groups": [
       {
-        "type": "mate"
+        "id": "mate",
+        "condition": "after(move).mate"
       },
       {
-        "type": "material",
-        "minimumAdvantagePawns": 2,
-        "settlement": "after_opponent_reply"
+        "id": "single_reply_check",
+        "condition": "after(move).check and after(move).legal_reply_classes == 1"
+      },
+      {
+        "id": "objective_capture",
+        "condition": "after(move).capture reaches the declared objective"
+      },
+      {
+        "id": "check_most_uses",
+        "condition": "after(move).check",
+        "prefer": "most USES"
+      },
+      {
+        "id": "forcing_most_uses",
+        "condition": "move is forcing",
+        "prefer": "most USES"
       }
     ]
   },
-  "budget": {
-    "maxPlies": 6,
-    "maxCandidatesPerRule": 8,
-    "maxRelevantReplies": 64
-  },
-  "search": {
-    "mode": "threat_space",
-    "ruleSelection": "first_match",
-    "ourNodes": "exists",
-    "opponentNodes": "forall_relevant",
-    "candidateGate": "matched_rule_and_verified_threat",
-    "replyGate": "answers_active_threat_or_forcing_counterthreat",
-    "unmatchedReply": "must_be_discharged_by_verified_witness",
-    "rescanAfterEveryPly": true,
-    "stop": [
-      "objective_proven",
-      "depth_exhausted",
-      "no_rule_matches",
-      "no_verified_candidate"
-    ]
-  },
-  "threats": {
-    "priority": [
-      "mate",
-      "mate_in_1",
-      "check",
-      "winning_capture",
-      "fork",
-      "harass_defender",
-      "pin",
-      "mobility_trap"
-    ],
-    "alwaysRetainCounterThreats": [
-      "mate",
-      "mate_in_1",
-      "check"
-    ],
-    "otherwiseRetain": "payoff_at_least_active_threat"
-  },
-  "predicates": [
-    {
-      "id": "loose",
-      "source": "position",
-      "definition": "A non-king is attacked and has no pawn defender."
-    },
-    {
-      "id": "defends",
-      "source": "position",
-      "definition": "A friendly piece attacks the occupied target square."
-    },
-    {
-      "id": "shared_defender",
-      "source": "position",
-      "definition": "One piece defends two or more loose pieces."
-    },
-    {
-      "id": "in_check",
-      "source": "position",
-      "definition": "The side to move is in check."
-    },
-    {
-      "id": "winning_capture_available",
-      "source": "legal_moves",
-      "definition": "A legal capture reaches the material objective even after every immediate recapture."
-    },
-    {
-      "id": "fork_available",
-      "source": "legal_moves",
-      "definition": "A legal move attacks the king and a valuable piece, or two valuable pieces, with enough payoff to reach the objective."
-    },
-    {
-      "id": "harass_defender",
-      "source": "one_ply_result",
-      "definition": "A legal move attacks a defender of one or more loose pieces; ignoring the attack permits an objective-winning capture."
-    },
-    {
-      "id": "capture_recapture_fork",
-      "source": "legal_move_sequence",
-      "definition": "Capture a loose piece; every immediate recapture permits a verified fork that reaches the objective."
-    },
-    {
-      "id": "forcing_counterthreat",
-      "source": "opponent_reply",
-      "definition": "A reply gives mate, mate in one, check, or a threat with payoff at least as large as the active threat."
-    }
+  "forcing_move_kinds": [
+    "check",
+    "capture",
+    "mate_in_1_threat",
+    "promotion_threat",
+    "attack_queen",
+    "attack_loose_piece",
+    "attack_defender",
+    "pin_defender",
+    "remove_defender",
+    "fork",
+    "skewer",
+    "line_opening"
+  ],
+  "reply_order": [
+    "check",
+    "capture_attacker_or_winning_piece",
+    "save_or_continue_defending_target",
+    "mate_in_1_threat",
+    "equal_or_greater_material_counterthreat",
+    "remaining_live_reply"
   ],
   "rules": [
     {
-      "id": "answer-check",
-      "when": {
-        "all": [
-          {
-            "predicate": "in_check",
-            "side": "us"
-          }
-        ]
-      },
-      "consider": [
-        "answer_check_and_preserve_verified_threat"
-      ],
-      "candidateMust": [
-        "answers_check",
-        "result_has_verified_threat_or_objective"
-      ]
+      "id": "SEE-FIRST",
+      "text": "Do not generate or order candidates before SAW. Every candidate must name at least one observed predicate in USES."
     },
     {
-      "id": "winning-capture",
-      "when": {
-        "all": [
-          {
-            "predicate": "winning_capture_available",
-            "side": "us"
-          }
-        ]
-      },
-      "consider": [
-        "play_stable_winning_capture"
-      ],
-      "candidateMust": [
-        "move_result_has_named_predicate",
-        "threat_has_verified_witness"
-      ]
+      "id": "PICK-OUR-MOVE",
+      "text": "Choose the first nonempty candidate group: mate; single-reply check; objective capture; check with most USES; other forcing move with most USES."
     },
     {
-      "id": "loose-piece",
-      "when": {
-        "all": [
-          {
-            "predicate": "loose",
-            "side": "enemy"
-          }
-        ]
-      },
-      "consider": [
-        "harass_shared_defender",
-        "capture_loose_with_recapture_fork",
-        "capture_loose_with_rule_continuation",
-        "play_stable_winning_capture"
-      ],
-      "candidateMust": [
-        "move_result_has_named_predicate",
-        "threat_has_verified_witness",
-        "threat_payoff_reaches_objective"
-      ]
+      "id": "ALL-REPLIES",
+      "text": "After our TRY, every legal opponent move is represented by REPLY. Every reply not closed by a named rule is LIVE and must be TRYed."
+    },
+    {
+      "id": "TRY-REPLIES",
+      "text": "Try live checks first, then captures of the attacker, then target-preserving defenses, mate threats, equal counterthreats, and remaining live replies."
+    },
+    {
+      "id": "FIRST-REFUTATION-STOPS",
+      "text": "One live opponent reply that defeats our candidate refutes that candidate."
+    },
+    {
+      "id": "REPLY-CLASS",
+      "text": "Group legal replies only when every member has the same predicates, closure rule, and witness shape. Classes must be disjoint and exhaustive."
+    },
+    {
+      "id": "CAPTURE-ORDER",
+      "text": "When two related captures are visible, compare each through the opponent's strongest live reply and reject an order after its first refutation."
+    },
+    {
+      "id": "HORIZON",
+      "text": "After check_horizon own checks, begin no new tactical theme. Permit only required check answers, mate, CASH, or COMPARE."
+    },
+    {
+      "id": "URGENCY",
+      "text": "When behind material, every own move must check, threaten mate, win material, or directly attack a named target."
+    },
+    {
+      "id": "CASH-SAFETY",
+      "text": "After reaching the objective, one direct conversion move may save the winning piece, finish a forced trade, answer an attack on the gain, or place a threatened queen safely."
+    }
+  ],
+  "closure_rules": [
+    {
+      "id": "CLOSE-MATE-IN-ONE",
+      "requires": "a named mate-in-one witness in the reply position"
+    },
+    {
+      "id": "CLOSE-ABANDON",
+      "requires": "the reply abandons a bound target and a named immediate capture reaches the objective after one forcing probe"
+    },
+    {
+      "id": "CLOSE-ONE-PLY-TACTIC",
+      "requires": "a named one-ply check, capture, fork, skewer, pin conversion, or mate threat reaches the objective after one forcing probe"
+    },
+    {
+      "id": "CLOSE-WIN-WITH-CHECK",
+      "requires": "the witness captures the target with check and no legal check answer restores the material"
+    },
+    {
+      "id": "CLOSE-RECAPTURE",
+      "requires": "an immediate named recapture restores the objective"
+    },
+    {
+      "id": "CLOSE-GAIN-CLAMP",
+      "requires": "the goal is reached and the reply gives no check, mate-in-one threat, capture of the winning piece, equal-or-greater material win, or immediate promotion threat"
+    },
+    {
+      "id": "CLOSE-PROMOTION",
+      "requires": "a named passed-pawn sequence promotes or forces a rook/minor sacrifice, with no forcing countercheck or equal promotion"
+    },
+    {
+      "id": "CLOSE-FORCED-TRADE",
+      "requires": "an immediate named exchange sequence reaches the objective and no forcing intermezzo changes it"
+    }
+  ],
+  "predicates": [
+    {
+      "id": "check",
+      "signature": "check(move)",
+      "source": "legal_moves"
+    },
+    {
+      "id": "mate_in_1",
+      "signature": "mate_in_1(move)",
+      "source": "legal_moves"
+    },
+    {
+      "id": "mate_threat",
+      "signature": "mate_threat(move)",
+      "source": "one_ply"
+    },
+    {
+      "id": "attacked",
+      "signature": "attacked(piece,attacker)",
+      "source": "position"
+    },
+    {
+      "id": "loose",
+      "signature": "loose(piece)",
+      "source": "position"
+    },
+    {
+      "id": "defenders",
+      "signature": "defenders(piece,[pieces])",
+      "source": "position"
+    },
+    {
+      "id": "sole_defender",
+      "signature": "sole_defender(defender,piece)",
+      "source": "position"
+    },
+    {
+      "id": "shared_defender",
+      "signature": "shared_defender(defender,[pieces])",
+      "source": "position"
+    },
+    {
+      "id": "overloaded",
+      "signature": "overloaded(piece,[duties])",
+      "source": "position"
+    },
+    {
+      "id": "alignment",
+      "signature": "alignment(piece1,piece2,piece3...)",
+      "source": "position"
+    },
+    {
+      "id": "pin",
+      "signature": "pin(attacker,pinned,king_or_queen)",
+      "source": "position_or_one_ply"
+    },
+    {
+      "id": "skewer",
+      "signature": "skewer(attacker,front_target,rear_target)",
+      "source": "position_or_one_ply"
     },
     {
       "id": "fork",
-      "when": {
-        "all": [
-          {
-            "predicate": "fork_available",
-            "side": "us"
-          }
-        ]
-      },
-      "consider": [
-        "play_verified_fork"
-      ],
-      "candidateMust": [
-        "move_result_has_named_predicate",
-        "threat_has_verified_witness"
-      ]
+      "signature": "fork(attacker,[targets])",
+      "source": "position_or_one_ply"
+    },
+    {
+      "id": "xray",
+      "signature": "xray(attacker,blocker,target)",
+      "source": "position"
+    },
+    {
+      "id": "discovered_attack",
+      "signature": "discovered_attack(attacker,blocker,target)",
+      "source": "position_or_one_ply"
+    },
+    {
+      "id": "clearance",
+      "signature": "clearance(piece,line_or_square)",
+      "source": "position_or_one_ply"
+    },
+    {
+      "id": "interference",
+      "signature": "interference(move,defensive_line)",
+      "source": "one_ply"
+    },
+    {
+      "id": "deflection",
+      "signature": "deflection(move,defender,target)",
+      "source": "one_ply"
+    },
+    {
+      "id": "line_blocker",
+      "signature": "line_blocker(piece,line)",
+      "source": "position"
+    },
+    {
+      "id": "open_file",
+      "signature": "open_file(file,pieces)",
+      "source": "position"
+    },
+    {
+      "id": "restricted_mobility",
+      "signature": "restricted_mobility(king_or_piece)",
+      "source": "position"
+    },
+    {
+      "id": "flight_squares",
+      "signature": "flight_squares(king,[squares])",
+      "source": "position"
+    },
+    {
+      "id": "back_rank_clamp",
+      "signature": "back_rank_clamp(king)",
+      "source": "position"
+    },
+    {
+      "id": "mating_net",
+      "signature": "mating_net([attackers],king)",
+      "source": "position_or_one_ply"
+    },
+    {
+      "id": "passed_pawn",
+      "signature": "passed_pawn(pawn)",
+      "source": "position"
+    },
+    {
+      "id": "promotion_threat",
+      "signature": "promotion_threat(pawn)",
+      "source": "position_or_one_ply"
+    },
+    {
+      "id": "blockader",
+      "signature": "blockader(piece,pawn)",
+      "source": "position"
+    },
+    {
+      "id": "recapture",
+      "signature": "recapture(move)",
+      "source": "legal_moves"
+    },
+    {
+      "id": "capture_order",
+      "signature": "capture_order([moves])",
+      "source": "one_ply"
+    },
+    {
+      "id": "safe_retreat",
+      "signature": "safe_retreat(piece,square)",
+      "source": "one_ply"
+    },
+    {
+      "id": "gain_survives_forcing_probe",
+      "signature": "gain_survives_forcing_probe",
+      "source": "forcing_reply_probe"
     }
   ],
-  "branchResult": {
-    "proven": "one_rule_generated_candidate_survives_every_relevant_reply",
-    "refutedWithinPolicy": "a_relevant_reply_refutes_every_rule_generated_continuation",
-    "unresolvedLeaf": "depth_or_rule_vocabulary_exhausted_without_proof"
+  "trace": {
+    "verbs": [
+      "THINK",
+      "SAW",
+      "CANDIDATES",
+      "TRY",
+      "REPLY",
+      "FROM",
+      "PROVED",
+      "HORIZON",
+      "GIVEUP"
+    ],
+    "count_position_on": "TRY",
+    "plain_english_headings": [
+      "OBSERVE",
+      "THREAT",
+      "REPLIES",
+      "COMPARE",
+      "CASH",
+      "PROVED",
+      "HORIZON",
+      "GIVEUP"
+    ]
   }
 }
