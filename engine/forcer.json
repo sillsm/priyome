@@ -1,0 +1,112 @@
+{
+  "version": "predicate-chess-policy/v5",
+  "id": "forcer",
+  "name": "FORCER — checks, then captures",
+  "description": "A deliberately limited policy. ScratchChess supplies every legal move; FORCER filters our moves to checks before captures, and opponent replies to checks before captures.",
+  "profile": {
+    "see_after": 1,
+    "try_budget": 8,
+    "max_plies": 6,
+    "gain_goal": "minor_piece",
+    "max_live_replies": 3,
+    "max_candidates_per_case": 8,
+    "candidate_probe_budget": 64,
+    "trace_predicate_limit": 14,
+    "settle_after": "opponent_reply"
+  },
+  "semantics": {
+    "priority": "case_order_then_filter_order",
+    "numeric_scores": false,
+    "fitted_models": false,
+    "move_source": "scratchchess_all_legal_moves",
+    "policy_operation": "filter_only",
+    "our_nodes": "first_filtered_move",
+    "opponent_nodes": "first_live_reply_after_ordering",
+    "unmatched_reply": "closed_as_quiet",
+    "trace_order": "observe_filter_act_state"
+  },
+  "objective": {
+    "type": "mate_or_material_gain",
+    "gain_goal": "minor_piece",
+    "settle_after": "opponent_reply"
+  },
+  "our_move_flow": [
+    {
+      "case": "answer_check",
+      "when": "in_check_us",
+      "filter": [
+        "checking_check_answers",
+        "capture_check_answers",
+        "all_check_answers"
+      ],
+      "think": "I am in check. I look first for an answer that checks, then one that captures, then any legal answer.",
+      "fallthrough": false
+    },
+    {
+      "case": "forcer_checks",
+      "when": "check_available_us",
+      "filter": [
+        "checking_moves"
+      ],
+      "think": "I see at least one checking move, so FORCER tries checks and nothing quieter.",
+      "fallthrough": false
+    },
+    {
+      "case": "forcer_captures",
+      "when": "capture_available_us",
+      "filter": [
+        "capture_moves"
+      ],
+      "think": "There is no check. FORCER tries captures.",
+      "fallthrough": false
+    }
+  ],
+  "opponent_reply_flow": [
+    {
+      "case": "reply_mates",
+      "when": "reply_checkmates_us",
+      "action": "live",
+      "think": "A mating reply is first."
+    },
+    {
+      "case": "reply_check",
+      "when": "reply_gives_check",
+      "action": "live",
+      "think": "FORCER examines checking replies first."
+    },
+    {
+      "case": "reply_capture",
+      "when": "reply_is_capture",
+      "action": "live",
+      "think": "After checks, FORCER examines captures."
+    },
+    {
+      "case": "reply_answers_check",
+      "when": "reply_is_legal_answer_to_active_check",
+      "action": "live",
+      "think": "A quiet legal check answer must still be represented."
+    },
+    {
+      "case": "remaining_reply",
+      "when": "always",
+      "action": "close",
+      "close_with": "FORCER-CLOSE-QUIET",
+      "witness": "reply_is_neither_check_nor_capture",
+      "think": "FORCER does not visualize a quiet reply when no active check requires it."
+    }
+  ],
+  "closure_rules": [
+    "FORCER-CLOSE-QUIET"
+  ],
+  "predicates": [
+    "check",
+    "mate_in_1",
+    "capture",
+    "attacked",
+    "loose",
+    "alignment",
+    "fork",
+    "double_attack",
+    "promotion_threat"
+  ]
+}

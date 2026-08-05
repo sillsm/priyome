@@ -1,0 +1,404 @@
+{
+  "version": "predicate-chess-policy/v5",
+  "id": "alpha",
+  "name": "ALPHA — forcing clamp switch",
+  "description": "Enumerate every legal ScratchChess move, annotate the current position and each one-ply result, then filter in case order.",
+  "profile": {
+    "see_after": 1,
+    "try_budget": 10,
+    "check_horizon": 2,
+    "forcing_reply_probe": 1,
+    "quiet_budget": 0,
+    "repair_budget": 0,
+    "behind_quiet_budget": 0,
+    "gain_goal": "minor_piece",
+    "max_live_replies": 3,
+    "max_candidates_per_case": 3,
+    "candidate_probe_budget": 40,
+    "max_plies": 6,
+    "trace_predicate_limit": 18,
+    "settle_after": "opponent_reply"
+  },
+  "semantics": {
+    "priority": "case_order_then_filter_order",
+    "numeric_scores": false,
+    "fitted_models": false,
+    "our_nodes": "first_proven_candidate",
+    "opponent_nodes": "all_legal_replies_represented",
+    "unmatched_reply": "live",
+    "candidate_requires_observed_predicate": true,
+    "closure_requires_named_rule_and_witness": true,
+    "first_refutation_stops": true,
+    "stop_immediately_on_proved": true,
+    "move_source": "scratchchess_all_legal_moves",
+    "policy_operation": "filter_only",
+    "trace_order": "observe_filter_act_state"
+  },
+  "objective": {
+    "type": "mate_or_material_gain",
+    "gain_goal": "minor_piece",
+    "settle_after": "opponent_reply"
+  },
+  "our_move_flow": [
+    {
+      "case": "answer_check",
+      "when": "in_check_us",
+      "think": "Our king is in check. I must answer it, preferring mate or an answer that preserves a forcing objective.",
+      "fallthrough": false,
+      "filter": [
+        "mate_check_answers",
+        "check_answers_with_forcing_continuation",
+        "all_check_answers"
+      ]
+    },
+    {
+      "case": "mate_now",
+      "when": "mate_in_1_available_us",
+      "think": "I can mate immediately.",
+      "fallthrough": false,
+      "filter": [
+        "mate_in_1_moves"
+      ]
+    },
+    {
+      "case": "cash_visible_gain",
+      "when": "visible_gain_needs_conversion",
+      "think": "The tactical work is done. I will cash the visible target or preserve the gain.",
+      "fallthrough": false,
+      "filter": [
+        "captures_of_bound_target",
+        "safe_rook_conversion_moves",
+        "safe_conversion_moves"
+      ]
+    },
+    {
+      "case": "mate_threat_interference",
+      "when": "interference_mate_threat_available_us",
+      "think": "I see a move that blocks or removes a defender while creating mate in one.",
+      "fallthrough": false,
+      "filter": [
+        "interference_moves"
+      ]
+    },
+    {
+      "case": "single_reply_check",
+      "when": "safe_check_with_one_reply_available_us",
+      "think": "I see a safe check with one legal reply, so I can visualize the forced resulting position.",
+      "fallthrough": false,
+      "filter": [
+        "safe_checks_with_one_reply"
+      ]
+    },
+    {
+      "case": "mating_clamp_capture",
+      "when": "after_forcing_check_capture_tightens_mating_net",
+      "think": "After the forcing check, I see a capture that removes a shield and leaves the king with no useful mobility.",
+      "fallthrough": false,
+      "filter": [
+        "captures_tightening_mating_net"
+      ]
+    },
+    {
+      "case": "checking_double_attack",
+      "when": "checking_fork_or_double_attack_available_us",
+      "think": "I see a check that also attacks a queen, rook, or another tactical target, so I try it before a nonchecking capture sequence.",
+      "fallthrough": false,
+      "filter": [
+        "checking_double_attacks",
+        "moves_creating_checking_fork"
+      ]
+    },
+    {
+      "case": "forcing_capture_sequence",
+      "when": "capture_with_forced_continuation_available_us",
+      "think": "I see a capture whose forcing recapture leads directly to another named tactical predicate.",
+      "fallthrough": false,
+      "filter": [
+        "checking_major_captures_with_forced_continuation",
+        "checking_captures_with_forced_continuation",
+        "major_captures_with_forced_continuation",
+        "tactical_captures_with_forced_continuation"
+      ]
+    },
+    {
+      "case": "forcing_check",
+      "when": "safe_check_available_us",
+      "think": "I see checks. I will try the checks that use the strongest visible predicates first.",
+      "fallthrough": true,
+      "filter": [
+        "checks_binding_objective_target",
+        "checks_creating_fork_or_skewer",
+        "checks_moving_alignment_blocker",
+        "checks_attacking_loose_piece_or_defender",
+        "checking_captures",
+        "remaining_safe_checks"
+      ]
+    },
+    {
+      "case": "cash_objective_now",
+      "when": "immediate_objective_capture_available_us",
+      "think": "The declared tactical objective is immediately capturable, so I cash it before beginning a new theme.",
+      "fallthrough": false,
+      "filter": [
+        "captures_completing_objective"
+      ]
+    },
+    {
+      "case": "mate_threat",
+      "when": "mate_in_1_threat_available_us",
+      "think": "I can create mate in one and force the opponent to answer.",
+      "fallthrough": true,
+      "filter": [
+        "mate_threats_using_position_predicates"
+      ]
+    },
+    {
+      "case": "objective_capture",
+      "when": "capture_reaches_or_advances_objective_us",
+      "think": "I can capture a tactical target or begin a forced exchange that advances the objective.",
+      "fallthrough": true,
+      "filter": [
+        "captures_with_forced_continuation",
+        "captures_of_loose_or_high_value_piece",
+        "captures_creating_clearance_or_deflection",
+        "remaining_forcing_captures"
+      ]
+    },
+    {
+      "case": "double_attack_next_ply",
+      "when": "double_attack_available_us",
+      "think": "I see a move that attacks two relevant targets at once.",
+      "fallthrough": true,
+      "filter": [
+        "checking_double_attacks",
+        "queen_double_attacks",
+        "other_double_attacks"
+      ]
+    },
+    {
+      "case": "forkable_alignment",
+      "when": "forkable_alignment_us",
+      "think": "The pieces are arranged so that one move can create a fork.",
+      "fallthrough": true,
+      "filter": [
+        "moves_creating_checking_fork",
+        "moves_creating_material_fork"
+      ]
+    },
+    {
+      "case": "pinnable_or_skewer_alignment",
+      "when": "pinnable_or_skewer_alignment_us",
+      "think": "I see an alignment that can become a pin, skewer, or interference tactic.",
+      "fallthrough": true,
+      "filter": [
+        "moves_pinning_to_king",
+        "moves_pinning_to_queen",
+        "moves_creating_skewer",
+        "interference_moves"
+      ]
+    },
+    {
+      "case": "loose_piece",
+      "when": "enemy_loose_piece",
+      "think": "I see a loose piece. I will look for a capture, another attacker, or pressure on its defender.",
+      "fallthrough": true,
+      "filter": [
+        "captures_of_loose_piece",
+        "attacks_on_loose_piece",
+        "attacks_on_loose_piece_defender",
+        "attacks_on_shared_defender"
+      ]
+    },
+    {
+      "case": "promotion_or_passed_pawn",
+      "when": "promotion_threat_available_us",
+      "think": "A passed pawn can force promotion or deflect a blockader.",
+      "fallthrough": true,
+      "filter": [
+        "promotion_moves",
+        "passed_pawn_forcing_moves"
+      ]
+    },
+    {
+      "case": "forcing_fallback",
+      "when": "any_forcing_move_available_us",
+      "think": "No earlier tactical case proved the objective. I will try the remaining checks, captures, and named tactical moves in forcing order.",
+      "fallthrough": false,
+      "max_candidates": 8,
+      "filter": [
+        "fallback_checks",
+        "fallback_captures",
+        "fallback_tactical_moves"
+      ]
+    }
+  ],
+  "opponent_reply_flow": [
+    {
+      "case": "reply_mates",
+      "when": "reply_checkmates_us",
+      "action": "live",
+      "think": "This reply checkmates, so it must be searched first."
+    },
+    {
+      "case": "reply_only_legal",
+      "when": "only_legal_reply",
+      "action": "live",
+      "think": "This is the only legal reply, so it must be searched."
+    },
+    {
+      "case": "reply_answers_check",
+      "when": "reply_is_legal_answer_to_active_check",
+      "action": "live",
+      "think": "Our move gave check. This legal check answer must be represented, and the strongest answers are searched."
+    },
+    {
+      "case": "reply_forcing_move_refuted",
+      "when": "reply_forcing_move_has_named_answer_preserving_objective",
+      "action": "close",
+      "close_with": "CLOSE-FORCING-PROBE",
+      "witness": "named_forcing_answer",
+      "think": "This forcing reply has a named immediate answer that preserves the objective."
+    },
+    {
+      "case": "reply_check",
+      "when": "reply_gives_check",
+      "action": "live",
+      "think": "This reply gives check and is forcing."
+    },
+    {
+      "case": "reply_capture_is_recaptured",
+      "when": "reply_captures_attacker_but_named_recapture_restores_objective",
+      "action": "close",
+      "close_with": "CLOSE-RECAPTURE",
+      "witness": "named_recapture",
+      "think": "This capture is answered by an immediate recapture that restores the objective."
+    },
+    {
+      "case": "reply_captures_attacker",
+      "when": "reply_captures_attacker_or_winning_piece",
+      "action": "live",
+      "think": "This reply captures the piece carrying our threat or gain."
+    },
+    {
+      "case": "reply_saves_target",
+      "when": "reply_saves_or_continues_defending_target",
+      "action": "live",
+      "think": "This reply saves or continues defending a bound target."
+    },
+    {
+      "case": "reply_attacks_major_piece",
+      "when": "reply_attacks_major_piece_with_tempo",
+      "action": "live",
+      "think": "This reply attacks a rook or queen supporting our gain and must be answered."
+    },
+    {
+      "case": "reply_mobility_trap",
+      "when": "reply_traps_or_attacks_winning_piece_with_no_safe_retreat",
+      "action": "live",
+      "think": "This reply traps the piece carrying our gain and must be answered."
+    },
+    {
+      "case": "reply_mate_threat",
+      "when": "reply_creates_mate_in_1",
+      "action": "live",
+      "think": "This reply creates mate in one and must be answered."
+    },
+    {
+      "case": "reply_equal_counterthreat",
+      "when": "reply_creates_equal_or_greater_material_threat",
+      "action": "live",
+      "think": "This reply creates a counterthreat at least as valuable as our active threat."
+    },
+    {
+      "case": "reply_allows_mate",
+      "when": "reply_allows_named_mate_in_1",
+      "action": "close",
+      "close_with": "CLOSE-MATE-IN-ONE",
+      "witness": "named_mating_move",
+      "think": "This reply does not answer the mate threat."
+    },
+    {
+      "case": "reply_abandons_target",
+      "when": "reply_abandons_bound_target_without_forcing_recovery",
+      "action": "close",
+      "close_with": "CLOSE-ABANDON",
+      "witness": "capture_abandoned_target",
+      "think": "This reply abandons the target, and a named capture reaches the objective."
+    },
+    {
+      "case": "reply_loses_to_one_ply_tactic",
+      "when": "reply_allows_named_one_ply_tactic",
+      "action": "close",
+      "close_with": "CLOSE-ONE-PLY-TACTIC",
+      "witness": "named_forcing_move",
+      "think": "This reply permits a named check, capture, fork, skewer, pin conversion, or promotion."
+    },
+    {
+      "case": "reply_after_gain",
+      "when": "objective_reached_and_reply_has_no_forcing_recovery",
+      "action": "close",
+      "close_with": "CLOSE-GAIN-CLAMP",
+      "witness": "objective_remains_reached",
+      "think": "The objective has been reached, and this reply has no forcing recovery inside the clamp."
+    },
+    {
+      "case": "reply_ignores_active_threat",
+      "when": "reply_is_nonforcing_and_does_not_answer_active_threat",
+      "action": "close",
+      "close_with": "CLOSE-IGNORES-THREAT",
+      "witness": "execute_active_threat",
+      "think": "This legal move is not sufficiently forcing and does not answer the active threat."
+    },
+    {
+      "case": "remaining_reply",
+      "when": "always",
+      "action": "live",
+      "think": "No closure rule applies, so this legal reply must be searched."
+    }
+  ],
+  "closure_rules": [
+    "CLOSE-MATE-IN-ONE",
+    "CLOSE-ABANDON",
+    "CLOSE-ONE-PLY-TACTIC",
+    "CLOSE-WIN-WITH-CHECK",
+    "CLOSE-RECAPTURE",
+    "CLOSE-FORCING-PROBE",
+    "CLOSE-GAIN-CLAMP",
+    "CLOSE-PROMOTION",
+    "CLOSE-FORCED-TRADE",
+    "CLOSE-IGNORES-THREAT",
+    "CLOSE-SAME-WITNESS-CLASS"
+  ],
+  "predicates": [
+    "check",
+    "mate_in_1",
+    "mate_threat",
+    "capture",
+    "attacked",
+    "loose",
+    "defenders",
+    "sole_defender",
+    "shared_defender",
+    "overloaded",
+    "alignment",
+    "pin",
+    "skewer",
+    "fork",
+    "double_attack",
+    "xray",
+    "discovered_attack",
+    "clearance",
+    "interference",
+    "deflection",
+    "line_blocker",
+    "restricted_mobility",
+    "mating_net",
+    "passed_pawn",
+    "promotion_threat",
+    "recapture",
+    "capture_order",
+    "safe_retreat",
+    "mobility_trap",
+    "major_piece_counterattack"
+  ]
+}
