@@ -1,0 +1,136 @@
+{
+  id: "queen-mobility-loose-knight",
+
+  name: "Queen Mobility Loose Knight",
+
+  fen: "r3k2r/pp2bppp/1q2p3/3pP3/3n2B1/2N5/PP3PPP/1R1Q1RK1 w kq - 0 15",
+
+  url: "https://lichess.org/training/mFTxg",
+
+  policy: "loose-piece-defender-chase/v1",
+
+  goal: {
+    type: "stable_gain",
+    value: "minor_piece"
+  },
+
+  vocabulary: [
+    "predicate: loose(piece)",
+    "predicate: sole_defender(defender,target)",
+    "predicate: mate_in_1(move)",
+
+    "predicate: capture(move,target)",
+    "predicate: check(move)",
+    "predicate: attacks(move,piece)",
+    "predicate: target_remains_attacked(move,target)",
+
+    "predicate: recaptures_attacker(reply)",
+    "predicate: answers_check(reply)",
+    "predicate: saves_target(reply,target)",
+    "predicate: defender_still_defends_target(reply,defender,target)",
+    "predicate: one_ply_refuted(move,witness)",
+    "predicate: stable_gain(goal)",
+
+    "concept: active_target",
+    "concept: active_defender",
+    "concept: active_case",
+    "concept: first_nonempty_reply_class",
+    "concept: first_refutation_stops",
+    "concept: repeat_active_case",
+    "concept: max_live_replies_per_class=2"
+  ],
+
+  expected_trace: String.raw`THINK OBSERVE.
+SAW loose(bN@d4) sole_defender(bQ@b6,bN@d4) mate_in_1=[] checks=[Qa4+] captures_of_target=[Qxd4]
+
+CANDIDATES Qxd4[capture_loose] USES=[loose,capture]
+TRY 15.Qxd4 BECAUSE capture_loose
+
+REASON OPPONENT SWITCH refute_capture
+CLASS recapture_attacker -> [Qxd4]
+REPORT opponent_case=refute_capture reply_class=recapture_attacker candidates=[Qxd4] count=1 limit=2
+
+REPLY 15...Qxd4 BECAUSE recapture_attacker
+REPORT STATE {"candidate":"Qxd4","defender":"bQ@b6","result":"refuted","target":"bN@d4"}
+
+CANDIDATES Qa4+[check_attacks_loose] USES=[loose,check,attacks]
+TRY 15.Qa4+ BECAUSE check_attacks_loose
+
+REASON OPPONENT SWITCH refute_check
+CLASS answer_check_and_save_target -> [Nc6]
+REPORT opponent_case=refute_check reply_class=answer_check_and_save_target candidates=[Nc6] count=1 limit=2
+
+REPLY 15...Nc6 BECAUSE answer_check_and_save_target
+REPORT STATE {"candidate":"Qa4+","defender":"bQ@b6","result":"refuted","target":"bN@d4"}
+
+CANDIDATES Na4[attack_sole_defender] USES=[loose,sole_defender,attacks]
+TRY 15.Na4 BECAUSE attack_sole_defender
+
+REASON OPPONENT SWITCH defend_attacked_sole_defender
+CLASS viable_check -> []
+CLASS viable_capture -> []
+CLASS defender_still_defends_target -> [Qb4]
+REPORT opponent_case=defend_attacked_sole_defender reply_class=defender_still_defends_target candidates=[Qb4] count=1 limit=2
+
+REPLY 15...Qb4 BECAUSE defender_still_defends_target
+REPORT STATE {"active_case":"attack_sole_defender","defender":"bQ@b4","target":"bN@d4"}
+
+THINK OBSERVE.
+SAW loose(bN@d4) sole_defender(bQ@b4,bN@d4) active_case=attack_sole_defender
+
+CANDIDATES a3[attack_sole_defender] USES=[loose,sole_defender,attacks]
+TRY 16.a3 BECAUSE attack_sole_defender
+
+REASON OPPONENT SWITCH defend_attacked_sole_defender
+CLASS viable_check -> []
+CLASS viable_capture -> []
+CLASS defender_still_defends_target -> [Qc4]
+REPORT opponent_case=defend_attacked_sole_defender reply_class=defender_still_defends_target candidates=[Qc4] count=1 limit=2
+
+REPLY 16...Qc4 BECAUSE defender_still_defends_target
+REPORT STATE {"active_case":"attack_sole_defender","defender":"bQ@c4","target":"bN@d4"}
+
+THINK OBSERVE.
+SAW loose(bN@d4) sole_defender(bQ@c4,bN@d4) active_case=attack_sole_defender
+
+CANDIDATES Rc1[attack_sole_defender] USES=[loose,sole_defender,attacks]
+TRY 17.Rc1 BECAUSE attack_sole_defender
+
+REASON OPPONENT SWITCH defend_attacked_sole_defender
+CLASS viable_check -> []
+CLASS viable_capture -> []
+CLASS defender_still_defends_target -> []
+REPORT opponent_case=defend_attacked_sole_defender reply_class=none candidates=[] count=0 limit=2
+
+REPORT STATE {"active_case":"attack_sole_defender","defender":"bQ@c4","status":"proved","target":"bN@d4"}
+END SOLVE stable_gain>=minor_piece`,
+
+  expected_pgn: String.raw`[Event "Queen Mobility Loose Knight"]
+[Site "https://lichess.org/training/mFTxg"]
+[SetUp "1"]
+[FEN "r3k2r/pp2bppp/1q2p3/3pP3/3n2B1/2N5/PP3PPP/1R1Q1RK1 w kq - 0 15"]
+[Result "*"]
+[Policy "loose-piece-defender-chase/v1"]
+[Goal "stable gain >= minor piece"]
+
+15. Na4!
+    {attack_sole_defender: attack Qb6 while Qd1 continues attacking Nd4}
+    (15. Qxd4?
+        {capture_loose}
+        15... Qxd4
+        {recapture_attacker; candidate refuted})
+    (15. Qa4+?
+        {check_attacks_loose}
+        15... Nc6
+        {answers the check and saves the target})
+15... Qb4
+    {only viable reply in defender_still_defends_target}
+16. a3!
+    {repeat attack_sole_defender}
+16... Qc4
+    {only viable reply in defender_still_defends_target}
+17. Rc1!
+    {No viable check, capture, or move that keeps the queen defending Nd4.
+     Solved within the policy.}
+*`
+}
