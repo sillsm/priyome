@@ -1,0 +1,640 @@
+export const QUIET_QUEEN_PLACEMENT_TEST = {
+  id: "quiet-queen-placement-mate-or-queen",
+
+  name: "Quiet Queen Placement: Mate or Queen",
+
+  fen: "4rrk1/bBpq1ppp/p2p1B2/P3n3/1P2P3/N1P2P2/4QP1P/R4RK1 b - - 0 17",
+
+  url: "https://lichess.org/analysis/standard/4rrk1/bBpq1ppp/p2p1B2/P3n3/1P2P3/N1P2P2/4QP1P/R4RK1_b_-_-_0_17",
+
+  goal: [
+    "mate",
+    "win_queen"
+  ],
+
+  /*
+   * ScratchChess supplies all legal moves.
+   *
+   * This policy never generates chess moves. It filters the legal moves
+   * through an ordered switch and asks the same question about opponent
+   * replies through an explicit opponent switch.
+   */
+  policy: {
+    version: "minimal-policy/v1",
+
+    name: "checks-captures-attacks-then-quiet",
+
+    limits: {
+      see_after: 1,
+      check_horizon: 2,
+      forcing_reply_probe: 1,
+      first_refutation_stops: true,
+      max_live_replies_per_class: 2
+    },
+
+    /*
+     * Only these small pieces of state survive between observations.
+     *
+     * attacker:
+     *   The piece currently carrying the tactical idea.
+     *
+     * current_idea_moves:
+     *   The concrete moves we noticed for that piece.
+     *
+     * last_capture_square:
+     *   Used to identify an ordinary recapture.
+     */
+    state: [
+      "attacker",
+      "current_idea_moves",
+      "last_capture_square"
+    ],
+
+    our_move_switch: [
+      {
+        case: "mate",
+        match: [
+          "mate_in_1"
+        ],
+
+        think: "Mate immediately."
+      },
+
+      {
+        case: "recapture",
+        match: [
+          "capture"
+        ],
+
+        where: "move.to === last_capture_square",
+
+        probe: "opponent_mate_in_1",
+
+        keep_when: "opponent_mate_in_1.length === 0",
+
+        think: "Take the piece back, provided the recapture does not hang mate."
+      },
+
+      {
+        case: "check",
+        match: [
+          "check"
+        ],
+
+        think: "Try checks first."
+      },
+
+      {
+        case: "capture",
+        match: [
+          "capture"
+        ],
+
+        keep_when_after_move_any: [
+          "mate_in_1",
+          "check",
+          "captures_queen"
+        ],
+
+        think: "After checks, consider captures that continue toward mate or the queen."
+      },
+
+      {
+        case: "attack_queen",
+        match: [
+          "attack"
+        ],
+
+        where: "target.type === 'queen'",
+
+        think: "After checks and captures, try a direct attack on the queen."
+      },
+
+      {
+        case: "quiet",
+        match: [
+          "quiet"
+        ],
+
+        only_after_cases_fail: [
+          "check",
+          "capture",
+          "attack_queen"
+        ],
+
+        keep_when_after_move:
+          "A checking continuation exists, and every opponent reply class " +
+          "to that check reaches mate or wins the queen within check_horizon.",
+
+        think:
+          "The forcing moves did not work. Look for a quiet move that creates " +
+          "a concrete checking idea."
+      }
+    ],
+
+    /*
+     * Once we have named concrete moves such as Rg5+ and Rh5, we keep
+     * following those moves in forcing order rather than beginning an
+     * unrelated global search.
+     */
+    current_idea_switch: [
+      {
+        case: "check",
+        source: "current_idea_moves",
+        match: [
+          "check"
+        ]
+      },
+
+      {
+        case: "capture",
+        source: "current_idea_moves",
+        match: [
+          "capture"
+        ]
+      },
+
+      {
+        case: "attack",
+        source: "current_idea_moves",
+        match: [
+          "attack"
+        ]
+      },
+
+      {
+        case: "quiet",
+        source: "current_idea_moves",
+        match: [
+          "quiet"
+        ]
+      }
+    ],
+
+    /*
+     * These are genuine ordered opponent switches.
+     *
+     * Within a class:
+     *   - try no more than two candidates;
+     *   - the first one-ply refutation rejects that candidate;
+     *   - if every candidate in the class is refuted, continue to the
+     *     next reply class;
+     *   - do not enumerate unrelated legal moves.
+     */
+    opponent_reply_switch: [
+      {
+        case: "answer_check",
+
+        when: "our_move.check === true",
+
+        classes: [
+          {
+            class: "capture_checker",
+
+            match: [
+              "capture"
+            ],
+
+            where: "captured_piece === checker"
+          },
+
+          {
+            class: "block",
+
+            match: [
+              "block"
+            ]
+          },
+
+          {
+            class: "king_move",
+
+            match: [
+              "king_move"
+            ]
+          }
+        ]
+      },
+
+      {
+        case: "answer_attack_on_queen",
+
+        when: "our_move.attacks_queen === true",
+
+        classes: [
+          {
+            class: "check",
+
+            match: [
+              "check"
+            ]
+          },
+
+          {
+            class: "capture_attacker",
+
+            match: [
+              "capture"
+            ],
+
+            where: "captured_piece === attacker"
+          },
+
+          {
+            class: "move_attacked_piece",
+
+            match: [
+              "move_attacked_piece"
+            ]
+          }
+        ]
+      },
+
+      {
+        case: "answer_current_idea",
+
+        when: "state.attacker !== null",
+
+        classes: [
+          {
+            class: "check",
+
+            match: [
+              "check"
+            ]
+          },
+
+          {
+            class: "capture_attacker",
+
+            match: [
+              "capture"
+            ],
+
+            where: "captured_piece === state.attacker"
+          },
+
+          {
+            class: "attack_attacker",
+
+            match: [
+              "attack"
+            ],
+
+            where: "target === state.attacker"
+          },
+
+          {
+            class: "move_attacked_piece",
+
+            match: [
+              "move_attacked_piece"
+            ]
+          }
+        ]
+      }
+    ],
+
+    closure_rules: []
+  },
+
+  /*
+   * No compound predicates such as:
+   *
+   *   capture_checking_piece_without_moving_king
+   *   stop_every_current_threat
+   *   answers_all_witnesses
+   *   recapture_and_continue
+   *
+   * A move is refuted only as the result of a displayed line.
+   */
+  vocabulary: {
+    predicates: [
+      "mate_in_1(move)",
+      "mate_threat(move, line)",
+
+      "check(move)",
+      "capture(move, piece)",
+      "attack(move, piece)",
+      "quiet(move)",
+      "recapture(move)",
+
+      "captured_piece_is_checker(reply)",
+      "captured_piece_is_attacker(reply)",
+
+      "block(reply)",
+      "king_move(reply)",
+      "move_attacked_piece(reply)",
+
+      "captures_queen(move)"
+    ],
+
+    concepts: [
+      "attacker",
+      "current_idea_moves",
+      "last_capture_square",
+
+      "checks_before_captures",
+      "captures_before_attacks",
+      "attacks_before_quiet_moves",
+
+      "first_nonempty_reply_class",
+      "first_refutation_stops",
+      "one_ply_continuation_scan",
+
+      "continue_to_next_reply_class_when_current_class_is_refuted",
+      "max_live_replies_per_class=2"
+    ]
+  },
+
+  expected_trace: String.raw`THINK OBSERVE.
+SAW checks=[Nxf3+,Bxf2+,Qg4+] captures_after_checks=[gxf6] attacks_queen=[Qb5]
+
+CANDIDATES Nxf3+[check] Bxf2+[check] Qg4+[check] USES=[check]
+
+TRY 17...Nxf3+ BECAUSE check
+
+REASON OPPONENT SWITCH answer_check
+CLASS capture_checker -> [Qxf3]
+REPORT opponent_case=answer_check reply_class=capture_checker candidates=[Qxf3] count=1 limit=2
+
+REPLY 18.Qxf3 BECAUSE capture_checker
+
+THINK ONE PLY.
+SAW checks=[] mate_in_1=[] captures_queen=[]
+REPORT Nxf3+ is refuted by Qxf3.
+
+TRY 17...Bxf2+ BECAUSE check
+
+REASON OPPONENT SWITCH answer_check
+CLASS capture_checker -> [Rxf2,Qxf2]
+REPORT opponent_case=answer_check reply_class=capture_checker candidates=[Rxf2,Qxf2] count=2 limit=2
+
+REPLY 18.Rxf2 BECAUSE capture_checker
+
+THINK ONE PLY.
+SAW checks=[] mate_in_1=[] captures_queen=[]
+REPORT Bxf2+ is refuted by Rxf2.
+
+TRY 17...Qg4+ BECAUSE check
+
+REASON OPPONENT SWITCH answer_check
+CLASS capture_checker -> [fxg4]
+REPORT opponent_case=answer_check reply_class=capture_checker candidates=[fxg4] count=1 limit=2
+
+REPLY 18.fxg4 BECAUSE capture_checker
+REPORT Qg4+ is refuted because White captures the checking queen.
+
+THINK CAPTURES.
+SAW captures=[gxf6]
+CANDIDATES none
+REPORT gxf6 wins a bishop, but it does not give check, create mate, or win the queen within one ply.
+
+THINK ATTACKS.
+SAW attacks_queen=[Qb5]
+
+CANDIDATES Qb5[attack_queen] USES=[attack]
+TRY 17...Qb5 BECAUSE attack_queen
+
+REASON OPPONENT SWITCH answer_attack_on_queen
+CLASS check -> []
+CLASS capture_attacker -> [Nxb5,Qxb5]
+REPORT opponent_case=answer_attack_on_queen reply_class=capture_attacker candidates=[Nxb5,Qxb5] count=2 limit=2
+
+REPLY 18.Nxb5 BECAUSE capture_attacker
+REPORT Qb5 is refuted by Nxb5.
+
+THINK QUIET BECAUSE the checks were refuted, gxf6 does not reach the goal, and Qb5 is refuted.
+SAW quiet(Qh3) after_Qh3_checks=[Nxf3+]
+
+CANDIDATES Qh3[quiet] USES=[quiet,check]
+TRY 17...Qh3 BECAUSE after Qh3 Black has Nxf3+
+
+REPORT IDEA attacker=bN@e5 current_idea_moves=[Nxf3+]
+
+LOOK AHEAD LINE 18.Nc4 Nxf3+
+
+REASON OPPONENT SWITCH answer_check
+CLASS capture_checker -> [Qxf3]
+REPORT opponent_case=answer_check reply_class=capture_checker candidates=[Qxf3] count=1 limit=2
+
+LINE 18.Nc4 Nxf3+ 19.Qxf3 Qxf3
+AFTER 19...Qxf3 SAW captures_queen=true
+REPORT The capture-checker reply loses the queen.
+
+CLASS block -> []
+
+CLASS king_move -> [Kh1]
+REPORT opponent_case=answer_check reply_class=king_move candidates=[Kh1] count=1 limit=2
+
+LINE 18.Nc4 Nxf3+ 19.Kh1 Qxh2#
+AFTER 19...Qxh2# SAW mate=true
+REPORT The king-move reply is checkmate.
+
+REPORT Nxf3+ reaches the goal against every reply class.
+
+REASON OPPONENT SWITCH answer_current_idea
+CLASS check -> []
+CLASS capture_attacker -> [Bxe5]
+REPORT opponent_case=answer_current_idea reply_class=capture_attacker candidates=[Bxe5] count=1 limit=2
+
+REPLY 18.Bxe5 BECAUSE capture_attacker
+
+THINK OBSERVE.
+SAW last_capture_square=e5 recaptures=[Rxe5]
+
+CANDIDATES Rxe5[recapture] USES=[capture,recapture]
+TRY 18...Rxe5 BECAUSE recapture
+
+THINK ONE PLY.
+SAW opponent_mate_in_1=[]
+REPORT Rxe5 does not hang mate in one.
+
+THINK OBSERVE ONE PLY AHEAD.
+SAW checks=[Rg5+] quiet_mate_threats=[Rh5]
+REPORT IDEA attacker=bR@e5 current_idea_moves=[Rg5+,Rh5]
+
+REASON OPPONENT SWITCH answer_current_idea
+CLASS check -> []
+CLASS capture_attacker -> []
+CLASS attack_attacker -> [Qb5,f4]
+REPORT opponent_case=answer_current_idea reply_class=attack_attacker candidates=[Qb5,f4] count=2 limit=2
+
+TRY REPLY 19.Qb5 BECAUSE attack_attacker
+
+THINK ONE PLY.
+SAW captures_attacker=[Rxb5]
+
+REPLY 19...Rxb5 BECAUSE capture_attacker
+REPORT Qb5 is refuted by Rxb5.
+
+TRY REPLY 19.f4 BECAUSE attack_attacker
+REPORT f4 attacks the rook on e5.
+
+LINE 19.f4 Rg5+
+
+REASON OPPONENT SWITCH answer_check
+CLASS capture_checker -> [fxg5]
+REPORT opponent_case=answer_check reply_class=capture_checker candidates=[fxg5] count=1 limit=2
+
+REPLY 20.fxg5 BECAUSE capture_checker
+AFTER 20.fxg5 SAW check=[] captures_queen=[]
+REPORT The check predicate vanishes. Rg5+ is refuted by fxg5.
+
+LINE 19.f4 Rh5
+SAW mate_threat(Rh5,line=Qxh2+ Kf1 Qh1#)
+
+REASON OPPONENT SWITCH answer_current_idea
+CLASS check -> []
+CLASS capture_attacker -> [Qxh5]
+REPORT opponent_case=answer_current_idea reply_class=capture_attacker candidates=[Qxh5] count=1 limit=2
+
+REPLY 20.Qxh5 BECAUSE capture_attacker
+AFTER 20.Qxh5 SAW mate_threat=[] captures_queen_for_black=[Qxh5]
+REPORT The mate threat vanishes, but Black can capture the white queen.
+
+REPORT f4 is the surviving opponent reply.
+REPLY 19.f4 BECAUSE attack_attacker
+
+THINK CURRENT IDEA.
+SAW current_idea_moves=[Rg5+,Rh5] checks=[Rg5+]
+
+CANDIDATES Rg5+[check] USES=[check]
+TRY 19...Rg5+ BECAUSE check
+
+REASON OPPONENT SWITCH answer_check
+CLASS capture_checker -> [fxg5]
+REPORT opponent_case=answer_check reply_class=capture_checker candidates=[fxg5] count=1 limit=2
+
+REPLY 20.fxg5 BECAUSE capture_checker
+
+AFTER 20.fxg5 SAW check=[] mate_in_1=[] captures_queen=[]
+REPORT Rg5+ is refuted by fxg5.
+
+THINK CURRENT IDEA.
+SAW remaining_current_idea_moves=[Rh5]
+CANDIDATES Rh5[mate_threat] USES=[quiet,mate_threat]
+
+TRY 19...Rh5 BECAUSE it threatens Qxh2+ followed by Qh1#
+
+REPORT IDEA attacker=bR@h5
+REPORT If White does not capture the rook, Black plays Qxh2+ and then Qh1#.
+
+REASON OPPONENT SWITCH answer_current_idea
+CLASS check -> []
+CLASS capture_attacker -> [Qxh5]
+REPORT opponent_case=answer_current_idea reply_class=capture_attacker candidates=[Qxh5] count=1 limit=2
+
+REPLY 20.Qxh5 BECAUSE capture_attacker
+
+THINK OBSERVE.
+SAW mate_threat=[] captures_queen=[Qxh5]
+
+CANDIDATES Qxh5[capture_queen] USES=[capture]
+TRY 20...Qxh5 BECAUSE it captures the white queen
+
+WE WIN: Black wins the white queen.
+END SOLVE wins_queen`,
+
+  expected_pgn: String.raw`[Event "Quiet Queen Placement: Mate or Queen"]
+[Site "https://lichess.org/analysis/standard/4rrk1/bBpq1ppp/p2p1B2/P3n3/1P2P3/N1P2P2/4QP1P/R4RK1_b_-_-_0_17"]
+[SetUp "1"]
+[FEN "4rrk1/bBpq1ppp/p2p1B2/P3n3/1P2P3/N1P2P2/4QP1P/R4RK1 b - - 0 17"]
+[Result "*"]
+[Policy "checks-captures-attacks-then-quiet"]
+[Goal "mate or win the queen"]
+
+17... Qh3!
+    {The checks were answerable. The capture on f6 did not continue
+     toward mate or the queen. Qb5 attacked the queen but could be
+     captured. Black therefore looks at quiet moves.
+
+     Qh3 prepares Nxf3+. If White captures the checking knight with
+     Qxf3, Black answers Qxf3 and wins the queen. If the king moves
+     to h1, Qxh2 is mate.}
+
+    (17... Nxf3+?
+        {Try the check first.}
+        18. Qxf3
+        {White captures the checking knight. Black has no immediate
+         continuation that reaches mate or wins the queen.})
+
+    (17... Bxf2+?
+        {Another check.}
+        18. Rxf2
+        {White captures the checking bishop. Qxf2 was also found in
+         this reply class, but first-refutation-stops means it was not
+         entered as another line.})
+
+    (17... Qg4+?
+        {Another check.}
+        18. fxg4
+        {The pawn captures the checking queen.})
+
+    (17... Qb5?
+        {After the checks and capture scan, Black directly attacks
+         the white queen.}
+        18. Nxb5
+        {White captures the attacking queen. Qxb5 was also found,
+         but the first refutation ends this candidate.})
+
+18. Bxe5
+    {White uses the first relevant opponent reply class: capture
+     the knight carrying the Nxf3+ idea.}
+
+    (18. Nc4?
+        {A representative move that leaves the knight on e5.}
+        18... Nxf3+
+            (19. Kh1
+                {Move the king instead of capturing the checker.}
+                19... Qxh2#)
+        19. Qxf3
+            {Capture the checking knight.}
+        19... Qxf3
+            {Black wins the white queen.})
+
+18... Rxe5
+    {Black makes the ordinary recapture. The one-ply scan confirms
+     that it does not allow White mate in one.
+
+     From e5 the rook has two concrete ideas: Rg5+ and Rh5.}
+
+    (19. Qb5?
+        {The queen attacks the rook.}
+        19... Rxb5
+        {The rook captures the attacking queen, so Qb5 is refuted.})
+
+19. f4
+    {The other move in the attack-the-rook reply class.
+
+     Against Rg5+, the pawn can capture on g5.
+     Against Rh5, moving the pawn opens the queen's diagonal from
+     e2 through f3 and g4 to h5.}
+
+19... Rh5!
+    {Black first tries the checking continuation, Rg5+, and sees that
+     the pawn captures it. Black then follows the remaining idea.
+
+     Rh5 protects the queen after Qxh2+. If White does not take the
+     rook, Black threatens Qxh2+ followed by Qh1 mate.}
+
+    (19... Rg5+?
+        {Try the checking continuation first.}
+        20. fxg5
+        {White captures the checking rook. The check disappears and
+         Black does not immediately win the queen.})
+
+20. Qxh5
+    {White captures the rook and removes the mate threat. The same
+     line now creates a different visible predicate: Black can
+     capture the white queen on h5.}
+
+    (20. Rfe1?
+        {A representative move that does not capture the rook.}
+        20... Qxh2+
+        21. Kf1 Qh1#)
+
+20... Qxh5
+    {Black captures the white queen.}
+*`
+};
