@@ -1,0 +1,166 @@
+export const WOODPECKER_44_TEST = {
+  id: "woodpecker-44-move-middle-with-check",
+
+  name: "Woodpecker 44 — Move the Middle Piece with Check",
+
+  fen: "2r2rk1/pQ1n1pp1/1p2p2p/3p4/P2P4/4P2P/1qB2PP1/2R2RK1 w - - 0 22",
+
+  url: "https://lichess.org/analysis/standard/2r2rk1/pQ1n1pp1/1p2p2p/3p4/P2P4/4P2P/1qB2PP1/2R2RK1_w_-_-_0_22",
+
+  policy: "move-middle-with-check/v1",
+
+  goal: "gain_at_least_exchange",
+
+  vocabulary: {
+    predicates: [
+      "alignment(front,middle,back)",
+      "check(move)",
+      "capture(move,target)",
+      "recapture(move)",
+      "king_move(move)"
+    ],
+
+    concepts: [
+      "bind_front_middle_back",
+      "enumerate_all_if_legal_replies_at_most_2",
+      "order_captures_by_material_damage_first",
+      "use_reply_classes_if_more_than_2_legal_replies",
+      "no_recapture_means_captured_piece_stays_won"
+    ]
+  },
+
+  expected_trace: String.raw`THINK OBSERVE.
+SAW alignment(front=wR@c1,middle=wB@c2,back=bR@c8)
+SAW checks_by_middle=[Bh7+]
+
+CANDIDATES Bh7+[alignment,check]
+TRY 22.Bh7+ BECAUSE:
+  alignment(wR@c1,wB@c2,bR@c8)
+  check(Bh7+)
+
+THINK OPPONENT.
+SAW legal_replies=[Kxh7,Kh8] count=2
+
+RULE enumerate_all_if_legal_replies_at_most_2
+ORDER Kxh7 first because capture(Kxh7,wB@h7)
+REPLIES [Kxh7[capture],Kh8[king_move]]
+
+LINE 1.
+
+REPLY 22...Kxh7 BECAUSE capture(Kxh7,wB@h7)
+
+THINK OBSERVE.
+SAW alignment_square_cleared(c2)
+SAW captures_of_back=[Rxc8]
+
+CANDIDATES Rxc8[capture_back_of_alignment]
+TRY 23.Rxc8 BECAUSE:
+  alignment(front=wR@c1,back=bR@c8)
+  capture(Rxc8,bR@c8)
+
+THINK OPPONENT.
+SAW legal_reply_count>2
+
+RULE use_reply_classes_if_more_than_2_legal_replies
+CLASS recapture -> [Rxc8]
+
+REPORT If Black does not recapture, the rook captured on c8 stays won.
+
+REPLY 23...Rxc8 BECAUSE recapture(Rxc8,c8)
+
+THINK OBSERVE.
+SAW recaptures=[Qxc8]
+
+CANDIDATES Qxc8[recapture]
+TRY 24.Qxc8 BECAUSE recapture(Qxc8,c8)
+
+WE WIN: White gets both black rooks for one rook and one bishop.
+REPORT branch=Kxh7 result=gain_at_least_exchange
+
+BACKTRACK TO 22.Bh7+.
+
+LINE 2.
+
+REPLY 22...Kh8 BECAUSE king_move(Kh8)
+
+THINK OBSERVE.
+SAW alignment_square_cleared(c2)
+SAW captures_of_back=[Rxc8]
+
+CANDIDATES Rxc8[capture_back_of_alignment]
+TRY 23.Rxc8 BECAUSE:
+  alignment(front=wR@c1,back=bR@c8)
+  capture(Rxc8,bR@c8)
+
+THINK OPPONENT.
+SAW legal_reply_count>2
+
+RULE use_reply_classes_if_more_than_2_legal_replies
+CLASS recapture -> [Rxc8]
+
+REPORT If Black does not recapture, the rook captured on c8 stays won.
+
+REPLY 23...Rxc8 BECAUSE recapture(Rxc8,c8)
+
+THINK OBSERVE.
+SAW recaptures=[Qxc8+]
+
+CANDIDATES Qxc8+[recapture]
+TRY 24.Qxc8+ BECAUSE recapture(Qxc8+,c8)
+
+WE WIN: White gets both black rooks for one rook and keeps the bishop.
+REPORT branch=Kh8 result=gain_greater_than_exchange
+
+END SOLVE every_legal_reply_to_Bh7+_wins_at_least_the_exchange`,
+
+  expected_pgn: String.raw`[Event "Woodpecker 44 — Move the Middle Piece with Check"]
+[Site "https://lichess.org/analysis/standard/2r2rk1/pQ1n1pp1/1p2p2p/3p4/P2P4/4P2P/1qB2PP1/2R2RK1_w_-_-_0_22"]
+[SetUp "1"]
+[FEN "2r2rk1/pQ1n1pp1/1p2p2p/3p4/P2P4/4P2P/1qB2PP1/2R2RK1 w - - 0 22"]
+[Result "*"]
+[Policy "move-middle-with-check/v1"]
+[Goal "gain at least the exchange"]
+
+22. Bh7+!
+    {The rook on c1, bishop on c2, and black rook on c8
+     form an alignment.
+
+     The bishop is the middle piece. Bh7+ moves the middle
+     piece out of the line with check.
+
+     Black has only two legal replies, so both are enumerated.
+     Kxh7 is examined first because it captures the bishop.}
+
+22... Kxh7
+    {The materially strongest reply: capture the checking bishop.}
+
+    (22... Kh8
+        {The only other legal reply. The king does not take
+         the bishop.}
+
+        23. Rxc8
+            {With c2 clear, the front piece captures the back
+             piece of the alignment.}
+
+        23... Rxc8
+            {The remaining rook recaptures. If Black does not
+             recapture, White has already won the c8 rook.}
+
+        24. Qxc8+
+            {White recaptures and has won both black rooks for
+             one white rook while keeping the bishop.})
+
+23. Rxc8
+    {With c2 clear, the front piece captures the back piece
+     of the alignment.}
+
+23... Rxc8
+    {The remaining rook recaptures. If Black does not
+     recapture, White has already won the c8 rook.}
+
+24. Qxc8
+    {White recaptures. Even after Black chose the materially
+     strongest king reply, White obtained both black rooks
+     for one rook and one bishop.}
+*`
+};
