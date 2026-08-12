@@ -1,0 +1,3082 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07101a" />
+  <title>Predicate Policy DFA Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07101a;
+      --bg-2: #0a1421;
+      --panel: rgba(15, 27, 42, 0.94);
+      --panel-solid: #101c2b;
+      --panel-2: #132235;
+      --panel-3: #172a40;
+      --text: #edf7ff;
+      --muted: #91a7b9;
+      --faint: #61798d;
+      --line: rgba(159, 195, 218, 0.16);
+      --line-strong: rgba(159, 195, 218, 0.29);
+      --accent: #67e8f9;
+      --accent-2: #a78bfa;
+      --accent-3: #38bdf8;
+      --good: #55e6a5;
+      --warn: #f9c74f;
+      --bad: #ff6f91;
+      --my: #67e8f9;
+      --their: #c4a7ff;
+      --shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
+      --radius: 18px;
+      --radius-sm: 12px;
+      --speed: 560ms;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 8% -10%, rgba(56, 189, 248, 0.18), transparent 31%),
+        radial-gradient(circle at 94% 6%, rgba(167, 139, 250, 0.16), transparent 31%),
+        linear-gradient(145deg, var(--bg), #08131f 48%, #07101a);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    button, input, textarea, select { font: inherit; }
+    button, select { color: inherit; }
+    button { border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: none;
+      background: rgba(4, 12, 21, 0.68);
+      color: var(--text);
+      transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: rgba(103, 232, 249, 0.66);
+      box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.10);
+      background: rgba(5, 15, 25, 0.92);
+    }
+    input, select { min-height: 38px; padding: 7px 10px; }
+    textarea { min-height: 120px; resize: vertical; padding: 10px 12px; }
+    input::placeholder, textarea::placeholder { color: #5f7688; }
+    code, .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    .app-shell { height: 100vh; display: flex; flex-direction: column; }
+
+    .topbar {
+      position: relative;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-height: 66px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 16, 26, 0.82);
+      backdrop-filter: blur(22px) saturate(135%);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .brand-mark {
+      position: relative; width: 38px; height: 38px; border-radius: 12px;
+      border: 1px solid rgba(103, 232, 249, .34);
+      background:
+        radial-gradient(circle at 34% 28%, rgba(255,255,255,.35), transparent 12%),
+        linear-gradient(145deg, rgba(103,232,249,.29), rgba(167,139,250,.28));
+      box-shadow: inset 0 0 22px rgba(103,232,249,.12), 0 10px 28px rgba(0,0,0,.25);
+    }
+    .brand-mark::before {
+      content: ""; position: absolute; left: 10px; top: 7px; width: 16px; height: 20px;
+      border: 2px solid var(--accent); border-top: 0; border-radius: 0 0 8px 8px;
+      transform: skewX(-7deg);
+    }
+    .brand-mark::after {
+      content: ""; position: absolute; left: 14px; top: 5px; width: 8px; height: 4px;
+      border-top: 2px solid var(--accent-2); border-bottom: 2px solid var(--accent-2);
+    }
+    .brand-copy { display: grid; line-height: 1.05; }
+    .brand-copy strong { font-size: 15px; letter-spacing: .01em; }
+    .brand-copy span { margin-top: 4px; color: var(--muted); font-size: 11px; }
+
+    .project-name {
+      min-width: 175px; max-width: 360px; height: 40px; border-color: transparent;
+      background: transparent; font-size: 16px; font-weight: 750;
+    }
+    .project-name:hover { background: rgba(255,255,255,.035); }
+    .topbar-spacer { flex: 1 1 auto; }
+    .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      min-height: 38px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px;
+      background: rgba(255,255,255,.045); color: var(--text); white-space: nowrap;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+    }
+    .btn:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--line-strong); background: rgba(255,255,255,.075); }
+    .btn:active:not(:disabled) { transform: translateY(0); }
+    .btn.primary {
+      border-color: rgba(103,232,249,.38);
+      background: linear-gradient(135deg, rgba(34,211,238,.24), rgba(56,189,248,.16));
+      box-shadow: inset 0 0 18px rgba(103,232,249,.06);
+    }
+    .btn.good { border-color: rgba(85,230,165,.34); background: rgba(85,230,165,.10); }
+    .btn.danger { border-color: rgba(255,111,145,.34); background: rgba(255,111,145,.08); }
+    .btn.ghost { background: transparent; }
+    .btn.small { min-height: 31px; padding: 5px 9px; border-radius: 8px; font-size: 12px; }
+    .btn.icon { width: 38px; padding-inline: 0; }
+
+    .validation-badge, .save-badge {
+      display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px;
+      border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+      background: rgba(255,255,255,.025); font-size: 12px; white-space: nowrap;
+    }
+    .validation-badge.good { border-color: rgba(85,230,165,.28); color: var(--good); background: rgba(85,230,165,.07); }
+    .validation-badge.warn { border-color: rgba(249,199,79,.30); color: var(--warn); background: rgba(249,199,79,.07); }
+    .validation-badge.bad { border-color: rgba(255,111,145,.32); color: var(--bad); background: rgba(255,111,145,.07); }
+    .save-badge.dirty { color: var(--warn); }
+
+    .mobile-menu { display: none; }
+
+    .workspace-layout {
+      min-height: 0; flex: 1 1 auto; display: grid; grid-template-columns: 360px minmax(0,1fr);
+    }
+    .sidebar-scrim { display: none; }
+    .sidebar {
+      min-height: 0; overflow: hidden; display: flex; flex-direction: column;
+      border-right: 1px solid var(--line); background: rgba(9,19,31,.76); backdrop-filter: blur(14px);
+    }
+    .side-tabs {
+      display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); padding: 10px 8px 8px; gap: 4px;
+      border-bottom: 1px solid var(--line);
+    }
+    .side-tab {
+      min-width: 0; padding: 8px 3px; border-radius: 9px; background: transparent;
+      color: var(--muted); font-size: 10.5px; font-weight: 750; letter-spacing: .015em;
+    }
+    .side-tab:hover { background: rgba(255,255,255,.045); color: var(--text); }
+    .side-tab.active { color: var(--accent); background: rgba(103,232,249,.10); }
+    .side-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 12px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: panel-in 150ms ease both; }
+    @keyframes panel-in { from { opacity: 0; transform: translateY(3px); } to { opacity:1; transform:none; } }
+
+    .panel {
+      padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+      background: rgba(13,25,40,.78); box-shadow: 0 12px 35px rgba(0,0,0,.13);
+    }
+    .panel + .panel { margin-top: 10px; }
+    .panel h2, .panel h3 { margin: 0; line-height: 1.2; }
+    .panel h2 { font-size: 14px; }
+    .panel h3 { font-size: 12px; color: #cbd9e5; }
+    .panel-title-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .panel-copy { margin: 7px 0 11px; color: var(--muted); font-size: 12px; }
+    .field { display:grid; gap:6px; margin-top:10px; }
+    .field label { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+    .field-help { color: var(--faint); font-size: 10.5px; }
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+    .button-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:11px; }
+    .mini-chip {
+      display:inline-flex; align-items:center; gap:5px; min-height:24px; padding:3px 8px;
+      border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.035);
+      color:var(--muted); font-size:10.5px; font-weight:700;
+    }
+    .mini-chip.good { color:var(--good); border-color:rgba(85,230,165,.28); background:rgba(85,230,165,.07); }
+    .mini-chip.bad { color:var(--bad); border-color:rgba(255,111,145,.28); background:rgba(255,111,145,.07); }
+    .summary-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+    .summary-item { padding:10px; border:1px solid var(--line); border-radius:10px; background:rgba(2,9,16,.35); }
+    .summary-item span { display:block; color:var(--faint); font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .summary-item strong { display:block; margin-top:4px; color:#d8e8f4; font-size:11.5px; line-height:1.35; }
+
+    .order-editor { display:grid; gap:6px; margin-top:8px; }
+    .order-row {
+      display:grid; grid-template-columns:24px minmax(0,1fr) 29px 29px; gap:6px; align-items:center;
+      padding:6px; border:1px solid var(--line); border-radius:9px; background:rgba(2,9,16,.32);
+    }
+    .order-index {
+      display:grid; place-items:center; width:22px; height:22px; border-radius:50%;
+      color:#07101a; background:var(--accent); font-size:10px; font-weight:900;
+    }
+    .order-row button { min-height:28px; border-radius:7px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--muted); }
+    .order-row button:hover { color:var(--text); border-color:var(--line-strong); }
+
+    .oracle-list { display:grid; gap:8px; margin-top:10px; }
+    .oracle-mini {
+      padding:10px; border:1px solid var(--line); border-radius:10px;
+      background:linear-gradient(145deg,rgba(20,36,55,.8),rgba(9,19,31,.84));
+    }
+    .oracle-mini-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .oracle-mini strong { font-size:12px; }
+    .oracle-mini p { margin:5px 0 0; color:var(--muted); font-size:10.5px; }
+    .predicate-line { display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; }
+    .predicate-chip {
+      display:inline-flex; align-items:center; min-height:21px; padding:2px 7px;
+      border:1px solid rgba(103,232,249,.19); border-radius:999px;
+      background:rgba(103,232,249,.07); color:#bdeff7; font-size:9.5px; font-weight:750;
+    }
+    .predicate-chip.match { border-color:rgba(167,139,250,.39); color:#d8c9ff; background:rgba(167,139,250,.13); }
+    .side-pill {
+      display:inline-flex; align-items:center; gap:5px; min-height:20px; padding:2px 7px;
+      border-radius:999px; border:1px solid var(--line); font-size:8.5px; font-weight:900;
+      letter-spacing:.07em; text-transform:uppercase;
+    }
+    .side-pill.my { color:var(--my); border-color:rgba(103,232,249,.25); background:rgba(103,232,249,.07); }
+    .side-pill.their { color:var(--their); border-color:rgba(167,139,250,.27); background:rgba(167,139,250,.08); }
+
+    .transition-table { width:100%; border-collapse:collapse; margin-top:10px; font-size:10.5px; }
+    .transition-table th, .transition-table td { padding:7px 5px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top; }
+    .transition-table th { color:var(--faint); font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
+    .transition-table td:nth-child(2) { color:var(--accent); }
+    .transition-table td:last-child { color:var(--muted); }
+    .test-list, .issue-list { display:grid; gap:7px; margin-top:10px; }
+    .test-row, .issue-row {
+      display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center;
+      padding:9px; border:1px solid var(--line); border-radius:9px; background:rgba(2,9,16,.32);
+    }
+    .test-row strong, .issue-row strong { display:block; font-size:11px; }
+    .test-row span, .issue-row span { display:block; margin-top:2px; color:var(--muted); font-size:9.5px; }
+
+    .main { min-width:0; min-height:0; overflow:auto; padding:14px; }
+
+    .runner-card {
+      position:relative; z-index:2; padding:13px; border:1px solid var(--line); border-radius:var(--radius);
+      background:
+        radial-gradient(circle at 92% 0%,rgba(167,139,250,.08),transparent 35%),
+        linear-gradient(145deg,rgba(17,31,48,.94),rgba(11,22,35,.95));
+      box-shadow:var(--shadow);
+    }
+    .runner-top { display:grid; grid-template-columns:minmax(260px,1fr) auto; gap:12px; align-items:center; }
+    .initial-input-wrap {
+      display:grid; grid-template-columns:auto minmax(150px,1fr) auto; align-items:center; gap:8px;
+      min-height:46px; padding:5px 6px 5px 12px; border:1px solid var(--line); border-radius:12px;
+      background:rgba(2,9,16,.42);
+    }
+    .initial-input-wrap label { color:var(--muted); font-size:10px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; }
+    .initial-input-wrap input { min-height:34px; border:0; background:transparent; box-shadow:none; padding-inline:5px; font-family:"SFMono-Regular",Consolas,monospace; }
+    .example-select { width:auto; min-width:150px; }
+    .transport { display:flex; align-items:center; gap:8px; }
+    .play-button { min-width:94px; }
+    .runner-meta {
+      display:grid; grid-template-columns:auto minmax(190px,1fr) auto; gap:12px; align-items:center;
+      margin-top:10px; color:var(--muted); font-size:11px;
+    }
+    .speed-control { display:grid; grid-template-columns:auto minmax(100px,220px) auto; justify-content:center; align-items:center; gap:8px; }
+    .speed-control input { min-height:20px; padding:0; accent-color:var(--accent); }
+    .run-summary { text-align:right; }
+    .run-summary strong.good { color:var(--good); }
+    .run-summary strong.bad { color:var(--bad); }
+    .timeline {
+      display:flex; align-items:center; gap:6px; min-height:42px; margin-top:10px; padding:7px;
+      overflow-x:auto; border:1px solid var(--line); border-radius:11px; background:rgba(2,9,16,.42);
+    }
+    .timeline-step {
+      flex:0 0 auto; min-width:34px; max-width:150px; height:29px; padding:0 9px;
+      border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.025);
+      color:var(--muted); font-size:9.5px; font-weight:800; letter-spacing:.025em; text-transform:uppercase;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .timeline-step.done { color:#c7d7e3; border-color:rgba(103,232,249,.20); background:rgba(103,232,249,.055); }
+    .timeline-step.current { color:#041019; border-color:var(--accent); background:var(--accent); box-shadow:0 0 18px rgba(103,232,249,.25); }
+
+    .policy-ribbon {
+      display:flex; flex-wrap:wrap; gap:7px; margin-top:10px;
+    }
+    .policy-badge {
+      display:inline-flex; align-items:center; gap:6px; min-height:27px; padding:4px 9px;
+      border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.025);
+      color:var(--muted); font-size:9.5px;
+    }
+    .policy-badge b { color:#dcebf5; font-size:9.5px; }
+    .policy-badge.win { border-color:rgba(85,230,165,.24); background:rgba(85,230,165,.055); }
+    .policy-badge.win b { color:var(--good); }
+    .policy-badge.fail { border-color:rgba(255,111,145,.22); background:rgba(255,111,145,.045); }
+    .policy-badge.fail b { color:var(--bad); }
+
+    .workbench-grid {
+      display:grid; grid-template-columns:minmax(0,1fr) 350px; gap:14px; align-items:stretch; margin-top:14px;
+      min-height:570px;
+    }
+    .workbench-panel {
+      min-width:0; border:1px solid var(--line); border-radius:var(--radius);
+      background:
+        radial-gradient(circle at 88% -4%,rgba(167,139,250,.075),transparent 35%),
+        linear-gradient(145deg,rgba(15,28,44,.93),rgba(9,19,31,.95));
+      box-shadow:0 18px 46px rgba(0,0,0,.22); overflow:hidden;
+    }
+    .panel-header {
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+      padding:14px 15px 12px; border-bottom:1px solid var(--line);
+    }
+    .panel-header h1 { margin:0; font-size:15px; }
+    .panel-header p { margin:4px 0 0; color:var(--muted); font-size:10.5px; }
+    .layout-chip { flex:0 0 auto; }
+
+    .automaton-body { padding:14px; }
+    .dfa-scroller {
+      position:relative; overflow-x:auto; overflow-y:hidden; padding:8px 6px 18px;
+      scroll-behavior:smooth; scrollbar-width:thin;
+    }
+    .dfa-flow { display:flex; align-items:stretch; min-width:max-content; }
+    .state-wrap { display:flex; align-items:center; }
+    .state-card {
+      position:relative; width:152px; min-height:218px; padding:12px 12px 46px;
+      border:1px solid var(--line-strong); border-radius:14px;
+      background:linear-gradient(150deg,rgba(24,42,63,.93),rgba(11,22,35,.96));
+      box-shadow:0 14px 28px rgba(0,0,0,.22); cursor:pointer;
+      transition:transform 180ms ease,border-color 180ms ease,box-shadow 180ms ease,opacity 180ms ease;
+    }
+    .state-card:hover { transform:translateY(-2px); border-color:rgba(103,232,249,.34); }
+    .state-card.active {
+      transform:translateY(-4px); border-color:var(--accent);
+      box-shadow:0 18px 38px rgba(0,0,0,.28),0 0 0 2px rgba(103,232,249,.13),0 0 28px rgba(103,232,249,.16);
+    }
+    .state-card.selected:not(.active) { border-color:rgba(167,139,250,.62); box-shadow:0 0 0 2px rgba(167,139,250,.10); }
+    .state-card.terminal.accept { border-color:rgba(85,230,165,.46); background:linear-gradient(150deg,rgba(25,64,53,.72),rgba(10,31,29,.94)); }
+    .state-card.terminal.reject { border-color:rgba(255,111,145,.43); background:linear-gradient(150deg,rgba(67,31,48,.73),rgba(31,15,27,.95)); }
+    .state-card.search { width:232px; min-height:276px; padding-bottom:12px; }
+    .state-kind {
+      display:flex; align-items:center; justify-content:space-between; gap:7px;
+      color:var(--faint); font-size:8.5px; font-weight:900; letter-spacing:.09em; text-transform:uppercase;
+    }
+    .state-icon {
+      display:grid; place-items:center; width:34px; height:34px; margin-top:14px;
+      border:1px solid rgba(103,232,249,.25); border-radius:11px;
+      background:rgba(103,232,249,.07); color:var(--accent); font-size:16px;
+    }
+    .state-card.search .state-icon { color:var(--accent-2); border-color:rgba(167,139,250,.27); background:rgba(167,139,250,.08); }
+    .state-card.accept .state-icon { color:var(--good); border-color:rgba(85,230,165,.27); background:rgba(85,230,165,.08); }
+    .state-card.reject .state-icon { color:var(--bad); border-color:rgba(255,111,145,.27); background:rgba(255,111,145,.08); }
+    .state-name { margin-top:12px; font-size:13px; font-weight:850; letter-spacing:.015em; overflow-wrap:anywhere; }
+    .state-desc {
+      margin-top:6px; color:var(--muted); font-size:10px; line-height:1.45;
+      display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; overflow:hidden;
+    }
+    .state-footer {
+      position:absolute; left:12px; right:12px; bottom:11px; padding-top:8px; border-top:1px solid var(--line);
+      color:var(--faint); font-size:8.5px; line-height:1.4;
+    }
+    .search-order { display:grid; gap:5px; margin-top:12px; }
+    .search-order-label { color:var(--muted); font-size:9px; font-weight:750; }
+    .search-predicate {
+      display:grid; grid-template-columns:20px minmax(0,1fr); gap:7px; align-items:center;
+      min-height:27px; padding:4px 7px; border:1px solid var(--line); border-radius:8px;
+      background:rgba(2,9,16,.34); color:#dfeef7; font-size:10px; font-weight:750;
+    }
+    .search-predicate .n {
+      display:grid; place-items:center; width:18px; height:18px; border-radius:50%;
+      background:rgba(167,139,250,.22); color:#d9ceff; font-size:8px; font-weight:900;
+    }
+    .closure-box {
+      margin-top:8px; padding:7px 8px; border:1px solid rgba(167,139,250,.20); border-radius:8px;
+      background:rgba(167,139,250,.055); color:var(--muted); font-size:8.8px;
+    }
+    .closure-box strong { color:#d9ceff; }
+    .edge-arrow {
+      position:relative; display:flex; align-items:center; justify-content:center; width:38px; flex:0 0 38px;
+      color:var(--faint); font-size:25px;
+    }
+    .edge-arrow::before {
+      content:""; position:absolute; left:4px; right:10px; height:1px; background:var(--line-strong);
+    }
+    .edge-arrow::after {
+      content:""; position:absolute; right:8px; width:7px; height:7px;
+      border-top:1px solid var(--line-strong); border-right:1px solid var(--line-strong); transform:rotate(45deg);
+    }
+    .edge-arrow.active::before { background:linear-gradient(90deg,var(--accent),var(--accent-2)); box-shadow:0 0 10px rgba(103,232,249,.3); }
+    .edge-arrow.active::after { border-color:var(--accent); }
+
+    .state-detail {
+      display:grid; grid-template-columns:minmax(0,1.4fr) minmax(230px,.8fr); gap:10px; margin-top:4px;
+    }
+    .detail-card {
+      min-height:126px; padding:12px; border:1px solid var(--line); border-radius:12px; background:rgba(2,9,16,.35);
+    }
+    .detail-head { display:flex; align-items:center; justify-content:space-between; gap:9px; }
+    .detail-head h2 { margin:0; font-size:12px; }
+    .detail-card p { margin:7px 0 0; color:var(--muted); font-size:10px; }
+    .event-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:10px; }
+    .event-box { padding:8px; border:1px solid var(--line); border-radius:9px; }
+    .event-box span { display:block; color:var(--faint); font-size:8px; font-weight:900; text-transform:uppercase; letter-spacing:.07em; }
+    .event-box strong { display:block; margin-top:4px; font-size:10px; overflow-wrap:anywhere; }
+
+    .current-thought {
+      position:relative; min-height:126px; display:grid; place-items:center; padding:10px;
+      border:1px dashed rgba(103,232,249,.24); border-radius:11px;
+      background:radial-gradient(circle at 50% 30%,rgba(103,232,249,.055),transparent 58%);
+    }
+    .current-thought.empty::before { content:"Popped thoughts land here for examination"; color:var(--faint); font-size:10px; text-align:center; max-width:180px; }
+    .current-thought.pulse { animation:target-pulse 620ms ease; }
+    @keyframes target-pulse { 0%{box-shadow:0 0 0 0 rgba(103,232,249,.32)} 100%{box-shadow:0 0 0 18px rgba(103,232,249,0)} }
+
+    .frontier-section { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+    .frontier-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .frontier-head h2 { margin:0; font-size:12px; }
+    .frontier-head p { margin:2px 0 0; color:var(--muted); font-size:9.5px; }
+    .frontier-list { display:flex; gap:9px; min-height:126px; margin-top:9px; padding:4px 2px 8px; overflow-x:auto; }
+    .frontier-empty {
+      width:100%; display:grid; place-items:center; border:1px dashed var(--line); border-radius:11px;
+      color:var(--faint); font-size:10px; text-align:center; padding:20px;
+    }
+
+    .thought-card {
+      position:relative; width:190px; min-width:190px; padding:11px;
+      border:1px solid rgba(103,232,249,.30); border-radius:12px;
+      background:
+        radial-gradient(circle at 90% 0%,rgba(103,232,249,.08),transparent 35%),
+        linear-gradient(145deg,rgba(24,43,65,.98),rgba(12,24,38,.99));
+      box-shadow:0 13px 28px rgba(0,0,0,.25);
+      overflow:hidden;
+    }
+    .thought-card.their { border-color:rgba(167,139,250,.34); background:radial-gradient(circle at 90% 0%,rgba(167,139,250,.09),transparent 35%),linear-gradient(145deg,rgba(37,34,66,.98),rgba(18,20,39,.99)); }
+    .thought-card.matched { box-shadow:0 13px 28px rgba(0,0,0,.25),0 0 0 2px rgba(167,139,250,.11); }
+    .thought-card.unmatched { opacity:.48; filter:saturate(.65); }
+    .thought-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .thought-id { margin-top:8px; font-size:14px; font-weight:850; overflow-wrap:anywhere; }
+    .thought-help { margin-top:4px; min-height:29px; color:var(--muted); font-size:9.5px; line-height:1.45; }
+    .thought-preds { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+    .match-ribbon {
+      position:absolute; top:9px; right:-29px; width:100px; padding:3px 0; transform:rotate(36deg);
+      text-align:center; background:rgba(167,139,250,.88); color:#0b1020; font-size:7.5px; font-weight:950; letter-spacing:.08em; text-transform:uppercase;
+    }
+    .depth-chip { color:var(--faint); font-size:8.5px; font-weight:800; }
+
+    .memory-panel { display:flex; flex-direction:column; min-height:570px; }
+    .memory-head-extra { display:flex; align-items:center; gap:7px; }
+    .budget-meter { width:74px; height:7px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.07); }
+    .budget-meter span { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width 220ms ease; }
+    .memory-body { min-height:0; flex:1 1 auto; display:flex; flex-direction:column; padding:14px; }
+    .memory-labels { display:flex; align-items:center; justify-content:space-between; margin:0 22px 8px; color:var(--muted); font-size:9.5px; }
+    .stack-shell {
+      position:relative; min-height:404px; flex:1 1 auto; padding:16px 33px 20px;
+      border-radius:15px; background:radial-gradient(circle at 50% 18%,rgba(167,139,250,.06),transparent 55%);
+    }
+    .stack-shell::before, .stack-shell::after {
+      content:""; position:absolute; top:5px; bottom:5px; width:21px;
+      border-top:3px solid rgba(167,139,250,.78); border-bottom:3px solid rgba(167,139,250,.78);
+      filter:drop-shadow(0 0 8px rgba(167,139,250,.17));
+    }
+    .stack-shell::before { left:3px; border-left:3px solid rgba(167,139,250,.78); border-radius:12px 0 0 12px; }
+    .stack-shell::after { right:3px; border-right:3px solid rgba(167,139,250,.78); border-radius:0 12px 12px 0; }
+    .stack-inlet {
+      position:absolute; left:50%; top:15px; width:120px; height:64px; transform:translateX(-50%);
+      pointer-events:none;
+    }
+    .stack-list { display:flex; flex-direction:column; gap:9px; min-height:100%; }
+    .stack-slot {
+      min-height:83px; border:1px dashed rgba(159,195,218,.18); border-radius:11px;
+      background:rgba(2,9,16,.14);
+    }
+    .stack-card { width:100%; min-width:0; min-height:92px; transition:transform 180ms ease,box-shadow 180ms ease; }
+    .stack-card.top { border-color:rgba(103,232,249,.55); box-shadow:0 13px 28px rgba(0,0,0,.28),0 0 0 2px rgba(103,232,249,.10); }
+    .stack-card.top::before {
+      content:"NEXT POP"; position:absolute; top:8px; right:9px; color:var(--accent); font-size:7.5px; font-weight:950; letter-spacing:.08em;
+    }
+    .stack-card .thought-help { min-height:0; }
+    .stack-card .thought-preds { margin-top:7px; }
+    .stack-empty {
+      min-height:95px; display:grid; place-items:center; padding:18px; text-align:center;
+      border:1px dashed rgba(159,195,218,.20); border-radius:11px; color:var(--faint); font-size:10px;
+    }
+    .memory-foot {
+      display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;
+    }
+    .memory-stat { padding:9px; border:1px solid var(--line); border-radius:10px; background:rgba(2,9,16,.33); }
+    .memory-stat span { display:block; color:var(--faint); font-size:8px; font-weight:900; letter-spacing:.07em; text-transform:uppercase; }
+    .memory-stat strong { display:block; margin-top:4px; font-size:11px; }
+
+    .trace-panel { margin-top:14px; }
+    .trace-body { padding:11px 14px 14px; }
+    .trace-list { display:flex; gap:7px; overflow-x:auto; padding-bottom:3px; }
+    .trace-card {
+      flex:0 0 210px; padding:9px; border:1px solid var(--line); border-radius:10px;
+      background:rgba(2,9,16,.32);
+    }
+    .trace-card strong { display:block; font-size:10px; }
+    .trace-card p { margin:4px 0 0; color:var(--muted); font-size:9px; line-height:1.4; }
+    .trace-card.current { border-color:rgba(103,232,249,.39); background:rgba(103,232,249,.055); }
+
+    .flight-card {
+      position:fixed !important; z-index:9999; margin:0 !important; pointer-events:none !important;
+      transform-origin:center center; transition:transform var(--speed) cubic-bezier(.2,.75,.2,1), opacity var(--speed) ease, filter var(--speed) ease;
+      will-change:transform,opacity; box-shadow:0 25px 70px rgba(0,0,0,.55),0 0 28px rgba(103,232,249,.18) !important;
+    }
+    .flight-card.pushing { filter:saturate(1.18) brightness(1.06); }
+    .flight-card.popping { filter:saturate(1.12) brightness(1.08); }
+    .flight-label {
+      position:fixed; z-index:10000; pointer-events:none; padding:5px 9px; border-radius:999px;
+      border:1px solid rgba(103,232,249,.34); background:rgba(7,16,26,.94); color:var(--accent);
+      font-size:9px; font-weight:900; letter-spacing:.06em; text-transform:uppercase;
+      transition:transform var(--speed) ease,opacity var(--speed) ease;
+    }
+
+    .toast-stack { position:fixed; right:14px; bottom:14px; z-index:10020; display:grid; gap:8px; width:min(330px,calc(100vw - 28px)); }
+    .toast {
+      padding:10px 12px; border:1px solid var(--line-strong); border-radius:11px;
+      background:rgba(10,20,32,.96); box-shadow:0 18px 45px rgba(0,0,0,.38); color:#dbe9f3; font-size:11px;
+      animation:toast-in 180ms ease both;
+    }
+    .toast.good { border-color:rgba(85,230,165,.34); }
+    .toast.bad { border-color:rgba(255,111,145,.34); }
+    @keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+    .confetti { position:fixed; z-index:10010; width:7px; height:12px; border-radius:2px; pointer-events:none; animation:confetti 900ms ease-out forwards; }
+    @keyframes confetti { to { transform:translate(var(--dx),var(--dy)) rotate(480deg); opacity:0; } }
+
+    @media (max-width: 1180px) {
+      .workspace-layout { grid-template-columns:320px minmax(0,1fr); }
+      .workbench-grid { grid-template-columns:minmax(0,1fr) 315px; }
+      .state-card { width:142px; }
+      .state-card.search { width:215px; }
+    }
+
+    @media (max-width: 920px) {
+      body { overflow:auto; }
+      .app-shell { height:auto; min-height:100vh; }
+      .topbar { position:sticky; top:0; padding-inline:10px; }
+      .brand-copy span, .save-badge, .button-label, .project-name { display:none; }
+      .mobile-menu { display:inline-flex; }
+      .workspace-layout { display:block; }
+      .sidebar {
+        position:fixed; z-index:80; left:0; top:66px; bottom:0; width:min(355px,90vw);
+        transform:translateX(-102%); transition:transform 220ms ease; box-shadow:24px 0 60px rgba(0,0,0,.42);
+      }
+      .sidebar.open { transform:translateX(0); }
+      .sidebar-scrim {
+        display:none; position:fixed; z-index:70; inset:66px 0 0; background:rgba(0,0,0,.48); backdrop-filter:blur(2px);
+      }
+      .sidebar-scrim.open { display:block; }
+      .main { overflow:visible; padding:10px; }
+      .runner-top { grid-template-columns:1fr; }
+      .transport { justify-content:stretch; }
+      .transport .btn { flex:1 1 0; }
+      .runner-meta { grid-template-columns:1fr auto; }
+      .speed-control { grid-column:1 / -1; grid-row:2; justify-content:stretch; }
+      .run-summary { text-align:right; }
+      .workbench-grid { grid-template-columns:1fr; min-height:0; }
+      .memory-panel { min-height:500px; }
+      .state-detail { grid-template-columns:1fr; }
+      .dfa-scroller { margin-inline:-14px; padding-inline:18px; }
+      .state-card { width:150px; min-height:218px; }
+      .state-card.search { width:220px; min-height:276px; }
+      .memory-panel { order:2; }
+      .automaton-panel { order:1; }
+      .trace-panel { order:3; }
+    }
+
+    @media (max-width: 560px) {
+      .topbar { gap:7px; min-height:61px; }
+      .brand-mark { width:34px; height:34px; }
+      .brand-copy strong { font-size:13px; }
+      .validation-badge { max-width:110px; overflow:hidden; text-overflow:ellipsis; }
+      .top-actions .btn:not(.mobile-menu):not(#saveProjectBtn) { display:none; }
+      .main { padding:8px; }
+      .runner-card, .workbench-panel { border-radius:14px; }
+      .initial-input-wrap { grid-template-columns:1fr auto; padding-left:8px; }
+      .initial-input-wrap label { grid-column:1 / -1; padding:2px 4px 0; }
+      .example-select { min-width:118px; max-width:138px; }
+      .transport { display:grid; grid-template-columns:repeat(3,1fr); }
+      .runner-meta { grid-template-columns:1fr; gap:7px; }
+      .run-summary { text-align:left; }
+      .speed-control { grid-column:auto; grid-row:auto; }
+      .policy-ribbon { flex-wrap:nowrap; overflow-x:auto; padding-bottom:3px; }
+      .policy-badge { flex:0 0 auto; }
+      .panel-header { padding:12px; }
+      .automaton-body { padding:12px; }
+      .state-detail { gap:8px; }
+      .event-grid { grid-template-columns:1fr; }
+      .frontier-list { min-height:118px; }
+      .thought-card { width:175px; min-width:175px; }
+      .memory-body { padding:12px; }
+      .stack-shell { padding-inline:27px; min-height:380px; }
+      .stack-card { width:100%; min-width:0; }
+      .trace-card { flex-basis:185px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+    }
+  
+    /* v3 policy JSON, routines, and subroutine-aware Working Memory */
+    :root { --speed: 1200ms; }
+    .policy-draft-badge { max-width: 210px; }
+    .three-col { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .checkbox-field label { display:flex; align-items:flex-start; gap:8px; color:var(--muted); font-size:11px; line-height:1.4; }
+    .checkbox-field input { width:16px; min-height:16px; flex:0 0 auto; margin-top:1px; accent-color:var(--accent); }
+
+    .routine-list { display:grid; gap:7px; margin-top:10px; }
+    .routine-list-row {
+      display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%;
+      padding:10px; border:1px solid var(--line); border-radius:10px;
+      background:rgba(2,9,16,.32); color:var(--muted); text-align:left;
+    }
+    .routine-list-row:hover { border-color:var(--line-strong); color:var(--text); }
+    .routine-list-row.active { border-color:rgba(167,139,250,.48); background:rgba(167,139,250,.09); color:var(--text); box-shadow:0 0 0 2px rgba(167,139,250,.07); }
+    .routine-list-row span:first-child { min-width:0; }
+    .routine-list-row strong { display:block; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .routine-list-row small { display:block; margin-top:3px; color:var(--faint); font-size:9px; }
+
+    .inspect-rule-editor { display:grid; gap:8px; margin:7px 0 8px; }
+    .inspect-rule-row {
+      display:grid; grid-template-columns:24px minmax(80px,.8fr) minmax(105px,.9fr) minmax(110px,1fr) minmax(120px,1fr) auto;
+      gap:6px; align-items:center; padding:7px; border:1px solid var(--line); border-radius:10px; background:rgba(2,9,16,.32);
+    }
+    .inspect-rule-row input, .inspect-rule-row select { min-height:32px; padding:5px 7px; font-size:10px; }
+    .rule-buttons { display:flex; gap:4px; }
+    .rule-buttons button {
+      width:27px; height:29px; border:1px solid var(--line); border-radius:7px;
+      background:rgba(255,255,255,.04); color:var(--muted);
+    }
+    .rule-buttons button:hover { color:var(--text); border-color:var(--line-strong); }
+
+    .policy-panel-header { align-items:center; }
+    .view-tabs {
+      display:inline-flex; flex:0 0 auto; padding:3px; border:1px solid var(--line); border-radius:11px;
+      background:rgba(2,9,16,.42);
+    }
+    .view-tab {
+      min-width:70px; min-height:32px; padding:6px 12px; border-radius:8px; background:transparent;
+      color:var(--muted); font-size:11px; font-weight:800;
+    }
+    .view-tab.active { color:#f1edff; background:linear-gradient(135deg,rgba(124,92,246,.72),rgba(92,73,198,.72)); box-shadow:0 8px 20px rgba(88,65,180,.25); }
+    .policy-view { display:none; }
+    .policy-view.active { display:block; animation:panel-in 170ms ease both; }
+
+    .routine-toolbar {
+      display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px;
+      border-bottom:1px solid var(--line); background:rgba(2,9,16,.22);
+    }
+    .routine-bar { display:flex; gap:7px; min-width:0; overflow-x:auto; padding-bottom:2px; }
+    .routine-tab {
+      flex:0 0 auto; display:grid; gap:1px; min-width:122px; padding:8px 10px; border:1px solid var(--line);
+      border-radius:10px; background:rgba(255,255,255,.025); color:var(--muted); text-align:left;
+    }
+    .routine-tab span { font-size:10px; font-weight:850; }
+    .routine-tab small { color:var(--faint); font-size:8px; }
+    .routine-tab:hover { border-color:var(--line-strong); color:var(--text); }
+    .routine-tab.active { border-color:rgba(167,139,250,.52); background:rgba(167,139,250,.10); color:#eee9ff; }
+    .routine-tab.running { box-shadow:inset 0 -2px 0 var(--accent),0 0 18px rgba(103,232,249,.08); }
+    .routine-path { flex:0 0 auto; max-width:260px; text-align:right; }
+    .routine-path span { display:block; color:var(--faint); font-size:8px; font-weight:850; letter-spacing:.08em; text-transform:uppercase; }
+    .routine-path strong { display:block; margin-top:3px; color:#d8ccff; font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    .state-card.kind-inspect { width:220px; min-height:262px; }
+    .state-card.kind-call, .state-card.kind-return { width:185px; min-height:236px; }
+    .state-card.kind-call { border-color:rgba(56,189,248,.42); background:linear-gradient(150deg,rgba(18,52,65,.90),rgba(10,27,38,.97)); }
+    .state-card.kind-return { border-color:rgba(45,212,191,.42); background:linear-gradient(150deg,rgba(17,55,56,.88),rgba(8,29,31,.97)); }
+    .state-card.kind-call .state-icon, .state-card.kind-return .state-icon { color:#5eead4; border-color:rgba(45,212,191,.27); background:rgba(45,212,191,.08); }
+    .state-card.kind-inspect .state-icon { color:var(--warn); border-color:rgba(249,199,79,.27); background:rgba(249,199,79,.07); }
+    .rule-preview { display:grid; gap:5px; margin-top:11px; }
+    .rule-preview div {
+      display:grid; grid-template-columns:18px minmax(0,1fr); gap:5px; padding:5px 6px;
+      border:1px solid var(--line); border-radius:8px; background:rgba(2,9,16,.30);
+    }
+    .rule-preview span { grid-row:1 / 3; display:grid; place-items:center; width:17px; height:17px; border-radius:50%; background:rgba(249,199,79,.16); color:var(--warn); font-size:7.5px; font-weight:900; }
+    .rule-preview b { min-width:0; color:#e9edf0; font-size:8.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rule-preview em { color:var(--faint); font-size:8px; font-style:normal; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .call-preview { display:grid; grid-template-columns:auto minmax(0,1fr); gap:6px 8px; margin-top:13px; padding:9px; border:1px solid rgba(45,212,191,.20); border-radius:9px; background:rgba(45,212,191,.05); }
+    .call-preview span { color:var(--faint); font-size:8px; text-transform:uppercase; letter-spacing:.05em; }
+    .call-preview strong { color:#b9fff4; font-size:9px; overflow-wrap:anywhere; }
+
+    .json-workspace { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(300px,.75fr); gap:12px; padding:14px; min-height:650px; }
+    .json-editor-card, .grammar-card {
+      min-width:0; border:1px solid var(--line); border-radius:14px; background:rgba(2,9,16,.38); overflow:hidden;
+    }
+    .json-editor-card { display:flex; flex-direction:column; }
+    .json-toolbar { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:11px 12px; border-bottom:1px solid var(--line); }
+    .json-toolbar > div:first-child { display:flex; align-items:center; gap:8px; padding-top:5px; }
+    .json-toolbar strong { font-size:12px; }
+    .button-row.compact { margin-top:0; justify-content:flex-end; }
+    .policy-json {
+      flex:1 1 auto; min-height:540px; margin:0; border:0; border-radius:0; padding:15px 17px;
+      background:#07111d; color:#dbeafe; line-height:1.55; font-size:11px; tab-size:2; resize:none;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+    }
+    .policy-json:focus { box-shadow:inset 0 0 0 1px rgba(103,232,249,.28); }
+    .json-issues { display:grid; gap:6px; max-height:148px; overflow-y:auto; padding:9px; border-top:1px solid var(--line); }
+    .json-issue { display:grid; gap:2px; padding:7px 8px; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.02); }
+    .json-issue strong { font-size:9.5px; }
+    .json-issue span { color:var(--muted); font-size:8.5px; }
+    .json-issue.error { border-color:rgba(255,111,145,.28); background:rgba(255,111,145,.05); }
+    .json-issue.warn { border-color:rgba(249,199,79,.26); background:rgba(249,199,79,.04); }
+    .json-issue.ok { border-color:rgba(85,230,165,.25); background:rgba(85,230,165,.05); }
+    .grammar-card { padding:14px; overflow:auto; }
+    .grammar-card h2 { margin:0; font-size:13px; }
+    .grammar-card > p { margin:8px 0 12px; color:var(--muted); font-size:10px; }
+    .grammar-code {
+      margin:0; padding:13px; overflow:auto; border:1px solid var(--line); border-radius:11px;
+      background:#07111d; color:#d5e9f8; font:9.5px/1.55 "SFMono-Regular",Consolas,monospace; white-space:pre-wrap;
+    }
+    .grammar-notes { display:grid; gap:7px; margin-top:11px; }
+    .grammar-notes div { padding:9px; border:1px solid var(--line); border-radius:9px; background:rgba(255,255,255,.02); }
+    .grammar-notes strong { display:block; color:#e9e3ff; font-size:9.5px; }
+    .grammar-notes span { display:block; margin-top:3px; color:var(--muted); font-size:8.8px; line-height:1.45; }
+
+    .workbench-grid { grid-template-columns:minmax(0,1fr) 370px; min-height:640px; }
+    .memory-panel { min-height:640px; }
+    .memory-body { gap:10px; }
+    .current-thought-zone { flex:0 0 auto; }
+    .current-labels { margin-bottom:6px; }
+    .current-thought-bubble {
+      position:relative; min-height:150px; padding:26px 10px 10px; border:1px solid rgba(167,139,250,.52);
+      border-radius:22px; background:radial-gradient(circle at 50% 4%,rgba(167,139,250,.14),transparent 48%),linear-gradient(145deg,rgba(26,31,59,.96),rgba(13,19,38,.98));
+      box-shadow:0 17px 42px rgba(0,0,0,.28),0 0 0 2px rgba(167,139,250,.08),0 0 32px rgba(167,139,250,.10);
+    }
+    .current-thought-bubble.empty { display:grid; place-items:center; border-style:dashed; background:rgba(13,21,35,.65); box-shadow:none; }
+    .current-thought-label {
+      position:absolute; left:50%; top:7px; transform:translateX(-50%); color:#cbbcff;
+      font-size:8px; font-weight:950; letter-spacing:.11em; text-transform:uppercase; white-space:nowrap;
+    }
+    .current-empty { max-width:220px; color:var(--faint); font-size:9.5px; line-height:1.45; text-align:center; }
+    .current-thought-bubble .thought-card { width:100%; min-width:0; min-height:112px; border-color:rgba(167,139,250,.43); background:rgba(17,25,48,.92); box-shadow:none; }
+    .current-thought-bubble.pulse { animation:current-bubble-pulse 760ms ease; }
+    @keyframes current-bubble-pulse { 0%{box-shadow:0 0 0 0 rgba(167,139,250,.46),0 17px 42px rgba(0,0,0,.28)} 100%{box-shadow:0 0 0 22px rgba(167,139,250,0),0 17px 42px rgba(0,0,0,.28)} }
+
+    .call-stack-strip {
+      display:flex; align-items:center; gap:6px; min-height:35px; padding:6px 8px; overflow-x:auto;
+      border:1px solid var(--line); border-radius:10px; background:rgba(2,9,16,.33);
+    }
+    .frame-label { flex:0 0 auto; color:var(--faint); font-size:8px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+    .frame-empty { color:var(--muted); font-size:9px; }
+    .frame-chip { flex:0 0 auto; padding:4px 7px; border:1px solid rgba(45,212,191,.22); border-radius:999px; background:rgba(45,212,191,.05); color:#a7f3e7; font-size:8.5px; }
+    .frame-chip.active { border-color:rgba(45,212,191,.54); box-shadow:0 0 13px rgba(45,212,191,.10); }
+
+    .stack-shell { min-height:302px; padding-top:20px; }
+    .stack-boundary {
+      position:relative; display:grid; place-items:center; min-height:44px; margin:1px 0 2px;
+      border-top:1px dashed rgba(45,212,191,.48); border-bottom:1px dashed rgba(45,212,191,.22);
+      color:#9ff5e8; text-align:center;
+    }
+    .stack-boundary::before, .stack-boundary::after { content:""; position:absolute; top:50%; width:28px; height:1px; background:rgba(45,212,191,.28); }
+    .stack-boundary::before { left:0; } .stack-boundary::after { right:0; }
+    .stack-boundary span { font-size:8px; font-weight:900; letter-spacing:.07em; text-transform:uppercase; }
+    .stack-boundary small { margin-top:2px; color:var(--faint); font-size:7.5px; }
+    .bottom-labels { margin-top:-2px !important; margin-bottom:0 !important; }
+
+    .flight-card {
+      opacity:1 !important; border-width:2px !important; box-shadow:0 30px 85px rgba(0,0,0,.62),0 0 0 2px rgba(103,232,249,.16),0 0 42px rgba(103,232,249,.28) !important;
+      will-change:transform,opacity; transform-origin:center center;
+    }
+    .flight-card.pushing { filter:saturate(1.15) brightness(1.08); }
+    .flight-card.popping { filter:saturate(1.12) brightness(1.1); }
+    .flight-action {
+      position:absolute; z-index:4; left:9px; top:8px; max-width:calc(100% - 18px); padding:4px 8px;
+      border:1px solid rgba(103,232,249,.55); border-radius:999px; background:rgba(5,15,25,.94); color:var(--accent);
+      font-size:7.5px; font-weight:950; letter-spacing:.07em; text-transform:uppercase; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      box-shadow:0 6px 16px rgba(0,0,0,.28);
+    }
+    .flight-path-layer { position:fixed; inset:0; z-index:9997; pointer-events:none; overflow:visible; }
+    .flight-path-layer path { fill:none; stroke:url(#none); stroke:rgba(103,232,249,.82); stroke-width:2.3; stroke-linecap:round; stroke-dasharray:9 10; filter:drop-shadow(0 0 7px rgba(103,232,249,.62)); }
+    .motion-source { animation:motion-source-pulse 850ms ease-in-out infinite alternate; }
+    @keyframes motion-source-pulse { from{filter:brightness(1)} to{filter:brightness(1.18);box-shadow:0 0 0 2px rgba(103,232,249,.13),0 0 24px rgba(103,232,249,.18)} }
+
+    @media (max-width: 1280px) {
+      .workspace-layout { grid-template-columns:330px minmax(0,1fr); }
+      .workbench-grid { grid-template-columns:minmax(0,1fr) 340px; }
+      .json-workspace { grid-template-columns:minmax(0,1fr) 310px; }
+      .inspect-rule-row { grid-template-columns:24px 1fr 1fr; }
+      .inspect-rule-row .rule-value-input, .inspect-rule-row .rule-target-input, .inspect-rule-row .rule-buttons { grid-column:2 / -1; }
+    }
+
+    @media (max-width: 920px) {
+      .policy-draft-badge { display:none; }
+      .workbench-grid { grid-template-columns:1fr; }
+      .memory-panel { min-height:560px; }
+      .json-workspace { grid-template-columns:1fr; min-height:0; }
+      .policy-json { min-height:470px; }
+      .grammar-card { max-height:none; }
+      .routine-toolbar { align-items:flex-start; flex-direction:column; }
+      .routine-path { max-width:100%; text-align:left; }
+      .memory-panel { order:2; }
+      .automaton-panel { order:1; }
+      .trace-panel { order:3; }
+    }
+
+    @media (max-width: 620px) {
+      .three-col { grid-template-columns:1fr; }
+      .policy-panel-header { align-items:flex-start; flex-direction:column; }
+      .view-tabs { align-self:stretch; }
+      .view-tab { flex:1 1 0; }
+      .json-toolbar { flex-direction:column; }
+      .button-row.compact { justify-content:flex-start; }
+      .policy-json { min-height:430px; font-size:10px; }
+      .routine-tab { min-width:112px; }
+      .state-card.kind-inspect { width:205px; }
+      .state-card.kind-call, .state-card.kind-return { width:172px; }
+      .current-thought-bubble { min-height:142px; }
+      .stack-shell { min-height:292px; }
+      .inspect-rule-row { grid-template-columns:24px 1fr; }
+      .inspect-rule-row > *:not(.order-index) { grid-column:2; }
+    }
+
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="btn icon ghost mobile-menu" id="mobileMenuBtn" aria-label="Open policy editor">☰</button>
+      <div class="brand" aria-label="Predicate Policy DFA Lab">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-copy"><strong>Predicate Policy DFA Lab</strong><span>coordinate-free game-tree policy workbench</span></div>
+      </div>
+      <input id="projectName" class="project-name" aria-label="Project name" spellcheck="false" />
+      <div class="validation-badge" id="validationBadge">Validating…</div>
+      <div class="validation-badge good policy-draft-badge" id="policyDraftBadge">Policy synchronized</div>
+      <div class="save-badge" id="saveBadge">Saved locally</div>
+      <div class="topbar-spacer"></div>
+      <div class="top-actions">
+        <button class="btn ghost" id="openProjectBtn">↥ <span class="button-label">Open project</span></button>
+        <button class="btn primary" id="saveProjectBtn">⇩ <span class="button-label">Save project</span></button>
+        <button class="btn ghost" id="resetProjectBtn">↺ <span class="button-label">Reset example</span></button>
+      </div>
+      <input id="projectFileInput" type="file" hidden accept=".json,application/json" />
+      <input id="policyFileInput" type="file" hidden accept=".json,application/json" />
+    </header>
+
+    <div class="workspace-layout">
+      <aside class="sidebar" id="sidebar">
+        <nav class="side-tabs" aria-label="Editor sections">
+          <button class="side-tab active" data-tab="policy">Policy</button>
+          <button class="side-tab" data-tab="oracle">Oracle</button>
+          <button class="side-tab" data-tab="state">State</button>
+          <button class="side-tab" data-tab="tests">Tests</button>
+          <button class="side-tab" data-tab="issues">Check</button>
+        </nav>
+        <div class="side-scroll">
+          <section class="tab-panel active" data-panel="policy">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Policy contract</h2><span class="mini-chip good">coordinate-free</span></div>
+              <p class="panel-copy">The DFA never receives coordinates or move notation. It consumes oracle predicates, orders children, stores candidate thoughts in LIFO working memory, and may call bounded subroutines.</p>
+              <div class="summary-grid" id="policySummaryGrid"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Outcomes &amp; budgets</h2>
+              <div class="field"><label for="winningPredicates">Winning predicates</label><input id="winningPredicates" placeholder="objective_won, mate" /></div>
+              <div class="field"><label for="failurePredicates">Immediate failure predicates</label><input id="failurePredicates" placeholder="objective_lost, mated" /></div>
+              <div class="two-col"><div class="field"><label for="acceptState">Accept state</label><select id="acceptState"></select></div><div class="field"><label for="rejectState">Reject state</label><select id="rejectState"></select></div></div>
+              <div class="field"><label for="policyEntry">Policy entry state</label><select id="policyEntry"></select></div>
+              <div class="three-col"><div class="field"><label for="thoughtBudget">Thoughts</label><input id="thoughtBudget" type="number" min="1" /></div><div class="field"><label for="maxDepth">Oracle depth</label><input id="maxDepth" type="number" min="0" /></div><div class="field"><label for="callDepth">Call depth</label><input id="callDepth" type="number" min="0" /></div></div>
+              <div class="button-row"><button class="btn primary" id="applyPolicyContractBtn">Apply contract</button></div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title-row"><h2>Routines</h2><button class="btn small" id="addRoutineBtn">＋ subroutine</button></div>
+              <p class="panel-copy">A CALL creates a control-stack frame and a Working Memory boundary. A RETURN restores the caller without consuming deeper caller thoughts.</p>
+              <div id="routineList" class="routine-list"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Selected routine</h2>
+              <div class="two-col"><div class="field"><label for="routineId">Routine ID</label><input id="routineId" /></div><div class="field"><label for="routineLabel">Label</label><input id="routineLabel" /></div></div>
+              <div class="field"><label for="routineEntry">Entry state</label><select id="routineEntry"></select></div>
+              <div class="button-row"><button class="btn primary" id="applyRoutineBtn">Apply routine</button><button class="btn" id="addStateBtn">＋ state</button></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="oracle">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Oracle position cards</h2><span id="oracleCount" class="mini-chip"></span></div>
+              <p class="panel-copy">Each unique position has a side to move, predicate strings, help text, and optional child-position hints. The policy sees only these semantic labels.</p>
+              <div id="oracleList" class="oracle-list"></div>
+            </div>
+            <div class="panel">
+              <h2>Edit oracle JSON</h2>
+              <p class="panel-copy">This is the test tree: position cards and their optional expansion hints.</p>
+              <textarea id="oracleJson" class="mono" spellcheck="false"></textarea>
+              <div class="button-row"><button class="btn primary" id="applyOracleBtn">Validate &amp; apply</button><button class="btn ghost" id="formatOracleBtn">Format</button></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="state">
+            <div class="panel" id="selectedStateEditor"></div>
+            <div class="panel">
+              <div class="panel-title-row"><h2>Transition table</h2><span class="mini-chip">deterministic order</span></div>
+              <table class="transition-table"><thead><tr><th>State</th><th>Event / rule</th><th>Next</th></tr></thead><tbody id="transitionTableBody"></tbody></table>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="tests">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Example tests</h2><button class="btn small primary" id="runTestsBtn">Run suite</button></div>
+              <p class="panel-copy">Each test supplies initial position IDs. Results depend only on oracle predicates and the policy JSON.</p>
+              <div id="testList" class="test-list"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="issues">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Validation report</h2><span id="issueCount" class="mini-chip">0</span></div>
+              <div id="issueList" class="issue-list"></div>
+            </div>
+            <div class="panel">
+              <h2>Core guarantees</h2>
+              <p class="panel-copy">Globally unique state IDs; routine entries that belong to their routine; valid transition targets; ordered inspect rules; ordered search predicates; explicit closure; bounded thoughts, depth, and nested calls; valid oracle child hints.</p>
+            </div>
+          </section>
+        </div>
+      </aside>
+      <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+      <main class="main">
+        <section class="runner-card" aria-label="Interactive policy runner">
+          <div class="runner-top">
+            <div class="initial-input-wrap" id="initialSource">
+              <label for="initialInput">Initial thoughts</label>
+              <input id="initialInput" spellcheck="false" placeholder="Root" aria-label="Space-separated initial position IDs" />
+              <select id="exampleSelect" class="example-select" aria-label="Load example">
+                <option value="tactic">Forcing Search</option>
+                <option value="return">Subroutine Return</option>
+                <option value="abstract">Abstract Priority</option>
+                <option value="exhausted">Closure Failure</option>
+              </select>
+            </div>
+            <div class="transport">
+              <button class="btn" id="resetRunBtn">↺ <span class="button-label">Reset</span></button>
+              <button class="btn" id="stepBtn">→ <span class="button-label">Step</span></button>
+              <button class="btn primary play-button" id="playBtn">▶ <span class="button-label">Run</span></button>
+            </div>
+          </div>
+          <div class="runner-meta">
+            <div id="stepReadout">Thought <strong>0 / 30</strong></div>
+            <label class="speed-control" for="speedSlider"><span>Faster</span><input id="speedSlider" type="range" min="650" max="2200" step="50" /><span>Slower</span></label>
+            <div id="runSummary" class="run-summary">Ready — press Step or Run</div>
+          </div>
+          <div id="policyRibbon" class="policy-ribbon"></div>
+          <div id="timeline" class="timeline" aria-label="Policy trace timeline"></div>
+        </section>
+
+        <div class="workbench-grid">
+          <section class="workbench-panel automaton-panel">
+            <header class="panel-header policy-panel-header">
+              <div><h1>Policy DFA</h1><p>Search cards state their predicate order and closure. Routine calls switch to another linear DFA and RETURN restores the caller.</p></div>
+              <div class="view-tabs" role="tablist" aria-label="Policy representation">
+                <button class="view-tab active" data-view="cards">Cards</button>
+                <button class="view-tab" data-view="json">JSON</button>
+              </div>
+            </header>
+
+            <div class="policy-view active" data-policy-view="cards">
+              <div class="routine-toolbar"><div id="routineBar" class="routine-bar"></div><div class="routine-path"><span>active path</span><strong id="routinePath">main</strong></div></div>
+              <div class="automaton-body">
+                <div class="dfa-scroller" id="dfaScroller"><div class="dfa-flow" id="dfaFlow"></div></div>
+                <section class="frontier-section">
+                  <div class="frontier-head">
+                    <div><h2>Oracle children visible at this ply</h2><p>The active filter card examines only these oracle-reported children. Unreported children do not exist for this run.</p></div>
+                    <span id="frontierCount" class="mini-chip">0 cards</span>
+                  </div>
+                  <div id="frontierList" class="frontier-list"><div class="frontier-empty">Pop a thought, inspect it, and enter a filter state to consult the oracle.</div></div>
+                </section>
+              </div>
+            </div>
+
+            <div class="policy-view" data-policy-view="json">
+              <div class="json-workspace">
+                <section class="json-editor-card">
+                  <div class="json-toolbar">
+                    <div><strong>Policy JSON</strong><span id="policyJsonStatus" class="mini-chip good">validated</span></div>
+                    <div class="button-row compact"><button class="btn small" id="loadPolicyJsonBtn">Open</button><button class="btn small" id="copyPolicyJsonBtn">Copy</button><button class="btn small" id="formatPolicyJsonBtn">Format</button><button class="btn small" id="validatePolicyJsonBtn">Validate</button><button class="btn small" id="downloadPolicyJsonBtn">Save policy</button><button class="btn small primary" id="applyPolicyJsonBtn">Apply to cards</button></div>
+                  </div>
+                  <textarea id="policyJson" class="policy-json mono" spellcheck="false" aria-label="Policy JSON editor"></textarea>
+                  <div id="policyJsonIssues" class="json-issues"></div>
+                </section>
+
+                <aside class="grammar-card">
+                  <div class="panel-title-row"><h2>Binding grammar</h2><span class="mini-chip">predicate-policy/v2</span></div>
+                  <p>The JSON is not decorative configuration. It is the executable grammar that binds each visible card and every transition.</p>
+                  <pre class="grammar-code">policy ::= {
+  schema, entry,
+  outcomes, budgets,
+  routines[], states[]
+}
+
+routine ::= {
+  id, label?, entry
+}
+
+state ::= {
+  id, routine, kind,
+  description?, ...kind_fields
+}
+
+kind ::= push_initial | pop |
+  inspect | search | call |
+  return | accept | reject
+
+inspect.rules are tested top → bottom.
+The first matching rule determines one transition.
+
+when ::= {
+  side?: "my" | "their",
+  any?: string[],
+  all?: string[],
+  none?: string[]
+}
+
+search ::= {
+  predicates: string[],
+  closure: {
+    mode: "first" | "all" |
+          "one_each",
+    count?: integer
+  },
+  on: { pushed, none }
+}
+
+call ::= {
+  routine, return_to,
+  resume_current?: boolean
+}
+
+RETURN pops the control frame.
+POP never crosses its active frame boundary.
+All state references use globally unique IDs.</pre>
+                  <div class="grammar-notes">
+                    <div><strong>Determinism</strong><span>Inspect rules and search predicates are ordered. First-match semantics remove ambiguity.</span></div>
+                    <div><strong>Closure</strong><span>Every search state declares whether it keeps the first N, all matches, or one match per predicate.</span></div>
+                    <div><strong>Subroutines</strong><span>CALL preserves caller thoughts below a boundary; RETURN resumes at return_to.</span></div>
+                    <div><strong>Coordinate-free</strong><span>Conditions refer only to side labels and predicate strings supplied by the oracle.</span></div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </section>
+
+          <section class="workbench-panel memory-panel">
+            <header class="panel-header">
+              <div><h1>Working Memory</h1><p>LIFO thought stack plus a separate control stack for policy subroutines.</p></div>
+              <div class="memory-head-extra"><span id="budgetText" class="mini-chip">0 / 30</span><div class="budget-meter"><span id="budgetMeterFill"></span></div></div>
+            </header>
+            <div class="memory-body">
+              <div class="current-thought-zone">
+                <div class="memory-labels current-labels"><span>EXAMINATION BUBBLE</span><span id="currentThoughtStatus">none</span></div>
+                <div id="currentThoughtBubble" class="current-thought-bubble empty"><span class="current-thought-label">Current thought</span><div class="current-empty">A popped thought pauses here while the DFA examines it.</div></div>
+              </div>
+              <div id="callStackStrip" class="call-stack-strip"><span class="frame-label">Control stack</span><span class="frame-empty">main routine · no active subroutine</span></div>
+              <div class="memory-labels"><span>TOP — next pop</span><span id="stackCount">0 thoughts</span></div>
+              <div class="stack-shell" id="stackShell">
+                <div class="stack-inlet" id="stackInlet"></div>
+                <div class="stack-list" id="stackList"></div>
+              </div>
+              <div class="memory-labels bottom-labels"><span>BOTTOM</span><span>first-in stays deepest</span></div>
+              <div class="memory-foot">
+                <div class="memory-stat"><span>Current action</span><strong id="memoryAction">waiting</strong></div>
+                <div class="memory-stat"><span>Last match</span><strong id="lastMatch">—</strong></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="workbench-panel trace-panel">
+          <header class="panel-header">
+            <div><h1>Human-readable thought trace</h1><p>Every push, pop, predicate match, closure decision, call-frame boundary, return, DFA transition, and terminal decision remains inspectable.</p></div>
+            <button class="btn small ghost" id="clearTraceBtn">Clear trace</button>
+          </header>
+          <div class="trace-body"><div id="traceList" class="trace-list"></div></div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
+  <script>
+(() => {
+  "use strict";
+
+  const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
+  const POLICY_SCHEMA = "predicate-policy/v2";
+  const STORAGE_KEY = "predicate-policy-dfa-ui-v3";
+  const STATE_KINDS = ["push_initial", "pop", "inspect", "search", "call", "return", "accept", "reject"];
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const clone = value => JSON.parse(JSON.stringify(value));
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const unique = values => [...new Set(values)];
+  const escapeHtml = value => String(value ?? "")
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+  const listFromInput = value => String(value ?? "")
+    .split(/[\s,]+/).map(item => item.trim()).filter(Boolean);
+  const predicateListFromInput = value => String(value ?? "")
+    .split(/[\n,]+/).map(item => item.trim()).filter(Boolean);
+  const isStringArray = value => Array.isArray(value) && value.every(item => typeof item === "string" && item.trim());
+  const stateIcon = kind => ({
+    push_initial: "▶", pop: "⇧", inspect: "◇", search: "⌕",
+    call: "↳", return: "↰", accept: "✓", reject: "×"
+  }[kind] || "·");
+  const kindLabel = kind => ({
+    push_initial: "start", pop: "pop", inspect: "inspect", search: "filter",
+    call: "call", return: "return", accept: "accept", reject: "reject"
+  }[kind] || kind);
+
+  const DEFAULT_POLICY = {
+    schema: POLICY_SCHEMA,
+    entry: "START",
+    outcomes: {
+      accept_state: "SOLVED",
+      reject_state: "REJECT",
+      winning_predicates: ["objective_won", "mate"],
+      failure_predicates: ["objective_lost", "mated"]
+    },
+    budgets: { thoughts: 30, depth: 6, call_depth: 5 },
+    routines: [
+      { id: "main", label: "Main search", entry: "START" },
+      { id: "reply_probe", label: "Forcing reply probe", entry: "REPLY_FILTER" }
+    ],
+    states: [
+      {
+        id: "START", routine: "main", kind: "push_initial",
+        description: "Push the user-supplied initial position thoughts into Working Memory.",
+        on: { pushed: "MAIN_POP", invalid: "REJECT" }
+      },
+      {
+        id: "MAIN_POP", routine: "main", kind: "pop",
+        description: "Pop the most interesting remaining thought from Working Memory.",
+        on: { thought: "MAIN_INSPECT", empty: "REJECT" }
+      },
+      {
+        id: "MAIN_INSPECT", routine: "main", kind: "inspect", terminal_checks: true,
+        description: "Check terminal predicates, then route by ordered semantic rules.",
+        rules: [
+          { label: "forcing line", when: { any: ["single_reply_check"] }, to: "ENTER_REPLY_PROBE" },
+          { label: "my ply", when: { side: "my" }, to: "MAIN_MY_CHILDREN" },
+          { label: "their ply", when: { side: "their" }, to: "MAIN_THEIR_CHILDREN" }
+        ],
+        on: { depth: "MAIN_POP", missing: "REJECT" },
+        default: "MAIN_POP"
+      },
+      {
+        id: "MAIN_MY_CHILDREN", routine: "main", kind: "search", side: "my",
+        description: "Ask the oracle for my candidate children, in policy priority order.",
+        predicates: ["mate", "single_reply_check", "forcing_check", "wins_material"],
+        closure: { mode: "first", count: 2 },
+        on: { pushed: "MAIN_POP", none: "MAIN_POP" }
+      },
+      {
+        id: "MAIN_THEIR_CHILDREN", routine: "main", kind: "search", side: "their",
+        description: "Ask the oracle for relevant opponent replies and retain every live match.",
+        predicates: ["mate", "check", "refutes_objective", "defends_target"],
+        closure: { mode: "all" },
+        on: { pushed: "MAIN_POP", none: "MAIN_POP" }
+      },
+      {
+        id: "ENTER_REPLY_PROBE", routine: "main", kind: "call",
+        description: "Enter a bounded reply-search subroutine without disturbing deeper main-line thoughts.",
+        call: { routine: "reply_probe", return_to: "MAIN_POP", resume_current: false }
+      },
+      {
+        id: "SOLVED", routine: "main", kind: "accept",
+        description: "The winning predicate contract was satisfied."
+      },
+      {
+        id: "REJECT", routine: "main", kind: "reject",
+        description: "The policy failed, exhausted its budget, or closed every retained line."
+      },
+      {
+        id: "REPLY_FILTER", routine: "reply_probe", kind: "search", side: "their",
+        description: "From the triggering thought, enumerate the most relevant opponent replies.",
+        predicates: ["forced_reply", "check", "refutes_objective"],
+        closure: { mode: "all" },
+        on: { pushed: "REPLY_POP", none: "REPLY_RETURN" }
+      },
+      {
+        id: "REPLY_POP", routine: "reply_probe", kind: "pop",
+        description: "Pop only thoughts created above this subroutine's frame boundary.",
+        on: { thought: "REPLY_INSPECT", empty: "REPLY_RETURN" }
+      },
+      {
+        id: "REPLY_INSPECT", routine: "reply_probe", kind: "inspect", terminal_checks: true,
+        description: "Inspect a reply and continue the local my-ply / their-ply search paradigm.",
+        rules: [
+          { label: "my continuation", when: { side: "my" }, to: "REPLY_MY_CHILDREN" },
+          { label: "their continuation", when: { side: "their" }, to: "REPLY_THEIR_CHILDREN" }
+        ],
+        on: { depth: "REPLY_POP", missing: "REJECT" },
+        default: "REPLY_POP"
+      },
+      {
+        id: "REPLY_MY_CHILDREN", routine: "reply_probe", kind: "search", side: "my",
+        description: "Continue the candidate line inside the subroutine.",
+        predicates: ["objective_won", "wins_material", "forcing_check"],
+        closure: { mode: "first", count: 2 },
+        on: { pushed: "REPLY_POP", none: "REPLY_RETURN" }
+      },
+      {
+        id: "REPLY_THEIR_CHILDREN", routine: "reply_probe", kind: "search", side: "their",
+        description: "Retain all relevant refutations inside the subroutine.",
+        predicates: ["refutes_objective", "check", "defends_target"],
+        closure: { mode: "all" },
+        on: { pushed: "REPLY_POP", none: "REPLY_RETURN" }
+      },
+      {
+        id: "REPLY_RETURN", routine: "reply_probe", kind: "return",
+        description: "Close this local search frame and resume the caller's main routine.",
+        on: { no_frame: "REJECT" }
+      }
+    ]
+  };
+
+  const EXAMPLES = {
+    tactic: {
+      schema: PROJECT_SCHEMA,
+      name: "Coordinate-Free Forcing Search",
+      initial: ["Root"],
+      policy: clone(DEFAULT_POLICY),
+      positions: [
+        { id: "Root", side: "my", predicates: ["our_turn", "loose_piece", "alignment"], help: "The oracle reports semantic facts only; no coordinates or move notation are visible to the policy.", children: ["CheckLine", "CaptureLine", "QuietLine"] },
+        { id: "CheckLine", side: "their", predicates: ["single_reply_check", "forcing_check"], help: "A forcing candidate triggers the reply-probe subroutine.", children: ["OnlyReply"] },
+        { id: "CaptureLine", side: "their", predicates: ["wins_material", "recapturable"], help: "A lower-priority candidate remains below the subroutine frame in Working Memory.", children: ["Recapture"] },
+        { id: "QuietLine", side: "their", predicates: ["quiet", "improves_piece"], help: "This child matches no configured forcing predicate and is pruned.", children: [] },
+        { id: "OnlyReply", side: "my", predicates: ["forced_reply", "defends_target"], help: "The oracle exposes the sole live reply as a semantic card.", children: ["CashOut"] },
+        { id: "Recapture", side: "my", predicates: ["refutes_objective", "objective_lost"], help: "The apparent material line is refuted.", children: [] },
+        { id: "CashOut", side: "their", predicates: ["wins_material", "objective_won"], help: "The continuation satisfies the policy's winning predicate contract.", children: [] }
+      ],
+      tests: [
+        { name: "Forcing line solves", initial: ["Root"], expected: "accept" },
+        { name: "Known refutation fails", initial: ["Recapture"], expected: "reject" },
+        { name: "Solved leaf accepts", initial: ["CashOut"], expected: "accept" }
+      ]
+    },
+    return: {
+      schema: PROJECT_SCHEMA,
+      name: "Subroutine Return and Resume",
+      initial: ["Root"],
+      policy: clone(DEFAULT_POLICY),
+      positions: [
+        { id: "Root", side: "my", predicates: ["our_turn", "candidate_set"], help: "Two retained candidates demonstrate a local subroutine returning to the main search.", children: ["ProbeLine", "FallbackLine"] },
+        { id: "ProbeLine", side: "their", predicates: ["single_reply_check", "forcing_check"], help: "This enters reply_probe, but its oracle reports no relevant reply.", children: ["UninterestingReply"] },
+        { id: "FallbackLine", side: "their", predicates: ["wins_material", "objective_won"], help: "This thought remains below the reply-probe frame and becomes the winning fallback after RETURN.", children: ["FallbackWin"] },
+        { id: "UninterestingReply", side: "my", predicates: ["quiet_reply"], help: "No reply-probe predicate matches, so the subroutine returns without consuming the fallback thought.", children: [] },
+        { id: "FallbackWin", side: "my", predicates: ["objective_won"], help: "The resumed main routine reaches a winning predicate.", children: [] }
+      ],
+      tests: [
+        { name: "Returns then solves", initial: ["Root"], expected: "accept" },
+        { name: "Empty probe alone fails", initial: ["ProbeLine"], expected: "reject" }
+      ]
+    },
+    abstract: {
+      schema: PROJECT_SCHEMA,
+      name: "Abstract Predicate Priority",
+      initial: ["Seed"],
+      policy: (() => {
+        const p = clone(DEFAULT_POLICY);
+        p.outcomes.winning_predicates = ["goal"];
+        p.outcomes.failure_predicates = ["failure"];
+        p.states.find(s => s.id === "MAIN_INSPECT").rules = [
+          { label: "my ply", when: { side: "my" }, to: "MAIN_MY_CHILDREN" },
+          { label: "their ply", when: { side: "their" }, to: "MAIN_THEIR_CHILDREN" }
+        ];
+        p.states.find(s => s.id === "MAIN_MY_CHILDREN").predicates = ["sweet", "sassy", "sprinkly"];
+        p.states.find(s => s.id === "MAIN_THEIR_CHILDREN").predicates = ["blocking", "refuting"];
+        return p;
+      })(),
+      positions: [
+        { id: "Seed", side: "my", predicates: ["starting_point"], help: "A domain-neutral toy run: predicate labels may describe games, desserts, plans, or any other tree.", children: ["A", "B", "C"] },
+        { id: "A", side: "their", predicates: ["sweet", "goal"], help: "Highest-priority match; when popped it satisfies the abstract terminal predicate.", children: ["Goal"] },
+        { id: "B", side: "their", predicates: ["sassy"], help: "Second retained match.", children: [] },
+        { id: "C", side: "their", predicates: ["sprinkly"], help: "Pruned by first-two closure.", children: [] },
+        { id: "Goal", side: "my", predicates: ["goal"], help: "Terminal predicate accepted.", children: [] }
+      ],
+      tests: [{ name: "Priority search", initial: ["Seed"], expected: "accept" }]
+    },
+    exhausted: {
+      schema: PROJECT_SCHEMA,
+      name: "Budget and Closure Failure",
+      initial: ["Plain0"],
+      policy: (() => {
+        const p = clone(DEFAULT_POLICY);
+        p.outcomes.winning_predicates = ["goal"];
+        p.outcomes.failure_predicates = ["failure"];
+        p.budgets.thoughts = 10;
+        p.states.find(s => s.id === "MAIN_MY_CHILDREN").predicates = ["forcing", "promising"];
+        return p;
+      })(),
+      positions: [
+        { id: "Plain0", side: "my", predicates: ["ordinary"], help: "No child matches the configured policy predicates.", children: ["Plain1", "Plain2"] },
+        { id: "Plain1", side: "their", predicates: ["quiet"], help: "Unmatched.", children: [] },
+        { id: "Plain2", side: "their", predicates: ["heavy"], help: "Unmatched.", children: [] }
+      ],
+      tests: [{ name: "Closure rejects", initial: ["Plain0"], expected: "reject" }]
+    }
+  };
+
+  let project = loadStoredProject() || clone(EXAMPLES.tactic);
+  let runtime = makeRuntime(project.policy.entry);
+  let activeRoutine = stateDef(project.policy.entry)?.routine || project.policy.routines[0]?.id || "main";
+  let selectedRoutine = activeRoutine;
+  let selectedState = project.policy.states.find(state => state.routine === activeRoutine && state.kind === "search")?.id || project.policy.entry;
+  let viewMode = "cards";
+  let running = false;
+  let paused = false;
+  let locked = false;
+  let dirty = false;
+  let policyJsonDirty = false;
+  let policyJsonValid = true;
+  let testResults = {};
+
+  function makeRuntime(entry) {
+    const routine = stateDefFromPolicy(project?.policy, entry)?.routine || "main";
+    return {
+      state: entry,
+      routine,
+      stack: [],
+      current: null,
+      callStack: [],
+      frontier: [],
+      selectedFrontier: [],
+      thoughtCount: 0,
+      result: null,
+      reason: "",
+      lastMatch: "—",
+      action: "waiting",
+      trace: [],
+      timeline: [{ state: entry, routine, label: "entry" }]
+    };
+  }
+
+  function loadStoredProject() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.schema === PROJECT_SCHEMA ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveLocal() {
+    try {
+      project.schema = PROJECT_SCHEMA;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+      dirty = false;
+      renderSaveBadge();
+    } catch {
+      // Local persistence is best-effort only.
+    }
+  }
+
+  function markDirty({ syncJson = true } = {}) {
+    dirty = true;
+    if (syncJson) {
+      policyJsonDirty = false;
+      syncPolicyJson(true);
+    }
+    renderSaveBadge();
+    clearTimeout(markDirty.timer);
+    markDirty.timer = setTimeout(saveLocal, 500);
+  }
+
+  function positionMap(candidate = project) {
+    return new Map((candidate.positions || []).map(position => [position.id, position]));
+  }
+
+  function getPosition(id) {
+    return positionMap().get(id);
+  }
+
+  function stateDefFromPolicy(policy, id) {
+    return policy?.states?.find(state => state.id === id);
+  }
+
+  function stateDef(id) {
+    return stateDefFromPolicy(project.policy, id);
+  }
+
+  function routineDef(id) {
+    return project.policy.routines.find(routine => routine.id === id);
+  }
+
+  function statesForRoutine(id) {
+    return project.policy.states.filter(state => state.routine === id);
+  }
+
+  function stateOptions(selected = "", { includeBlank = false } = {}) {
+    const options = project.policy.states.map(state => `<option value="${escapeHtml(state.id)}" ${state.id === selected ? "selected" : ""}>${escapeHtml(state.id)} · ${escapeHtml(kindLabel(state.kind))}</option>`).join("");
+    return `${includeBlank ? `<option value="">—</option>` : ""}${options}`;
+  }
+
+  function routineOptions(selected = "") {
+    return project.policy.routines.map(routine => `<option value="${escapeHtml(routine.id)}" ${routine.id === selected ? "selected" : ""}>${escapeHtml(routine.label || routine.id)}</option>`).join("");
+  }
+
+  function closureLabel(stateOrClosure) {
+    const closure = stateOrClosure?.closure || stateOrClosure;
+    if (!closure) return "—";
+    if (closure.mode === "all") return "all matching children";
+    if (closure.mode === "one_each") return `first per predicate${closure.count ? `, max ${closure.count}` : ""}`;
+    return `first ${closure.count || 1} match${(closure.count || 1) === 1 ? "" : "es"}`;
+  }
+
+  function conditionLabel(when = {}) {
+    const parts = [];
+    if (when.side) parts.push(`side = ${when.side}`);
+    if (Array.isArray(when.any) && when.any.length) parts.push(`any(${when.any.join(" · ")})`);
+    if (Array.isArray(when.all) && when.all.length) parts.push(`all(${when.all.join(" · ")})`);
+    if (Array.isArray(when.none) && when.none.length) parts.push(`none(${when.none.join(" · ")})`);
+    return parts.join(" + ") || "always";
+  }
+
+  function transitionEntries(state) {
+    if (!state) return [];
+    if (state.kind === "inspect") {
+      const entries = (state.rules || []).map(rule => ({ event: rule.label || conditionLabel(rule.when), to: rule.to }));
+      if (state.on?.depth) entries.push({ event: "depth limit", to: state.on.depth });
+      if (state.on?.missing) entries.push({ event: "missing oracle", to: state.on.missing });
+      if (state.default) entries.push({ event: "default", to: state.default });
+      if (state.terminal_checks !== false) {
+        entries.unshift({ event: "winning predicate", to: project.policy.outcomes.accept_state });
+        entries.unshift({ event: "failure predicate", to: project.policy.outcomes.reject_state });
+      }
+      return entries;
+    }
+    if (state.kind === "call") {
+      const entry = project.policy.routines.find(routine => routine.id === state.call?.routine)?.entry || "?";
+      return [
+        { event: `call ${state.call?.routine || "?"}`, to: entry },
+        { event: "return", to: state.call?.return_to || "?" }
+      ];
+    }
+    if (state.kind === "return") return [{ event: "return frame", to: "caller.return_to" }, ...(state.on?.no_frame ? [{ event: "no frame", to: state.on.no_frame }] : [])];
+    if (state.kind === "accept" || state.kind === "reject") return [{ event: "terminal", to: state.id }];
+    return Object.entries(state.on || {}).map(([event, to]) => ({ event, to }));
+  }
+
+  function policyGraphTargets(state, policy) {
+    const targets = [];
+    if (state.kind === "inspect") {
+      (state.rules || []).forEach(rule => rule.to && targets.push(rule.to));
+      if (state.default) targets.push(state.default);
+      Object.values(state.on || {}).forEach(value => value && targets.push(value));
+      if (state.terminal_checks !== false) {
+        targets.push(policy.outcomes?.accept_state, policy.outcomes?.reject_state);
+      }
+    } else if (state.kind === "call") {
+      const routine = policy.routines?.find(item => item.id === state.call?.routine);
+      if (routine?.entry) targets.push(routine.entry);
+      if (state.call?.return_to) targets.push(state.call.return_to);
+    } else {
+      Object.values(state.on || {}).forEach(value => value && targets.push(value));
+    }
+    return targets.filter(Boolean);
+  }
+
+  function validatePolicy(candidate) {
+    const issues = [];
+    const error = (title, detail) => issues.push({ level: "error", scope: "policy", title, detail });
+    const warn = (title, detail) => issues.push({ level: "warn", scope: "policy", title, detail });
+
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      error("Policy must be an object", "The JSON root must be a policy object.");
+      return issues;
+    }
+    if (candidate.schema !== POLICY_SCHEMA) error("Unknown policy schema", `Expected \"${POLICY_SCHEMA}\".`);
+    if (!Array.isArray(candidate.states) || !candidate.states.length) error("No DFA states", "policy.states must be a non-empty array.");
+    if (!Array.isArray(candidate.routines) || !candidate.routines.length) error("No routines", "policy.routines must be a non-empty array.");
+
+    const states = Array.isArray(candidate.states) ? candidate.states : [];
+    const routines = Array.isArray(candidate.routines) ? candidate.routines : [];
+    const stateIds = states.map(state => state?.id).filter(Boolean);
+    const routineIds = routines.map(routine => routine?.id).filter(Boolean);
+    const stateSet = new Set(stateIds);
+    const routineSet = new Set(routineIds);
+
+    unique(stateIds.filter((id, index) => stateIds.indexOf(id) !== index)).forEach(id => error("Duplicate state ID", id));
+    unique(routineIds.filter((id, index) => routineIds.indexOf(id) !== index)).forEach(id => error("Duplicate routine ID", id));
+
+    if (!candidate.entry || !stateSet.has(candidate.entry)) error("Invalid policy entry", `entry must name an existing state; received ${candidate.entry || "nothing"}.`);
+
+    const outcomes = candidate.outcomes;
+    if (!outcomes || typeof outcomes !== "object") error("Missing outcomes", "Define accept_state, reject_state, winning_predicates, and failure_predicates.");
+    else {
+      if (!stateSet.has(outcomes.accept_state)) error("Invalid accept state", outcomes.accept_state || "missing");
+      if (!stateSet.has(outcomes.reject_state)) error("Invalid reject state", outcomes.reject_state || "missing");
+      if (!isStringArray(outcomes.winning_predicates)) error("Winning predicates are invalid", "Use a non-empty array of strings.");
+      if (!Array.isArray(outcomes.failure_predicates) || !outcomes.failure_predicates.every(item => typeof item === "string" && item.trim())) error("Failure predicates are invalid", "Use an array of strings.");
+    }
+
+    const budgets = candidate.budgets;
+    if (!budgets || !Number.isInteger(Number(budgets.thoughts)) || Number(budgets.thoughts) < 1) error("Invalid thought budget", "budgets.thoughts must be a positive integer.");
+    if (!budgets || !Number.isInteger(Number(budgets.depth)) || Number(budgets.depth) < 0) error("Invalid depth budget", "budgets.depth must be zero or a positive integer.");
+    if (!budgets || !Number.isInteger(Number(budgets.call_depth)) || Number(budgets.call_depth) < 0) error("Invalid call-depth budget", "budgets.call_depth must be zero or a positive integer.");
+
+    routines.forEach((routine, index) => {
+      const name = routine?.id || `routine ${index + 1}`;
+      if (!routine?.id || typeof routine.id !== "string") error("Routine has no ID", name);
+      if (!routine?.entry || !stateSet.has(routine.entry)) error(`Routine ${name} has invalid entry`, routine?.entry || "missing");
+      else if (stateDefFromPolicy(candidate, routine.entry)?.routine !== routine.id) error(`Routine ${name} entry belongs elsewhere`, `${routine.entry} is assigned to ${stateDefFromPolicy(candidate, routine.entry)?.routine || "no routine"}.`);
+    });
+
+    const allowedClosure = new Set(["first", "all", "one_each"]);
+    states.forEach((state, index) => {
+      const name = state?.id || `state ${index + 1}`;
+      if (!state?.id || typeof state.id !== "string") error("State has no ID", name);
+      if (!STATE_KINDS.includes(state?.kind)) error(`${name} has invalid kind`, String(state?.kind));
+      if (!routineSet.has(state?.routine)) error(`${name} has invalid routine`, state?.routine || "missing");
+
+      const requireTarget = (target, label) => {
+        if (!target || !stateSet.has(target)) error(`${name} has invalid ${label} target`, target || "missing");
+      };
+
+      if (state?.kind === "push_initial") {
+        requireTarget(state.on?.pushed, "pushed");
+        requireTarget(state.on?.invalid, "invalid");
+      } else if (state?.kind === "pop") {
+        requireTarget(state.on?.thought, "thought");
+        requireTarget(state.on?.empty, "empty");
+      } else if (state?.kind === "search") {
+        if (!isStringArray(state.predicates)) error(`${name} has no predicate order`, "search.predicates must be a non-empty array of strings.");
+        if (!allowedClosure.has(state.closure?.mode)) error(`${name} has invalid closure mode`, state.closure?.mode || "missing");
+        if (state.closure?.mode === "first" && (!Number.isInteger(Number(state.closure?.count)) || Number(state.closure.count) < 1)) error(`${name} has invalid closure count`, "first mode requires count >= 1.");
+        if (state.side && !["my", "their"].includes(state.side)) error(`${name} has invalid side`, state.side);
+        requireTarget(state.on?.pushed, "pushed");
+        requireTarget(state.on?.none, "none");
+        const duplicates = state.predicates?.filter((item, itemIndex) => state.predicates.indexOf(item) !== itemIndex) || [];
+        if (duplicates.length) warn(`${name} repeats search predicates`, unique(duplicates).join(", "));
+      } else if (state?.kind === "inspect") {
+        if (!Array.isArray(state.rules)) error(`${name} rules are invalid`, "inspect.rules must be an ordered array.");
+        (state.rules || []).forEach((rule, ruleIndex) => {
+          requireTarget(rule?.to, `rule ${ruleIndex + 1}`);
+          const when = rule?.when || {};
+          if (when.side && !["my", "their"].includes(when.side)) error(`${name} rule ${ruleIndex + 1} has invalid side`, when.side);
+          ["any", "all", "none"].forEach(key => {
+            if (when[key] !== undefined && (!Array.isArray(when[key]) || !when[key].every(item => typeof item === "string" && item.trim()))) error(`${name} rule ${ruleIndex + 1} has invalid ${key}`, "Use an array of predicate strings.");
+          });
+          if (!Object.keys(when).length && ruleIndex !== state.rules.length - 1) warn(`${name} has an early always-rule`, `Rule ${ruleIndex + 1} shadows every rule below it.`);
+        });
+        if (state.default) requireTarget(state.default, "default");
+        if (state.on?.depth) requireTarget(state.on.depth, "depth");
+        if (state.on?.missing) requireTarget(state.on.missing, "missing");
+      } else if (state?.kind === "call") {
+        if (!routineSet.has(state.call?.routine)) error(`${name} calls an unknown routine`, state.call?.routine || "missing");
+        requireTarget(state.call?.return_to, "return_to");
+      } else if (state?.kind === "return") {
+        if (state.on?.no_frame) requireTarget(state.on.no_frame, "no_frame");
+      }
+    });
+
+    if (outcomes && stateSet.has(outcomes.accept_state) && stateDefFromPolicy(candidate, outcomes.accept_state)?.kind !== "accept") error("accept_state is not an accept state", outcomes.accept_state);
+    if (outcomes && stateSet.has(outcomes.reject_state) && stateDefFromPolicy(candidate, outcomes.reject_state)?.kind !== "reject") error("reject_state is not a reject state", outcomes.reject_state);
+
+    if (stateSet.has(candidate.entry)) {
+      const visited = new Set();
+      const queue = [candidate.entry];
+      while (queue.length) {
+        const id = queue.shift();
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const state = stateDefFromPolicy(candidate, id);
+        if (!state) continue;
+        policyGraphTargets(state, candidate).forEach(target => {
+          if (stateSet.has(target) && !visited.has(target)) queue.push(target);
+        });
+      }
+      const unreachable = stateIds.filter(id => !visited.has(id));
+      if (unreachable.length) warn("Unreachable states", unreachable.join(", "));
+    }
+
+    return issues;
+  }
+
+  function validateProject(candidate = project) {
+    const issues = [...validatePolicy(candidate?.policy)];
+    const error = (title, detail) => issues.push({ level: "error", scope: "project", title, detail });
+    const warn = (title, detail) => issues.push({ level: "warn", scope: "project", title, detail });
+
+    if (!candidate || candidate.schema !== PROJECT_SCHEMA) error("Unknown project schema", `Expected \"${PROJECT_SCHEMA}\".`);
+    if (!candidate?.name?.trim()) error("Project name is empty", "Give the workbench a readable name.");
+    const positions = Array.isArray(candidate?.positions) ? candidate.positions : [];
+    const ids = positions.map(position => position?.id).filter(Boolean);
+    const idSet = new Set(ids);
+    unique(ids.filter((id, index) => ids.indexOf(id) !== index)).forEach(id => error("Duplicate position ID", id));
+    if (!positions.length) error("No oracle position cards", "At least one position card is required.");
+    positions.forEach((position, index) => {
+      const name = position?.id || `position ${index + 1}`;
+      if (!position?.id || typeof position.id !== "string") error("Position has no ID", name);
+      if (!["my", "their"].includes(position?.side)) error(`${name} has invalid side`, "Use \"my\" or \"their\".");
+      if (!Array.isArray(position?.predicates) || !position.predicates.every(item => typeof item === "string" && item.trim())) error(`${name} predicates are invalid`, "Use an array of strings.");
+      if (position.children !== undefined && !Array.isArray(position.children)) error(`${name} children are invalid`, "Use an array of position IDs.");
+      (position.children || []).forEach(child => {
+        if (!idSet.has(child)) error(`${name} points to a missing child`, child);
+      });
+    });
+    if (!Array.isArray(candidate?.initial) || !candidate.initial.length) warn("No saved initial thoughts", "The runner input may still supply them interactively.");
+    (candidate?.initial || []).forEach(id => {
+      if (!idSet.has(id)) error("Missing initial position", id);
+    });
+    (candidate?.tests || []).forEach((test, index) => {
+      if (!Array.isArray(test.initial)) error(`Test ${index + 1} has invalid initial list`, test.name || "unnamed");
+      if (!["accept", "reject"].includes(test.expected)) error(`Test ${index + 1} has invalid expected result`, String(test.expected));
+    });
+
+    if (!issues.some(issue => issue.level === "error") && !issues.some(issue => issue.level === "warn")) {
+      issues.push({ level: "ok", scope: "project", title: "Project is structurally valid", detail: "Policy grammar, routines, transitions, oracle references, budgets, and outcomes are coherent." });
+    }
+    return issues;
+  }
+
+  function renderAll() {
+    $("#projectName").value = project.name;
+    $("#initialInput").value = (project.initial || []).join(" ");
+    renderPolicyEditors();
+    renderRoutineEditor();
+    renderOracle();
+    renderSelectedStateEditor();
+    renderTransitions();
+    renderTests();
+    renderValidation();
+    renderPolicyRibbon();
+    renderRoutineBar();
+    renderDfa();
+    renderRuntime();
+    renderTrace();
+    renderSaveBadge();
+    syncPolicyJson(!policyJsonDirty);
+  }
+
+  function renderPolicyEditors() {
+    const policy = project.policy;
+    $("#winningPredicates").value = (policy.outcomes.winning_predicates || []).join(", ");
+    $("#failurePredicates").value = (policy.outcomes.failure_predicates || []).join(", ");
+    $("#thoughtBudget").value = policy.budgets.thoughts;
+    $("#maxDepth").value = policy.budgets.depth;
+    $("#callDepth").value = policy.budgets.call_depth;
+    $("#policyEntry").innerHTML = stateOptions(policy.entry);
+    $("#acceptState").innerHTML = stateOptions(policy.outcomes.accept_state);
+    $("#rejectState").innerHTML = stateOptions(policy.outcomes.reject_state);
+
+    const searchStates = policy.states.filter(state => state.kind === "search");
+    const mySearch = searchStates.find(state => state.side === "my");
+    const theirSearch = searchStates.find(state => state.side === "their");
+    $("#policySummaryGrid").innerHTML = `
+      <div class="summary-item"><span>Winning predicate state</span><strong>${escapeHtml(policy.outcomes.winning_predicates.join(" OR "))} → ${escapeHtml(policy.outcomes.accept_state)}</strong></div>
+      <div class="summary-item"><span>Failure</span><strong>${escapeHtml([...(policy.outcomes.failure_predicates || []), "main stack empty", "budget"].join(" / "))} → ${escapeHtml(policy.outcomes.reject_state)}</strong></div>
+      <div class="summary-item"><span>My closure</span><strong>${escapeHtml(mySearch ? closureLabel(mySearch) : "defined per search state")}</strong></div>
+      <div class="summary-item"><span>Their closure</span><strong>${escapeHtml(theirSearch ? closureLabel(theirSearch) : "defined per search state")}</strong></div>`;
+  }
+
+  function renderRoutineEditor() {
+    const routines = project.policy.routines;
+    if (!routines.some(routine => routine.id === selectedRoutine)) selectedRoutine = routines[0]?.id || "";
+    $("#routineList").innerHTML = routines.map(routine => {
+      const count = statesForRoutine(routine.id).length;
+      return `<button class="routine-list-row ${routine.id === selectedRoutine ? "active" : ""}" data-routine-select="${escapeHtml(routine.id)}">
+        <span><strong>${escapeHtml(routine.label || routine.id)}</strong><small>${escapeHtml(routine.id)} · ${count} states</small></span><span>›</span>
+      </button>`;
+    }).join("");
+    const routine = routineDef(selectedRoutine);
+    if (!routine) return;
+    $("#routineId").value = routine.id;
+    $("#routineLabel").value = routine.label || "";
+    $("#routineEntry").innerHTML = statesForRoutine(routine.id).map(state => `<option value="${escapeHtml(state.id)}" ${state.id === routine.entry ? "selected" : ""}>${escapeHtml(state.id)}</option>`).join("");
+  }
+
+  function renderOracle() {
+    $("#oracleCount").textContent = `${project.positions.length} cards`;
+    $("#oracleList").innerHTML = project.positions.map(position => `
+      <article class="oracle-mini" data-oracle-id="${escapeHtml(position.id)}">
+        <div class="oracle-mini-head"><strong>${escapeHtml(position.id)}</strong><span class="side-pill ${position.side === "my" ? "my" : "their"}">${position.side === "my" ? "my ply" : "their ply"}</span></div>
+        <div class="predicate-line">${(position.predicates || []).map(predicate => `<span class="predicate-chip">${escapeHtml(predicate)}</span>`).join("") || `<span class="predicate-chip">no predicates</span>`}</div>
+        <p>${escapeHtml(position.help || "No help text.")}<br><span class="mono">children: ${(position.children || []).map(escapeHtml).join(", ") || "—"}</span></p>
+      </article>`).join("");
+    $("#oracleJson").value = JSON.stringify(project.positions, null, 2);
+  }
+
+  function renderTransitions() {
+    const rows = project.policy.states.flatMap(state => transitionEntries(state).map(entry => ({ from: state.id, ...entry })));
+    $("#transitionTableBody").innerHTML = rows.map(row => `<tr><td>${escapeHtml(row.from)}</td><td>${escapeHtml(row.event)}</td><td>${escapeHtml(row.to)}</td></tr>`).join("");
+  }
+
+  function renderTests() {
+    $("#testList").innerHTML = (project.tests || []).map((test, index) => {
+      const result = testResults[index];
+      const cls = result ? (result === test.expected ? "good" : "bad") : "";
+      const label = result ? `${result.toUpperCase()}${result === test.expected ? " ✓" : " ≠ expected"}` : `expect ${test.expected}`;
+      return `<div class="test-row"><div><strong>${escapeHtml(test.name)}</strong><span>${escapeHtml((test.initial || []).join(" "))}</span></div><span class="mini-chip ${cls}">${escapeHtml(label)}</span></div>`;
+    }).join("") || `<div class="issue-row"><div><strong>No tests</strong><span>Add tests in project JSON.</span></div></div>`;
+  }
+
+  function renderValidation() {
+    const issues = validateProject();
+    const errors = issues.filter(issue => issue.level === "error");
+    const warnings = issues.filter(issue => issue.level === "warn");
+    const badge = $("#validationBadge");
+    badge.className = `validation-badge ${errors.length ? "bad" : warnings.length ? "warn" : "good"}`;
+    badge.textContent = errors.length ? `✕ ${errors.length} issue${errors.length === 1 ? "" : "s"}` : warnings.length ? `! ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "✓ Valid policy";
+    $("#issueCount").textContent = `${issues.length}`;
+    $("#issueList").innerHTML = issues.map(issue => `<div class="issue-row"><div><strong>${escapeHtml(issue.title)}</strong><span>${escapeHtml(issue.detail)}</span></div><span class="mini-chip ${issue.level === "ok" ? "good" : issue.level === "error" ? "bad" : ""}">${issue.level}</span></div>`).join("");
+  }
+
+  function renderSaveBadge() {
+    const badge = $("#saveBadge");
+    badge.className = `save-badge${dirty ? " dirty" : ""}`;
+    badge.textContent = dirty ? "Unsaved changes" : "Saved locally";
+  }
+
+  function renderPolicyRibbon() {
+    const policy = project.policy;
+    $("#policyRibbon").innerHTML = `
+      <span class="policy-badge win">WIN <b>${escapeHtml(policy.outcomes.winning_predicates.join(" · "))} → ${escapeHtml(policy.outcomes.accept_state)}</b></span>
+      <span class="policy-badge">ROUTINES <b>${policy.routines.length}</b></span>
+      <span class="policy-badge">CALL DEPTH <b>${policy.budgets.call_depth}</b></span>
+      <span class="policy-badge fail">FAIL <b>${escapeHtml([...(policy.outcomes.failure_predicates || []), "closure", "budget"].join(" · "))} → ${escapeHtml(policy.outcomes.reject_state)}</b></span>`;
+  }
+
+  function renderRoutineBar() {
+    const currentRoutine = stateDef(runtime.state)?.routine;
+    $("#routineBar").innerHTML = project.policy.routines.map(routine => `<button class="routine-tab ${activeRoutine === routine.id ? "active" : ""} ${currentRoutine === routine.id ? "running" : ""}" data-routine-view="${escapeHtml(routine.id)}">
+      <span>${escapeHtml(routine.label || routine.id)}</span><small>${escapeHtml(routine.id)}</small>
+    </button>`).join("");
+    const path = [...runtime.callStack.map(frame => frame.callerRoutine), currentRoutine].filter(Boolean);
+    $("#routinePath").textContent = path.length ? path.join("  ›  ") : activeRoutine;
+  }
+
+  function stateCardHtml(state) {
+    const active = runtime.state === state.id;
+    const selected = selectedState === state.id;
+    const classes = ["state-card", `kind-${state.kind}`, state.kind === "search" ? "search" : "", ["accept", "reject"].includes(state.kind) ? `terminal ${state.kind}` : "", active ? "active" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
+    const entries = transitionEntries(state);
+    const kindText = state.kind === "search" ? `${state.side || "any"} ply · filter` : kindLabel(state.kind);
+    let body = "";
+    if (state.kind === "search") {
+      body = `<div class="search-order"><div class="search-order-label">Looks for, in order:</div>${(state.predicates || []).map((predicate, index) => `<div class="search-predicate"><span class="n">${index + 1}</span><span>${escapeHtml(predicate)}</span></div>`).join("")}</div><div class="closure-box">Closure: <strong>${escapeHtml(closureLabel(state))}</strong></div>`;
+    } else if (state.kind === "inspect") {
+      body = `<div class="rule-preview">${(state.rules || []).slice(0, 4).map((rule, index) => `<div><span>${index + 1}</span><b>${escapeHtml(conditionLabel(rule.when))}</b><em>→ ${escapeHtml(rule.to)}</em></div>`).join("") || `<div><b>default</b><em>→ ${escapeHtml(state.default || "—")}</em></div>`}</div>`;
+    } else if (state.kind === "call") {
+      body = `<div class="call-preview"><span>routine</span><strong>${escapeHtml(state.call?.routine || "—")}</strong><span>return to</span><strong>${escapeHtml(state.call?.return_to || "—")}</strong></div>`;
+    } else if (state.kind === "return") {
+      body = `<div class="call-preview"><span>control stack</span><strong>pop frame</strong><span>then</span><strong>caller.return_to</strong></div>`;
+    }
+    const footer = !body ? (entries.length === 1 ? `${entries[0].event} → ${entries[0].to}` : `${entries.length} ordered outcomes`) : "";
+    return `<article class="${classes}" data-state-id="${escapeHtml(state.id)}" tabindex="0">
+      <div class="state-kind"><span>${escapeHtml(kindText)}</span><span>${active ? "● active" : ""}</span></div>
+      <div class="state-icon">${stateIcon(state.kind)}</div>
+      <div class="state-name">${escapeHtml(state.id)}</div>
+      <div class="state-desc">${escapeHtml(state.description || "No description.")}</div>
+      ${body}
+      ${footer ? `<div class="state-footer">${escapeHtml(footer)}</div>` : ""}
+    </article>`;
+  }
+
+  function renderDfa() {
+    const states = statesForRoutine(activeRoutine);
+    $("#dfaFlow").innerHTML = states.map((state, index) => `<div class="state-wrap">${stateCardHtml(state)}${index < states.length - 1 ? `<div class="edge-arrow ${isSequentialEdgeActive(state.id, states[index + 1].id) ? "active" : ""}"></div>` : ""}</div>`).join("") || `<div class="frontier-empty">This routine has no states yet.</div>`;
+    renderRoutineBar();
+    requestAnimationFrame(() => {
+      const active = $(`.state-card[data-state-id="${CSS.escape(runtime.state)}"]`);
+      const scroller = $("#dfaFlow");
+      if (active && scroller && stateDef(runtime.state)?.routine === activeRoutine) {
+        const targetLeft = active.offsetLeft + active.offsetWidth / 2 - scroller.clientWidth / 2;
+        scroller.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
+      }
+    });
+  }
+
+  function isSequentialEdgeActive(from, to) {
+    const prior = runtime.timeline.at(-2)?.state;
+    return prior === from && runtime.state === to;
+  }
+
+  function thoughtCardHtml(item, options = {}) {
+    const position = getPosition(item.id) || item.position || { id: item.id, side: item.side || "my", predicates: item.predicates || [], help: item.help || "" };
+    const side = position.side === "their" ? "their" : "my";
+    const matched = Object.prototype.hasOwnProperty.call(options, "matched") ? options.matched : item.matchedBy;
+    return `<article class="thought-card ${side === "their" ? "their" : ""} ${matched ? "matched" : ""} ${options.unmatched ? "unmatched" : ""}" data-position-id="${escapeHtml(position.id)}">
+      ${matched ? `<span class="match-ribbon">matched ${escapeHtml(matched)}</span>` : ""}
+      <div class="thought-top"><span class="side-pill ${side}">${side === "my" ? "my ply" : "their ply"}</span><span class="depth-chip">depth ${item.depth ?? 0}</span></div>
+      <div class="thought-id">${escapeHtml(position.id)}</div>
+      <div class="thought-help">${escapeHtml(position.help || "No help text.")}</div>
+      <div class="thought-preds">${(position.predicates || []).map(predicate => `<span class="predicate-chip ${predicate === matched ? "match" : ""}">${escapeHtml(predicate)}</span>`).join("") || `<span class="predicate-chip">no predicates</span>`}</div>
+    </article>`;
+  }
+
+  function renderRuntime() {
+    const budget = project.policy.budgets.thoughts;
+    $("#stepReadout").innerHTML = `Thought <strong>${runtime.thoughtCount} / ${budget}</strong>`;
+    $("#budgetText").textContent = `${runtime.thoughtCount} / ${budget}`;
+    $("#budgetMeterFill").style.width = `${clamp((runtime.thoughtCount / Math.max(1, budget)) * 100, 0, 100)}%`;
+    $("#memoryAction").textContent = runtime.action;
+    $("#lastMatch").textContent = runtime.lastMatch;
+    $("#stackCount").textContent = `${runtime.stack.length} thought${runtime.stack.length === 1 ? "" : "s"}`;
+    renderCurrentThought();
+    renderStack();
+    renderCallStack();
+    renderFrontier();
+    renderTimeline();
+    renderStatus();
+    renderControls();
+  }
+
+  function renderCurrentThought() {
+    const bubble = $("#currentThoughtBubble");
+    if (runtime.current) {
+      bubble.className = "current-thought-bubble occupied";
+      bubble.innerHTML = `<span class="current-thought-label">Current thought</span>${thoughtCardHtml(runtime.current, { matched: null })}`;
+      $("#currentThoughtStatus").textContent = "examining";
+    } else {
+      bubble.className = "current-thought-bubble empty";
+      bubble.innerHTML = `<span class="current-thought-label">Current thought</span><div class="current-empty">A popped thought pauses here while the DFA examines it.</div>`;
+      $("#currentThoughtStatus").textContent = "none";
+    }
+  }
+
+  function renderStack() {
+    const reversed = [...runtime.stack].reverse();
+    const base = currentFrameBase(runtime);
+    const topSegmentCount = runtime.stack.length - base;
+    const rows = [];
+    if (runtime.callStack.length && topSegmentCount === 0) {
+      const frame = runtime.callStack.at(-1);
+      rows.push(`<div class="stack-boundary"><span>${escapeHtml(frame.calleeRoutine)} frame boundary</span><small>caller thoughts remain below</small></div>`);
+    }
+    reversed.forEach((item, index) => {
+      rows.push(thoughtCardHtml(item, { matched: null }).replace('class="thought-card', `class="thought-card stack-card${index === 0 && topSegmentCount > 0 ? " top" : ""}`));
+      if (runtime.callStack.length && index + 1 === topSegmentCount) {
+        const frame = runtime.callStack.at(-1);
+        rows.push(`<div class="stack-boundary"><span>${escapeHtml(frame.calleeRoutine)} frame boundary</span><small>caller thoughts remain below</small></div>`);
+      }
+    });
+    if (!rows.length) rows.push(`<div class="stack-empty">[ ]<br>Working Memory is empty.<br>The entry state will push initial thoughts.</div>`);
+    const visibleCards = reversed.length;
+    for (let i = 0; i < Math.max(0, 3 - visibleCards); i += 1) rows.push(`<div class="stack-slot"></div>`);
+    $("#stackList").innerHTML = rows.join("");
+  }
+
+  function renderCallStack() {
+    const strip = $("#callStackStrip");
+    if (!runtime.callStack.length) {
+      strip.innerHTML = `<span class="frame-label">Control stack</span><span class="frame-empty">main routine · no active subroutine</span>`;
+      return;
+    }
+    strip.innerHTML = `<span class="frame-label">Control stack</span>${runtime.callStack.map((frame, index) => `<span class="frame-chip ${index === runtime.callStack.length - 1 ? "active" : ""}">${escapeHtml(frame.callerRoutine)} ↳ ${escapeHtml(frame.calleeRoutine)} · return ${escapeHtml(frame.returnTo)}</span>`).join("")}`;
+  }
+
+  function renderFrontier() {
+    $("#frontierCount").textContent = `${runtime.frontier.length} card${runtime.frontier.length === 1 ? "" : "s"}`;
+    if (!runtime.frontier.length) {
+      $("#frontierList").innerHTML = `<div class="frontier-empty">${runtime.current ? "A search state will ask the oracle for this thought's child cards." : "Pop a thought, inspect it, and enter a filter state to consult the oracle."}</div>`;
+      return;
+    }
+    const selectedMap = new Map(runtime.selectedFrontier.map(item => [item.id, item.matchedBy]));
+    $("#frontierList").innerHTML = runtime.frontier.map(item => thoughtCardHtml(item, { matched: selectedMap.get(item.id), unmatched: runtime.selectedFrontier.length > 0 && !selectedMap.has(item.id) })).join("");
+  }
+
+  function renderTimeline() {
+    $("#timeline").innerHTML = runtime.timeline.map((item, index) => `<button class="timeline-step ${index < runtime.timeline.length - 1 ? "done" : "current"}" title="${escapeHtml(`${item.routine}: ${item.label || item.state}`)}">${escapeHtml(item.state)}</button>`).join("");
+    requestAnimationFrame(() => { $("#timeline").scrollLeft = $("#timeline").scrollWidth; });
+  }
+
+  function renderStatus() {
+    const element = $("#runSummary");
+    if (runtime.result === "accept") element.innerHTML = `<strong class="good">ACCEPTED — ${escapeHtml(runtime.reason)}</strong>`;
+    else if (runtime.result === "reject") element.innerHTML = `<strong class="bad">REJECTED — ${escapeHtml(runtime.reason)}</strong>`;
+    else if (running && !paused) element.textContent = `Running · ${runtime.routine} / ${runtime.state}`;
+    else if (paused) element.textContent = `Paused · ${runtime.routine} / ${runtime.state}`;
+    else element.textContent = `${runtime.routine} / ${runtime.state} · ${runtime.reason || "Ready"}`;
+  }
+
+  function renderControls() {
+    $("#stepBtn").disabled = locked || Boolean(runtime.result);
+    $("#resetRunBtn").disabled = locked;
+    $("#playBtn").disabled = locked && !running;
+    $("#playBtn").innerHTML = running && !paused ? `Ⅱ <span class="button-label">Pause</span>` : `▶ <span class="button-label">Run</span>`;
+  }
+
+  function renderTrace() {
+    const list = $("#traceList");
+    if (!runtime.trace.length) {
+      list.innerHTML = `<div class="trace-card current"><strong>No thoughts yet</strong><p>Press Step to push the initial position card into Working Memory.</p></div>`;
+      return;
+    }
+    list.innerHTML = runtime.trace.map((item, index) => `<article class="trace-card ${index === runtime.trace.length - 1 ? "current" : ""}"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.detail)}</p></article>`).join("");
+    requestAnimationFrame(() => { list.scrollLeft = list.scrollWidth; });
+  }
+
+  function addTrace(title, detail) {
+    runtime.trace.push({ title, detail });
+    if (runtime.trace.length > 60) runtime.trace.shift();
+    renderTrace();
+  }
+
+  function syncPolicyJson(force = false) {
+    const textarea = $("#policyJson");
+    if (!textarea) return;
+    if (force || !policyJsonDirty) textarea.value = JSON.stringify(project.policy, null, 2);
+    validatePolicyText();
+  }
+
+  function validatePolicyText() {
+    const status = $("#policyJsonStatus");
+    const apply = $("#applyPolicyJsonBtn");
+    const details = $("#policyJsonIssues");
+    try {
+      const parsed = JSON.parse($("#policyJson").value);
+      const issues = validatePolicy(parsed);
+      const errors = issues.filter(issue => issue.level === "error");
+      const warnings = issues.filter(issue => issue.level === "warn");
+      policyJsonValid = errors.length === 0;
+      status.className = `mini-chip ${errors.length ? "bad" : warnings.length ? "" : "good"}`;
+      status.textContent = errors.length ? `${errors.length} grammar error${errors.length === 1 ? "" : "s"}` : warnings.length ? `valid · ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "validated";
+      apply.disabled = errors.length > 0;
+      details.innerHTML = issues.length ? issues.slice(0, 8).map(issue => `<div class="json-issue ${issue.level}"><strong>${escapeHtml(issue.title)}</strong><span>${escapeHtml(issue.detail)}</span></div>`).join("") : `<div class="json-issue ok"><strong>Valid policy JSON</strong><span>Every reference resolves and every state satisfies its kind grammar.</span></div>`;
+    } catch (error) {
+      policyJsonValid = false;
+      status.className = "mini-chip bad";
+      status.textContent = "invalid JSON";
+      apply.disabled = true;
+      details.innerHTML = `<div class="json-issue error"><strong>JSON syntax error</strong><span>${escapeHtml(error.message)}</span></div>`;
+    }
+    $("#policyDraftBadge").className = `validation-badge ${policyJsonDirty ? (policyJsonValid ? "warn" : "bad") : "good"}`;
+    $("#policyDraftBadge").textContent = policyJsonDirty ? (policyJsonValid ? "JSON draft valid · not applied" : "JSON draft invalid") : "Policy synchronized";
+  }
+
+  function renderSelectedStateEditor() {
+    let state = stateDef(selectedState);
+    if (!state) {
+      state = project.policy.states[0];
+      selectedState = state?.id || "";
+    }
+    const root = $("#selectedStateEditor");
+    if (!state) {
+      root.innerHTML = `<p class="panel-copy">Add a state to begin.</p>`;
+      return;
+    }
+    const kindOptions = STATE_KINDS.map(kind => `<option value="${kind}" ${kind === state.kind ? "selected" : ""}>${kindLabel(kind)}</option>`).join("");
+    let specific = "";
+    if (state.kind === "search") {
+      specific = `
+        <div class="two-col"><div class="field"><label for="stateSide">Ply label</label><select id="stateSide"><option value="my" ${state.side === "my" ? "selected" : ""}>my children</option><option value="their" ${state.side === "their" ? "selected" : ""}>their children</option></select></div><div class="field"><label for="stateClosureMode">Closure</label><select id="stateClosureMode"><option value="first" ${state.closure?.mode === "first" ? "selected" : ""}>first N matches</option><option value="all" ${state.closure?.mode === "all" ? "selected" : ""}>all matches</option><option value="one_each" ${state.closure?.mode === "one_each" ? "selected" : ""}>first per predicate</option></select></div></div>
+        <div class="field"><label>Predicate priority</label><div id="statePredicateEditor" class="order-editor">${(state.predicates || []).map((predicate, index) => `<div class="order-row state-predicate-row" data-index="${index}"><span class="order-index">${index + 1}</span><input value="${escapeHtml(predicate)}"><button data-state-predicate-action="up">↑</button><button data-state-predicate-action="down">↓</button></div>`).join("")}</div></div>
+        <div class="two-col"><div class="field"><label for="stateClosureCount">N / max</label><input id="stateClosureCount" type="number" min="1" value="${state.closure?.count || 1}"></div><div class="field"><label>&nbsp;</label><button class="btn small" id="addStatePredicateBtn">＋ predicate</button></div></div>
+        <div class="two-col"><div class="field"><label for="stateOnPushed">On matches pushed</label><select id="stateOnPushed">${stateOptions(state.on?.pushed)}</select></div><div class="field"><label for="stateOnNone">On no match</label><select id="stateOnNone">${stateOptions(state.on?.none)}</select></div></div>`;
+    } else if (state.kind === "inspect") {
+      specific = `
+        <div class="field checkbox-field"><label><input id="stateTerminalChecks" type="checkbox" ${state.terminal_checks !== false ? "checked" : ""}> Check global winning and failure predicates first</label></div>
+        <div class="field"><label>Ordered routing rules</label><div id="inspectRuleEditor" class="inspect-rule-editor">${(state.rules || []).map((rule, index) => inspectRuleRowHtml(rule, index)).join("")}</div><button class="btn small" id="addInspectRuleBtn">＋ rule</button></div>
+        <div class="two-col"><div class="field"><label for="stateDefault">Default target</label><select id="stateDefault">${stateOptions(state.default || "", { includeBlank: true })}</select></div><div class="field"><label for="stateOnDepth">Depth-limit target</label><select id="stateOnDepth">${stateOptions(state.on?.depth || "", { includeBlank: true })}</select></div></div>
+        <div class="field"><label for="stateOnMissing">Missing-oracle target</label><select id="stateOnMissing">${stateOptions(state.on?.missing || project.policy.outcomes.reject_state)}</select></div>`;
+    } else if (state.kind === "call") {
+      specific = `
+        <div class="field"><label for="stateCallRoutine">Callee routine</label><select id="stateCallRoutine">${routineOptions(state.call?.routine)}</select></div>
+        <div class="field"><label for="stateReturnTo">Return to state</label><select id="stateReturnTo">${stateOptions(state.call?.return_to)}</select></div>
+        <div class="field checkbox-field"><label><input id="stateResumeCurrent" type="checkbox" ${state.call?.resume_current ? "checked" : ""}> Restore the caller's current thought after RETURN</label></div>`;
+    } else if (state.kind === "return") {
+      specific = `<div class="field"><label for="stateNoFrame">If no call frame exists</label><select id="stateNoFrame">${stateOptions(state.on?.no_frame || project.policy.outcomes.reject_state)}</select></div><p class="field-help">RETURN trims thoughts created above the current frame boundary, pops the control frame, and jumps to the caller's return_to state.</p>`;
+    } else if (state.kind === "pop") {
+      specific = `<div class="two-col"><div class="field"><label for="stateOnThought">Thought available</label><select id="stateOnThought">${stateOptions(state.on?.thought)}</select></div><div class="field"><label for="stateOnEmpty">Frame empty</label><select id="stateOnEmpty">${stateOptions(state.on?.empty)}</select></div></div><p class="field-help">Inside a subroutine, “empty” means no thoughts remain above that routine's stack boundary; deeper caller thoughts are not popped.</p>`;
+    } else if (state.kind === "push_initial") {
+      specific = `<div class="two-col"><div class="field"><label for="stateOnPushedInitial">On pushed</label><select id="stateOnPushedInitial">${stateOptions(state.on?.pushed)}</select></div><div class="field"><label for="stateOnInvalidInitial">On invalid input</label><select id="stateOnInvalidInitial">${stateOptions(state.on?.invalid)}</select></div></div>`;
+    } else {
+      specific = `<p class="field-help">${state.kind === "accept" ? "This is a terminal accepting state." : "This is a terminal rejecting state."}</p>`;
+    }
+
+    root.innerHTML = `
+      <div class="panel-title-row"><h2>${escapeHtml(state.id)}</h2><span class="mini-chip">${escapeHtml(kindLabel(state.kind))}</span></div>
+      <div class="two-col"><div class="field"><label for="stateId">State ID</label><input id="stateId" value="${escapeHtml(state.id)}"></div><div class="field"><label for="stateKind">Kind</label><select id="stateKind">${kindOptions}</select></div></div>
+      <div class="field"><label for="stateRoutine">Routine</label><select id="stateRoutine">${routineOptions(state.routine)}</select></div>
+      <div class="field"><label for="stateDescription">Description</label><textarea id="stateDescription">${escapeHtml(state.description || "")}</textarea></div>
+      ${specific}
+      <div class="button-row"><button class="btn primary" id="applyStateBtn">Apply state</button><button class="btn" id="duplicateStateBtn">Duplicate</button><button class="btn danger" id="deleteStateBtn">Delete</button></div>`;
+  }
+
+  function inspectRuleRowHtml(rule, index) {
+    const when = rule.when || {};
+    let type = "always";
+    let value = "";
+    if (when.side) { type = "side"; value = when.side; }
+    else if (when.any) { type = "any"; value = when.any.join(", "); }
+    else if (when.all) { type = "all"; value = when.all.join(", "); }
+    else if (when.none) { type = "none"; value = when.none.join(", "); }
+    return `<div class="inspect-rule-row" data-index="${index}">
+      <span class="order-index">${index + 1}</span>
+      <input class="rule-label-input" value="${escapeHtml(rule.label || "")}" placeholder="label">
+      <select class="rule-type-input"><option value="any" ${type === "any" ? "selected" : ""}>any predicate</option><option value="all" ${type === "all" ? "selected" : ""}>all predicates</option><option value="none" ${type === "none" ? "selected" : ""}>none of</option><option value="side" ${type === "side" ? "selected" : ""}>side</option><option value="always" ${type === "always" ? "selected" : ""}>always</option></select>
+      <input class="rule-value-input" value="${escapeHtml(value)}" placeholder="predicate(s) or my/their">
+      <select class="rule-target-input">${stateOptions(rule.to)}</select>
+      <div class="rule-buttons"><button data-inspect-rule-action="up">↑</button><button data-inspect-rule-action="down">↓</button><button data-inspect-rule-action="delete">×</button></div>
+    </div>`;
+  }
+
+  function currentDelay() {
+    return Number($("#speedSlider").value || 1200);
+  }
+
+  function animationDelay() {
+    return clamp(currentDelay(), 650, 2200);
+  }
+
+  function getInitialItems() {
+    return listFromInput($("#initialInput").value).map(id => ({ id, depth: 0, matchedBy: "initial" }));
+  }
+
+  function currentFrameBase(targetRuntime = runtime) {
+    return targetRuntime.callStack.length ? targetRuntime.callStack.at(-1).stackBase : 0;
+  }
+
+  function conditionMatches(position, item, when = {}) {
+    const predicates = position?.predicates || [];
+    if (when.side && position?.side !== when.side) return false;
+    if (Array.isArray(when.any) && when.any.length && !when.any.some(predicate => predicates.includes(predicate))) return false;
+    if (Array.isArray(when.all) && when.all.length && !when.all.every(predicate => predicates.includes(predicate))) return false;
+    if (Array.isArray(when.none) && when.none.some(predicate => predicates.includes(predicate))) return false;
+    return true;
+  }
+
+  function findCandidates(currentItem, searchState, map = positionMap()) {
+    const position = map.get(currentItem?.id);
+    if (!position) return { frontier: [], selected: [] };
+    const frontier = (position.children || []).map(id => ({ id, depth: (currentItem.depth || 0) + 1, parent: position.id }));
+    const selected = [];
+    const used = new Set();
+    const closure = searchState.closure || { mode: "first", count: 1 };
+    const maximum = closure.mode === "first" ? Number(closure.count || 1) : closure.mode === "one_each" && closure.count ? Number(closure.count) : Infinity;
+
+    outer: for (const predicate of searchState.predicates || []) {
+      for (const child of frontier) {
+        if (used.has(child.id)) continue;
+        const childPosition = map.get(child.id);
+        if (!childPosition?.predicates?.includes(predicate)) continue;
+        selected.push({ ...child, matchedBy: predicate });
+        used.add(child.id);
+        if (selected.length >= maximum) break outer;
+        if (closure.mode === "one_each") break;
+      }
+    }
+    return { frontier, selected };
+  }
+
+  function transition(to, label, reason = "") {
+    const target = stateDef(to);
+    if (!target) {
+      const reject = project.policy.outcomes.reject_state;
+      runtime.state = reject;
+      runtime.routine = stateDef(reject)?.routine || "main";
+      runtime.result = "reject";
+      runtime.reason = `transition target ${to} does not exist`;
+      runtime.timeline.push({ state: reject, routine: runtime.routine, label: "invalid transition" });
+      return;
+    }
+    runtime.state = to;
+    runtime.routine = target.routine;
+    runtime.timeline.push({ state: to, routine: target.routine, label });
+    selectedState = to;
+    activeRoutine = target.routine;
+    selectedRoutine = target.routine;
+    if (target.kind === "accept") {
+      runtime.result = "accept";
+      runtime.reason = reason || runtime.reason || `entered ${target.id}`;
+    } else if (target.kind === "reject") {
+      runtime.result = "reject";
+      runtime.reason = reason || runtime.reason || `entered ${target.id}`;
+    }
+    renderRoutineEditor();
+    renderSelectedStateEditor();
+    renderDfa();
+    renderRuntime();
+    if (target.kind === "accept") requestAnimationFrame(celebrate);
+  }
+
+  function bezierPoint(p0, p1, p2, p3, t) {
+    const u = 1 - t;
+    const tt = t * t;
+    const uu = u * u;
+    const uuu = uu * u;
+    const ttt = tt * t;
+    return {
+      x: uuu * p0.x + 3 * uu * t * p1.x + 3 * u * tt * p2.x + ttt * p3.x,
+      y: uuu * p0.y + 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt * p3.y
+    };
+  }
+
+  async function animateCard(sourceElement, targetElement, item, mode, label) {
+    if (!sourceElement || !targetElement || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const source = sourceElement.getBoundingClientRect();
+    const target = targetElement.getBoundingClientRect();
+    if (!source.width || !target.width) return;
+
+    sourceElement.classList.add("motion-source");
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = thoughtCardHtml(item, { matched: item.matchedBy || null });
+    const ghost = wrapper.firstElementChild;
+    ghost.classList.add("flight-card", mode === "push" ? "pushing" : "popping");
+    const start = { x: source.left, y: source.top };
+    const end = {
+      x: target.left + target.width / 2 - source.width / 2,
+      y: target.top + Math.min(Math.max(8, target.height / 2 - source.height / 2), 32)
+    };
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const arc = clamp(Math.abs(dx) * 0.11 + Math.abs(dy) * 0.05 + 72, 72, 170);
+    const p0 = { x: 0, y: 0 };
+    const p1 = { x: dx * 0.28, y: dy * 0.18 - arc };
+    const p2 = { x: dx * 0.76, y: dy * 0.78 - arc * 0.28 };
+    const p3 = { x: dx, y: dy };
+    Object.assign(ghost.style, {
+      left: `${source.left}px`, top: `${source.top}px`, width: `${source.width}px`,
+      minWidth: `${source.width}px`, height: `${source.height}px`, position: "fixed", opacity: "1"
+    });
+    ghost.insertAdjacentHTML("afterbegin", `<span class="flight-action">${escapeHtml(label)}</span>`);
+    document.body.appendChild(ghost);
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "flight-path-layer");
+    svg.setAttribute("width", String(window.innerWidth));
+    svg.setAttribute("height", String(window.innerHeight));
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const centerX = source.left + source.width / 2;
+    const centerY = source.top + source.height / 2;
+    path.setAttribute("d", `M ${centerX} ${centerY} C ${centerX + p1.x} ${centerY + p1.y}, ${centerX + p2.x} ${centerY + p2.y}, ${centerX + p3.x} ${centerY + p3.y}`);
+    svg.appendChild(path);
+    document.body.appendChild(svg);
+
+    const samples = [0, 0.16, 0.34, 0.54, 0.74, 0.9, 1];
+    const keyframes = samples.map((t, index) => {
+      const point = bezierPoint(p0, p1, p2, p3, t);
+      const rotation = (mode === "push" ? -2.5 : 2.5) * Math.sin(Math.PI * t);
+      const scale = 1 - t * (mode === "push" ? 0.08 : 0.04);
+      return {
+        transform: `translate3d(${point.x}px, ${point.y}px, 0) rotate(${rotation}deg) scale(${scale})`,
+        opacity: index === samples.length - 1 ? 0.96 : 1,
+        offset: t
+      };
+    });
+    const duration = animationDelay();
+    const cardAnimation = ghost.animate(keyframes, { duration, easing: "linear", fill: "forwards" });
+    const pathAnimation = path.animate([
+      { strokeDashoffset: "0", opacity: 0.2 },
+      { strokeDashoffset: "-90", opacity: 0.92, offset: 0.25 },
+      { strokeDashoffset: "-210", opacity: 0.72, offset: 0.82 },
+      { strokeDashoffset: "-250", opacity: 0 }
+    ], { duration, easing: "linear", fill: "forwards" });
+    await cardAnimation.finished.catch(() => undefined);
+    await ghost.animate([
+      { opacity: 0.96, transform: keyframes.at(-1).transform },
+      { opacity: 0, transform: `${keyframes.at(-1).transform} scale(0.97)` }
+    ], { duration: 170, easing: "ease-out", fill: "forwards" }).finished.catch(() => undefined);
+    pathAnimation.cancel();
+    ghost.remove();
+    svg.remove();
+    sourceElement.classList.remove("motion-source");
+    targetElement.classList.add("pulse");
+    setTimeout(() => targetElement.classList.remove("pulse"), 760);
+  }
+
+  async function stepRuntime({ silent = false } = {}) {
+    if (locked || runtime.result) return;
+    const errors = validateProject().filter(issue => issue.level === "error");
+    if (errors.length) {
+      toast("Fix validation errors before running.", "bad");
+      return;
+    }
+    locked = true;
+    renderControls();
+    try {
+      if (runtime.thoughtCount >= project.policy.budgets.thoughts) {
+        runtime.action = "thought budget exhausted";
+        addTrace("FAIL budget", `The policy used ${project.policy.budgets.thoughts} DFA thoughts without reaching acceptance.`);
+        transition(project.policy.outcomes.reject_state, "budget exhausted", `thought budget ${project.policy.budgets.thoughts} exhausted`);
+        return;
+      }
+      runtime.thoughtCount += 1;
+      const state = stateDef(runtime.state);
+      if (!state) {
+        transition(project.policy.outcomes.reject_state, "missing state", `state ${runtime.state} is missing`);
+        return;
+      }
+      runtime.action = state.description?.split(".")[0]?.toLowerCase() || kindLabel(state.kind);
+      renderRuntime();
+
+      if (state.kind === "push_initial") {
+        const items = getInitialItems();
+        const map = positionMap();
+        const missing = items.filter(item => !map.has(item.id));
+        if (!items.length || missing.length) {
+          const reason = missing.length ? `unknown initial position: ${missing.map(item => item.id).join(", ")}` : "no initial thoughts supplied";
+          addTrace("FAIL input", reason);
+          transition(state.on.invalid, "invalid initial input", reason);
+        } else {
+          for (const item of [...items].reverse()) {
+            await animateCard($("#initialSource"), $("#stackInlet"), item, "push", "push initial");
+            runtime.stack.push(item);
+            renderRuntime();
+          }
+          runtime.reason = `pushed ${items.map(item => item.id).join(", ")}`;
+          addTrace("PUSH initial thoughts", `${items.map(item => item.id).join(", ")} entered Working Memory; ${items[0].id} is arranged to pop first.`);
+          transition(state.on.pushed, "initial thoughts pushed");
+        }
+      } else if (state.kind === "pop") {
+        const base = currentFrameBase(runtime);
+        if (runtime.stack.length <= base) {
+          runtime.current = null;
+          runtime.frontier = [];
+          runtime.selectedFrontier = [];
+          addTrace(runtime.callStack.length ? "CLOSE subroutine frame" : "CLOSE working memory", runtime.callStack.length ? `No thoughts remain above the ${runtime.callStack.at(-1).calleeRoutine} frame boundary.` : "No retained thought remains in Working Memory.");
+          transition(state.on.empty, "frame empty", runtime.callStack.length ? runtime.reason : "Working Memory is empty; every retained line closed");
+        } else {
+          const source = $(".stack-card.top");
+          const item = runtime.stack.at(-1);
+          await animateCard(source, $("#currentThoughtBubble"), item, "pop", "pop to inspect");
+          runtime.stack.pop();
+          runtime.current = item;
+          runtime.frontier = [];
+          runtime.selectedFrontier = [];
+          runtime.lastMatch = item.matchedBy || "initial";
+          runtime.reason = `examining ${item.id}`;
+          addTrace("POP thought", `${item.id} left the top of Working Memory for examination at depth ${item.depth || 0}.`);
+          transition(state.on.thought, "thought available");
+        }
+      } else if (state.kind === "inspect") {
+        const item = runtime.current;
+        const position = item && getPosition(item.id);
+        if (!position) {
+          const target = state.on?.missing || project.policy.outcomes.reject_state;
+          addTrace("FAIL oracle", "The current thought has no oracle position card.");
+          transition(target, "missing oracle card", "current thought has no oracle card");
+        } else {
+          const win = state.terminal_checks === false ? null : project.policy.outcomes.winning_predicates.find(predicate => position.predicates.includes(predicate));
+          const failure = state.terminal_checks === false ? null : project.policy.outcomes.failure_predicates.find(predicate => position.predicates.includes(predicate));
+          if (win) {
+            runtime.lastMatch = win;
+            addTrace("ACCEPT winning predicate", `${position.id} matched ${win}; the DFA enters ${project.policy.outcomes.accept_state}.`);
+            transition(project.policy.outcomes.accept_state, "winning predicate", `${position.id} carries winning predicate ${win}`);
+          } else if (failure) {
+            runtime.lastMatch = failure;
+            addTrace("FAIL predicate", `${position.id} matched ${failure}; the DFA enters ${project.policy.outcomes.reject_state}.`);
+            transition(project.policy.outcomes.reject_state, "failure predicate", `${position.id} carries failure predicate ${failure}`);
+          } else if ((item.depth || 0) >= project.policy.budgets.depth) {
+            const target = state.on?.depth || state.default || project.policy.outcomes.reject_state;
+            runtime.current = null;
+            runtime.frontier = [];
+            runtime.selectedFrontier = [];
+            addTrace("CLOSE depth", `${position.id} reached the oracle depth budget ${project.policy.budgets.depth}.`);
+            transition(target, "depth closure");
+          } else {
+            const rule = (state.rules || []).find(candidate => conditionMatches(position, item, candidate.when));
+            const target = rule?.to || state.default || project.policy.outcomes.reject_state;
+            const label = rule?.label || (rule ? conditionLabel(rule.when) : "default");
+            runtime.lastMatch = label;
+            runtime.reason = `${position.id}: ${label}`;
+            addTrace("ROUTE predicate state", `${position.id} has [${position.predicates.join(", ")}]. First matching rule: ${label} → ${target}.`);
+            transition(target, label);
+          }
+        }
+      } else if (state.kind === "search") {
+        const position = runtime.current && getPosition(runtime.current.id);
+        if (!position) {
+          addTrace("FAIL search", "A filter state requires a current thought.");
+          transition(project.policy.outcomes.reject_state, "search without thought", "filter state has no current thought");
+        } else {
+          const { frontier, selected } = findCandidates(runtime.current, state);
+          runtime.frontier = frontier;
+          runtime.selectedFrontier = selected;
+          runtime.reason = `oracle exposed ${frontier.length}; ${selected.length} matched`;
+          renderRuntime();
+          addTrace("FILTER oracle children", `${state.id} checked [${state.predicates.join(" → ")}] and applied “${closureLabel(state)}.” Matches: ${selected.map(item => `${item.id}:${item.matchedBy}`).join(", ") || "none"}.`);
+          if (selected.length) {
+            for (const item of [...selected].reverse()) {
+              const source = $(`.frontier-list .thought-card[data-position-id="${CSS.escape(item.id)}"]`);
+              await animateCard(source, $("#stackInlet"), item, "push", `push ${item.matchedBy}`);
+              runtime.stack.push(item);
+              runtime.lastMatch = `${item.matchedBy} → ${item.id}`;
+              renderRuntime();
+            }
+            addTrace("PUSH matching thoughts", `${[...selected].reverse().map(item => item.id).join(", ")} were pushed in reverse priority so ${selected[0].id} will pop first.`);
+          } else {
+            addTrace("CLOSE no match", "No child matched the ordered predicate list; this local branch closes.");
+          }
+          runtime.current = null;
+          runtime.action = selected.length ? `pushed ${selected.length} matching thought${selected.length === 1 ? "" : "s"}` : "closed branch";
+          transition(selected.length ? state.on.pushed : state.on.none, selected.length ? "matches pushed" : "no matches");
+        }
+      } else if (state.kind === "call") {
+        const callee = routineDef(state.call?.routine);
+        if (!callee) {
+          transition(project.policy.outcomes.reject_state, "invalid call", `routine ${state.call?.routine} does not exist`);
+        } else if (runtime.callStack.length >= project.policy.budgets.call_depth) {
+          addTrace("FAIL call depth", `The control stack reached call-depth budget ${project.policy.budgets.call_depth}.`);
+          transition(project.policy.outcomes.reject_state, "call depth exhausted", "subroutine call-depth budget exhausted");
+        } else {
+          runtime.callStack.push({
+            callerRoutine: state.routine,
+            calleeRoutine: callee.id,
+            returnTo: state.call.return_to,
+            stackBase: runtime.stack.length,
+            callerCurrent: runtime.current ? clone(runtime.current) : null,
+            resumeCurrent: Boolean(state.call.resume_current),
+            callState: state.id
+          });
+          runtime.reason = `entered ${callee.id}; caller thoughts preserved below frame boundary`;
+          addTrace("CALL subroutine", `${state.id} called ${callee.id}. Working Memory boundary = ${runtime.stack.length}; RETURN will resume at ${state.call.return_to}.`);
+          transition(callee.entry, `call ${callee.id}`);
+        }
+      } else if (state.kind === "return") {
+        if (!runtime.callStack.length) {
+          const target = state.on?.no_frame || project.policy.outcomes.reject_state;
+          addTrace("FAIL return", `${state.id} found no control-stack frame.`);
+          transition(target, "return without frame", "RETURN had no caller frame");
+        } else {
+          const frame = runtime.callStack.pop();
+          const discarded = Math.max(0, runtime.stack.length - frame.stackBase);
+          runtime.stack.length = frame.stackBase;
+          runtime.current = frame.resumeCurrent ? frame.callerCurrent : null;
+          runtime.frontier = [];
+          runtime.selectedFrontier = [];
+          runtime.reason = `returned from ${frame.calleeRoutine} to ${frame.returnTo}`;
+          addTrace("RETURN to caller", `${frame.calleeRoutine} popped its control frame${discarded ? ` and discarded ${discarded} unconsumed local thought${discarded === 1 ? "" : "s"}` : ""}; ${frame.callerRoutine} resumes at ${frame.returnTo}.`);
+          transition(frame.returnTo, `return from ${frame.calleeRoutine}`);
+        }
+      } else if (state.kind === "accept") {
+        runtime.result = "accept";
+        runtime.reason ||= `entered ${state.id}`;
+      } else if (state.kind === "reject") {
+        runtime.result = "reject";
+        runtime.reason ||= `entered ${state.id}`;
+      }
+    } finally {
+      locked = false;
+      renderDfa();
+      renderRuntime();
+      if (!silent) saveLocal();
+    }
+  }
+
+  async function runRuntime() {
+    if (runtime.result) resetRuntime();
+    if (running && !paused) {
+      paused = true;
+      renderControls();
+      renderStatus();
+      return;
+    }
+    running = true;
+    paused = false;
+    renderControls();
+    renderStatus();
+    while (running && !paused && !runtime.result) {
+      await stepRuntime({ silent: true });
+      if (!runtime.result && !paused) await sleep(clamp(currentDelay() * 0.2, 140, 440));
+    }
+    if (runtime.result) {
+      running = false;
+      paused = false;
+    }
+    renderControls();
+    renderStatus();
+    saveLocal();
+  }
+
+  function resetRuntime() {
+    running = false;
+    paused = false;
+    locked = false;
+    runtime = makeRuntime(project.policy.entry);
+    activeRoutine = stateDef(project.policy.entry)?.routine || project.policy.routines[0]?.id || "main";
+    selectedRoutine = activeRoutine;
+    selectedState = project.policy.states.find(state => state.routine === activeRoutine && state.kind === "search")?.id || project.policy.entry;
+    renderRoutineEditor();
+    renderSelectedStateEditor();
+    renderDfa();
+    renderRuntime();
+    renderTrace();
+  }
+
+  function evaluateSilently(initialIds) {
+    const policy = project.policy;
+    const map = positionMap();
+    const rt = {
+      state: policy.entry,
+      stack: [],
+      current: null,
+      callStack: [],
+      count: 0,
+      result: null
+    };
+    const go = target => {
+      const state = stateDefFromPolicy(policy, target);
+      if (!state) {
+        rt.result = "reject";
+        return;
+      }
+      rt.state = target;
+      if (state.kind === "accept") rt.result = "accept";
+      if (state.kind === "reject") rt.result = "reject";
+    };
+    while (!rt.result && rt.count < policy.budgets.thoughts) {
+      rt.count += 1;
+      const state = stateDefFromPolicy(policy, rt.state);
+      if (!state) return "reject";
+      if (state.kind === "push_initial") {
+        const items = initialIds.map(id => ({ id, depth: 0, matchedBy: "initial" }));
+        if (!items.length || items.some(item => !map.has(item.id))) go(state.on.invalid);
+        else {
+          [...items].reverse().forEach(item => rt.stack.push(item));
+          go(state.on.pushed);
+        }
+      } else if (state.kind === "pop") {
+        const base = rt.callStack.length ? rt.callStack.at(-1).stackBase : 0;
+        if (rt.stack.length <= base) {
+          rt.current = null;
+          go(state.on.empty);
+        } else {
+          rt.current = rt.stack.pop();
+          go(state.on.thought);
+        }
+      } else if (state.kind === "inspect") {
+        const position = rt.current && map.get(rt.current.id);
+        if (!position) go(state.on?.missing || policy.outcomes.reject_state);
+        else {
+          const win = state.terminal_checks === false ? null : policy.outcomes.winning_predicates.find(predicate => position.predicates.includes(predicate));
+          const failure = state.terminal_checks === false ? null : policy.outcomes.failure_predicates.find(predicate => position.predicates.includes(predicate));
+          if (win) go(policy.outcomes.accept_state);
+          else if (failure) go(policy.outcomes.reject_state);
+          else if ((rt.current.depth || 0) >= policy.budgets.depth) {
+            rt.current = null;
+            go(state.on?.depth || state.default || policy.outcomes.reject_state);
+          } else {
+            const rule = (state.rules || []).find(candidate => conditionMatches(position, rt.current, candidate.when));
+            go(rule?.to || state.default || policy.outcomes.reject_state);
+          }
+        }
+      } else if (state.kind === "search") {
+        if (!rt.current || !map.has(rt.current.id)) go(policy.outcomes.reject_state);
+        else {
+          const { selected } = findCandidates(rt.current, state, map);
+          [...selected].reverse().forEach(item => rt.stack.push(item));
+          rt.current = null;
+          go(selected.length ? state.on.pushed : state.on.none);
+        }
+      } else if (state.kind === "call") {
+        const routine = policy.routines.find(item => item.id === state.call?.routine);
+        if (!routine || rt.callStack.length >= policy.budgets.call_depth) go(policy.outcomes.reject_state);
+        else {
+          rt.callStack.push({
+            callerRoutine: state.routine,
+            calleeRoutine: routine.id,
+            returnTo: state.call.return_to,
+            stackBase: rt.stack.length,
+            callerCurrent: rt.current ? clone(rt.current) : null,
+            resumeCurrent: Boolean(state.call.resume_current)
+          });
+          go(routine.entry);
+        }
+      } else if (state.kind === "return") {
+        if (!rt.callStack.length) go(state.on?.no_frame || policy.outcomes.reject_state);
+        else {
+          const frame = rt.callStack.pop();
+          rt.stack.length = frame.stackBase;
+          rt.current = frame.resumeCurrent ? frame.callerCurrent : null;
+          go(frame.returnTo);
+        }
+      } else if (state.kind === "accept") return "accept";
+      else if (state.kind === "reject") return "reject";
+    }
+    return rt.result || "reject";
+  }
+
+  function applyPolicyContract() {
+    const policy = project.policy;
+    policy.entry = $("#policyEntry").value;
+    policy.outcomes.accept_state = $("#acceptState").value;
+    policy.outcomes.reject_state = $("#rejectState").value;
+    policy.outcomes.winning_predicates = predicateListFromInput($("#winningPredicates").value);
+    policy.outcomes.failure_predicates = predicateListFromInput($("#failurePredicates").value);
+    policy.budgets.thoughts = Math.max(1, Number($("#thoughtBudget").value) || 1);
+    policy.budgets.depth = Math.max(0, Number($("#maxDepth").value) || 0);
+    policy.budgets.call_depth = Math.max(0, Number($("#callDepth").value) || 0);
+    const errors = validatePolicy(policy).filter(issue => issue.level === "error");
+    if (errors.length) {
+      toast(errors[0].title + ": " + errors[0].detail, "bad");
+      renderValidation();
+      return;
+    }
+    markDirty();
+    resetRuntime();
+    renderAll();
+    toast("Policy contract applied.", "good");
+  }
+
+  function applyRoutineEditor() {
+    const routine = routineDef(selectedRoutine);
+    if (!routine) return;
+    const oldId = routine.id;
+    const nextId = $("#routineId").value.trim();
+    if (!nextId) {
+      toast("Routine ID cannot be empty.", "bad");
+      return;
+    }
+    if (nextId !== oldId && project.policy.routines.some(item => item.id === nextId)) {
+      toast(`Routine ${nextId} already exists.`, "bad");
+      return;
+    }
+    routine.id = nextId;
+    routine.label = $("#routineLabel").value.trim() || nextId;
+    routine.entry = $("#routineEntry").value;
+    if (nextId !== oldId) {
+      project.policy.states.forEach(state => {
+        if (state.routine === oldId) state.routine = nextId;
+        if (state.kind === "call" && state.call?.routine === oldId) state.call.routine = nextId;
+      });
+      if (activeRoutine === oldId) activeRoutine = nextId;
+      selectedRoutine = nextId;
+    }
+    markDirty();
+    resetRuntime();
+    renderAll();
+    toast("Routine updated.", "good");
+  }
+
+  function addRoutine() {
+    let index = 1;
+    let id = `routine_${index}`;
+    while (routineDef(id)) id = `routine_${++index}`;
+    let stateId = `${id.toUpperCase()}_RETURN`;
+    while (stateDef(stateId)) stateId += "_2";
+    project.policy.routines.push({ id, label: `Routine ${index}`, entry: stateId });
+    project.policy.states.push({ id: stateId, routine: id, kind: "return", description: "Return to the caller.", on: { no_frame: project.policy.outcomes.reject_state } });
+    selectedRoutine = id;
+    activeRoutine = id;
+    selectedState = stateId;
+    markDirty();
+    renderAll();
+    switchSidebarTab("state");
+    toast("Subroutine added with a RETURN state.", "good");
+  }
+
+  function addState() {
+    const routineId = selectedRoutine || activeRoutine || project.policy.routines[0].id;
+    let index = 1;
+    let id = `NEW_STATE_${index}`;
+    while (stateDef(id)) id = `NEW_STATE_${++index}`;
+    project.policy.states.push({
+      id, routine: routineId, kind: "search", side: "my",
+      description: "New predicate-filter state.", predicates: ["new_predicate"],
+      closure: { mode: "first", count: 1 },
+      on: { pushed: project.policy.outcomes.reject_state, none: project.policy.outcomes.reject_state }
+    });
+    selectedState = id;
+    activeRoutine = routineId;
+    markDirty();
+    renderAll();
+    switchSidebarTab("state");
+  }
+
+  function renameStateReferences(oldId, newId) {
+    const policy = project.policy;
+    if (policy.entry === oldId) policy.entry = newId;
+    if (policy.outcomes.accept_state === oldId) policy.outcomes.accept_state = newId;
+    if (policy.outcomes.reject_state === oldId) policy.outcomes.reject_state = newId;
+    policy.routines.forEach(routine => { if (routine.entry === oldId) routine.entry = newId; });
+    policy.states.forEach(state => {
+      if (state.on) Object.keys(state.on).forEach(key => { if (state.on[key] === oldId) state.on[key] = newId; });
+      if (state.default === oldId) state.default = newId;
+      (state.rules || []).forEach(rule => { if (rule.to === oldId) rule.to = newId; });
+      if (state.call?.return_to === oldId) state.call.return_to = newId;
+    });
+  }
+
+  function readInspectRulesFromEditor() {
+    return $$("#inspectRuleEditor .inspect-rule-row").map(row => {
+      const type = $(".rule-type-input", row).value;
+      const value = $(".rule-value-input", row).value.trim();
+      const when = {};
+      if (type === "side") when.side = value === "their" ? "their" : "my";
+      else if (["any", "all", "none"].includes(type)) when[type] = predicateListFromInput(value);
+      return {
+        label: $(".rule-label-input", row).value.trim() || conditionLabel(when),
+        when,
+        to: $(".rule-target-input", row).value
+      };
+    });
+  }
+
+  function initializeStateKind(state, kind) {
+    state.kind = kind;
+    delete state.on; delete state.rules; delete state.default; delete state.predicates; delete state.closure; delete state.call; delete state.side; delete state.terminal_checks;
+    const reject = project.policy.outcomes.reject_state;
+    if (kind === "search") {
+      state.side = "my"; state.predicates = ["new_predicate"]; state.closure = { mode: "first", count: 1 }; state.on = { pushed: reject, none: reject };
+    } else if (kind === "inspect") {
+      state.terminal_checks = true; state.rules = [{ label: "my ply", when: { side: "my" }, to: reject }]; state.on = { missing: reject }; state.default = reject;
+    } else if (kind === "call") {
+      state.call = { routine: project.policy.routines.find(r => r.id !== state.routine)?.id || state.routine, return_to: reject, resume_current: false };
+    } else if (kind === "return") {
+      state.on = { no_frame: reject };
+    } else if (kind === "pop") {
+      state.on = { thought: reject, empty: reject };
+    } else if (kind === "push_initial") {
+      state.on = { pushed: reject, invalid: reject };
+    }
+  }
+
+  function applySelectedState() {
+    const state = stateDef(selectedState);
+    if (!state) return;
+    const oldId = state.id;
+    const nextId = $("#stateId").value.trim();
+    if (!nextId) {
+      toast("State ID cannot be empty.", "bad");
+      return;
+    }
+    if (nextId !== oldId && stateDef(nextId)) {
+      toast(`State ${nextId} already exists.`, "bad");
+      return;
+    }
+    const nextKind = $("#stateKind").value;
+    const nextRoutine = $("#stateRoutine").value;
+    const nextState = {
+      id: nextId,
+      routine: nextRoutine,
+      kind: nextKind,
+      description: $("#stateDescription").value.trim()
+    };
+    if (nextKind === "search") {
+      nextState.side = $("#stateSide").value;
+      nextState.predicates = $$("#statePredicateEditor input").map(input => input.value.trim()).filter(Boolean);
+      nextState.closure = { mode: $("#stateClosureMode").value };
+      const count = Math.max(1, Number($("#stateClosureCount").value) || 1);
+      if (nextState.closure.mode !== "all") nextState.closure.count = count;
+      nextState.on = { pushed: $("#stateOnPushed").value, none: $("#stateOnNone").value };
+    } else if (nextKind === "inspect") {
+      nextState.terminal_checks = $("#stateTerminalChecks").checked;
+      nextState.rules = readInspectRulesFromEditor();
+      nextState.default = $("#stateDefault").value || undefined;
+      nextState.on = {};
+      if ($("#stateOnDepth").value) nextState.on.depth = $("#stateOnDepth").value;
+      if ($("#stateOnMissing").value) nextState.on.missing = $("#stateOnMissing").value;
+    } else if (nextKind === "call") {
+      nextState.call = { routine: $("#stateCallRoutine").value, return_to: $("#stateReturnTo").value, resume_current: $("#stateResumeCurrent").checked };
+    } else if (nextKind === "return") {
+      nextState.on = { no_frame: $("#stateNoFrame").value };
+    } else if (nextKind === "pop") {
+      nextState.on = { thought: $("#stateOnThought").value, empty: $("#stateOnEmpty").value };
+    } else if (nextKind === "push_initial") {
+      nextState.on = { pushed: $("#stateOnPushedInitial").value, invalid: $("#stateOnInvalidInitial").value };
+    }
+    const index = project.policy.states.findIndex(item => item.id === oldId);
+    project.policy.states[index] = nextState;
+    if (nextId !== oldId) renameStateReferences(oldId, nextId);
+    selectedState = nextId;
+    activeRoutine = nextRoutine;
+    selectedRoutine = nextRoutine;
+    const errors = validatePolicy(project.policy).filter(issue => issue.level === "error");
+    if (errors.length) {
+      toast(errors[0].title + ": " + errors[0].detail, "bad");
+    }
+    markDirty();
+    resetRuntime();
+    selectedState = nextId;
+    activeRoutine = nextRoutine;
+    selectedRoutine = nextRoutine;
+    renderAll();
+    toast("State applied to the policy DFA.", "good");
+  }
+
+  function duplicateSelectedState() {
+    const state = stateDef(selectedState);
+    if (!state) return;
+    let index = 2;
+    let id = `${state.id}_COPY`;
+    while (stateDef(id)) id = `${state.id}_COPY_${index++}`;
+    const copy = clone(state);
+    copy.id = id;
+    project.policy.states.splice(project.policy.states.indexOf(state) + 1, 0, copy);
+    selectedState = id;
+    activeRoutine = copy.routine;
+    selectedRoutine = copy.routine;
+    markDirty();
+    renderAll();
+  }
+
+  function deleteSelectedState() {
+    const state = stateDef(selectedState);
+    if (!state) return;
+    if (project.policy.states.length <= 1) {
+      toast("A policy needs at least one state.", "bad");
+      return;
+    }
+    const references = [];
+    if (project.policy.entry === state.id) references.push("policy entry");
+    if (project.policy.outcomes.accept_state === state.id) references.push("accept state");
+    if (project.policy.outcomes.reject_state === state.id) references.push("reject state");
+    project.policy.routines.forEach(routine => { if (routine.entry === state.id) references.push(`routine ${routine.id} entry`); });
+    project.policy.states.forEach(other => {
+      if (other.id === state.id) return;
+      if (policyGraphTargets(other, project.policy).includes(state.id)) references.push(other.id);
+    });
+    if (references.length) {
+      toast(`Cannot delete ${state.id}; referenced by ${references.slice(0, 4).join(", ")}.`, "bad");
+      return;
+    }
+    project.policy.states = project.policy.states.filter(item => item.id !== state.id);
+    selectedState = project.policy.states.find(item => item.routine === state.routine)?.id || project.policy.states[0].id;
+    markDirty();
+    resetRuntime();
+    renderAll();
+  }
+
+  function moveStatePredicate(index, delta) {
+    const state = stateDef(selectedState);
+    if (!state || state.kind !== "search") return;
+    const next = index + delta;
+    if (next < 0 || next >= state.predicates.length) return;
+    [state.predicates[index], state.predicates[next]] = [state.predicates[next], state.predicates[index]];
+    markDirty();
+    renderSelectedStateEditor();
+    renderDfa();
+  }
+
+  function moveInspectRule(index, delta) {
+    const state = stateDef(selectedState);
+    if (!state || state.kind !== "inspect") return;
+    const next = index + delta;
+    if (next < 0 || next >= state.rules.length) return;
+    [state.rules[index], state.rules[next]] = [state.rules[next], state.rules[index]];
+    markDirty();
+    renderSelectedStateEditor();
+    renderDfa();
+  }
+
+  function applyPolicyJson() {
+    try {
+      const parsed = JSON.parse($("#policyJson").value);
+      const errors = validatePolicy(parsed).filter(issue => issue.level === "error");
+      if (errors.length) throw new Error(errors.map(issue => `${issue.title}: ${issue.detail}`).join("\n"));
+      project.policy = parsed;
+      policyJsonDirty = false;
+      activeRoutine = stateDef(project.policy.entry)?.routine || project.policy.routines[0].id;
+      selectedRoutine = activeRoutine;
+      selectedState = project.policy.entry;
+      markDirty({ syncJson: false });
+      resetRuntime();
+      renderAll();
+      toast("Validated policy JSON applied to the cards and runner.", "good");
+    } catch (error) {
+      toast(error.message, "bad");
+    }
+  }
+
+  function formatPolicyJson() {
+    try {
+      $("#policyJson").value = JSON.stringify(JSON.parse($("#policyJson").value), null, 2);
+      policyJsonDirty = true;
+      validatePolicyText();
+    } catch (error) {
+      toast(error.message, "bad");
+    }
+  }
+
+  function copyPolicyJson() {
+    navigator.clipboard?.writeText($("#policyJson").value).then(() => toast("Policy JSON copied.", "good")).catch(() => {
+      $("#policyJson").select();
+      document.execCommand("copy");
+      toast("Policy JSON copied.", "good");
+    });
+  }
+
+  function downloadJson(value, filename) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
+  function downloadProject() {
+    project.name = $("#projectName").value.trim() || project.name;
+    project.initial = listFromInput($("#initialInput").value);
+    const base = project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "predicate-policy";
+    downloadJson(project, `${base}.project.json`);
+    saveLocal();
+    toast("Project JSON saved to disk.", "good");
+  }
+
+  function downloadPolicy() {
+    const base = project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "predicate-policy";
+    downloadJson(project.policy, `${base}.policy.json`);
+    toast("Policy JSON saved to disk.", "good");
+  }
+
+  function loadExample(key) {
+    project = clone(EXAMPLES[key] || EXAMPLES.tactic);
+    $("#exampleSelect").value = key;
+    testResults = {};
+    policyJsonDirty = false;
+    resetRuntime();
+    markDirty();
+    renderAll();
+    toast(`${project.name} loaded.`, "good");
+  }
+
+  function setViewMode(mode) {
+    viewMode = mode;
+    $$(".view-tab").forEach(button => button.classList.toggle("active", button.dataset.view === mode));
+    $$(".policy-view").forEach(view => view.classList.toggle("active", view.dataset.policyView === mode));
+    if (mode === "json") syncPolicyJson(!policyJsonDirty);
+  }
+
+  function switchSidebarTab(name) {
+    $$(".side-tab").forEach(button => button.classList.toggle("active", button.dataset.tab === name));
+    $$(".tab-panel").forEach(panel => panel.classList.toggle("active", panel.dataset.panel === name));
+  }
+
+  function toast(message, type = "") {
+    const element = document.createElement("div");
+    element.className = `toast ${type}`;
+    element.textContent = message;
+    $("#toastStack").appendChild(element);
+    setTimeout(() => { element.style.opacity = "0"; element.style.transform = "translateY(6px)"; }, 2800);
+    setTimeout(() => element.remove(), 3250);
+  }
+
+  function celebrate() {
+    const target = $(`.state-card[data-state-id="${CSS.escape(project.policy.outcomes.accept_state)}"]`);
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    const palette = ["#55e6a5", "#67e8f9", "#a78bfa", "#f9c74f"];
+    for (let index = 0; index < 24; index += 1) {
+      const piece = document.createElement("i");
+      piece.className = "confetti";
+      piece.style.left = `${rect.left + rect.width / 2}px`;
+      piece.style.top = `${rect.top + rect.height / 2}px`;
+      piece.style.background = palette[index % palette.length];
+      piece.style.setProperty("--dx", `${(Math.random() - 0.5) * 260}px`);
+      piece.style.setProperty("--dy", `${-50 - Math.random() * 190}px`);
+      document.body.appendChild(piece);
+      setTimeout(() => piece.remove(), 1000);
+    }
+  }
+
+  function closeSidebar() {
+    $("#sidebar").classList.remove("open");
+    $("#sidebarScrim").classList.remove("open");
+  }
+
+  $$(".side-tab").forEach(button => button.addEventListener("click", () => switchSidebarTab(button.dataset.tab)));
+  $$(".view-tab").forEach(button => button.addEventListener("click", () => setViewMode(button.dataset.view)));
+  $("#mobileMenuBtn").addEventListener("click", () => {
+    $("#sidebar").classList.toggle("open");
+    $("#sidebarScrim").classList.toggle("open");
+  });
+  $("#sidebarScrim").addEventListener("click", closeSidebar);
+  $("#stepBtn").addEventListener("click", () => stepRuntime());
+  $("#playBtn").addEventListener("click", runRuntime);
+  $("#resetRunBtn").addEventListener("click", resetRuntime);
+  $("#clearTraceBtn").addEventListener("click", () => { runtime.trace = []; renderTrace(); });
+  $("#speedSlider").addEventListener("input", () => document.documentElement.style.setProperty("--speed", `${animationDelay()}ms`));
+  $("#exampleSelect").addEventListener("change", event => loadExample(event.target.value));
+  $("#applyPolicyContractBtn").addEventListener("click", applyPolicyContract);
+  $("#applyRoutineBtn").addEventListener("click", applyRoutineEditor);
+  $("#addRoutineBtn").addEventListener("click", addRoutine);
+  $("#addStateBtn").addEventListener("click", addState);
+  $("#applyPolicyJsonBtn").addEventListener("click", applyPolicyJson);
+  $("#formatPolicyJsonBtn").addEventListener("click", formatPolicyJson);
+  $("#validatePolicyJsonBtn").addEventListener("click", validatePolicyText);
+  $("#copyPolicyJsonBtn").addEventListener("click", copyPolicyJson);
+  $("#downloadPolicyJsonBtn").addEventListener("click", downloadPolicy);
+  $("#loadPolicyJsonBtn").addEventListener("click", () => $("#policyFileInput").click());
+  $("#policyJson").addEventListener("input", () => {
+    policyJsonDirty = true;
+    validatePolicyText();
+  });
+  $("#applyOracleBtn").addEventListener("click", () => {
+    try {
+      const positions = JSON.parse($("#oracleJson").value);
+      if (!Array.isArray(positions)) throw new Error("Oracle JSON must be an array of position cards.");
+      const candidate = { ...project, positions };
+      const errors = validateProject(candidate).filter(issue => issue.level === "error");
+      if (errors.length) throw new Error(errors.map(issue => `${issue.title}: ${issue.detail}`).join("\n"));
+      project.positions = positions;
+      markDirty();
+      resetRuntime();
+      renderAll();
+      toast("Oracle cards applied.", "good");
+    } catch (error) {
+      toast(error.message, "bad");
+    }
+  });
+  $("#formatOracleBtn").addEventListener("click", () => {
+    try {
+      $("#oracleJson").value = JSON.stringify(JSON.parse($("#oracleJson").value), null, 2);
+    } catch (error) {
+      toast(error.message, "bad");
+    }
+  });
+  $("#runTestsBtn").addEventListener("click", () => {
+    testResults = {};
+    (project.tests || []).forEach((test, index) => { testResults[index] = evaluateSilently(test.initial || []); });
+    renderTests();
+    const passed = (project.tests || []).filter((test, index) => testResults[index] === test.expected).length;
+    toast(`${passed}/${(project.tests || []).length} tests passed.`, passed === (project.tests || []).length ? "good" : "bad");
+  });
+  $("#projectName").addEventListener("input", event => { project.name = event.target.value; markDirty({ syncJson: false }); });
+  $("#initialInput").addEventListener("change", event => { project.initial = listFromInput(event.target.value); markDirty({ syncJson: false }); resetRuntime(); });
+  $("#saveProjectBtn").addEventListener("click", downloadProject);
+  $("#openProjectBtn").addEventListener("click", () => $("#projectFileInput").click());
+  $("#resetProjectBtn").addEventListener("click", () => loadExample($("#exampleSelect").value || "tactic"));
+
+  $("#projectFileInput").addEventListener("change", async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const errors = validateProject(parsed).filter(issue => issue.level === "error");
+      if (errors.length) throw new Error(errors.map(issue => issue.title).join(", "));
+      project = parsed;
+      testResults = {};
+      policyJsonDirty = false;
+      resetRuntime();
+      renderAll();
+      markDirty();
+      toast("Project opened.", "good");
+    } catch (error) {
+      toast(`Could not open project: ${error.message}`, "bad");
+    } finally {
+      event.target.value = "";
+    }
+  });
+
+  $("#policyFileInput").addEventListener("change", async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      $("#policyJson").value = JSON.stringify(parsed, null, 2);
+      policyJsonDirty = true;
+      validatePolicyText();
+      setViewMode("json");
+      toast("Policy file loaded into the validated draft editor.", "good");
+    } catch (error) {
+      toast(`Could not load policy: ${error.message}`, "bad");
+    } finally {
+      event.target.value = "";
+    }
+  });
+
+  document.addEventListener("click", event => {
+    const stateCard = event.target.closest(".state-card");
+    if (stateCard) {
+      selectedState = stateCard.dataset.stateId;
+      const state = stateDef(selectedState);
+      if (state) {
+        selectedRoutine = state.routine;
+        activeRoutine = state.routine;
+      }
+      renderDfa();
+      renderRoutineEditor();
+      renderSelectedStateEditor();
+      switchSidebarTab("state");
+    }
+    const routineView = event.target.closest("[data-routine-view]");
+    if (routineView) {
+      activeRoutine = routineView.dataset.routineView;
+      selectedRoutine = activeRoutine;
+      selectedState = statesForRoutine(activeRoutine)[0]?.id || selectedState;
+      renderRoutineEditor();
+      renderSelectedStateEditor();
+      renderDfa();
+    }
+    const routineSelect = event.target.closest("[data-routine-select]");
+    if (routineSelect) {
+      selectedRoutine = routineSelect.dataset.routineSelect;
+      activeRoutine = selectedRoutine;
+      selectedState = statesForRoutine(selectedRoutine)[0]?.id || selectedState;
+      renderRoutineEditor();
+      renderSelectedStateEditor();
+      renderDfa();
+    }
+    const predicateAction = event.target.closest("[data-state-predicate-action]");
+    if (predicateAction) {
+      const row = predicateAction.closest(".state-predicate-row");
+      moveStatePredicate(Number(row.dataset.index), predicateAction.dataset.statePredicateAction === "up" ? -1 : 1);
+    }
+    const ruleAction = event.target.closest("[data-inspect-rule-action]");
+    if (ruleAction) {
+      const row = ruleAction.closest(".inspect-rule-row");
+      const index = Number(row.dataset.index);
+      if (ruleAction.dataset.inspectRuleAction === "delete") {
+        const state = stateDef(selectedState);
+        state.rules.splice(index, 1);
+        markDirty();
+        renderSelectedStateEditor();
+        renderDfa();
+      } else {
+        moveInspectRule(index, ruleAction.dataset.inspectRuleAction === "up" ? -1 : 1);
+      }
+    }
+    if (event.target.id === "applyStateBtn") applySelectedState();
+    if (event.target.id === "duplicateStateBtn") duplicateSelectedState();
+    if (event.target.id === "deleteStateBtn") deleteSelectedState();
+    if (event.target.id === "addStatePredicateBtn") {
+      const state = stateDef(selectedState);
+      if (state?.kind === "search") {
+        state.predicates.push("new_predicate");
+        markDirty();
+        renderSelectedStateEditor();
+        renderDfa();
+      }
+    }
+    if (event.target.id === "addInspectRuleBtn") {
+      const state = stateDef(selectedState);
+      if (state?.kind === "inspect") {
+        state.rules.push({ label: "new rule", when: { any: ["new_predicate"] }, to: state.default || project.policy.outcomes.reject_state });
+        markDirty();
+        renderSelectedStateEditor();
+        renderDfa();
+      }
+    }
+  });
+
+  document.addEventListener("change", event => {
+    if (event.target.id === "stateKind") {
+      const state = stateDef(selectedState);
+      if (state && state.kind !== event.target.value) {
+        initializeStateKind(state, event.target.value);
+        markDirty();
+        renderSelectedStateEditor();
+        renderDfa();
+      }
+    }
+  });
+
+  window.addEventListener("keydown", event => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      downloadProject();
+    }
+    if (event.code === "Space" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) {
+      event.preventDefault();
+      runRuntime();
+    }
+    if (event.key === "ArrowRight" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) {
+      event.preventDefault();
+      stepRuntime();
+    }
+  });
+
+  $("#speedSlider").value = 1200;
+  document.documentElement.style.setProperty("--speed", `${animationDelay()}ms`);
+  const matchingExample = Object.entries(EXAMPLES).find(([, value]) => value.name === project.name)?.[0];
+  if (matchingExample) $("#exampleSelect").value = matchingExample;
+  renderAll();
+  setViewMode("cards");
+})();
+
+  </script>
+</body>
+</html>
