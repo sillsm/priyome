@@ -1,0 +1,2348 @@
+<!doctype html>
+<!-- Preview bundle: predicate.js is inlined only so the sandbox preview is self-contained. The deployable source keeps predicate.js separate. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>Predicate Policy Search Lab</title>
+  <style>
+    :root {
+      --bg: #07101a;
+      --bg-2: #0a1521;
+      --panel: rgba(15, 27, 41, 0.93);
+      --panel-2: rgba(20, 35, 52, 0.93);
+      --line: rgba(183, 204, 230, 0.16);
+      --line-strong: rgba(183, 204, 230, 0.3);
+      --text: #f6f8fc;
+      --muted: #a9b5c6;
+      --faint: #718096;
+      --purple: #a77cff;
+      --purple-2: #7857e8;
+      --blue: #66a8ff;
+      --green: #72dc8b;
+      --red: #ff7185;
+      --amber: #ffc45e;
+      --shadow: 0 20px 55px rgba(0, 0, 0, 0.34);
+      --radius: 18px;
+      --speed: 520ms;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 18% -10%, rgba(121, 87, 232, 0.2), transparent 34%),
+        radial-gradient(circle at 100% 10%, rgba(102, 168, 255, 0.13), transparent 30%),
+        linear-gradient(180deg, #07101a 0%, #091421 100%);
+      overflow-x: hidden;
+    }
+    button, input, select, textarea { font: inherit; }
+    button, select { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: 0.48; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+    .app { min-height: 100vh; display: flex; flex-direction: column; }
+    .topbar {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(5, 12, 20, 0.84);
+      backdrop-filter: blur(20px) saturate(140%);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-mark {
+      width: 38px; height: 38px; border-radius: 12px; flex: 0 0 auto;
+      display: grid; place-items: center;
+      font-size: 22px;
+      color: white;
+      background: linear-gradient(145deg, rgba(102,168,255,.3), rgba(167,124,255,.38));
+      border: 1px solid rgba(167,124,255,.45);
+      box-shadow: inset 0 0 22px rgba(167,124,255,.18), 0 12px 26px rgba(0,0,0,.25);
+    }
+    .brand-copy { min-width: 0; }
+    .brand-copy strong { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .brand-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .spacer { flex: 1; }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .engine-badge, .valid-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      min-height: 34px; padding: 6px 10px;
+      border: 1px solid var(--line); border-radius: 10px;
+      color: var(--muted); background: rgba(255,255,255,.035); font-size: 11px;
+      white-space: nowrap;
+    }
+    .valid-badge.good { color: var(--green); border-color: rgba(114,220,139,.38); background: rgba(114,220,139,.08); }
+    .valid-badge.bad { color: var(--red); border-color: rgba(255,113,133,.38); background: rgba(255,113,133,.08); }
+    .btn {
+      min-height: 38px; padding: 8px 12px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      border: 1px solid var(--line); border-radius: 11px;
+      color: var(--text); background: rgba(255,255,255,.045);
+    }
+    .btn:hover { border-color: var(--line-strong); background: rgba(255,255,255,.075); }
+    .btn.primary { border-color: rgba(167,124,255,.58); background: linear-gradient(145deg, rgba(124,84,232,.95), rgba(156,93,236,.92)); box-shadow: 0 12px 28px rgba(103,60,205,.25); }
+    .btn.good { border-color: rgba(114,220,139,.44); background: rgba(35,142,71,.32); }
+    .btn.icon { width: 38px; padding: 0; }
+
+    .workspace {
+      width: min(1600px, 100%);
+      margin: 0 auto;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.14fr) minmax(360px, .86fr);
+      gap: 14px;
+      flex: 1;
+      min-height: 0;
+    }
+    .pane {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(14,26,40,.95), rgba(9,19,31,.96));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .pane-head {
+      min-height: 62px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 15px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.018);
+    }
+    .pane-head h1 { margin: 0; font-size: 16px; }
+    .pane-head p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+    .pane-head .right { margin-left: auto; display: flex; gap: 7px; align-items: center; }
+    .mini-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      min-height: 25px; padding: 4px 8px;
+      border: 1px solid var(--line); border-radius: 999px;
+      color: var(--muted); background: rgba(255,255,255,.035); font-size: 10px;
+      white-space: nowrap;
+    }
+    .mini-chip.purple { color: #cdbaff; border-color: rgba(167,124,255,.35); background: rgba(167,124,255,.08); }
+
+    .policy-pane { display: flex; flex-direction: column; min-height: calc(100vh - 92px); }
+    .policy-stage {
+      flex: 1;
+      min-height: 470px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+    .routine-strip {
+      display: flex; align-items: center; gap: 7px;
+      min-height: 42px; padding: 8px 14px 5px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .routine-strip::-webkit-scrollbar { display: none; }
+    .routine-chip {
+      border: 1px solid var(--line); border-radius: 999px;
+      padding: 5px 9px; color: var(--faint); background: rgba(255,255,255,.02); font-size: 10px;
+      white-space: nowrap;
+    }
+    .routine-chip.active { color: #ded2ff; border-color: rgba(167,124,255,.42); background: rgba(167,124,255,.1); }
+    .routine-arrow { color: var(--faint); font-size: 10px; }
+
+    .dfa-window {
+      flex: 1;
+      min-height: 365px;
+      display: flex;
+      align-items: center;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 24px max(28px, calc(50% - 180px));
+      scroll-behavior: smooth;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: none;
+      mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+    }
+    .dfa-window::-webkit-scrollbar { display: none; }
+    .dfa-flow { display: flex; align-items: center; gap: 12px; min-width: max-content; }
+    .state-wrap { display: flex; align-items: center; gap: 12px; }
+    .state-arrow {
+      width: 26px; height: 2px; background: rgba(178,193,215,.34); position: relative; flex: 0 0 26px;
+    }
+    .state-arrow::after { content: ""; position: absolute; right: -1px; top: -4px; width: 8px; height: 8px; border-right: 2px solid rgba(178,193,215,.55); border-top: 2px solid rgba(178,193,215,.55); transform: rotate(45deg); }
+    .state-card {
+      scroll-snap-align: center;
+      width: 164px;
+      min-height: 205px;
+      padding: 13px;
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(27,42,60,.9), rgba(14,25,39,.96));
+      color: var(--muted);
+      opacity: .56;
+      transform: scale(.92);
+      transition: width var(--speed) cubic-bezier(.2,.8,.2,1), transform var(--speed) cubic-bezier(.2,.8,.2,1), opacity var(--speed), border-color var(--speed), box-shadow var(--speed), background var(--speed);
+      position: relative;
+      overflow: hidden;
+    }
+    .state-card.active {
+      width: 338px;
+      min-height: 330px;
+      opacity: 1;
+      transform: scale(1);
+      color: var(--text);
+      border-color: rgba(167,124,255,.72);
+      background:
+        radial-gradient(circle at 90% 0%, rgba(167,124,255,.15), transparent 36%),
+        linear-gradient(180deg, rgba(25,39,59,.98), rgba(12,23,37,.99));
+      box-shadow: 0 0 0 3px rgba(167,124,255,.08), 0 24px 54px rgba(0,0,0,.32);
+    }
+    .state-card.accept { border-color: rgba(114,220,139,.48); }
+    .state-card.accept.active { border-color: var(--green); box-shadow: 0 0 0 3px rgba(114,220,139,.08), 0 24px 54px rgba(0,0,0,.32); }
+    .state-card.reject { border-color: rgba(255,113,133,.48); }
+    .state-card.reject.active { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255,113,133,.08), 0 24px 54px rgba(0,0,0,.32); }
+    .state-kind {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      color: var(--purple); text-transform: uppercase; letter-spacing: .12em; font-size: 9px; font-weight: 800;
+    }
+    .state-icon { margin-top: 18px; font-size: 32px; color: var(--purple); }
+    .state-title { margin-top: 10px; color: var(--text); font-size: 17px; font-weight: 850; letter-spacing: .01em; }
+    .state-id { margin-top: 4px; color: var(--faint); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .state-description { margin-top: 12px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .state-card:not(.active) .state-detail { display: none; }
+    .state-card:not(.active) .state-description { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .state-detail { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); }
+    .detail-label { margin-bottom: 8px; color: var(--muted); font-size: 10px; }
+    .predicate-list { display: grid; gap: 6px; }
+    .predicate-row {
+      display: grid; grid-template-columns: 25px 1fr auto; align-items: center; gap: 8px;
+      min-height: 35px; padding: 6px 8px;
+      border: 1px solid transparent; border-radius: 10px;
+      color: var(--muted); background: rgba(255,255,255,.025);
+      transition: background 260ms, border-color 260ms, color 260ms, transform 260ms;
+    }
+    .predicate-row .n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: rgba(167,124,255,.16); color: #cbb9ff; font-size: 10px; font-weight: 800; }
+    .predicate-row .status { color: var(--faint); font-size: 10px; }
+    .predicate-row.next, .predicate-row.checking {
+      color: var(--text); border-color: rgba(167,124,255,.48); background: rgba(167,124,255,.12); transform: translateX(3px);
+    }
+    .predicate-row.next .status::before { content: "next"; color: var(--purple); }
+    .predicate-row.matched { color: var(--green); background: rgba(114,220,139,.08); }
+    .predicate-row.matched .status::before { content: "✓"; font-size: 14px; }
+    .predicate-row.missed { color: var(--muted); opacity: .72; }
+    .predicate-row.missed .status::before { content: "—"; }
+    .predicate-row.skipped { opacity: .35; text-decoration: line-through; }
+    .closure-line { margin-top: 11px; padding: 8px 9px; border-radius: 10px; color: #c5d2e5; background: rgba(102,168,255,.075); font-size: 10px; }
+    .rule-list { display: grid; gap: 7px; }
+    .rule-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; color: var(--muted); font-size: 10px; }
+    .rule-row b { color: var(--text); font-weight: 700; }
+    .call-box { padding: 10px; border-radius: 11px; background: rgba(102,168,255,.07); color: var(--muted); font-size: 10px; line-height: 1.55; }
+    .call-box strong { color: var(--text); }
+
+    .policy-message {
+      min-height: 58px;
+      display: flex; align-items: center; gap: 11px;
+      margin: 0 14px 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line); border-radius: 13px;
+      background: rgba(255,255,255,.025);
+    }
+    .message-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: var(--purple); box-shadow: 0 0 0 5px rgba(167,124,255,.1); }
+    .policy-message strong { display: block; font-size: 12px; }
+    .policy-message span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+
+    .controls {
+      min-height: 76px;
+      display: flex; align-items: center; gap: 9px;
+      padding: 10px 14px;
+      border-top: 1px solid var(--line);
+      background: rgba(4,11,19,.62);
+    }
+    .controls .btn { min-width: 92px; min-height: 46px; font-weight: 750; }
+    .speed-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; }
+    .speed-wrap input { width: 115px; accent-color: var(--purple); }
+    .step-count { color: var(--faint); font-size: 10px; white-space: nowrap; }
+
+    .tree-pane { display: flex; flex-direction: column; min-height: calc(100vh - 92px); }
+    .tree-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 10px 22px; }
+    .tree-empty { min-height: 260px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 12px; }
+    .tree-list { display: grid; align-content: start; }
+    .tree-row {
+      --depth: 0;
+      position: relative;
+      display: grid;
+      grid-template-columns: 24px minmax(0,1fr) auto;
+      gap: 7px;
+      align-items: start;
+      min-height: 44px;
+      margin-left: calc(var(--depth) * 24px);
+      padding: 8px 8px 8px 6px;
+      border-radius: 10px;
+      color: var(--muted);
+      opacity: .75;
+      transform: translateY(0);
+      animation: treeEnter 380ms cubic-bezier(.2,.8,.2,1) both;
+      transition: background 260ms, color 260ms, opacity 260ms, transform 260ms;
+    }
+    .tree-row::before {
+      content: "";
+      position: absolute;
+      left: -13px; top: -12px; bottom: 50%; width: 11px;
+      border-left: 1px solid rgba(155,176,203,.22);
+      border-bottom: 1px solid rgba(155,176,203,.22);
+      border-radius: 0 0 0 7px;
+      display: var(--connector, block);
+    }
+    .tree-row.active { color: var(--text); opacity: 1; background: rgba(167,124,255,.1); transform: translateX(3px); }
+    .tree-row.queued { opacity: .55; }
+    .tree-row.accepted { color: var(--green); opacity: 1; background: rgba(114,220,139,.07); }
+    .tree-row.rejected { color: var(--red); opacity: 1; background: rgba(255,113,133,.07); }
+    .tree-row.closed, .tree-row.discarded { opacity: .5; }
+    .tree-marker { font-size: 14px; line-height: 20px; text-align: center; color: var(--faint); }
+    .tree-row.active .tree-marker { color: var(--purple); }
+    .tree-row.accepted .tree-marker { color: var(--green); }
+    .tree-row.rejected .tree-marker { color: var(--red); }
+    .tree-main { min-width: 0; }
+    .tree-line { font-size: 14px; line-height: 1.3; word-break: break-word; }
+    .tree-line strong { color: inherit; font-weight: 780; }
+    .because { color: var(--blue); font-size: 11px; white-space: nowrap; }
+    .tree-help { margin-top: 3px; color: var(--faint); font-size: 10px; line-height: 1.35; }
+    .tree-note { margin-top: 3px; color: inherit; font-size: 10px; line-height: 1.35; }
+    .tree-side { color: var(--faint); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; padding-top: 2px; white-space: nowrap; }
+    .tree-result {
+      margin: 12px 4px 0;
+      padding: 12px;
+      border: 1px solid var(--line); border-radius: 12px;
+      color: var(--muted); background: rgba(255,255,255,.025); font-size: 11px; line-height: 1.45;
+    }
+    .tree-result.accept { color: var(--green); border-color: rgba(114,220,139,.35); background: rgba(114,220,139,.07); }
+    .tree-result.reject { color: var(--red); border-color: rgba(255,113,133,.35); background: rgba(255,113,133,.07); }
+    .tree-legend { display: flex; gap: 10px; flex-wrap: wrap; padding: 8px 14px 11px; border-top: 1px solid var(--line); color: var(--faint); font-size: 9px; }
+    .tree-legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .legend-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+    .legend-dot.active { background: var(--purple); }
+    .legend-dot.accept { background: var(--green); }
+    .legend-dot.reject { background: var(--red); }
+
+    @keyframes treeEnter { from { opacity: 0; transform: translateY(8px); } }
+    @keyframes softPulse { 50% { box-shadow: 0 0 0 7px rgba(167,124,255,.04), 0 24px 54px rgba(0,0,0,.32); } }
+    .state-card.active.pulse { animation: softPulse 800ms ease; }
+
+    dialog {
+      width: min(1040px, calc(100vw - 24px));
+      height: min(780px, calc(100vh - 24px));
+      padding: 0;
+      color: var(--text);
+      background: #0b1623;
+      border: 1px solid var(--line-strong);
+      border-radius: 18px;
+      box-shadow: 0 30px 100px rgba(0,0,0,.58);
+    }
+    dialog::backdrop { background: rgba(0,0,0,.68); backdrop-filter: blur(6px); }
+    .dialog-shell { height: 100%; display: flex; flex-direction: column; }
+    .dialog-head { min-height: 62px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+    .dialog-head h2 { margin: 0; font-size: 16px; }
+    .dialog-tabs { display: flex; gap: 5px; padding: 8px 12px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+    .dialog-tab { min-height: 34px; padding: 6px 10px; border: 1px solid transparent; border-radius: 9px; color: var(--muted); background: transparent; white-space: nowrap; }
+    .dialog-tab.active { color: var(--text); border-color: rgba(167,124,255,.38); background: rgba(167,124,255,.09); }
+    .dialog-body { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+    .dialog-panel { display: none; height: 100%; }
+    .dialog-panel.active { display: flex; flex-direction: column; gap: 10px; }
+    .editor-grid { display: grid; grid-template-columns: minmax(0,1fr) 280px; gap: 10px; min-height: 0; flex: 1; }
+    textarea.code {
+      width: 100%; min-height: 360px; flex: 1;
+      resize: none; padding: 12px;
+      border: 1px solid var(--line); border-radius: 12px;
+      color: #dce7f7; background: #07111d;
+      font: 11px/1.52 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      outline: none; tab-size: 2;
+    }
+    textarea.code:focus { border-color: rgba(167,124,255,.55); box-shadow: 0 0 0 3px rgba(167,124,255,.08); }
+    .editor-side { border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.02); padding: 11px; overflow: auto; }
+    .editor-side h3 { margin: 0 0 8px; font-size: 12px; }
+    .editor-side p { margin: 0 0 10px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .issue { margin-top: 7px; padding: 8px; border-radius: 9px; background: rgba(255,255,255,.03); color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .issue.error { color: var(--red); background: rgba(255,113,133,.07); }
+    .issue.warn { color: var(--amber); background: rgba(255,196,94,.07); }
+    .issue.ok { color: var(--green); background: rgba(114,220,139,.07); }
+    .dialog-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .tests-list { display: grid; gap: 8px; }
+    .test-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.025); }
+    .test-row strong { font-size: 11px; }
+    .test-row span { color: var(--muted); font-size: 10px; }
+    .test-result { min-width: 58px; text-align: center; font-size: 10px; font-weight: 800; }
+    .test-result.pass { color: var(--green); }
+    .test-result.fail { color: var(--red); }
+    pre.grammar { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #07111d; color: #dce7f7; overflow: auto; font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
+    .api-cards { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+    .api-card { padding: 10px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.025); }
+    .api-card code { color: #cdbaff; font-size: 10px; }
+    .api-card p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+
+    .toast-stack { position: fixed; right: 14px; bottom: 14px; z-index: 100; display: grid; gap: 7px; pointer-events: none; }
+    .toast { max-width: 360px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: #101f30; box-shadow: var(--shadow); color: var(--text); font-size: 11px; animation: treeEnter 220ms ease both; }
+    .toast.good { border-color: rgba(114,220,139,.36); }
+    .toast.bad { border-color: rgba(255,113,133,.4); }
+
+    @media (max-width: 980px) {
+      .workspace { grid-template-columns: 1fr; padding: 10px; }
+      .policy-pane, .tree-pane { min-height: auto; }
+      .policy-stage { min-height: 430px; }
+      .tree-body { min-height: 380px; max-height: 55vh; }
+      .topbar .engine-badge { display: none; }
+    }
+    @media (max-width: 700px) {
+      .topbar { padding: 8px 10px; min-height: 58px; }
+      .brand-copy span, .top-actions .button-label, .valid-badge { display: none; }
+      .brand-copy strong { font-size: 14px; }
+      .top-actions { gap: 5px; }
+      .top-actions .btn { width: 38px; padding: 0; }
+      .workspace { padding: 7px; gap: 8px; }
+      .pane { border-radius: 14px; }
+      .pane-head { min-height: 54px; padding: 9px 11px; }
+      .pane-head p { display: none; }
+      .policy-stage { min-height: 410px; }
+      .dfa-window { min-height: 315px; padding: 18px max(20px, calc(50% - 146px)); mask-image: none; }
+      .state-card { width: 138px; min-height: 174px; padding: 11px; }
+      .state-card.active { width: 292px; min-height: 292px; }
+      .state-title { font-size: 15px; }
+      .state-icon { margin-top: 12px; font-size: 27px; }
+      .policy-message { margin: 0 9px 8px; }
+      .controls { position: sticky; bottom: 0; z-index: 20; padding: 8px; gap: 6px; }
+      .controls .btn { flex: 1; min-width: 0; padding-inline: 8px; }
+      .speed-wrap { display: none; }
+      .step-count { display: none; }
+      .tree-body { min-height: 360px; max-height: none; padding-inline: 7px; }
+      .tree-row { margin-left: calc(var(--depth) * 17px); grid-template-columns: 20px minmax(0,1fr); }
+      .tree-row::before { left: -9px; width: 8px; }
+      .tree-side { display: none; }
+      .tree-line { font-size: 13px; }
+      dialog { width: 100vw; height: 100dvh; max-width: none; max-height: none; border-radius: 0; border: 0; }
+      .editor-grid { grid-template-columns: 1fr; }
+      .editor-side { max-height: 190px; }
+      .api-cards { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">⌕</div>
+        <div class="brand-copy">
+          <strong>Predicate Policy Search Lab</strong>
+          <span>one policy card · one explored tree</span>
+        </div>
+      </div>
+      <div class="engine-badge" id="engineBadge">predicate.js loading…</div>
+      <div class="valid-badge" id="validBadge">validating…</div>
+      <div class="spacer"></div>
+      <div class="top-actions">
+        <button class="btn" id="openBtn" title="Open project JSON">↥ <span class="button-label">Open</span></button>
+        <button class="btn" id="saveBtn" title="Save project JSON">⇩ <span class="button-label">Save</span></button>
+        <button class="btn" id="editBtn" title="Edit policy and test data">✎ <span class="button-label">Edit</span></button>
+        <button class="btn" id="testsBtn" title="Run tests">✓ <span class="button-label">Tests</span></button>
+      </div>
+      <input id="fileInput" type="file" hidden accept=".json,application/json" />
+    </header>
+
+    <main class="workspace">
+      <section class="pane policy-pane">
+        <header class="pane-head">
+          <div>
+            <h1>Search policy</h1>
+            <p>The centered card is the one thing the policy is doing now.</p>
+          </div>
+          <div class="right">
+            <select id="exampleSelect" class="btn" aria-label="Example project">
+              <option value="cake">Cake Finder</option>
+              <option value="tactic">Forcing Search</option>
+              <option value="return">Subroutine Return</option>
+              <option value="abstract">Abstract Priority</option>
+              <option value="exhausted">Closure Failure</option>
+            </select>
+          </div>
+        </header>
+
+        <div class="policy-stage">
+          <div class="routine-strip" id="routineStrip"></div>
+          <div class="dfa-window" id="dfaWindow" aria-label="Policy DFA">
+            <div class="dfa-flow" id="dfaFlow"></div>
+          </div>
+          <div class="policy-message" id="policyMessage">
+            <div class="message-dot"></div>
+            <div><strong>Ready</strong><span>Press Step to check the first predicate.</span></div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="btn" id="resetBtn">↺ Reset</button>
+          <button class="btn" id="stepBtn">▶| Step</button>
+          <button class="btn primary" id="runBtn">▶ Run</button>
+          <span class="step-count" id="stepCount">0 thoughts</span>
+          <label class="speed-wrap">Speed <input id="speedSlider" type="range" min="250" max="1300" step="50" value="720" /><span id="speedReadout">1.0×</span></label>
+        </div>
+      </section>
+
+      <section class="pane tree-pane">
+        <header class="pane-head">
+          <div>
+            <h1>Tree explored by the policy</h1>
+            <p>Only branches retained by an ordered predicate search appear here.</p>
+          </div>
+          <div class="right">
+            <span class="mini-chip purple" id="currentPositionChip">starting…</span>
+          </div>
+        </header>
+        <div class="tree-body" id="treeBody"></div>
+        <div class="tree-legend">
+          <span><i class="legend-dot active"></i> exploring now</span>
+          <span><i class="legend-dot"></i> retained for later</span>
+          <span><i class="legend-dot accept"></i> accepted</span>
+          <span><i class="legend-dot reject"></i> failure</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="editorDialog">
+    <div class="dialog-shell">
+      <header class="dialog-head">
+        <h2>Project editor and test harness</h2>
+        <span class="mini-chip" id="dialogProjectName"></span>
+        <div class="spacer"></div>
+        <button class="btn icon" id="closeDialogBtn" aria-label="Close">×</button>
+      </header>
+      <nav class="dialog-tabs">
+        <button class="dialog-tab active" data-dialog-tab="policy">Policy JSON</button>
+        <button class="dialog-tab" data-dialog-tab="oracle">Oracle + tests JSON</button>
+        <button class="dialog-tab" data-dialog-tab="tests">Tests</button>
+        <button class="dialog-tab" data-dialog-tab="engine">predicate.js</button>
+      </nav>
+      <div class="dialog-body">
+        <section class="dialog-panel active" data-dialog-panel="policy">
+          <div class="editor-grid">
+            <textarea id="policyJson" class="code" spellcheck="false"></textarea>
+            <aside class="editor-side">
+              <h3>Policy validation</h3>
+              <p>The engine validates the binding grammar, all state targets, routines, closure modes, budgets, and terminal states before applying this text.</p>
+              <div id="policyIssues"></div>
+            </aside>
+          </div>
+          <div class="dialog-actions">
+            <button class="btn primary" id="applyPolicyBtn">Validate &amp; apply policy</button>
+            <button class="btn" id="formatPolicyBtn">Format</button>
+            <button class="btn" id="copyPolicyBtn">Copy</button>
+          </div>
+        </section>
+
+        <section class="dialog-panel" data-dialog-panel="oracle">
+          <div class="editor-grid">
+            <textarea id="oracleJson" class="code" spellcheck="false"></textarea>
+            <aside class="editor-side">
+              <h3>Oracle and test data</h3>
+              <p>This text supplies initial position IDs, predicate cards, child hints, and tests. Labels and icons are UI metadata; predicate.js ignores them.</p>
+              <div id="oracleIssues"></div>
+            </aside>
+          </div>
+          <div class="dialog-actions">
+            <button class="btn primary" id="applyOracleBtn">Validate &amp; apply data</button>
+            <button class="btn" id="formatOracleBtn">Format</button>
+            <button class="btn" id="copyOracleBtn">Copy</button>
+          </div>
+        </section>
+
+        <section class="dialog-panel" data-dialog-panel="tests">
+          <div class="dialog-actions">
+            <button class="btn good" id="runAllTestsBtn">Run every test</button>
+            <span class="mini-chip" id="testSummary">not run</span>
+          </div>
+          <div class="tests-list" id="testsList"></div>
+        </section>
+
+        <section class="dialog-panel" data-dialog-panel="engine">
+          <div class="api-cards">
+            <div class="api-card"><code>PredicatePolicy.createRunner(project)</code><p>Create a deterministic runner with step(), run(), reset(), snapshot(), and subscribe().</p></div>
+            <div class="api-card"><code>PredicatePolicy.validateProject(project)</code><p>Validate the policy grammar plus oracle positions, children, initial IDs, and tests.</p></div>
+            <div class="api-card"><code>PredicatePolicy.runTest(project, test)</code><p>Interpret one test through exactly the same engine used by the UI.</p></div>
+            <div class="api-card"><code>PredicatePolicy.runTests(project)</code><p>Run the project test suite and return pass/fail results without any DOM dependency.</p></div>
+          </div>
+          <pre class="grammar" id="grammarPre"></pre>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <script>
+/*
+ * Priyomes Predicate Policy Engine
+ * predicate.js v1.0.0
+ *
+ * A DOM-free, deterministic engine for coordinate-free predicate policies over
+ * finite game trees. The browser UI, storage, animation, examples, and editors
+ * belong outside this file. This file owns only:
+ *   - policy/project validation
+ *   - DFA + bounded LIFO search execution
+ *   - ordered predicate filtering and closure
+ *   - routine CALL / RETURN semantics
+ *   - test-case interpretation
+ *   - an inspectable event stream and explored-tree snapshot
+ *
+ * Public global: window.PredicatePolicy
+ * CommonJS:      const PredicatePolicy = require('./predicate.js')
+ */
+(function predicatePolicyUMD(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.PredicatePolicy = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function predicatePolicyFactory() {
+  "use strict";
+
+  const VERSION = "1.0.0";
+  const POLICY_SCHEMA = "predicate-policy/v2";
+  const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
+  const STATE_KINDS = Object.freeze([
+    "push_initial", "pop", "inspect", "search", "call", "return", "accept", "reject"
+  ]);
+
+  const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  const unique = values => [...new Set(values)];
+  const isObject = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  const isStringArray = (value, allowEmpty = false) => Array.isArray(value)
+    && (allowEmpty || value.length > 0)
+    && value.every(item => typeof item === "string" && item.trim());
+  const normalizeInitial = value => {
+    if (Array.isArray(value)) return value.map(String).map(item => item.trim()).filter(Boolean);
+    return String(value || "").split(/[\s,]+/).map(item => item.trim()).filter(Boolean);
+  };
+
+  function stateDefFromPolicy(policy, id) {
+    return policy?.states?.find(state => state.id === id);
+  }
+
+  function closureLabel(stateOrClosure) {
+    const closure = stateOrClosure?.closure || stateOrClosure;
+    if (!closure) return "—";
+    if (closure.mode === "all") return "all matching children";
+    if (closure.mode === "one_each") {
+      return `first match for each predicate${closure.count ? `, at most ${closure.count}` : ""}`;
+    }
+    const count = Number(closure.count || 1);
+    return `first ${count} match${count === 1 ? "" : "es"}`;
+  }
+
+  function conditionLabel(when = {}) {
+    const parts = [];
+    if (when.side) parts.push(`side = ${when.side}`);
+    if (Array.isArray(when.any) && when.any.length) parts.push(`any(${when.any.join(" · ")})`);
+    if (Array.isArray(when.all) && when.all.length) parts.push(`all(${when.all.join(" · ")})`);
+    if (Array.isArray(when.none) && when.none.length) parts.push(`none(${when.none.join(" · ")})`);
+    return parts.join(" + ") || "always";
+  }
+
+  function conditionMatches(position, item, when = {}) {
+    const predicates = position?.predicates || [];
+    if (when.side && position?.side !== when.side) return false;
+    if (Array.isArray(when.any) && when.any.length && !when.any.some(predicate => predicates.includes(predicate))) return false;
+    if (Array.isArray(when.all) && when.all.length && !when.all.every(predicate => predicates.includes(predicate))) return false;
+    if (Array.isArray(when.none) && when.none.some(predicate => predicates.includes(predicate))) return false;
+    return true;
+  }
+
+  function policyGraphTargets(state, policy) {
+    const targets = [];
+    if (!state) return targets;
+    if (state.kind === "inspect") {
+      (state.rules || []).forEach(rule => rule?.to && targets.push(rule.to));
+      if (state.default) targets.push(state.default);
+      Object.values(state.on || {}).forEach(value => value && targets.push(value));
+      if (state.terminal_checks !== false) {
+        targets.push(policy.outcomes?.accept_state, policy.outcomes?.reject_state);
+      }
+    } else if (state.kind === "call") {
+      const routine = policy.routines?.find(item => item.id === state.call?.routine);
+      if (routine?.entry) targets.push(routine.entry);
+      if (state.call?.return_to) targets.push(state.call.return_to);
+    } else {
+      Object.values(state.on || {}).forEach(value => value && targets.push(value));
+    }
+    return targets.filter(Boolean);
+  }
+
+  function validatePolicy(candidate) {
+    const issues = [];
+    const error = (title, detail) => issues.push({ level: "error", scope: "policy", title, detail });
+    const warn = (title, detail) => issues.push({ level: "warn", scope: "policy", title, detail });
+
+    if (!isObject(candidate)) {
+      error("Policy must be an object", "The JSON root must be a policy object.");
+      return issues;
+    }
+    if (candidate.schema !== POLICY_SCHEMA) error("Unknown policy schema", `Expected \"${POLICY_SCHEMA}\".`);
+    if (!Array.isArray(candidate.states) || !candidate.states.length) error("No DFA states", "policy.states must be a non-empty array.");
+    if (!Array.isArray(candidate.routines) || !candidate.routines.length) error("No routines", "policy.routines must be a non-empty array.");
+
+    const states = Array.isArray(candidate.states) ? candidate.states : [];
+    const routines = Array.isArray(candidate.routines) ? candidate.routines : [];
+    const stateIds = states.map(state => state?.id).filter(Boolean);
+    const routineIds = routines.map(routine => routine?.id).filter(Boolean);
+    const stateSet = new Set(stateIds);
+    const routineSet = new Set(routineIds);
+
+    unique(stateIds.filter((id, index) => stateIds.indexOf(id) !== index)).forEach(id => error("Duplicate state ID", id));
+    unique(routineIds.filter((id, index) => routineIds.indexOf(id) !== index)).forEach(id => error("Duplicate routine ID", id));
+
+    if (!candidate.entry || !stateSet.has(candidate.entry)) {
+      error("Invalid policy entry", `entry must name an existing state; received ${candidate.entry || "nothing"}.`);
+    }
+
+    const outcomes = candidate.outcomes;
+    if (!isObject(outcomes)) {
+      error("Missing outcomes", "Define accept_state, reject_state, winning_predicates, and failure_predicates.");
+    } else {
+      if (!stateSet.has(outcomes.accept_state)) error("Invalid accept state", outcomes.accept_state || "missing");
+      if (!stateSet.has(outcomes.reject_state)) error("Invalid reject state", outcomes.reject_state || "missing");
+      if (!isStringArray(outcomes.winning_predicates)) error("Winning predicates are invalid", "Use a non-empty array of strings.");
+      if (!isStringArray(outcomes.failure_predicates, true)) error("Failure predicates are invalid", "Use an array of strings.");
+    }
+
+    const budgets = candidate.budgets;
+    if (!budgets || !Number.isInteger(Number(budgets.thoughts)) || Number(budgets.thoughts) < 1) {
+      error("Invalid thought budget", "budgets.thoughts must be a positive integer.");
+    }
+    if (!budgets || !Number.isInteger(Number(budgets.depth)) || Number(budgets.depth) < 0) {
+      error("Invalid depth budget", "budgets.depth must be zero or a positive integer.");
+    }
+    if (!budgets || !Number.isInteger(Number(budgets.call_depth)) || Number(budgets.call_depth) < 0) {
+      error("Invalid call-depth budget", "budgets.call_depth must be zero or a positive integer.");
+    }
+
+    routines.forEach((routine, index) => {
+      const name = routine?.id || `routine ${index + 1}`;
+      if (!routine?.id || typeof routine.id !== "string") error("Routine has no ID", name);
+      if (!routine?.entry || !stateSet.has(routine.entry)) {
+        error(`Routine ${name} has invalid entry`, routine?.entry || "missing");
+      } else if (stateDefFromPolicy(candidate, routine.entry)?.routine !== routine.id) {
+        error(`Routine ${name} entry belongs elsewhere`, `${routine.entry} is assigned to ${stateDefFromPolicy(candidate, routine.entry)?.routine || "no routine"}.`);
+      }
+    });
+
+    const allowedClosure = new Set(["first", "all", "one_each"]);
+    states.forEach((state, index) => {
+      const name = state?.id || `state ${index + 1}`;
+      if (!state?.id || typeof state.id !== "string") error("State has no ID", name);
+      if (!STATE_KINDS.includes(state?.kind)) error(`${name} has invalid kind`, String(state?.kind));
+      if (!routineSet.has(state?.routine)) error(`${name} has invalid routine`, state?.routine || "missing");
+
+      const requireTarget = (target, label) => {
+        if (!target || !stateSet.has(target)) error(`${name} has invalid ${label} target`, target || "missing");
+      };
+
+      if (state?.kind === "push_initial") {
+        requireTarget(state.on?.pushed, "pushed");
+        requireTarget(state.on?.invalid, "invalid");
+      } else if (state?.kind === "pop") {
+        requireTarget(state.on?.thought, "thought");
+        requireTarget(state.on?.empty, "empty");
+      } else if (state?.kind === "search") {
+        if (!isStringArray(state.predicates)) error(`${name} has no predicate order`, "search.predicates must be a non-empty array of strings.");
+        if (!allowedClosure.has(state.closure?.mode)) error(`${name} has invalid closure mode`, state.closure?.mode || "missing");
+        if (state.closure?.mode === "first" && (!Number.isInteger(Number(state.closure?.count)) || Number(state.closure.count) < 1)) {
+          error(`${name} has invalid closure count`, "first mode requires count >= 1.");
+        }
+        if (state.closure?.mode === "one_each" && state.closure?.count !== undefined
+          && (!Number.isInteger(Number(state.closure.count)) || Number(state.closure.count) < 1)) {
+          error(`${name} has invalid closure count`, "one_each count, when supplied, must be >= 1.");
+        }
+        if (state.side && !["my", "their"].includes(state.side)) error(`${name} has invalid side`, state.side);
+        requireTarget(state.on?.pushed, "pushed");
+        requireTarget(state.on?.none, "none");
+        const duplicates = state.predicates?.filter((item, itemIndex) => state.predicates.indexOf(item) !== itemIndex) || [];
+        if (duplicates.length) warn(`${name} repeats search predicates`, unique(duplicates).join(", "));
+      } else if (state?.kind === "inspect") {
+        if (!Array.isArray(state.rules)) error(`${name} rules are invalid`, "inspect.rules must be an ordered array.");
+        (state.rules || []).forEach((rule, ruleIndex) => {
+          requireTarget(rule?.to, `rule ${ruleIndex + 1}`);
+          const when = rule?.when || {};
+          if (when.side && !["my", "their"].includes(when.side)) error(`${name} rule ${ruleIndex + 1} has invalid side`, when.side);
+          ["any", "all", "none"].forEach(key => {
+            if (when[key] !== undefined && !isStringArray(when[key], true)) {
+              error(`${name} rule ${ruleIndex + 1} has invalid ${key}`, "Use an array of predicate strings.");
+            }
+          });
+          if (!Object.keys(when).length && ruleIndex !== state.rules.length - 1) {
+            warn(`${name} has an early always-rule`, `Rule ${ruleIndex + 1} shadows every rule below it.`);
+          }
+        });
+        if (state.default) requireTarget(state.default, "default");
+        if (state.on?.depth) requireTarget(state.on.depth, "depth");
+        if (state.on?.missing) requireTarget(state.on.missing, "missing");
+      } else if (state?.kind === "call") {
+        if (!routineSet.has(state.call?.routine)) error(`${name} calls an unknown routine`, state.call?.routine || "missing");
+        requireTarget(state.call?.return_to, "return_to");
+      } else if (state?.kind === "return") {
+        if (state.on?.no_frame) requireTarget(state.on.no_frame, "no_frame");
+      }
+    });
+
+    if (outcomes && stateSet.has(outcomes.accept_state) && stateDefFromPolicy(candidate, outcomes.accept_state)?.kind !== "accept") {
+      error("accept_state is not an accept state", outcomes.accept_state);
+    }
+    if (outcomes && stateSet.has(outcomes.reject_state) && stateDefFromPolicy(candidate, outcomes.reject_state)?.kind !== "reject") {
+      error("reject_state is not a reject state", outcomes.reject_state);
+    }
+
+    if (stateSet.has(candidate.entry)) {
+      const visited = new Set();
+      const queue = [candidate.entry];
+      while (queue.length) {
+        const id = queue.shift();
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const state = stateDefFromPolicy(candidate, id);
+        if (!state) continue;
+        policyGraphTargets(state, candidate).forEach(target => {
+          if (stateSet.has(target) && !visited.has(target)) queue.push(target);
+        });
+      }
+      const unreachable = stateIds.filter(id => !visited.has(id));
+      if (unreachable.length) warn("Unreachable states", unreachable.join(", "));
+    }
+
+    return issues;
+  }
+
+  function validateProject(candidate) {
+    const issues = [...validatePolicy(candidate?.policy)];
+    const error = (title, detail) => issues.push({ level: "error", scope: "project", title, detail });
+    const warn = (title, detail) => issues.push({ level: "warn", scope: "project", title, detail });
+
+    if (!candidate || candidate.schema !== PROJECT_SCHEMA) error("Unknown project schema", `Expected \"${PROJECT_SCHEMA}\".`);
+    if (!candidate?.name?.trim()) error("Project name is empty", "Give the workbench a readable name.");
+    const positions = Array.isArray(candidate?.positions) ? candidate.positions : [];
+    const ids = positions.map(position => position?.id).filter(Boolean);
+    const idSet = new Set(ids);
+    unique(ids.filter((id, index) => ids.indexOf(id) !== index)).forEach(id => error("Duplicate position ID", id));
+    if (!positions.length) error("No oracle position cards", "At least one position card is required.");
+
+    positions.forEach((position, index) => {
+      const name = position?.id || `position ${index + 1}`;
+      if (!position?.id || typeof position.id !== "string") error("Position has no ID", name);
+      if (!["my", "their"].includes(position?.side)) error(`${name} has invalid side`, "Use \"my\" or \"their\".");
+      if (!isStringArray(position?.predicates, true)) error(`${name} predicates are invalid`, "Use an array of strings.");
+      if (position.children !== undefined && !Array.isArray(position.children)) error(`${name} children are invalid`, "Use an array of position IDs.");
+      (position.children || []).forEach(child => {
+        if (!idSet.has(child)) error(`${name} points to a missing child`, child);
+      });
+    });
+
+    if (!Array.isArray(candidate?.initial) || !candidate.initial.length) {
+      warn("No saved initial thoughts", "The runner may still supply them explicitly.");
+    }
+    (candidate?.initial || []).forEach(id => {
+      if (!idSet.has(id)) error("Missing initial position", id);
+    });
+
+    (candidate?.tests || []).forEach((test, index) => {
+      if (!isObject(test)) {
+        error(`Test ${index + 1} is invalid`, "Each test must be an object.");
+        return;
+      }
+      if (!Array.isArray(test.initial)) error(`Test ${index + 1} has invalid initial list`, test.name || "unnamed");
+      else test.initial.forEach(id => { if (!idSet.has(id)) error(`Test ${index + 1} names a missing position`, id); });
+      if (!["accept", "reject"].includes(test.expected)) error(`Test ${index + 1} has invalid expected result`, String(test.expected));
+    });
+
+    if (!issues.some(issue => issue.level === "error") && !issues.some(issue => issue.level === "warn")) {
+      issues.push({
+        level: "ok", scope: "project", title: "Project is structurally valid",
+        detail: "Policy grammar, routines, transitions, oracle references, budgets, and outcomes are coherent."
+      });
+    }
+    return issues;
+  }
+
+  class Runner {
+    constructor(project, options = {}) {
+      this._listeners = new Set();
+      if (typeof options.onEvent === "function") this._listeners.add(options.onEvent);
+      this.load(project, options);
+    }
+
+    load(project, options = {}) {
+      this.project = clone(project);
+      this.policy = this.project?.policy || {};
+      this.positions = new Map((this.project?.positions || []).map(position => [position.id, position]));
+      this.validation = validateProject(this.project);
+      this.reset(options.initial ?? this.project?.initial ?? []);
+      return this;
+    }
+
+    subscribe(listener) {
+      if (typeof listener !== "function") throw new TypeError("listener must be a function");
+      this._listeners.add(listener);
+      return () => this._listeners.delete(listener);
+    }
+
+    stateDef(id = this.runtime?.state) {
+      return stateDefFromPolicy(this.policy, id);
+    }
+
+    routineDef(id) {
+      return this.policy?.routines?.find(routine => routine.id === id);
+    }
+
+    getPosition(id) {
+      return this.positions.get(id);
+    }
+
+    _newOccurrence(id, depth, parentOccurrence, matchedBy, status = "queued") {
+      const occurrence = `n${++this._occurrenceCounter}`;
+      const node = {
+        occurrence,
+        id,
+        parent: parentOccurrence || null,
+        depth: Number(depth || 0),
+        matchedBy: matchedBy || null,
+        status,
+        note: "",
+        order: this.runtime.nodeOrder.length
+      };
+      this.runtime.nodes[occurrence] = node;
+      this.runtime.nodeOrder.push(occurrence);
+      if (!node.parent) this.runtime.roots.push(occurrence);
+      return { id, depth: node.depth, parent: node.parent, matchedBy: node.matchedBy, occurrence };
+    }
+
+    _node(itemOrOccurrence) {
+      const occurrence = typeof itemOrOccurrence === "string" ? itemOrOccurrence : itemOrOccurrence?.occurrence;
+      return occurrence ? this.runtime.nodes[occurrence] : null;
+    }
+
+    _setNode(itemOrOccurrence, patch) {
+      const node = this._node(itemOrOccurrence);
+      if (node) Object.assign(node, patch);
+    }
+
+    reset(initial = this.project?.initial || []) {
+      this._occurrenceCounter = 0;
+      const entry = this.policy?.entry;
+      const entryState = stateDefFromPolicy(this.policy, entry);
+      const initialIds = normalizeInitial(initial);
+      this.runtime = {
+        state: entry,
+        routine: entryState?.routine || this.policy?.routines?.[0]?.id || "main",
+        pending: [],
+        current: null,
+        callStack: [],
+        frontier: [],
+        selectedFrontier: [],
+        search: null,
+        initialIds,
+        initialItems: [],
+        thoughtCount: 0,
+        microStepCount: 0,
+        result: null,
+        reason: "",
+        lastMatch: null,
+        action: "ready",
+        timeline: entry ? [{ state: entry, routine: entryState?.routine || "main", label: "entry" }] : [],
+        trace: [],
+        roots: [],
+        nodes: {},
+        nodeOrder: [],
+        stateVisit: 0,
+        countedVisit: -1,
+        bootstrapError: ""
+      };
+      this._stepEvents = [];
+
+      const missing = initialIds.filter(id => !this.positions.has(id));
+      if (!initialIds.length) this.runtime.bootstrapError = "no initial position supplied";
+      else if (missing.length) this.runtime.bootstrapError = `unknown initial position: ${missing.join(", ")}`;
+
+      this.runtime.initialItems = initialIds.map(id => this._newOccurrence(id, 0, null, "initial", "queued"));
+
+      if (!this.runtime.bootstrapError && entryState && entryState.kind !== "push_initial") {
+        if (entryState.kind === "pop") {
+          [...this.runtime.initialItems].reverse().forEach(item => this.runtime.pending.push(item));
+        } else {
+          const [first, ...rest] = this.runtime.initialItems;
+          if (first) {
+            this.runtime.current = first;
+            this._setNode(first, { status: "active" });
+          }
+          [...rest].reverse().forEach(item => this.runtime.pending.push(item));
+        }
+      }
+
+      if (entryState?.kind === "accept") {
+        this.runtime.result = "accept";
+        this.runtime.reason = `entered ${entryState.id}`;
+      } else if (entryState?.kind === "reject") {
+        this.runtime.result = "reject";
+        this.runtime.reason = `entered ${entryState.id}`;
+      }
+
+      this._emit("reset", { initial: initialIds });
+      return this.snapshot();
+    }
+
+    _emit(type, data = {}) {
+      const event = {
+        index: this.runtime.trace.length,
+        type,
+        state: this.runtime.state,
+        routine: this.runtime.routine,
+        thoughtCount: this.runtime.thoughtCount,
+        microStepCount: this.runtime.microStepCount,
+        ...clone(data)
+      };
+      this.runtime.trace.push(event);
+      this._stepEvents.push(event);
+      this._listeners.forEach(listener => {
+        try { listener(clone(event), this.snapshot()); } catch (_) { /* listeners do not control the engine */ }
+      });
+      return event;
+    }
+
+    _transition(to, label, reason = "") {
+      const from = this.runtime.state;
+      const target = stateDefFromPolicy(this.policy, to);
+      if (!target) {
+        const reject = this.policy?.outcomes?.reject_state;
+        const rejectState = stateDefFromPolicy(this.policy, reject);
+        this.runtime.state = reject;
+        this.runtime.routine = rejectState?.routine || "main";
+        this.runtime.stateVisit += 1;
+        this.runtime.search = null;
+        this.runtime.result = "reject";
+        this.runtime.reason = `transition target ${to} does not exist`;
+        this.runtime.timeline.push({ state: reject, routine: this.runtime.routine, label: "invalid transition" });
+        this._emit("transition", { from, to: reject, label: "invalid transition" });
+        this._emit("terminal", { result: "reject", reason: this.runtime.reason });
+        return;
+      }
+
+      this.runtime.state = to;
+      this.runtime.routine = target.routine;
+      this.runtime.stateVisit += 1;
+      this.runtime.search = null;
+      this.runtime.timeline.push({ state: to, routine: target.routine, label });
+      this._emit("transition", { from, to, label, reason });
+
+      if (target.kind === "accept" || target.kind === "reject") {
+        this.runtime.result = target.kind === "accept" ? "accept" : "reject";
+        this.runtime.reason = reason || this.runtime.reason || `entered ${target.id}`;
+        if (this.runtime.current) {
+          this._setNode(this.runtime.current, {
+            status: target.kind === "accept" ? "accepted" : "rejected",
+            note: this.runtime.reason
+          });
+        }
+        this._emit("terminal", { result: this.runtime.result, reason: this.runtime.reason, state: target.id });
+      }
+    }
+
+    _countStateVisit() {
+      if (this.runtime.countedVisit === this.runtime.stateVisit) return true;
+      const budget = Number(this.policy?.budgets?.thoughts || 0);
+      if (this.runtime.thoughtCount >= budget) {
+        this.runtime.action = "thought budget exhausted";
+        this._emit("budget-exhausted", { budget });
+        this._transition(this.policy.outcomes.reject_state, "budget exhausted", `thought budget ${budget} exhausted`);
+        return false;
+      }
+      this.runtime.thoughtCount += 1;
+      this.runtime.countedVisit = this.runtime.stateVisit;
+      const state = this.stateDef();
+      this.runtime.action = state?.description || state?.kind || "state";
+      this._emit("state-enter", { state: state?.id, kind: state?.kind, description: state?.description || "" });
+      return true;
+    }
+
+    _frameBase() {
+      return this.runtime.callStack.length ? this.runtime.callStack.at(-1).pendingBase : 0;
+    }
+
+    _initializeSearch(state) {
+      const position = this.runtime.current && this.positions.get(this.runtime.current.id);
+      if (!position) return null;
+      const frontier = (position.children || []).map(id => ({
+        id,
+        depth: Number(this.runtime.current.depth || 0) + 1,
+        parent: this.runtime.current.occurrence
+      }));
+      const predicates = [...(state.predicates || [])];
+      this.runtime.frontier = clone(frontier);
+      this.runtime.selectedFrontier = [];
+      this.runtime.search = {
+        stateVisit: this.runtime.stateVisit,
+        parent: clone(this.runtime.current),
+        frontier,
+        predicates,
+        predicateIndex: 0,
+        selected: [],
+        used: [],
+        checks: predicates.map(predicate => ({ predicate, status: "waiting", selected: [] })),
+        complete: false
+      };
+      this._emit("search-start", {
+        position: position.id,
+        occurrence: this.runtime.current.occurrence,
+        predicates,
+        closure: clone(state.closure),
+        closureLabel: closureLabel(state),
+        childCount: frontier.length
+      });
+      return this.runtime.search;
+    }
+
+    _completeSearch(state, session) {
+      session.complete = true;
+      const selected = session.selected;
+      [...selected].reverse().forEach(item => this.runtime.pending.push(item));
+      this.runtime.selectedFrontier = clone(selected);
+      if (selected.length) {
+        this._setNode(session.parent, {
+          status: "expanded",
+          note: `${selected.length} child${selected.length === 1 ? "" : "ren"} retained by ${state.id}`
+        });
+      } else {
+        this._setNode(session.parent, {
+          status: "closed",
+          note: `no child matched ${state.predicates.join(" → ")}`
+        });
+      }
+      this.runtime.lastMatch = selected.at(-1)?.matchedBy || null;
+      this.runtime.reason = selected.length
+        ? `${selected.length} child${selected.length === 1 ? "" : "ren"} retained`
+        : "no child matched";
+      this._emit("search-complete", {
+        position: session.parent.id,
+        occurrence: session.parent.occurrence,
+        selected: clone(selected),
+        selectedCount: selected.length,
+        closure: clone(state.closure),
+        closureLabel: closureLabel(state)
+      });
+      this.runtime.current = null;
+      this._transition(selected.length ? state.on.pushed : state.on.none, selected.length ? "matches retained" : "no matches");
+    }
+
+    _stepSearch(state) {
+      const position = this.runtime.current && this.positions.get(this.runtime.current.id);
+      if (!position) {
+        this._emit("search-error", { reason: "search state has no current position" });
+        this._transition(this.policy.outcomes.reject_state, "search without position", "search state has no current position");
+        return;
+      }
+
+      const session = this.runtime.search?.stateVisit === this.runtime.stateVisit
+        ? this.runtime.search
+        : this._initializeSearch(state);
+      if (!session) {
+        this._transition(this.policy.outcomes.reject_state, "missing oracle position", "current position is not in the oracle");
+        return;
+      }
+
+      const index = session.predicateIndex;
+      const predicate = session.predicates[index];
+      if (predicate === undefined) {
+        this._completeSearch(state, session);
+        return;
+      }
+
+      session.checks[index].status = "checking";
+      const closure = state.closure || { mode: "first", count: 1 };
+      const maximum = closure.mode === "first"
+        ? Number(closure.count || 1)
+        : closure.mode === "one_each" && closure.count
+          ? Number(closure.count)
+          : Infinity;
+      const used = new Set(session.used);
+      const selectedNow = [];
+      const matchingIds = [];
+
+      for (const child of session.frontier) {
+        if (used.has(child.id)) continue;
+        const childPosition = this.positions.get(child.id);
+        if (!childPosition?.predicates?.includes(predicate)) continue;
+        matchingIds.push(child.id);
+        if (session.selected.length >= maximum) break;
+        const item = this._newOccurrence(child.id, child.depth, child.parent, predicate, "queued");
+        session.selected.push(item);
+        session.used.push(child.id);
+        used.add(child.id);
+        selectedNow.push(item);
+        if (session.selected.length >= maximum) break;
+        if (closure.mode === "one_each") break;
+      }
+
+      session.checks[index].selected = selectedNow.map(item => item.id);
+      session.checks[index].status = selectedNow.length ? "matched" : "missed";
+      this.runtime.lastMatch = selectedNow.length ? predicate : this.runtime.lastMatch;
+      this._emit("predicate-checked", {
+        position: position.id,
+        occurrence: session.parent.occurrence,
+        predicate,
+        predicateIndex: index,
+        predicateCount: session.predicates.length,
+        matchingIds,
+        selected: clone(selectedNow),
+        selectedTotal: session.selected.length,
+        closure: clone(closure),
+        closureReached: session.selected.length >= maximum
+      });
+
+      const closureReached = session.selected.length >= maximum;
+      const lastPredicate = index >= session.predicates.length - 1;
+      if (closureReached || lastPredicate) {
+        if (closureReached) {
+          session.checks.slice(index + 1).forEach(check => { check.status = "skipped"; });
+        }
+        this._completeSearch(state, session);
+      } else {
+        session.predicateIndex += 1;
+        session.checks[session.predicateIndex].status = "next";
+      }
+    }
+
+    step() {
+      this._stepEvents = [];
+      if (this.runtime.result) return { events: [], snapshot: this.snapshot() };
+      const errors = this.validation.filter(issue => issue.level === "error");
+      if (errors.length) {
+        this.runtime.result = "reject";
+        this.runtime.reason = `invalid project: ${errors[0].title}`;
+        this._emit("invalid-project", { issues: errors });
+        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
+      }
+
+      this.runtime.microStepCount += 1;
+      if (!this._countStateVisit() || this.runtime.result) {
+        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
+      }
+
+      const state = this.stateDef();
+      if (!state) {
+        this._transition(this.policy.outcomes.reject_state, "missing state", `state ${this.runtime.state} is missing`);
+        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
+      }
+
+      if (state.kind === "push_initial") {
+        if (this.runtime.bootstrapError) {
+          this._emit("initial-invalid", { reason: this.runtime.bootstrapError });
+          this._transition(state.on.invalid, "invalid initial input", this.runtime.bootstrapError);
+        } else {
+          [...this.runtime.initialItems].reverse().forEach(item => this.runtime.pending.push(item));
+          this._emit("initial-retained", { items: clone(this.runtime.initialItems) });
+          this._transition(state.on.pushed, "initial positions retained");
+        }
+      } else if (state.kind === "pop") {
+        const base = this._frameBase();
+        if (this.runtime.pending.length <= base) {
+          this.runtime.current = null;
+          this.runtime.frontier = [];
+          this.runtime.selectedFrontier = [];
+          this._emit("frontier-empty", {
+            local: Boolean(this.runtime.callStack.length),
+            routine: this.runtime.routine,
+            reason: this.runtime.callStack.length ? "subroutine has no local line left" : "no retained line remains"
+          });
+          this._transition(state.on.empty, "no retained line", this.runtime.callStack.length ? this.runtime.reason : "every retained line closed");
+        } else {
+          const item = this.runtime.pending.pop();
+          this.runtime.current = item;
+          this.runtime.frontier = [];
+          this.runtime.selectedFrontier = [];
+          this.runtime.lastMatch = item.matchedBy || "initial";
+          this.runtime.reason = `examining ${item.id}`;
+          this._setNode(item, { status: "active" });
+          this._emit("line-selected", { item: clone(item) });
+          this._transition(state.on.thought, "line selected");
+        }
+      } else if (state.kind === "inspect") {
+        const item = this.runtime.current;
+        const position = item && this.positions.get(item.id);
+        if (!position) {
+          const target = state.on?.missing || this.policy.outcomes.reject_state;
+          this._emit("inspect-error", { reason: "current position has no oracle card" });
+          this._transition(target, "missing oracle card", "current position has no oracle card");
+        } else {
+          const win = state.terminal_checks === false
+            ? null
+            : this.policy.outcomes.winning_predicates.find(predicate => position.predicates.includes(predicate));
+          const failure = state.terminal_checks === false
+            ? null
+            : this.policy.outcomes.failure_predicates.find(predicate => position.predicates.includes(predicate));
+
+          if (win) {
+            this.runtime.lastMatch = win;
+            this._setNode(item, { status: "accepted", note: `winning predicate ${win}` });
+            this._emit("winning-predicate", { item: clone(item), predicate: win });
+            this._transition(this.policy.outcomes.accept_state, "winning predicate", `${position.id} carries winning predicate ${win}`);
+          } else if (failure) {
+            this.runtime.lastMatch = failure;
+            this._setNode(item, { status: "rejected", note: `failure predicate ${failure}` });
+            this._emit("failure-predicate", { item: clone(item), predicate: failure });
+            this._transition(this.policy.outcomes.reject_state, "failure predicate", `${position.id} carries failure predicate ${failure}`);
+          } else if ((item.depth || 0) >= this.policy.budgets.depth) {
+            const target = state.on?.depth || state.default || this.policy.outcomes.reject_state;
+            this._setNode(item, { status: "closed", note: `depth ${this.policy.budgets.depth} closure` });
+            this.runtime.current = null;
+            this.runtime.frontier = [];
+            this.runtime.selectedFrontier = [];
+            this._emit("depth-closed", { item: clone(item), depth: this.policy.budgets.depth });
+            this._transition(target, "depth closure");
+          } else {
+            const rule = (state.rules || []).find(candidate => conditionMatches(position, item, candidate.when));
+            const target = rule?.to || state.default || this.policy.outcomes.reject_state;
+            const label = rule?.label || (rule ? conditionLabel(rule.when) : "default");
+            this.runtime.lastMatch = label;
+            this.runtime.reason = `${position.id}: ${label}`;
+            this._emit("inspect-routed", {
+              item: clone(item),
+              predicates: clone(position.predicates),
+              rule: clone(rule || null),
+              label,
+              to: target
+            });
+            this._transition(target, label);
+          }
+        }
+      } else if (state.kind === "search") {
+        this._stepSearch(state);
+      } else if (state.kind === "call") {
+        const callee = this.routineDef(state.call?.routine);
+        if (!callee) {
+          this._transition(this.policy.outcomes.reject_state, "invalid call", `routine ${state.call?.routine} does not exist`);
+        } else if (this.runtime.callStack.length >= this.policy.budgets.call_depth) {
+          this._emit("call-depth-exhausted", { budget: this.policy.budgets.call_depth });
+          this._transition(this.policy.outcomes.reject_state, "call depth exhausted", "subroutine call-depth budget exhausted");
+        } else {
+          this.runtime.callStack.push({
+            callerRoutine: state.routine,
+            calleeRoutine: callee.id,
+            returnTo: state.call.return_to,
+            pendingBase: this.runtime.pending.length,
+            callerCurrent: this.runtime.current ? clone(this.runtime.current) : null,
+            resumeCurrent: Boolean(state.call.resume_current),
+            callState: state.id
+          });
+          this.runtime.reason = `entered ${callee.id}`;
+          this._emit("routine-called", {
+            from: state.routine,
+            routine: callee.id,
+            entry: callee.entry,
+            returnTo: state.call.return_to
+          });
+          this._transition(callee.entry, `call ${callee.id}`);
+        }
+      } else if (state.kind === "return") {
+        if (!this.runtime.callStack.length) {
+          const target = state.on?.no_frame || this.policy.outcomes.reject_state;
+          this._emit("return-error", { reason: "no caller frame" });
+          this._transition(target, "return without frame", "RETURN had no caller frame");
+        } else {
+          const frame = this.runtime.callStack.pop();
+          const discardedItems = this.runtime.pending.slice(frame.pendingBase);
+          discardedItems.forEach(item => this._setNode(item, { status: "discarded", note: `discarded on return from ${frame.calleeRoutine}` }));
+          this.runtime.pending.length = frame.pendingBase;
+          this.runtime.current = frame.resumeCurrent ? frame.callerCurrent : null;
+          this.runtime.frontier = [];
+          this.runtime.selectedFrontier = [];
+          this.runtime.reason = `returned from ${frame.calleeRoutine} to ${frame.returnTo}`;
+          this._emit("routine-returned", {
+            from: frame.calleeRoutine,
+            to: frame.callerRoutine,
+            returnTo: frame.returnTo,
+            discarded: discardedItems.map(item => item.id)
+          });
+          this._transition(frame.returnTo, `return from ${frame.calleeRoutine}`);
+        }
+      } else if (state.kind === "accept") {
+        this.runtime.result = "accept";
+        this.runtime.reason ||= `entered ${state.id}`;
+        this._emit("terminal", { result: "accept", reason: this.runtime.reason, state: state.id });
+      } else if (state.kind === "reject") {
+        this.runtime.result = "reject";
+        this.runtime.reason ||= `entered ${state.id}`;
+        this._emit("terminal", { result: "reject", reason: this.runtime.reason, state: state.id });
+      }
+
+      return { events: clone(this._stepEvents), snapshot: this.snapshot() };
+    }
+
+    run(options = {}) {
+      const maxMicroSteps = Math.max(1, Number(options.maxMicroSteps || 10000));
+      const eventLog = [];
+      let count = 0;
+      while (!this.runtime.result && count < maxMicroSteps) {
+        const result = this.step();
+        eventLog.push(...result.events);
+        count += 1;
+      }
+      if (!this.runtime.result && count >= maxMicroSteps) {
+        this.runtime.result = "reject";
+        this.runtime.reason = `engine safety limit ${maxMicroSteps} reached`;
+        this._emit("safety-limit", { maxMicroSteps });
+      }
+      return { events: clone(eventLog), snapshot: this.snapshot() };
+    }
+
+    snapshot() {
+      const currentState = this.stateDef();
+      const nodes = this.runtime.nodeOrder.map(occurrence => clone(this.runtime.nodes[occurrence]));
+      return clone({
+        engineVersion: VERSION,
+        state: this.runtime.state,
+        stateKind: currentState?.kind || null,
+        stateDescription: currentState?.description || "",
+        routine: this.runtime.routine,
+        pendingCount: this.runtime.pending.length,
+        current: this.runtime.current,
+        callStack: this.runtime.callStack,
+        frontier: this.runtime.frontier,
+        selectedFrontier: this.runtime.selectedFrontier,
+        search: this.runtime.search,
+        thoughtCount: this.runtime.thoughtCount,
+        microStepCount: this.runtime.microStepCount,
+        result: this.runtime.result,
+        reason: this.runtime.reason,
+        lastMatch: this.runtime.lastMatch,
+        action: this.runtime.action,
+        timeline: this.runtime.timeline,
+        trace: this.runtime.trace,
+        roots: this.runtime.roots,
+        nodes
+      });
+    }
+  }
+
+  function createRunner(project, options = {}) {
+    return new Runner(project, options);
+  }
+
+  function runTest(project, test, options = {}) {
+    const issues = validateProject(project);
+    const errors = issues.filter(issue => issue.level === "error");
+    if (errors.length) {
+      return {
+        name: test?.name || "Unnamed test",
+        expected: test?.expected,
+        actual: "invalid",
+        pass: false,
+        reason: errors.map(issue => `${issue.title}: ${issue.detail}`).join("; "),
+        issues
+      };
+    }
+    const runner = new Runner(project, { initial: test?.initial || project.initial });
+    const result = runner.run({ maxMicroSteps: options.maxMicroSteps || test?.max_micro_steps || 10000 });
+    const actual = result.snapshot.result || "reject";
+    return {
+      name: test?.name || "Unnamed test",
+      expected: test?.expected,
+      actual,
+      pass: actual === test?.expected,
+      reason: result.snapshot.reason,
+      thoughts: result.snapshot.thoughtCount,
+      microSteps: result.snapshot.microStepCount,
+      finalState: result.snapshot.state,
+      snapshot: options.includeSnapshot ? result.snapshot : undefined
+    };
+  }
+
+  function runTests(project, tests = project?.tests || [], options = {}) {
+    const results = (tests || []).map(test => runTest(project, test, options));
+    return {
+      pass: results.every(result => result.pass),
+      passed: results.filter(result => result.pass).length,
+      total: results.length,
+      results
+    };
+  }
+
+  const GRAMMAR = Object.freeze({
+    policy: {
+      schema: POLICY_SCHEMA,
+      entry: "state-id",
+      outcomes: {
+        accept_state: "state-id(kind=accept)",
+        reject_state: "state-id(kind=reject)",
+        winning_predicates: ["predicate"],
+        failure_predicates: ["predicate"]
+      },
+      budgets: { thoughts: "integer>=1", depth: "integer>=0", call_depth: "integer>=0" },
+      routines: [{ id: "routine-id", label: "optional text", entry: "state-id in this routine" }],
+      states: "ordered array of state objects"
+    },
+    stateKinds: {
+      push_initial: { on: { pushed: "state-id", invalid: "state-id" } },
+      pop: { on: { thought: "state-id", empty: "state-id" } },
+      inspect: {
+        terminal_checks: "boolean (default true)",
+        rules: [{ label: "text", when: { side: "my|their", any: ["p"], all: ["p"], none: ["p"] }, to: "state-id" }],
+        default: "optional state-id",
+        on: { depth: "optional state-id", missing: "optional state-id" }
+      },
+      search: {
+        side: "optional my|their documentation label",
+        predicates: ["checked in exact order"],
+        closure: { mode: "first|all|one_each", count: "required for first; optional for one_each" },
+        on: { pushed: "state-id", none: "state-id" }
+      },
+      call: { call: { routine: "routine-id", return_to: "state-id", resume_current: "boolean" } },
+      return: { on: { no_frame: "optional state-id" } },
+      accept: {},
+      reject: {}
+    },
+    project: {
+      schema: PROJECT_SCHEMA,
+      name: "text",
+      initial: ["position-id"],
+      policy: "policy object",
+      positions: [{
+        id: "unique position-id",
+        side: "my|their",
+        predicates: ["predicate"],
+        help: "optional UI text",
+        children: ["position-id"],
+        label: "optional UI label; ignored by engine"
+      }],
+      tests: [{ name: "text", initial: ["position-id"], expected: "accept|reject" }]
+    }
+  });
+
+  const api = {
+    VERSION,
+    POLICY_SCHEMA,
+    PROJECT_SCHEMA,
+    STATE_KINDS,
+    GRAMMAR,
+    Runner,
+    createRunner,
+    validatePolicy,
+    validateProject,
+    runTest,
+    runTests,
+    closureLabel,
+    conditionLabel,
+    conditionMatches,
+    stateDefFromPolicy,
+    policyGraphTargets
+  };
+
+  return Object.freeze(api);
+});
+
+</script>
+  <script>
+  (() => {
+    "use strict";
+
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+    const clone = value => JSON.parse(JSON.stringify(value));
+    const escapeHtml = value => String(value ?? "")
+      .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const STORAGE_KEY = "priyomes-predicate-policy-search-lab-v1";
+    const HIDDEN_KINDS = new Set(["push_initial", "pop"]);
+
+    if (!window.PredicatePolicy) {
+      document.body.innerHTML = '<div style="padding:40px;color:white;font:16px system-ui">predicate.js could not be loaded. Keep predicate.js beside this HTML file, or host it at https://priyomes.com/predicate.js.</div>';
+      return;
+    }
+
+    const P = window.PredicatePolicy;
+    const { POLICY_SCHEMA, PROJECT_SCHEMA } = P;
+
+    const DEFAULT_POLICY = {
+      schema: POLICY_SCHEMA,
+      entry: "START",
+      outcomes: {
+        accept_state: "SOLVED",
+        reject_state: "REJECT",
+        winning_predicates: ["objective_won", "mate"],
+        failure_predicates: ["objective_lost", "mated"]
+      },
+      budgets: { thoughts: 30, depth: 6, call_depth: 5 },
+      routines: [
+        { id: "main", label: "Main search", entry: "START" },
+        { id: "reply_probe", label: "Forcing reply probe", entry: "REPLY_FILTER" }
+      ],
+      states: [
+        { id: "START", routine: "main", kind: "push_initial", description: "Start with the supplied position.", on: { pushed: "MAIN_POP", invalid: "REJECT" } },
+        { id: "MAIN_POP", routine: "main", kind: "pop", description: "Choose the most interesting retained line.", on: { thought: "MAIN_INSPECT", empty: "REJECT" } },
+        {
+          id: "MAIN_INSPECT", routine: "main", kind: "inspect", terminal_checks: true,
+          description: "Check whether this line is solved or failed, then choose the next search card.",
+          rules: [
+            { label: "forcing line", when: { any: ["single_reply_check"] }, to: "ENTER_REPLY_PROBE" },
+            { label: "my ply", when: { side: "my" }, to: "MAIN_MY_CHILDREN" },
+            { label: "their ply", when: { side: "their" }, to: "MAIN_THEIR_CHILDREN" }
+          ],
+          on: { depth: "MAIN_POP", missing: "REJECT" },
+          default: "MAIN_POP"
+        },
+        {
+          id: "MAIN_MY_CHILDREN", routine: "main", kind: "search", side: "my",
+          description: "Search my children one predicate at a time, highest priority first.",
+          predicates: ["mate", "single_reply_check", "forcing_check", "wins_material"],
+          closure: { mode: "first", count: 2 },
+          on: { pushed: "MAIN_POP", none: "MAIN_POP" }
+        },
+        {
+          id: "MAIN_THEIR_CHILDREN", routine: "main", kind: "search", side: "their",
+          description: "Search the opponent's relevant replies one predicate at a time.",
+          predicates: ["mate", "check", "refutes_objective", "defends_target"],
+          closure: { mode: "all" },
+          on: { pushed: "MAIN_POP", none: "MAIN_POP" }
+        },
+        {
+          id: "ENTER_REPLY_PROBE", routine: "main", kind: "call",
+          description: "Temporarily switch to a forcing-reply search, then return to the main policy.",
+          call: { routine: "reply_probe", return_to: "MAIN_POP", resume_current: false }
+        },
+        { id: "SOLVED", routine: "main", kind: "accept", description: "The winning predicate contract was satisfied." },
+        { id: "REJECT", routine: "main", kind: "reject", description: "The policy failed, exhausted its budget, or closed every line." },
+        {
+          id: "REPLY_FILTER", routine: "reply_probe", kind: "search", side: "their",
+          description: "Search the most relevant replies to the forcing line.",
+          predicates: ["forced_reply", "check", "refutes_objective"],
+          closure: { mode: "all" },
+          on: { pushed: "REPLY_POP", none: "REPLY_RETURN" }
+        },
+        { id: "REPLY_POP", routine: "reply_probe", kind: "pop", description: "Choose the next local reply.", on: { thought: "REPLY_INSPECT", empty: "REPLY_RETURN" } },
+        {
+          id: "REPLY_INSPECT", routine: "reply_probe", kind: "inspect", terminal_checks: true,
+          description: "Check the reply, then continue the local my-ply / their-ply search.",
+          rules: [
+            { label: "my continuation", when: { side: "my" }, to: "REPLY_MY_CHILDREN" },
+            { label: "their continuation", when: { side: "their" }, to: "REPLY_THEIR_CHILDREN" }
+          ],
+          on: { depth: "REPLY_POP", missing: "REJECT" },
+          default: "REPLY_POP"
+        },
+        {
+          id: "REPLY_MY_CHILDREN", routine: "reply_probe", kind: "search", side: "my",
+          description: "Search my continuation inside the reply routine.",
+          predicates: ["objective_won", "wins_material", "forcing_check"],
+          closure: { mode: "first", count: 2 },
+          on: { pushed: "REPLY_POP", none: "REPLY_RETURN" }
+        },
+        {
+          id: "REPLY_THEIR_CHILDREN", routine: "reply_probe", kind: "search", side: "their",
+          description: "Search every relevant refutation inside the reply routine.",
+          predicates: ["refutes_objective", "check", "defends_target"],
+          closure: { mode: "all" },
+          on: { pushed: "REPLY_POP", none: "REPLY_RETURN" }
+        },
+        { id: "REPLY_RETURN", routine: "reply_probe", kind: "return", description: "Return to the main policy.", on: { no_frame: "REJECT" } }
+      ]
+    };
+
+    function cakeProject() {
+      const policy = clone(DEFAULT_POLICY);
+      policy.outcomes.winning_predicates = ["perfect_treat"];
+      policy.outcomes.failure_predicates = ["inedible", "allergy_risk"];
+      policy.budgets = { thoughts: 28, depth: 5, call_depth: 3 };
+      policy.routines.find(r => r.id === "main").label = "Cake search";
+      policy.routines.find(r => r.id === "reply_probe").label = "Taste-test routine";
+      const byId = id => policy.states.find(state => state.id === id);
+      byId("MAIN_INSPECT").rules = [
+        { label: "taste-test candidate", when: { any: ["forcing"] }, to: "ENTER_REPLY_PROBE" },
+        { label: "my ply", when: { side: "my" }, to: "MAIN_MY_CHILDREN" },
+        { label: "their ply", when: { side: "their" }, to: "MAIN_THEIR_CHILDREN" }
+      ];
+      byId("MAIN_MY_CHILDREN").description = "Search the cake choices in exact predicate priority order.";
+      byId("MAIN_MY_CHILDREN").predicates = ["sweet", "forcing", "loose"];
+      byId("MAIN_MY_CHILDREN").closure = { mode: "first", count: 2 };
+      byId("MAIN_THEIR_CHILDREN").predicates = ["allergy_risk", "stale", "too_heavy"];
+      byId("ENTER_REPLY_PROBE").description = "Switch to a bounded taste-test routine, then return if needed.";
+      byId("REPLY_FILTER").description = "Search the taste-test replies one predicate at a time.";
+      byId("REPLY_FILTER").predicates = ["taste_reply", "allergy_risk", "stale"];
+      byId("REPLY_MY_CHILDREN").predicates = ["perfect_treat", "balanced", "sprinkly"];
+      byId("REPLY_THEIR_CHILDREN").predicates = ["allergy_risk", "stale", "too_heavy"];
+      return {
+        schema: PROJECT_SCHEMA,
+        name: "Cake Finder",
+        initial: ["Cake1"],
+        policy,
+        positions: [
+          { id: "Cake1", display: "Start · cake table", side: "my", predicates: ["starting_point"], icon: "🧁", help: "The starting position. The policy sees only predicates and child IDs.", children: ["Cake2", "Cake3", "Cake4", "Cake5"] },
+          { id: "Cake2", display: "14. cupcake", side: "their", predicates: ["sweet", "forcing"], icon: "🍰", help: "Highest-priority match. Its forcing predicate opens the taste-test routine.", children: ["TasteReply"] },
+          { id: "Cake3", display: "14. pudding", side: "their", predicates: ["loose"], icon: "🍮", help: "A lower-priority fallback retained for later.", children: ["FallbackTreat"] },
+          { id: "Cake4", display: "14. decorated tart", side: "their", predicates: ["decorate"], icon: "🥧", help: "It matches no predicate on the search card, so it never enters the explored tree.", children: [] },
+          { id: "Cake5", display: "14. heavy pie", side: "their", predicates: ["heavy"], icon: "🥧", help: "Also outside the policy's predicate vocabulary.", children: [] },
+          { id: "TasteReply", display: "…14. taste test", side: "my", predicates: ["taste_reply", "balanced"], icon: "🥄", help: "A reply discovered inside the taste-test routine.", children: ["PerfectSlice"] },
+          { id: "PerfectSlice", display: "15. perfect slice", side: "their", predicates: ["perfect_treat"], icon: "✨", help: "This position satisfies the winning predicate contract.", children: [] },
+          { id: "FallbackTreat", display: "15. fallback custard", side: "my", predicates: ["perfect_treat"], icon: "🍮", help: "This would solve if the taste-test routine returned without a result.", children: [] },
+          { id: "SpoiledSlice", display: "15. spoiled slice", side: "my", predicates: ["inedible"], icon: "⚠", help: "This immediately sends the DFA to its failure state.", children: [] }
+        ],
+        tests: [
+          { name: "Cake search solves", initial: ["Cake1"], expected: "accept" },
+          { name: "Perfect leaf accepts", initial: ["PerfectSlice"], expected: "accept" },
+          { name: "Spoiled leaf rejects", initial: ["SpoiledSlice"], expected: "reject" },
+          { name: "Unmatched heavy card rejects", initial: ["Cake5"], expected: "reject" }
+        ]
+      };
+    }
+
+    function tacticProject() {
+      return {
+        schema: PROJECT_SCHEMA,
+        name: "Coordinate-Free Forcing Search",
+        initial: ["Root"],
+        policy: clone(DEFAULT_POLICY),
+        positions: [
+          { id: "Root", display: "Position", side: "my", predicates: ["our_turn", "loose_piece", "alignment"], icon: "♟", help: "The oracle reports semantic facts only. The policy contains no board coordinates.", children: ["CheckLine", "CaptureLine", "QuietLine"] },
+          { id: "CheckLine", display: "22. forcing check", side: "their", predicates: ["single_reply_check", "forcing_check"], icon: "＋", help: "Highest-priority candidate. It triggers the forcing-reply routine.", children: ["OnlyReply"] },
+          { id: "CaptureLine", display: "22. material capture", side: "their", predicates: ["wins_material", "recapturable"], icon: "×", help: "Lower-priority retained candidate.", children: ["Recapture"] },
+          { id: "QuietLine", display: "22. quiet move", side: "their", predicates: ["quiet", "improves_piece"], icon: "·", help: "No configured forcing predicate matches it.", children: [] },
+          { id: "OnlyReply", display: "…22. only reply", side: "my", predicates: ["forced_reply", "defends_target"], icon: "↩", help: "The oracle exposes the sole relevant reply.", children: ["CashOut"] },
+          { id: "Recapture", display: "…22. recapture", side: "my", predicates: ["refutes_objective", "objective_lost"], icon: "!", help: "The material line is refuted.", children: [] },
+          { id: "CashOut", display: "23. cash out", side: "their", predicates: ["wins_material", "objective_won"], icon: "✓", help: "The continuation satisfies the objective.", children: [] }
+        ],
+        tests: [
+          { name: "Forcing line solves", initial: ["Root"], expected: "accept" },
+          { name: "Known refutation fails", initial: ["Recapture"], expected: "reject" },
+          { name: "Solved leaf accepts", initial: ["CashOut"], expected: "accept" }
+        ]
+      };
+    }
+
+    function returnProject() {
+      return {
+        schema: PROJECT_SCHEMA,
+        name: "Subroutine Return and Resume",
+        initial: ["Root"],
+        policy: clone(DEFAULT_POLICY),
+        positions: [
+          { id: "Root", display: "Position", side: "my", predicates: ["our_turn", "candidate_set"], icon: "◇", help: "Two candidates demonstrate returning from a local routine.", children: ["ProbeLine", "FallbackLine"] },
+          { id: "ProbeLine", display: "1. forcing probe", side: "their", predicates: ["single_reply_check", "forcing_check"], icon: "＋", help: "This enters the reply routine, but nothing relevant is found there.", children: ["UninterestingReply"] },
+          { id: "FallbackLine", display: "1. fallback line", side: "their", predicates: ["wins_material", "objective_won"], icon: "✓", help: "This remains retained while the local routine runs.", children: ["FallbackWin"] },
+          { id: "UninterestingReply", display: "…1. quiet reply", side: "my", predicates: ["quiet_reply"], icon: "·", help: "No reply predicate matches, so the routine returns.", children: [] },
+          { id: "FallbackWin", display: "2. fallback wins", side: "my", predicates: ["objective_won"], icon: "✓", help: "The main routine resumes and accepts.", children: [] }
+        ],
+        tests: [
+          { name: "Returns then solves", initial: ["Root"], expected: "accept" },
+          { name: "Empty probe alone fails", initial: ["ProbeLine"], expected: "reject" }
+        ]
+      };
+    }
+
+    function abstractProject() {
+      const policy = clone(DEFAULT_POLICY);
+      policy.outcomes.winning_predicates = ["goal"];
+      policy.outcomes.failure_predicates = ["failure"];
+      policy.states.find(s => s.id === "MAIN_INSPECT").rules = [
+        { label: "my ply", when: { side: "my" }, to: "MAIN_MY_CHILDREN" },
+        { label: "their ply", when: { side: "their" }, to: "MAIN_THEIR_CHILDREN" }
+      ];
+      policy.states.find(s => s.id === "MAIN_MY_CHILDREN").predicates = ["sweet", "sassy", "sprinkly"];
+      policy.states.find(s => s.id === "MAIN_THEIR_CHILDREN").predicates = ["blocking", "refuting"];
+      return {
+        schema: PROJECT_SCHEMA, name: "Abstract Predicate Priority", initial: ["Seed"], policy,
+        positions: [
+          { id: "Seed", display: "Start", side: "my", predicates: ["starting_point"], help: "The labels are arbitrary strings; the engine does not know the domain.", children: ["A", "B", "C"] },
+          { id: "A", display: "A", side: "their", predicates: ["sweet", "goal"], help: "Highest-priority match.", children: ["Goal"] },
+          { id: "B", display: "B", side: "their", predicates: ["sassy"], help: "Second retained match.", children: [] },
+          { id: "C", display: "C", side: "their", predicates: ["sprinkly"], help: "Pruned by first-two closure.", children: [] },
+          { id: "Goal", display: "Goal", side: "my", predicates: ["goal"], help: "Accepted terminal predicate.", children: [] }
+        ],
+        tests: [{ name: "Priority search", initial: ["Seed"], expected: "accept" }]
+      };
+    }
+
+    function exhaustedProject() {
+      const policy = clone(DEFAULT_POLICY);
+      policy.outcomes.winning_predicates = ["goal"];
+      policy.outcomes.failure_predicates = ["failure"];
+      policy.budgets.thoughts = 10;
+      policy.states.find(s => s.id === "MAIN_MY_CHILDREN").predicates = ["forcing", "promising"];
+      return {
+        schema: PROJECT_SCHEMA, name: "Budget and Closure Failure", initial: ["Plain0"], policy,
+        positions: [
+          { id: "Plain0", display: "Start", side: "my", predicates: ["ordinary"], help: "No child matches the configured search predicates.", children: ["Plain1", "Plain2"] },
+          { id: "Plain1", display: "1. quiet", side: "their", predicates: ["quiet"], help: "Unmatched.", children: [] },
+          { id: "Plain2", display: "1. heavy", side: "their", predicates: ["heavy"], help: "Unmatched.", children: [] }
+        ],
+        tests: [{ name: "Closure rejects", initial: ["Plain0"], expected: "reject" }]
+      };
+    }
+
+    const EXAMPLES = {
+      cake: cakeProject(),
+      tactic: tacticProject(),
+      return: returnProject(),
+      abstract: abstractProject(),
+      exhausted: exhaustedProject()
+    };
+
+    let project = loadStoredProject() || clone(EXAMPLES.cake);
+    let runner = null;
+    let running = false;
+    let uiLocked = false;
+    let lastEvent = null;
+    let testResults = new Map();
+
+    function loadStoredProject() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        return parsed?.schema === PROJECT_SCHEMA ? parsed : null;
+      } catch { return null; }
+    }
+
+    function saveLocal() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(project)); } catch { /* optional */ }
+    }
+
+    function positionMap() {
+      return new Map((project.positions || []).map(position => [position.id, position]));
+    }
+
+    function stateDef(id) {
+      return project.policy.states.find(state => state.id === id);
+    }
+
+    function routineDef(id) {
+      return project.policy.routines.find(routine => routine.id === id);
+    }
+
+    function friendlyStateTitle(state) {
+      if (!state) return "Unknown state";
+      if (state.kind === "search") return state.side === "their" ? "SEARCH THEIR REPLIES" : "SEARCH MY CHILDREN";
+      if (state.kind === "inspect") return "CHECK THIS LINE";
+      if (state.kind === "call") return "TRY A SUBROUTINE";
+      if (state.kind === "return") return "GO BACK";
+      if (state.kind === "accept") return "SOLVED";
+      if (state.kind === "reject") return "STOP";
+      if (state.kind === "pop") return "NEXT LINE";
+      if (state.kind === "push_initial") return "START";
+      return state.id;
+    }
+
+    function stateIcon(state) {
+      return ({ search: "⌕", inspect: "◎", call: "↳", return: "↰", accept: "✓", reject: "×", pop: "→", push_initial: "▶" })[state?.kind] || "·";
+    }
+
+    function stateClasses(state, snapshot) {
+      return ["state-card", state.kind, state.id === snapshot.state ? "active" : ""].filter(Boolean).join(" ");
+    }
+
+    function visibleStates(snapshot) {
+      const current = stateDef(snapshot.state);
+      const routineId = current?.routine || snapshot.routine;
+      const states = project.policy.states.filter(state => state.routine === routineId && !HIDDEN_KINDS.has(state.kind));
+      if (current && !states.some(state => state.id === current.id) && !HIDDEN_KINDS.has(current.kind)) states.push(current);
+      const accept = stateDef(project.policy.outcomes.accept_state);
+      const reject = stateDef(project.policy.outcomes.reject_state);
+      if (accept && !states.some(state => state.id === accept.id)) states.push(accept);
+      if (reject && !states.some(state => state.id === reject.id)) states.push(reject);
+      return states;
+    }
+
+    function predicateChecksFor(state, snapshot) {
+      if (snapshot.state !== state.id || !snapshot.search) {
+        return (state.predicates || []).map((predicate, index) => ({ predicate, status: index === 0 && snapshot.state === state.id ? "next" : "waiting", selected: [] }));
+      }
+      return snapshot.search.checks || [];
+    }
+
+    function stateDetailHtml(state, snapshot) {
+      if (state.kind === "search") {
+        const checks = predicateChecksFor(state, snapshot);
+        return `<div class="state-detail">
+          <div class="detail-label">Check these predicates in this exact order:</div>
+          <div class="predicate-list">${checks.map((check, index) => `<div class="predicate-row ${escapeHtml(check.status || "waiting")}"><span class="n">${index + 1}</span><strong>${escapeHtml(check.predicate)}</strong><span class="status">${check.selected?.length ? escapeHtml(check.selected.join(", ")) : ""}</span></div>`).join("")}</div>
+          <div class="closure-line">Closure: <strong>${escapeHtml(P.closureLabel(state))}</strong></div>
+        </div>`;
+      }
+      if (state.kind === "inspect") {
+        return `<div class="state-detail"><div class="detail-label">First matching rule wins:</div><div class="rule-list">${(state.rules || []).map((rule, index) => `<div class="rule-row"><b>${index + 1}. ${escapeHtml(rule.label || P.conditionLabel(rule.when))}</b><span>→ ${escapeHtml(rule.to)}</span></div>`).join("")}</div></div>`;
+      }
+      if (state.kind === "call") {
+        const routine = routineDef(state.call?.routine);
+        return `<div class="state-detail"><div class="call-box">Enter <strong>${escapeHtml(routine?.label || state.call?.routine || "subroutine")}</strong><br>Then return to <strong>${escapeHtml(state.call?.return_to || "—")}</strong>.</div></div>`;
+      }
+      if (state.kind === "return") {
+        return `<div class="state-detail"><div class="call-box">Finish this local routine and resume the caller's policy.</div></div>`;
+      }
+      return "";
+    }
+
+    function renderDfa(snapshot) {
+      const states = visibleStates(snapshot);
+      $("#dfaFlow").innerHTML = states.map((state, index) => `<div class="state-wrap">
+        <article class="${stateClasses(state, snapshot)}" data-state-id="${escapeHtml(state.id)}">
+          <div class="state-kind"><span>${escapeHtml(state.kind)}</span><span>${state.id === snapshot.state ? "● NOW" : ""}</span></div>
+          <div class="state-icon">${stateIcon(state)}</div>
+          <div class="state-title">${escapeHtml(friendlyStateTitle(state))}</div>
+          <div class="state-id">${escapeHtml(state.id)}</div>
+          <div class="state-description">${escapeHtml(state.description || "")}</div>
+          ${stateDetailHtml(state, snapshot)}
+        </article>
+        ${index < states.length - 1 ? '<div class="state-arrow"></div>' : ""}
+      </div>`).join("");
+
+      requestAnimationFrame(() => {
+        const active = $(".state-card.active");
+        if (active) {
+          active.classList.add("pulse");
+          const windowEl = $("#dfaWindow");
+          const left = active.offsetLeft + active.offsetWidth / 2 - windowEl.clientWidth / 2;
+          windowEl.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+        }
+      });
+    }
+
+    function renderRoutineStrip(snapshot) {
+      const stack = snapshot.callStack || [];
+      const ids = [project.policy.routines.find(r => r.id === project.policy.states.find(s => s.id === project.policy.entry)?.routine)?.id || "main"];
+      stack.forEach(frame => ids.push(frame.calleeRoutine));
+      if (!ids.includes(snapshot.routine)) ids.push(snapshot.routine);
+      $("#routineStrip").innerHTML = ids.map((id, index) => {
+        const routine = routineDef(id);
+        return `${index ? '<span class="routine-arrow">→</span>' : ""}<span class="routine-chip ${id === snapshot.routine ? "active" : ""}">${escapeHtml(routine?.label || id)}</span>`;
+      }).join("");
+    }
+
+    function nodeDisplay(node, positions) {
+      const position = positions.get(node.id) || {};
+      return `${position.icon ? `${position.icon} ` : ""}${position.display || position.label || node.id}`;
+    }
+
+    function nodeMarker(node, snapshot) {
+      if (node.status === "accepted") return "✓";
+      if (node.status === "rejected") return "×";
+      if (node.status === "active") return "▶";
+      if (node.status === "closed") return "·";
+      if (node.status === "discarded") return "↰";
+      if (snapshot.result === "accept" && node.status === "queued") return "○";
+      return "○";
+    }
+
+    function renderTree(snapshot) {
+      const positions = positionMap();
+      const nodes = snapshot.nodes || [];
+      if (!nodes.length) {
+        $("#treeBody").innerHTML = '<div class="tree-empty">No position has been supplied.</div>';
+        return;
+      }
+      const nodeMap = new Map(nodes.map(node => [node.occurrence, node]));
+      const byParent = new Map();
+      nodes.forEach(node => {
+        const key = node.parent || "ROOT";
+        if (!byParent.has(key)) byParent.set(key, []);
+        byParent.get(key).push(node);
+      });
+      byParent.forEach(list => list.sort((a, b) => a.order - b.order));
+
+      const lines = [];
+      const walk = (node, depth) => {
+        const position = positions.get(node.id) || {};
+        const status = node.status === "queued" && snapshot.result === "accept" ? "queued" : node.status;
+        let note = node.note || "";
+        if (snapshot.result === "accept" && node.status === "queued") note = "not needed after the policy solved another line";
+        const because = node.matchedBy && node.matchedBy !== "initial" ? `<span class="because">[because “${escapeHtml(node.matchedBy)}”]</span>` : "";
+        lines.push(`<div class="tree-row ${escapeHtml(status)}" style="--depth:${depth};--connector:${depth ? "block" : "none"}" data-occurrence="${escapeHtml(node.occurrence)}">
+          <div class="tree-marker">${nodeMarker(node, snapshot)}</div>
+          <div class="tree-main">
+            <div class="tree-line"><strong>${escapeHtml(nodeDisplay(node, positions))}</strong> ${because}</div>
+            ${position.help ? `<div class="tree-help">${escapeHtml(position.help)}</div>` : ""}
+            ${note ? `<div class="tree-note">${escapeHtml(note)}${node.status === "rejected" ? " — stopped here because the DFA went to REJECT" : node.status === "accepted" ? " — DFA went to SOLVED" : ""}</div>` : ""}
+          </div>
+          <div class="tree-side">${escapeHtml(position.side || "")}</div>
+        </div>`);
+        (byParent.get(node.occurrence) || []).forEach(child => walk(child, depth + 1));
+      };
+      (snapshot.roots || []).map(id => nodeMap.get(id)).filter(Boolean).forEach(root => walk(root, 0));
+
+      const resultHtml = snapshot.result
+        ? `<div class="tree-result ${snapshot.result}"><strong>${snapshot.result === "accept" ? "✓ SOLVED" : "× STOPPED"}</strong><br>${escapeHtml(snapshot.reason || `DFA entered ${snapshot.state}`)}</div>`
+        : "";
+      $("#treeBody").innerHTML = `<div class="tree-list">${lines.join("")}</div>${resultHtml}`;
+
+      const active = $(".tree-row.active");
+      if (active) active.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+
+    function eventMessage(event, snapshot) {
+      if (!event) {
+        const state = stateDef(snapshot.state);
+        if (state?.kind === "search") return { title: friendlyStateTitle(state), detail: `Press Step to check “${state.predicates?.[0] || "the first predicate"}”.` };
+        return { title: "Ready", detail: "Press Step to continue." };
+      }
+      if (event.type === "ready-search") {
+        const state = stateDef(snapshot.state);
+        return { title: friendlyStateTitle(state), detail: `First check: “${event.predicate || state?.predicates?.[0] || "the first predicate"}”.` };
+      }
+      const positions = positionMap();
+      const display = id => positions.get(id)?.display || positions.get(id)?.label || id;
+      if (event.type === "predicate-checked") {
+        const selected = event.selected || [];
+        return selected.length
+          ? { title: `Checked “${event.predicate}”`, detail: `Kept ${selected.map(item => display(item.id)).join(", ")} because the predicate matched.` }
+          : { title: `Checked “${event.predicate}”`, detail: "No new child matched this predicate." };
+      }
+      if (event.type === "line-selected") return { title: `Explore ${display(event.item.id)}`, detail: `This is the highest-priority retained line.` };
+      if (event.type === "inspect-routed") return { title: event.label, detail: `${display(event.item.id)} routed the DFA to ${event.to}.` };
+      if (event.type === "routine-called") return { title: `Enter ${routineDef(event.routine)?.label || event.routine}`, detail: `The policy switched routines and will later return to ${event.returnTo}.` };
+      if (event.type === "routine-returned") return { title: "Return to the main policy", detail: `Resume at ${event.returnTo}.` };
+      if (event.type === "winning-predicate") return { title: `Winning predicate: ${event.predicate}`, detail: `${display(event.item.id)} satisfies the policy.` };
+      if (event.type === "failure-predicate") return { title: `Failure predicate: ${event.predicate}`, detail: `${display(event.item.id)} sends the DFA to REJECT.` };
+      if (event.type === "search-complete") return { title: event.selectedCount ? `${event.selectedCount} line${event.selectedCount === 1 ? "" : "s"} retained` : "This branch closed", detail: event.selectedCount ? `Closure rule: ${event.closureLabel}.` : "No child matched the ordered predicate list." };
+      if (event.type === "terminal") return { title: event.result === "accept" ? "Solved" : "Stopped", detail: event.reason || `DFA entered ${snapshot.state}.` };
+      if (event.type === "frontier-empty") return { title: "No retained line remains", detail: event.reason || "The search is closed." };
+      return { title: friendlyStateTitle(stateDef(snapshot.state)), detail: snapshot.stateDescription || "The policy moved to the next state." };
+    }
+
+    function renderMessage(snapshot) {
+      const message = eventMessage(lastEvent, snapshot);
+      $("#policyMessage").innerHTML = `<div class="message-dot"></div><div><strong>${escapeHtml(message.title)}</strong><span>${escapeHtml(message.detail)}</span></div>`;
+    }
+
+    function renderStatus(snapshot) {
+      const current = snapshot.current ? project.positions.find(position => position.id === snapshot.current.id) : null;
+      $("#currentPositionChip").textContent = current ? (current.display || current.label || current.id) : snapshot.result ? snapshot.state : "between lines";
+      $("#stepCount").textContent = `${snapshot.thoughtCount} thought${snapshot.thoughtCount === 1 ? "" : "s"} · ${snapshot.microStepCount} steps`;
+      $("#runBtn").textContent = running ? "❚❚ Pause" : snapshot.result ? "↺ Run again" : "▶ Run";
+      $("#stepBtn").disabled = uiLocked || running || Boolean(snapshot.result);
+      $("#resetBtn").disabled = uiLocked;
+      $("#runBtn").disabled = uiLocked;
+    }
+
+    function renderAll() {
+      const snapshot = runner.snapshot();
+      renderRoutineStrip(snapshot);
+      renderDfa(snapshot);
+      renderTree(snapshot);
+      renderMessage(snapshot);
+      renderStatus(snapshot);
+      renderValidationBadge();
+      $("#dialogProjectName").textContent = project.name;
+    }
+
+    function renderValidationBadge() {
+      const issues = P.validateProject(project);
+      const errors = issues.filter(issue => issue.level === "error");
+      const badge = $("#validBadge");
+      badge.className = `valid-badge ${errors.length ? "bad" : "good"}`;
+      badge.textContent = errors.length ? `${errors.length} error${errors.length === 1 ? "" : "s"}` : "✓ Valid policy";
+    }
+
+    function latestMeaningfulEvent(events) {
+      const priority = ["terminal", "failure-predicate", "winning-predicate", "predicate-checked", "routine-called", "routine-returned", "inspect-routed", "line-selected", "search-complete", "frontier-empty"];
+      for (const type of priority) {
+        const event = [...events].reverse().find(item => item.type === type);
+        if (event) return event;
+      }
+      return events.at(-1) || null;
+    }
+
+    function shouldStop(snapshot) {
+      return Boolean(snapshot.result) || snapshot.stateKind === "search";
+    }
+
+    async function advanceToVisible({ animate = true, preserveEvent = false } = {}) {
+      let safety = 0;
+      let terminalEvent = null;
+      while (!runner.snapshot().result && !shouldStop(runner.snapshot()) && safety < 100) {
+        const { events } = runner.step();
+        const meaningful = latestMeaningfulEvent(events);
+        if (meaningful && ["terminal", "failure-predicate", "winning-predicate"].includes(meaningful.type)) terminalEvent = meaningful;
+        if (!preserveEvent && meaningful) lastEvent = meaningful;
+        renderAll();
+        if (animate) await sleep(Math.min(220, Number($("#speedSlider").value) * .22));
+        safety += 1;
+      }
+      if (terminalEvent) lastEvent = terminalEvent;
+    }
+
+    async function primeRunner({ animate = false } = {}) {
+      await advanceToVisible({ animate });
+      const snapshot = runner.snapshot();
+      if (snapshot.stateKind === "search") {
+        const state = stateDef(snapshot.state);
+        lastEvent = { type: "ready-search", state: state.id, predicate: state.predicates?.[0] };
+      }
+      renderAll();
+    }
+
+    async function oneVisibleStep() {
+      if (uiLocked || runner.snapshot().result) return;
+      uiLocked = true;
+      try {
+        const { events, snapshot } = runner.step();
+        lastEvent = latestMeaningfulEvent(events) || lastEvent;
+        renderAll();
+        if (!snapshot.result && snapshot.stateKind !== "search") await advanceToVisible({ animate: true, preserveEvent: true });
+      } finally {
+        uiLocked = false;
+        renderAll();
+      }
+    }
+
+    async function runLoop() {
+      if (runner.snapshot().result) await resetRunner();
+      if (running) {
+        running = false;
+        renderAll();
+        return;
+      }
+      running = true;
+      renderAll();
+      while (running && !runner.snapshot().result) {
+        await oneVisibleStep();
+        if (!running || runner.snapshot().result) break;
+        await sleep(Number($("#speedSlider").value));
+      }
+      running = false;
+      renderAll();
+    }
+
+    async function resetRunner() {
+      running = false;
+      uiLocked = true;
+      lastEvent = null;
+      runner = P.createRunner(project);
+      renderAll();
+      await primeRunner({ animate: false });
+      uiLocked = false;
+      renderAll();
+    }
+
+    function loadProject(nextProject, { save = true, toastMessage = "Project loaded." } = {}) {
+      const issues = P.validateProject(nextProject);
+      const errors = issues.filter(issue => issue.level === "error");
+      if (errors.length) throw new Error(errors.map(issue => `${issue.title}: ${issue.detail}`).join("\n"));
+      project = clone(nextProject);
+      testResults = new Map();
+      if (save) saveLocal();
+      syncEditors();
+      renderTests();
+      resetRunner();
+      toast(toastMessage, "good");
+    }
+
+    function syncEditors() {
+      $("#policyJson").value = JSON.stringify(project.policy, null, 2);
+      $("#oracleJson").value = JSON.stringify({
+        name: project.name,
+        initial: project.initial,
+        positions: project.positions,
+        tests: project.tests || []
+      }, null, 2);
+      renderPolicyIssues();
+      renderOracleIssues();
+      $("#grammarPre").textContent = JSON.stringify(P.GRAMMAR, null, 2);
+      $("#dialogProjectName").textContent = project.name;
+    }
+
+    function issueHtml(issue) {
+      return `<div class="issue ${escapeHtml(issue.level)}"><strong>${escapeHtml(issue.title)}</strong><br>${escapeHtml(issue.detail)}</div>`;
+    }
+
+    function renderPolicyIssues() {
+      let issues;
+      try { issues = P.validatePolicy(JSON.parse($("#policyJson").value)); }
+      catch (error) { issues = [{ level: "error", title: "Invalid JSON", detail: error.message }]; }
+      if (!issues.length) issues = [{ level: "ok", title: "Valid policy", detail: "The text binds to predicate-policy/v2." }];
+      $("#policyIssues").innerHTML = issues.map(issueHtml).join("");
+      return issues;
+    }
+
+    function renderOracleIssues() {
+      let issues;
+      try {
+        const data = JSON.parse($("#oracleJson").value);
+        issues = P.validateProject({ ...clone(project), ...data, policy: project.policy, schema: PROJECT_SCHEMA });
+      } catch (error) {
+        issues = [{ level: "error", title: "Invalid JSON", detail: error.message }];
+      }
+      if (!issues.length) issues = [{ level: "ok", title: "Valid oracle data", detail: "All child and initial references resolve." }];
+      $("#oracleIssues").innerHTML = issues.map(issueHtml).join("");
+      return issues;
+    }
+
+    function applyPolicyText() {
+      try {
+        const policy = JSON.parse($("#policyJson").value);
+        const issues = P.validatePolicy(policy);
+        const errors = issues.filter(issue => issue.level === "error");
+        if (errors.length) throw new Error(errors.map(issue => `${issue.title}: ${issue.detail}`).join("\n"));
+        const candidate = { ...clone(project), policy };
+        const projectErrors = P.validateProject(candidate).filter(issue => issue.level === "error");
+        if (projectErrors.length) throw new Error(projectErrors.map(issue => `${issue.title}: ${issue.detail}`).join("\n"));
+        project = candidate;
+        saveLocal();
+        syncEditors();
+        renderTests();
+        resetRunner();
+        toast("Policy applied to predicate.js.", "good");
+      } catch (error) {
+        renderPolicyIssues();
+        toast(error.message.split("\n")[0], "bad");
+      }
+    }
+
+    function applyOracleText() {
+      try {
+        const data = JSON.parse($("#oracleJson").value);
+        const candidate = {
+          ...clone(project),
+          name: data.name ?? project.name,
+          initial: data.initial,
+          positions: data.positions,
+          tests: data.tests || [],
+          schema: PROJECT_SCHEMA
+        };
+        const errors = P.validateProject(candidate).filter(issue => issue.level === "error");
+        if (errors.length) throw new Error(errors.map(issue => `${issue.title}: ${issue.detail}`).join("\n"));
+        project = candidate;
+        saveLocal();
+        syncEditors();
+        renderTests();
+        resetRunner();
+        toast("Oracle and tests applied.", "good");
+      } catch (error) {
+        renderOracleIssues();
+        toast(error.message.split("\n")[0], "bad");
+      }
+    }
+
+    function renderTests() {
+      const tests = project.tests || [];
+      $("#testsList").innerHTML = tests.length ? tests.map((test, index) => {
+        const result = testResults.get(index);
+        return `<div class="test-row">
+          <div><strong>${escapeHtml(test.name || `Test ${index + 1}`)}</strong><br><span>${escapeHtml((test.initial || []).join(", "))} → expected ${escapeHtml(test.expected)}</span></div>
+          <button class="btn" data-load-test="${index}">Load</button>
+          <div class="test-result ${result ? (result.pass ? "pass" : "fail") : ""}">${result ? (result.pass ? "PASS" : `${escapeHtml(result.actual).toUpperCase()}`) : "—"}</div>
+        </div>`;
+      }).join("") : '<div class="issue warn"><strong>No tests</strong><br>Add tests in Oracle + tests JSON.</div>';
+    }
+
+    function runAllTests() {
+      const suite = P.runTests(project);
+      testResults = new Map(suite.results.map((result, index) => [index, result]));
+      $("#testSummary").textContent = `${suite.passed} / ${suite.total} passed`;
+      $("#testSummary").style.color = suite.pass ? "var(--green)" : "var(--red)";
+      renderTests();
+      toast(suite.pass ? "Every predicate.js test passed." : "One or more tests failed.", suite.pass ? "good" : "bad");
+    }
+
+    function openDialog(tab = "policy") {
+      syncEditors();
+      renderTests();
+      switchDialogTab(tab);
+      $("#editorDialog").showModal();
+    }
+
+    function switchDialogTab(tab) {
+      $$(".dialog-tab").forEach(button => button.classList.toggle("active", button.dataset.dialogTab === tab));
+      $$(".dialog-panel").forEach(panel => panel.classList.toggle("active", panel.dataset.dialogPanel === tab));
+    }
+
+    function formatJson(textarea) {
+      try { textarea.value = JSON.stringify(JSON.parse(textarea.value), null, 2); }
+      catch (error) { toast(error.message, "bad"); }
+    }
+
+    async function copyText(text) {
+      try { await navigator.clipboard.writeText(text); toast("Copied.", "good"); }
+      catch { toast("Clipboard access was blocked.", "bad"); }
+    }
+
+    function downloadJson() {
+      const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "predicate-policy"}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 500);
+    }
+
+    function toast(message, tone = "") {
+      const el = document.createElement("div");
+      el.className = `toast ${tone}`;
+      el.textContent = message;
+      $("#toastStack").appendChild(el);
+      setTimeout(() => el.remove(), 3600);
+    }
+
+    $("#resetBtn").addEventListener("click", resetRunner);
+    $("#stepBtn").addEventListener("click", oneVisibleStep);
+    $("#runBtn").addEventListener("click", runLoop);
+    $("#editBtn").addEventListener("click", () => openDialog("policy"));
+    $("#testsBtn").addEventListener("click", () => openDialog("tests"));
+    $("#closeDialogBtn").addEventListener("click", () => $("#editorDialog").close());
+    $("#openBtn").addEventListener("click", () => $("#fileInput").click());
+    $("#saveBtn").addEventListener("click", downloadJson);
+    $("#fileInput").addEventListener("change", async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try { loadProject(JSON.parse(await file.text()), { toastMessage: "Project opened." }); }
+      catch (error) { toast(error.message.split("\n")[0], "bad"); }
+      event.target.value = "";
+    });
+    $("#exampleSelect").addEventListener("change", event => {
+      localStorage.removeItem(STORAGE_KEY);
+      loadProject(clone(EXAMPLES[event.target.value]), { toastMessage: `${EXAMPLES[event.target.value].name} loaded.` });
+    });
+    $("#speedSlider").addEventListener("input", event => {
+      const value = Number(event.target.value);
+      const ratio = (720 / value).toFixed(1);
+      $("#speedReadout").textContent = `${ratio}×`;
+    });
+    $$(".dialog-tab").forEach(button => button.addEventListener("click", () => switchDialogTab(button.dataset.dialogTab)));
+    $("#policyJson").addEventListener("input", renderPolicyIssues);
+    $("#oracleJson").addEventListener("input", renderOracleIssues);
+    $("#applyPolicyBtn").addEventListener("click", applyPolicyText);
+    $("#applyOracleBtn").addEventListener("click", applyOracleText);
+    $("#formatPolicyBtn").addEventListener("click", () => { formatJson($("#policyJson")); renderPolicyIssues(); });
+    $("#formatOracleBtn").addEventListener("click", () => { formatJson($("#oracleJson")); renderOracleIssues(); });
+    $("#copyPolicyBtn").addEventListener("click", () => copyText($("#policyJson").value));
+    $("#copyOracleBtn").addEventListener("click", () => copyText($("#oracleJson").value));
+    $("#runAllTestsBtn").addEventListener("click", runAllTests);
+    $("#testsList").addEventListener("click", event => {
+      const button = event.target.closest("[data-load-test]");
+      if (!button) return;
+      const test = project.tests?.[Number(button.dataset.loadTest)];
+      if (!test) return;
+      project.initial = [...test.initial];
+      $("#editorDialog").close();
+      resetRunner();
+      toast(`Loaded test: ${test.name}`, "good");
+    });
+    window.addEventListener("keydown", event => {
+      if (event.key === " " && !event.target.matches("textarea,input,select,button")) {
+        event.preventDefault();
+        oneVisibleStep();
+      }
+      if (event.key === "Escape" && $("#editorDialog").open) $("#editorDialog").close();
+    });
+
+    $("#engineBadge").textContent = `predicate.js ${P.VERSION}`;
+    const matchingExample = Object.entries(EXAMPLES).find(([, value]) => value.name === project.name)?.[0];
+    if (matchingExample) $("#exampleSelect").value = matchingExample;
+    syncEditors();
+    renderTests();
+    runner = P.createRunner(project);
+    renderAll();
+    primeRunner({ animate: false });
+  })();
+  </script>
+</body>
+</html>
