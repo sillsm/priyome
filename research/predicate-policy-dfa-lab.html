@@ -1,0 +1,1625 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07101a" />
+  <title>Predicate Policy DFA Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07101a;
+      --bg-2: #0a1421;
+      --panel: rgba(15, 27, 42, 0.94);
+      --panel-solid: #101c2b;
+      --panel-2: #132235;
+      --panel-3: #172a40;
+      --text: #edf7ff;
+      --muted: #91a7b9;
+      --faint: #61798d;
+      --line: rgba(159, 195, 218, 0.16);
+      --line-strong: rgba(159, 195, 218, 0.29);
+      --accent: #67e8f9;
+      --accent-2: #a78bfa;
+      --accent-3: #38bdf8;
+      --good: #55e6a5;
+      --warn: #f9c74f;
+      --bad: #ff6f91;
+      --my: #67e8f9;
+      --their: #c4a7ff;
+      --shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
+      --radius: 18px;
+      --radius-sm: 12px;
+      --speed: 560ms;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 8% -10%, rgba(56, 189, 248, 0.18), transparent 31%),
+        radial-gradient(circle at 94% 6%, rgba(167, 139, 250, 0.16), transparent 31%),
+        linear-gradient(145deg, var(--bg), #08131f 48%, #07101a);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    button, input, textarea, select { font: inherit; }
+    button, select { color: inherit; }
+    button { border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: none;
+      background: rgba(4, 12, 21, 0.68);
+      color: var(--text);
+      transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: rgba(103, 232, 249, 0.66);
+      box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.10);
+      background: rgba(5, 15, 25, 0.92);
+    }
+    input, select { min-height: 38px; padding: 7px 10px; }
+    textarea { min-height: 120px; resize: vertical; padding: 10px 12px; }
+    input::placeholder, textarea::placeholder { color: #5f7688; }
+    code, .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    .app-shell { height: 100vh; display: flex; flex-direction: column; }
+
+    .topbar {
+      position: relative;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-height: 66px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 16, 26, 0.82);
+      backdrop-filter: blur(22px) saturate(135%);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+    .brand-mark {
+      position: relative; width: 38px; height: 38px; border-radius: 12px;
+      border: 1px solid rgba(103, 232, 249, .34);
+      background:
+        radial-gradient(circle at 34% 28%, rgba(255,255,255,.35), transparent 12%),
+        linear-gradient(145deg, rgba(103,232,249,.29), rgba(167,139,250,.28));
+      box-shadow: inset 0 0 22px rgba(103,232,249,.12), 0 10px 28px rgba(0,0,0,.25);
+    }
+    .brand-mark::before {
+      content: ""; position: absolute; left: 10px; top: 7px; width: 16px; height: 20px;
+      border: 2px solid var(--accent); border-top: 0; border-radius: 0 0 8px 8px;
+      transform: skewX(-7deg);
+    }
+    .brand-mark::after {
+      content: ""; position: absolute; left: 14px; top: 5px; width: 8px; height: 4px;
+      border-top: 2px solid var(--accent-2); border-bottom: 2px solid var(--accent-2);
+    }
+    .brand-copy { display: grid; line-height: 1.05; }
+    .brand-copy strong { font-size: 15px; letter-spacing: .01em; }
+    .brand-copy span { margin-top: 4px; color: var(--muted); font-size: 11px; }
+
+    .project-name {
+      min-width: 175px; max-width: 360px; height: 40px; border-color: transparent;
+      background: transparent; font-size: 16px; font-weight: 750;
+    }
+    .project-name:hover { background: rgba(255,255,255,.035); }
+    .topbar-spacer { flex: 1 1 auto; }
+    .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      min-height: 38px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px;
+      background: rgba(255,255,255,.045); color: var(--text); white-space: nowrap;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+    }
+    .btn:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--line-strong); background: rgba(255,255,255,.075); }
+    .btn:active:not(:disabled) { transform: translateY(0); }
+    .btn.primary {
+      border-color: rgba(103,232,249,.38);
+      background: linear-gradient(135deg, rgba(34,211,238,.24), rgba(56,189,248,.16));
+      box-shadow: inset 0 0 18px rgba(103,232,249,.06);
+    }
+    .btn.good { border-color: rgba(85,230,165,.34); background: rgba(85,230,165,.10); }
+    .btn.danger { border-color: rgba(255,111,145,.34); background: rgba(255,111,145,.08); }
+    .btn.ghost { background: transparent; }
+    .btn.small { min-height: 31px; padding: 5px 9px; border-radius: 8px; font-size: 12px; }
+    .btn.icon { width: 38px; padding-inline: 0; }
+
+    .validation-badge, .save-badge {
+      display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px;
+      border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+      background: rgba(255,255,255,.025); font-size: 12px; white-space: nowrap;
+    }
+    .validation-badge.good { border-color: rgba(85,230,165,.28); color: var(--good); background: rgba(85,230,165,.07); }
+    .validation-badge.warn { border-color: rgba(249,199,79,.30); color: var(--warn); background: rgba(249,199,79,.07); }
+    .validation-badge.bad { border-color: rgba(255,111,145,.32); color: var(--bad); background: rgba(255,111,145,.07); }
+    .save-badge.dirty { color: var(--warn); }
+
+    .mobile-menu { display: none; }
+
+    .workspace-layout {
+      min-height: 0; flex: 1 1 auto; display: grid; grid-template-columns: 360px minmax(0,1fr);
+    }
+    .sidebar-scrim { display: none; }
+    .sidebar {
+      min-height: 0; overflow: hidden; display: flex; flex-direction: column;
+      border-right: 1px solid var(--line); background: rgba(9,19,31,.76); backdrop-filter: blur(14px);
+    }
+    .side-tabs {
+      display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); padding: 10px 8px 8px; gap: 4px;
+      border-bottom: 1px solid var(--line);
+    }
+    .side-tab {
+      min-width: 0; padding: 8px 3px; border-radius: 9px; background: transparent;
+      color: var(--muted); font-size: 10.5px; font-weight: 750; letter-spacing: .015em;
+    }
+    .side-tab:hover { background: rgba(255,255,255,.045); color: var(--text); }
+    .side-tab.active { color: var(--accent); background: rgba(103,232,249,.10); }
+    .side-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 12px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: panel-in 150ms ease both; }
+    @keyframes panel-in { from { opacity: 0; transform: translateY(3px); } to { opacity:1; transform:none; } }
+
+    .panel {
+      padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+      background: rgba(13,25,40,.78); box-shadow: 0 12px 35px rgba(0,0,0,.13);
+    }
+    .panel + .panel { margin-top: 10px; }
+    .panel h2, .panel h3 { margin: 0; line-height: 1.2; }
+    .panel h2 { font-size: 14px; }
+    .panel h3 { font-size: 12px; color: #cbd9e5; }
+    .panel-title-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .panel-copy { margin: 7px 0 11px; color: var(--muted); font-size: 12px; }
+    .field { display:grid; gap:6px; margin-top:10px; }
+    .field label { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+    .field-help { color: var(--faint); font-size: 10.5px; }
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+    .button-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:11px; }
+    .mini-chip {
+      display:inline-flex; align-items:center; gap:5px; min-height:24px; padding:3px 8px;
+      border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.035);
+      color:var(--muted); font-size:10.5px; font-weight:700;
+    }
+    .mini-chip.good { color:var(--good); border-color:rgba(85,230,165,.28); background:rgba(85,230,165,.07); }
+    .mini-chip.bad { color:var(--bad); border-color:rgba(255,111,145,.28); background:rgba(255,111,145,.07); }
+    .summary-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+    .summary-item { padding:10px; border:1px solid var(--line); border-radius:10px; background:rgba(2,9,16,.35); }
+    .summary-item span { display:block; color:var(--faint); font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .summary-item strong { display:block; margin-top:4px; color:#d8e8f4; font-size:11.5px; line-height:1.35; }
+
+    .order-editor { display:grid; gap:6px; margin-top:8px; }
+    .order-row {
+      display:grid; grid-template-columns:24px minmax(0,1fr) 29px 29px; gap:6px; align-items:center;
+      padding:6px; border:1px solid var(--line); border-radius:9px; background:rgba(2,9,16,.32);
+    }
+    .order-index {
+      display:grid; place-items:center; width:22px; height:22px; border-radius:50%;
+      color:#07101a; background:var(--accent); font-size:10px; font-weight:900;
+    }
+    .order-row button { min-height:28px; border-radius:7px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--muted); }
+    .order-row button:hover { color:var(--text); border-color:var(--line-strong); }
+
+    .oracle-list { display:grid; gap:8px; margin-top:10px; }
+    .oracle-mini {
+      padding:10px; border:1px solid var(--line); border-radius:10px;
+      background:linear-gradient(145deg,rgba(20,36,55,.8),rgba(9,19,31,.84));
+    }
+    .oracle-mini-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .oracle-mini strong { font-size:12px; }
+    .oracle-mini p { margin:5px 0 0; color:var(--muted); font-size:10.5px; }
+    .predicate-line { display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; }
+    .predicate-chip {
+      display:inline-flex; align-items:center; min-height:21px; padding:2px 7px;
+      border:1px solid rgba(103,232,249,.19); border-radius:999px;
+      background:rgba(103,232,249,.07); color:#bdeff7; font-size:9.5px; font-weight:750;
+    }
+    .predicate-chip.match { border-color:rgba(167,139,250,.39); color:#d8c9ff; background:rgba(167,139,250,.13); }
+    .side-pill {
+      display:inline-flex; align-items:center; gap:5px; min-height:20px; padding:2px 7px;
+      border-radius:999px; border:1px solid var(--line); font-size:8.5px; font-weight:900;
+      letter-spacing:.07em; text-transform:uppercase;
+    }
+    .side-pill.my { color:var(--my); border-color:rgba(103,232,249,.25); background:rgba(103,232,249,.07); }
+    .side-pill.their { color:var(--their); border-color:rgba(167,139,250,.27); background:rgba(167,139,250,.08); }
+
+    .transition-table { width:100%; border-collapse:collapse; margin-top:10px; font-size:10.5px; }
+    .transition-table th, .transition-table td { padding:7px 5px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top; }
+    .transition-table th { color:var(--faint); font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
+    .transition-table td:nth-child(2) { color:var(--accent); }
+    .transition-table td:last-child { color:var(--muted); }
+    .test-list, .issue-list { display:grid; gap:7px; margin-top:10px; }
+    .test-row, .issue-row {
+      display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center;
+      padding:9px; border:1px solid var(--line); border-radius:9px; background:rgba(2,9,16,.32);
+    }
+    .test-row strong, .issue-row strong { display:block; font-size:11px; }
+    .test-row span, .issue-row span { display:block; margin-top:2px; color:var(--muted); font-size:9.5px; }
+
+    .main { min-width:0; min-height:0; overflow:auto; padding:14px; }
+
+    .runner-card {
+      position:relative; z-index:2; padding:13px; border:1px solid var(--line); border-radius:var(--radius);
+      background:
+        radial-gradient(circle at 92% 0%,rgba(167,139,250,.08),transparent 35%),
+        linear-gradient(145deg,rgba(17,31,48,.94),rgba(11,22,35,.95));
+      box-shadow:var(--shadow);
+    }
+    .runner-top { display:grid; grid-template-columns:minmax(260px,1fr) auto; gap:12px; align-items:center; }
+    .initial-input-wrap {
+      display:grid; grid-template-columns:auto minmax(150px,1fr) auto; align-items:center; gap:8px;
+      min-height:46px; padding:5px 6px 5px 12px; border:1px solid var(--line); border-radius:12px;
+      background:rgba(2,9,16,.42);
+    }
+    .initial-input-wrap label { color:var(--muted); font-size:10px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; }
+    .initial-input-wrap input { min-height:34px; border:0; background:transparent; box-shadow:none; padding-inline:5px; font-family:"SFMono-Regular",Consolas,monospace; }
+    .example-select { width:auto; min-width:150px; }
+    .transport { display:flex; align-items:center; gap:8px; }
+    .play-button { min-width:94px; }
+    .runner-meta {
+      display:grid; grid-template-columns:auto minmax(190px,1fr) auto; gap:12px; align-items:center;
+      margin-top:10px; color:var(--muted); font-size:11px;
+    }
+    .speed-control { display:grid; grid-template-columns:auto minmax(100px,220px) auto; justify-content:center; align-items:center; gap:8px; }
+    .speed-control input { min-height:20px; padding:0; accent-color:var(--accent); }
+    .run-summary { text-align:right; }
+    .run-summary strong.good { color:var(--good); }
+    .run-summary strong.bad { color:var(--bad); }
+    .timeline {
+      display:flex; align-items:center; gap:6px; min-height:42px; margin-top:10px; padding:7px;
+      overflow-x:auto; border:1px solid var(--line); border-radius:11px; background:rgba(2,9,16,.42);
+    }
+    .timeline-step {
+      flex:0 0 auto; min-width:34px; max-width:150px; height:29px; padding:0 9px;
+      border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.025);
+      color:var(--muted); font-size:9.5px; font-weight:800; letter-spacing:.025em; text-transform:uppercase;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .timeline-step.done { color:#c7d7e3; border-color:rgba(103,232,249,.20); background:rgba(103,232,249,.055); }
+    .timeline-step.current { color:#041019; border-color:var(--accent); background:var(--accent); box-shadow:0 0 18px rgba(103,232,249,.25); }
+
+    .policy-ribbon {
+      display:flex; flex-wrap:wrap; gap:7px; margin-top:10px;
+    }
+    .policy-badge {
+      display:inline-flex; align-items:center; gap:6px; min-height:27px; padding:4px 9px;
+      border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.025);
+      color:var(--muted); font-size:9.5px;
+    }
+    .policy-badge b { color:#dcebf5; font-size:9.5px; }
+    .policy-badge.win { border-color:rgba(85,230,165,.24); background:rgba(85,230,165,.055); }
+    .policy-badge.win b { color:var(--good); }
+    .policy-badge.fail { border-color:rgba(255,111,145,.22); background:rgba(255,111,145,.045); }
+    .policy-badge.fail b { color:var(--bad); }
+
+    .workbench-grid {
+      display:grid; grid-template-columns:minmax(0,1fr) 350px; gap:14px; align-items:stretch; margin-top:14px;
+      min-height:570px;
+    }
+    .workbench-panel {
+      min-width:0; border:1px solid var(--line); border-radius:var(--radius);
+      background:
+        radial-gradient(circle at 88% -4%,rgba(167,139,250,.075),transparent 35%),
+        linear-gradient(145deg,rgba(15,28,44,.93),rgba(9,19,31,.95));
+      box-shadow:0 18px 46px rgba(0,0,0,.22); overflow:hidden;
+    }
+    .panel-header {
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+      padding:14px 15px 12px; border-bottom:1px solid var(--line);
+    }
+    .panel-header h1 { margin:0; font-size:15px; }
+    .panel-header p { margin:4px 0 0; color:var(--muted); font-size:10.5px; }
+    .layout-chip { flex:0 0 auto; }
+
+    .automaton-body { padding:14px; }
+    .dfa-scroller {
+      position:relative; overflow-x:auto; overflow-y:hidden; padding:8px 6px 18px;
+      scroll-behavior:smooth; scrollbar-width:thin;
+    }
+    .dfa-flow { display:flex; align-items:stretch; min-width:max-content; }
+    .state-wrap { display:flex; align-items:center; }
+    .state-card {
+      position:relative; width:152px; min-height:218px; padding:12px 12px 46px;
+      border:1px solid var(--line-strong); border-radius:14px;
+      background:linear-gradient(150deg,rgba(24,42,63,.93),rgba(11,22,35,.96));
+      box-shadow:0 14px 28px rgba(0,0,0,.22); cursor:pointer;
+      transition:transform 180ms ease,border-color 180ms ease,box-shadow 180ms ease,opacity 180ms ease;
+    }
+    .state-card:hover { transform:translateY(-2px); border-color:rgba(103,232,249,.34); }
+    .state-card.active {
+      transform:translateY(-4px); border-color:var(--accent);
+      box-shadow:0 18px 38px rgba(0,0,0,.28),0 0 0 2px rgba(103,232,249,.13),0 0 28px rgba(103,232,249,.16);
+    }
+    .state-card.selected:not(.active) { border-color:rgba(167,139,250,.62); box-shadow:0 0 0 2px rgba(167,139,250,.10); }
+    .state-card.terminal.accept { border-color:rgba(85,230,165,.46); background:linear-gradient(150deg,rgba(25,64,53,.72),rgba(10,31,29,.94)); }
+    .state-card.terminal.reject { border-color:rgba(255,111,145,.43); background:linear-gradient(150deg,rgba(67,31,48,.73),rgba(31,15,27,.95)); }
+    .state-card.search { width:232px; min-height:276px; padding-bottom:12px; }
+    .state-kind {
+      display:flex; align-items:center; justify-content:space-between; gap:7px;
+      color:var(--faint); font-size:8.5px; font-weight:900; letter-spacing:.09em; text-transform:uppercase;
+    }
+    .state-icon {
+      display:grid; place-items:center; width:34px; height:34px; margin-top:14px;
+      border:1px solid rgba(103,232,249,.25); border-radius:11px;
+      background:rgba(103,232,249,.07); color:var(--accent); font-size:16px;
+    }
+    .state-card.search .state-icon { color:var(--accent-2); border-color:rgba(167,139,250,.27); background:rgba(167,139,250,.08); }
+    .state-card.accept .state-icon { color:var(--good); border-color:rgba(85,230,165,.27); background:rgba(85,230,165,.08); }
+    .state-card.reject .state-icon { color:var(--bad); border-color:rgba(255,111,145,.27); background:rgba(255,111,145,.08); }
+    .state-name { margin-top:12px; font-size:13px; font-weight:850; letter-spacing:.015em; overflow-wrap:anywhere; }
+    .state-desc {
+      margin-top:6px; color:var(--muted); font-size:10px; line-height:1.45;
+      display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; overflow:hidden;
+    }
+    .state-footer {
+      position:absolute; left:12px; right:12px; bottom:11px; padding-top:8px; border-top:1px solid var(--line);
+      color:var(--faint); font-size:8.5px; line-height:1.4;
+    }
+    .search-order { display:grid; gap:5px; margin-top:12px; }
+    .search-order-label { color:var(--muted); font-size:9px; font-weight:750; }
+    .search-predicate {
+      display:grid; grid-template-columns:20px minmax(0,1fr); gap:7px; align-items:center;
+      min-height:27px; padding:4px 7px; border:1px solid var(--line); border-radius:8px;
+      background:rgba(2,9,16,.34); color:#dfeef7; font-size:10px; font-weight:750;
+    }
+    .search-predicate .n {
+      display:grid; place-items:center; width:18px; height:18px; border-radius:50%;
+      background:rgba(167,139,250,.22); color:#d9ceff; font-size:8px; font-weight:900;
+    }
+    .closure-box {
+      margin-top:8px; padding:7px 8px; border:1px solid rgba(167,139,250,.20); border-radius:8px;
+      background:rgba(167,139,250,.055); color:var(--muted); font-size:8.8px;
+    }
+    .closure-box strong { color:#d9ceff; }
+    .edge-arrow {
+      position:relative; display:flex; align-items:center; justify-content:center; width:38px; flex:0 0 38px;
+      color:var(--faint); font-size:25px;
+    }
+    .edge-arrow::before {
+      content:""; position:absolute; left:4px; right:10px; height:1px; background:var(--line-strong);
+    }
+    .edge-arrow::after {
+      content:""; position:absolute; right:8px; width:7px; height:7px;
+      border-top:1px solid var(--line-strong); border-right:1px solid var(--line-strong); transform:rotate(45deg);
+    }
+    .edge-arrow.active::before { background:linear-gradient(90deg,var(--accent),var(--accent-2)); box-shadow:0 0 10px rgba(103,232,249,.3); }
+    .edge-arrow.active::after { border-color:var(--accent); }
+
+    .state-detail {
+      display:grid; grid-template-columns:minmax(0,1.4fr) minmax(230px,.8fr); gap:10px; margin-top:4px;
+    }
+    .detail-card {
+      min-height:126px; padding:12px; border:1px solid var(--line); border-radius:12px; background:rgba(2,9,16,.35);
+    }
+    .detail-head { display:flex; align-items:center; justify-content:space-between; gap:9px; }
+    .detail-head h2 { margin:0; font-size:12px; }
+    .detail-card p { margin:7px 0 0; color:var(--muted); font-size:10px; }
+    .event-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:10px; }
+    .event-box { padding:8px; border:1px solid var(--line); border-radius:9px; }
+    .event-box span { display:block; color:var(--faint); font-size:8px; font-weight:900; text-transform:uppercase; letter-spacing:.07em; }
+    .event-box strong { display:block; margin-top:4px; font-size:10px; overflow-wrap:anywhere; }
+
+    .current-thought {
+      position:relative; min-height:126px; display:grid; place-items:center; padding:10px;
+      border:1px dashed rgba(103,232,249,.24); border-radius:11px;
+      background:radial-gradient(circle at 50% 30%,rgba(103,232,249,.055),transparent 58%);
+    }
+    .current-thought.empty::before { content:"Popped thoughts land here for examination"; color:var(--faint); font-size:10px; text-align:center; max-width:180px; }
+    .current-thought.pulse { animation:target-pulse 620ms ease; }
+    @keyframes target-pulse { 0%{box-shadow:0 0 0 0 rgba(103,232,249,.32)} 100%{box-shadow:0 0 0 18px rgba(103,232,249,0)} }
+
+    .frontier-section { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+    .frontier-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .frontier-head h2 { margin:0; font-size:12px; }
+    .frontier-head p { margin:2px 0 0; color:var(--muted); font-size:9.5px; }
+    .frontier-list { display:flex; gap:9px; min-height:126px; margin-top:9px; padding:4px 2px 8px; overflow-x:auto; }
+    .frontier-empty {
+      width:100%; display:grid; place-items:center; border:1px dashed var(--line); border-radius:11px;
+      color:var(--faint); font-size:10px; text-align:center; padding:20px;
+    }
+
+    .thought-card {
+      position:relative; width:190px; min-width:190px; padding:11px;
+      border:1px solid rgba(103,232,249,.30); border-radius:12px;
+      background:
+        radial-gradient(circle at 90% 0%,rgba(103,232,249,.08),transparent 35%),
+        linear-gradient(145deg,rgba(24,43,65,.98),rgba(12,24,38,.99));
+      box-shadow:0 13px 28px rgba(0,0,0,.25);
+      overflow:hidden;
+    }
+    .thought-card.their { border-color:rgba(167,139,250,.34); background:radial-gradient(circle at 90% 0%,rgba(167,139,250,.09),transparent 35%),linear-gradient(145deg,rgba(37,34,66,.98),rgba(18,20,39,.99)); }
+    .thought-card.matched { box-shadow:0 13px 28px rgba(0,0,0,.25),0 0 0 2px rgba(167,139,250,.11); }
+    .thought-card.unmatched { opacity:.48; filter:saturate(.65); }
+    .thought-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .thought-id { margin-top:8px; font-size:14px; font-weight:850; overflow-wrap:anywhere; }
+    .thought-help { margin-top:4px; min-height:29px; color:var(--muted); font-size:9.5px; line-height:1.45; }
+    .thought-preds { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+    .match-ribbon {
+      position:absolute; top:9px; right:-29px; width:100px; padding:3px 0; transform:rotate(36deg);
+      text-align:center; background:rgba(167,139,250,.88); color:#0b1020; font-size:7.5px; font-weight:950; letter-spacing:.08em; text-transform:uppercase;
+    }
+    .depth-chip { color:var(--faint); font-size:8.5px; font-weight:800; }
+
+    .memory-panel { display:flex; flex-direction:column; min-height:570px; }
+    .memory-head-extra { display:flex; align-items:center; gap:7px; }
+    .budget-meter { width:74px; height:7px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.07); }
+    .budget-meter span { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width 220ms ease; }
+    .memory-body { min-height:0; flex:1 1 auto; display:flex; flex-direction:column; padding:14px; }
+    .memory-labels { display:flex; align-items:center; justify-content:space-between; margin:0 22px 8px; color:var(--muted); font-size:9.5px; }
+    .stack-shell {
+      position:relative; min-height:404px; flex:1 1 auto; padding:16px 33px 20px;
+      border-radius:15px; background:radial-gradient(circle at 50% 18%,rgba(167,139,250,.06),transparent 55%);
+    }
+    .stack-shell::before, .stack-shell::after {
+      content:""; position:absolute; top:5px; bottom:5px; width:21px;
+      border-top:3px solid rgba(167,139,250,.78); border-bottom:3px solid rgba(167,139,250,.78);
+      filter:drop-shadow(0 0 8px rgba(167,139,250,.17));
+    }
+    .stack-shell::before { left:3px; border-left:3px solid rgba(167,139,250,.78); border-radius:12px 0 0 12px; }
+    .stack-shell::after { right:3px; border-right:3px solid rgba(167,139,250,.78); border-radius:0 12px 12px 0; }
+    .stack-inlet {
+      position:absolute; left:50%; top:15px; width:120px; height:64px; transform:translateX(-50%);
+      pointer-events:none;
+    }
+    .stack-list { display:flex; flex-direction:column; gap:9px; min-height:100%; }
+    .stack-slot {
+      min-height:83px; border:1px dashed rgba(159,195,218,.18); border-radius:11px;
+      background:rgba(2,9,16,.14);
+    }
+    .stack-card { width:100%; min-width:0; min-height:92px; transition:transform 180ms ease,box-shadow 180ms ease; }
+    .stack-card.top { border-color:rgba(103,232,249,.55); box-shadow:0 13px 28px rgba(0,0,0,.28),0 0 0 2px rgba(103,232,249,.10); }
+    .stack-card.top::before {
+      content:"NEXT POP"; position:absolute; top:8px; right:9px; color:var(--accent); font-size:7.5px; font-weight:950; letter-spacing:.08em;
+    }
+    .stack-card .thought-help { min-height:0; }
+    .stack-card .thought-preds { margin-top:7px; }
+    .stack-empty {
+      min-height:95px; display:grid; place-items:center; padding:18px; text-align:center;
+      border:1px dashed rgba(159,195,218,.20); border-radius:11px; color:var(--faint); font-size:10px;
+    }
+    .memory-foot {
+      display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;
+    }
+    .memory-stat { padding:9px; border:1px solid var(--line); border-radius:10px; background:rgba(2,9,16,.33); }
+    .memory-stat span { display:block; color:var(--faint); font-size:8px; font-weight:900; letter-spacing:.07em; text-transform:uppercase; }
+    .memory-stat strong { display:block; margin-top:4px; font-size:11px; }
+
+    .trace-panel { margin-top:14px; }
+    .trace-body { padding:11px 14px 14px; }
+    .trace-list { display:flex; gap:7px; overflow-x:auto; padding-bottom:3px; }
+    .trace-card {
+      flex:0 0 210px; padding:9px; border:1px solid var(--line); border-radius:10px;
+      background:rgba(2,9,16,.32);
+    }
+    .trace-card strong { display:block; font-size:10px; }
+    .trace-card p { margin:4px 0 0; color:var(--muted); font-size:9px; line-height:1.4; }
+    .trace-card.current { border-color:rgba(103,232,249,.39); background:rgba(103,232,249,.055); }
+
+    .flight-card {
+      position:fixed !important; z-index:9999; margin:0 !important; pointer-events:none !important;
+      transform-origin:center center; transition:transform var(--speed) cubic-bezier(.2,.75,.2,1), opacity var(--speed) ease, filter var(--speed) ease;
+      will-change:transform,opacity; box-shadow:0 25px 70px rgba(0,0,0,.55),0 0 28px rgba(103,232,249,.18) !important;
+    }
+    .flight-card.pushing { filter:saturate(1.18) brightness(1.06); }
+    .flight-card.popping { filter:saturate(1.12) brightness(1.08); }
+    .flight-label {
+      position:fixed; z-index:10000; pointer-events:none; padding:5px 9px; border-radius:999px;
+      border:1px solid rgba(103,232,249,.34); background:rgba(7,16,26,.94); color:var(--accent);
+      font-size:9px; font-weight:900; letter-spacing:.06em; text-transform:uppercase;
+      transition:transform var(--speed) ease,opacity var(--speed) ease;
+    }
+
+    .toast-stack { position:fixed; right:14px; bottom:14px; z-index:10020; display:grid; gap:8px; width:min(330px,calc(100vw - 28px)); }
+    .toast {
+      padding:10px 12px; border:1px solid var(--line-strong); border-radius:11px;
+      background:rgba(10,20,32,.96); box-shadow:0 18px 45px rgba(0,0,0,.38); color:#dbe9f3; font-size:11px;
+      animation:toast-in 180ms ease both;
+    }
+    .toast.good { border-color:rgba(85,230,165,.34); }
+    .toast.bad { border-color:rgba(255,111,145,.34); }
+    @keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+    .confetti { position:fixed; z-index:10010; width:7px; height:12px; border-radius:2px; pointer-events:none; animation:confetti 900ms ease-out forwards; }
+    @keyframes confetti { to { transform:translate(var(--dx),var(--dy)) rotate(480deg); opacity:0; } }
+
+    @media (max-width: 1180px) {
+      .workspace-layout { grid-template-columns:320px minmax(0,1fr); }
+      .workbench-grid { grid-template-columns:minmax(0,1fr) 315px; }
+      .state-card { width:142px; }
+      .state-card.search { width:215px; }
+    }
+
+    @media (max-width: 920px) {
+      body { overflow:auto; }
+      .app-shell { height:auto; min-height:100vh; }
+      .topbar { position:sticky; top:0; padding-inline:10px; }
+      .brand-copy span, .save-badge, .button-label, .project-name { display:none; }
+      .mobile-menu { display:inline-flex; }
+      .workspace-layout { display:block; }
+      .sidebar {
+        position:fixed; z-index:80; left:0; top:66px; bottom:0; width:min(355px,90vw);
+        transform:translateX(-102%); transition:transform 220ms ease; box-shadow:24px 0 60px rgba(0,0,0,.42);
+      }
+      .sidebar.open { transform:translateX(0); }
+      .sidebar-scrim {
+        display:none; position:fixed; z-index:70; inset:66px 0 0; background:rgba(0,0,0,.48); backdrop-filter:blur(2px);
+      }
+      .sidebar-scrim.open { display:block; }
+      .main { overflow:visible; padding:10px; }
+      .runner-top { grid-template-columns:1fr; }
+      .transport { justify-content:stretch; }
+      .transport .btn { flex:1 1 0; }
+      .runner-meta { grid-template-columns:1fr auto; }
+      .speed-control { grid-column:1 / -1; grid-row:2; justify-content:stretch; }
+      .run-summary { text-align:right; }
+      .workbench-grid { grid-template-columns:1fr; min-height:0; }
+      .memory-panel { min-height:500px; }
+      .state-detail { grid-template-columns:1fr; }
+      .dfa-scroller { margin-inline:-14px; padding-inline:18px; }
+      .state-card { width:150px; min-height:218px; }
+      .state-card.search { width:220px; min-height:276px; }
+      .memory-panel { order:2; }
+      .automaton-panel { order:1; }
+      .trace-panel { order:3; }
+    }
+
+    @media (max-width: 560px) {
+      .topbar { gap:7px; min-height:61px; }
+      .brand-mark { width:34px; height:34px; }
+      .brand-copy strong { font-size:13px; }
+      .validation-badge { max-width:110px; overflow:hidden; text-overflow:ellipsis; }
+      .top-actions .btn:not(.mobile-menu):not(#saveProjectBtn) { display:none; }
+      .main { padding:8px; }
+      .runner-card, .workbench-panel { border-radius:14px; }
+      .initial-input-wrap { grid-template-columns:1fr auto; padding-left:8px; }
+      .initial-input-wrap label { grid-column:1 / -1; padding:2px 4px 0; }
+      .example-select { min-width:118px; max-width:138px; }
+      .transport { display:grid; grid-template-columns:repeat(3,1fr); }
+      .runner-meta { grid-template-columns:1fr; gap:7px; }
+      .run-summary { text-align:left; }
+      .speed-control { grid-column:auto; grid-row:auto; }
+      .policy-ribbon { flex-wrap:nowrap; overflow-x:auto; padding-bottom:3px; }
+      .policy-badge { flex:0 0 auto; }
+      .panel-header { padding:12px; }
+      .automaton-body { padding:12px; }
+      .state-detail { gap:8px; }
+      .event-grid { grid-template-columns:1fr; }
+      .frontier-list { min-height:118px; }
+      .thought-card { width:175px; min-width:175px; }
+      .memory-body { padding:12px; }
+      .stack-shell { padding-inline:27px; min-height:380px; }
+      .stack-card { width:100%; min-width:0; }
+      .trace-card { flex-basis:185px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="btn icon ghost mobile-menu" id="mobileMenuBtn" aria-label="Open policy editor">☰</button>
+      <div class="brand" aria-label="Predicate Policy DFA Lab">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-copy"><strong>Predicate Policy DFA Lab</strong><span>coordinate-free game-tree policy workbench</span></div>
+      </div>
+      <input id="projectName" class="project-name" aria-label="Project name" spellcheck="false" />
+      <div class="validation-badge" id="validationBadge">Validating…</div>
+      <div class="save-badge" id="saveBadge">Saved locally</div>
+      <div class="topbar-spacer"></div>
+      <div class="top-actions">
+        <button class="btn ghost" id="openProjectBtn">↥ <span class="button-label">Open</span></button>
+        <button class="btn primary" id="saveProjectBtn">⇩ <span class="button-label">Save JSON</span></button>
+        <button class="btn ghost" id="resetProjectBtn">↺ <span class="button-label">Reset example</span></button>
+      </div>
+      <input id="fileInput" type="file" hidden accept=".json,application/json" />
+    </header>
+
+    <div class="workspace-layout">
+      <aside class="sidebar" id="sidebar">
+        <nav class="side-tabs" aria-label="Editor sections">
+          <button class="side-tab active" data-tab="policy">Policy</button>
+          <button class="side-tab" data-tab="oracle">Oracle</button>
+          <button class="side-tab" data-tab="transitions">DFA</button>
+          <button class="side-tab" data-tab="tests">Tests</button>
+          <button class="side-tab" data-tab="issues">Check</button>
+        </nav>
+        <div class="side-scroll">
+          <section class="tab-panel active" data-panel="policy">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Policy contract</h2><span class="mini-chip good">coordinate-free</span></div>
+              <p class="panel-copy">The policy never sees coordinates or legal-move syntax. It asks the oracle for position predicates, orders interesting children, and manages search with DFA states plus a LIFO thought stack.</p>
+              <div class="summary-grid" id="policySummaryGrid"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Terminal predicates &amp; budget</h2>
+              <div class="field"><label for="winPredicates">Winning predicates</label><input id="winPredicates" placeholder="objective_won, mate" /></div>
+              <div class="field"><label for="failurePredicates">Immediate failure predicates</label><input id="failurePredicates" placeholder="objective_lost" /></div>
+              <div class="two-col">
+                <div class="field"><label for="thoughtBudget">Thought budget</label><input id="thoughtBudget" type="number" min="1" max="999" /></div>
+                <div class="field"><label for="maxDepth">Oracle depth</label><input id="maxDepth" type="number" min="0" max="99" /></div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title-row"><h2>My-ply child search</h2><span class="side-pill my">my ply</span></div>
+              <p class="panel-copy">The predicate order printed directly on the <strong>MY_CHILDREN</strong> DFA card.</p>
+              <div id="myOrderEditor" class="order-editor"></div>
+              <div class="two-col">
+                <div class="field"><label for="myClosureMode">Closure</label><select id="myClosureMode"><option value="first">first N matches</option><option value="all">all matches</option><option value="one_each">first per predicate</option></select></div>
+                <div class="field"><label for="myClosureCount">N</label><input id="myClosureCount" type="number" min="1" max="99" /></div>
+              </div>
+              <div class="button-row"><button class="btn small" id="addMyPredicateBtn">＋ predicate</button></div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title-row"><h2>Their-ply reply search</h2><span class="side-pill their">their ply</span></div>
+              <p class="panel-copy">The reply predicates printed directly on the <strong>THEIR_CHILDREN</strong> DFA card.</p>
+              <div id="theirOrderEditor" class="order-editor"></div>
+              <div class="two-col">
+                <div class="field"><label for="theirClosureMode">Closure</label><select id="theirClosureMode"><option value="all">all matches</option><option value="first">first N matches</option><option value="one_each">first per predicate</option></select></div>
+                <div class="field"><label for="theirClosureCount">N</label><input id="theirClosureCount" type="number" min="1" max="99" /></div>
+              </div>
+              <div class="button-row"><button class="btn small" id="addTheirPredicateBtn">＋ predicate</button><button class="btn primary small" id="applyPolicyBtn">Apply policy</button></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="oracle">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Oracle position cards</h2><span id="oracleCount" class="mini-chip"></span></div>
+              <p class="panel-copy">Each unique position has a side to move, predicate strings, help text, and optional child-position hints. The policy only consumes these labels.</p>
+              <div id="oracleList" class="oracle-list"></div>
+            </div>
+            <div class="panel">
+              <h2>Edit oracle JSON</h2>
+              <p class="panel-copy">This is the user-supplied “string”: position cards and their optional expansion hints.</p>
+              <textarea id="oracleJson" class="mono" spellcheck="false"></textarea>
+              <div class="button-row"><button class="btn primary" id="applyOracleBtn">Validate &amp; apply</button><button class="btn ghost" id="formatOracleBtn">Format</button></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="transitions">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Pushdown DFA</h2><span class="mini-chip">deterministic</span></div>
+              <p class="panel-copy">DFA transitions manage thought budget and control flow. Stack operations are explicit actions attached to states.</p>
+              <table class="transition-table">
+                <thead><tr><th>State</th><th>Event</th><th>Next</th></tr></thead>
+                <tbody id="transitionTableBody"></tbody>
+              </table>
+            </div>
+            <div class="panel">
+              <h2>Selected state</h2>
+              <div id="selectedStateEditor" class="panel-copy" style="margin-bottom:0"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="tests">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Example tests</h2><button class="btn small primary" id="runTestsBtn">Run suite</button></div>
+              <p class="panel-copy">Each test supplies an initial list of position IDs. Results depend only on oracle predicates and the policy.</p>
+              <div id="testList" class="test-list"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="issues">
+            <div class="panel">
+              <div class="panel-title-row"><h2>Validation report</h2><span id="issueCount" class="mini-chip">0</span></div>
+              <div id="issueList" class="issue-list"></div>
+            </div>
+            <div class="panel">
+              <h2>Core guarantees</h2>
+              <p class="panel-copy">Unique position IDs; valid child hints; ordered search predicates; explicit acceptance and failure rules; deterministic DFA event transitions; finite thought and depth budgets.</p>
+            </div>
+          </section>
+        </div>
+      </aside>
+      <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+      <main class="main">
+        <section class="runner-card" aria-label="Interactive policy runner">
+          <div class="runner-top">
+            <div class="initial-input-wrap" id="initialSource">
+              <label for="initialInput">Initial thoughts</label>
+              <input id="initialInput" spellcheck="false" placeholder="Cake1" aria-label="Space-separated initial position IDs" />
+              <select id="exampleSelect" class="example-select" aria-label="Load example">
+                <option value="cake">Cake Finder</option>
+                <option value="tactic">Tactic Skeleton</option>
+                <option value="deadend">Dead End</option>
+              </select>
+            </div>
+            <div class="transport">
+              <button class="btn" id="resetRunBtn">↺ <span class="button-label">Reset</span></button>
+              <button class="btn" id="stepBtn">→ <span class="button-label">Step</span></button>
+              <button class="btn primary play-button" id="playBtn">▶ <span class="button-label">Run</span></button>
+            </div>
+          </div>
+          <div class="runner-meta">
+            <div id="stepReadout">Thought <strong>0 / 12</strong></div>
+            <label class="speed-control" for="speedSlider"><span>Fast</span><input id="speedSlider" type="range" min="260" max="1100" step="20" /><span>Slow</span></label>
+            <div id="runSummary" class="run-summary">Ready — press Step or Run</div>
+          </div>
+          <div id="policyRibbon" class="policy-ribbon"></div>
+          <div id="timeline" class="timeline" aria-label="Policy trace timeline"></div>
+        </section>
+
+        <div class="workbench-grid">
+          <section class="workbench-panel automaton-panel">
+            <header class="panel-header">
+              <div><h1>Policy DFA</h1><p>Linear, left-to-right control flow. Search cards show exactly which child predicates they request, in priority order.</p></div>
+              <span class="mini-chip layout-chip">left → right</span>
+            </header>
+            <div class="automaton-body">
+              <div class="dfa-scroller" id="dfaScroller"><div class="dfa-flow" id="dfaFlow"></div></div>
+
+              <div class="state-detail">
+                <div class="detail-card" id="stateDetailCard">
+                  <div class="detail-head"><h2 id="detailStateName">START</h2><span id="detailStateKind" class="mini-chip">action</span></div>
+                  <p id="detailStateDescription"></p>
+                  <div id="detailEvents" class="event-grid"></div>
+                </div>
+                <div class="detail-card">
+                  <div class="detail-head"><h2>Current thought</h2><span id="currentThoughtStatus" class="mini-chip">none</span></div>
+                  <div id="currentThought" class="current-thought empty"></div>
+                </div>
+              </div>
+
+              <section class="frontier-section">
+                <div class="frontier-head">
+                  <div><h2>Oracle children visible at this ply</h2><p>The active search card filters only these cards. Unreported children do not exist for this run.</p></div>
+                  <span id="frontierCount" class="mini-chip">0 cards</span>
+                </div>
+                <div id="frontierList" class="frontier-list"><div class="frontier-empty">Pop a thought, inspect it, and enter a child-search state to consult the oracle.</div></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="workbench-panel memory-panel">
+            <header class="panel-header">
+              <div><h1>Working Memory</h1><p>LIFO thought stack. The top card is always examined next.</p></div>
+              <div class="memory-head-extra"><span id="budgetText" class="mini-chip">0 / 12</span><div class="budget-meter"><span id="budgetMeterFill"></span></div></div>
+            </header>
+            <div class="memory-body">
+              <div class="memory-labels"><span>TOP — next pop</span><span id="stackCount">0 thoughts</span></div>
+              <div class="stack-shell" id="stackShell">
+                <div class="stack-inlet" id="stackInlet"></div>
+                <div class="stack-list" id="stackList"></div>
+              </div>
+              <div class="memory-labels" style="margin-top:7px;margin-bottom:0"><span>BOTTOM</span><span>first-in stays deepest</span></div>
+              <div class="memory-foot">
+                <div class="memory-stat"><span>Current action</span><strong id="memoryAction">waiting</strong></div>
+                <div class="memory-stat"><span>Last match</span><strong id="lastMatch">—</strong></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="workbench-panel trace-panel">
+          <header class="panel-header">
+            <div><h1>Human-readable thought trace</h1><p>Every push, pop, predicate match, closure decision, DFA transition, and terminal decision remains inspectable.</p></div>
+            <button class="btn small ghost" id="clearTraceBtn">Clear trace</button>
+          </header>
+          <div class="trace-body"><div id="traceList" class="trace-list"></div></div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
+  <script>
+  (() => {
+    "use strict";
+
+    const STORAGE_KEY = "predicate-policy-dfa-ui-v2";
+    const SCHEMA = "predicate-policy-dfa/v2";
+    const $ = (s, r = document) => r.querySelector(s);
+    const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+    const clone = value => JSON.parse(JSON.stringify(value));
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+    const escapeHtml = value => String(value ?? "")
+      .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+    const listFromInput = value => String(value || "").split(/[\s,]+/).map(x => x.trim()).filter(Boolean);
+    const unique = arr => [...new Set(arr)];
+
+    const EXAMPLES = {
+      cake: {
+        schema: SCHEMA,
+        name: "Cake Finder",
+        initial: ["Cake1"],
+        policy: {
+          winPredicates: ["perfect_slice"],
+          failurePredicates: ["burnt"],
+          thoughtBudget: 12,
+          maxDepth: 4,
+          mySearch: { predicates: ["sweet", "forcing", "loose"], closure: { mode: "first", count: 2 } },
+          theirSearch: { predicates: ["refutes", "checks", "defends"], closure: { mode: "all", count: 99 } }
+        },
+        positions: [
+          { id: "Cake1", side: "my", predicates: ["sweet", "sassy", "sprinkly"], help: "This is a sweet treat at the root.", children: ["Cake2", "Cake3", "Cake4"] },
+          { id: "Cake2", side: "their", predicates: ["sweet", "perfect_slice"], help: "A clean slice satisfies the winning predicate.", children: [] },
+          { id: "Cake3", side: "their", predicates: ["forcing", "messy"], help: "Interesting enough to retain, but lower priority than sweet.", children: ["Cake5"] },
+          { id: "Cake4", side: "their", predicates: ["loose", "heavy"], help: "Matches loose, but the first-two closure prunes it.", children: [] },
+          { id: "Cake5", side: "my", predicates: ["refutes", "burnt"], help: "A reply that would refute the cake objective.", children: [] }
+        ],
+        tests: [
+          { name: "Sweet solution", initial: ["Cake1"], expected: "accept" },
+          { name: "Already solved", initial: ["Cake2"], expected: "accept" },
+          { name: "Known failure", initial: ["Cake5"], expected: "reject" }
+        ]
+      },
+      tactic: {
+        schema: SCHEMA,
+        name: "Tactic Skeleton",
+        initial: ["Root"],
+        policy: {
+          winPredicates: ["objective_won", "mate"],
+          failurePredicates: ["objective_lost", "mated"],
+          thoughtBudget: 16,
+          maxDepth: 5,
+          mySearch: { predicates: ["mate", "single_reply_check", "forcing_check", "wins_material"], closure: { mode: "first", count: 2 } },
+          theirSearch: { predicates: ["mate", "check", "refutes_objective", "defends_target"], closure: { mode: "all", count: 99 } }
+        },
+        positions: [
+          { id: "Root", side: "my", predicates: ["our_turn", "loose_piece", "alignment"], help: "Coordinate-free root: only semantic tactical facts.", children: ["CheckLine", "CaptureLine", "QuietLine"] },
+          { id: "CheckLine", side: "their", predicates: ["single_reply_check", "forcing_check"], help: "A forcing check with one live reply.", children: ["OnlyReply"] },
+          { id: "CaptureLine", side: "their", predicates: ["wins_material", "recapturable"], help: "Material gain exists, but the reply oracle may refute it.", children: ["Recapture"] },
+          { id: "QuietLine", side: "their", predicates: ["quiet", "improves_piece"], help: "Ignored because it matches no configured forcing predicate.", children: [] },
+          { id: "OnlyReply", side: "my", predicates: ["defends_target", "forced_reply"], help: "The sole reply leaves the tactical objective available.", children: ["CashOut"] },
+          { id: "Recapture", side: "my", predicates: ["refutes_objective", "objective_lost"], help: "The apparent capture is refuted.", children: [] },
+          { id: "CashOut", side: "their", predicates: ["wins_material", "objective_won"], help: "The line closes with the material objective secured.", children: [] }
+        ],
+        tests: [
+          { name: "Forcing tactic", initial: ["Root"], expected: "accept" },
+          { name: "Refuted capture", initial: ["Recapture"], expected: "reject" },
+          { name: "Solved leaf", initial: ["CashOut"], expected: "accept" }
+        ]
+      },
+      deadend: {
+        schema: SCHEMA,
+        name: "Dead-End Search",
+        initial: ["Plain1"],
+        policy: {
+          winPredicates: ["treasure"],
+          failurePredicates: ["trap"],
+          thoughtBudget: 8,
+          maxDepth: 3,
+          mySearch: { predicates: ["sparkly", "promising"], closure: { mode: "first", count: 2 } },
+          theirSearch: { predicates: ["blocks", "refutes"], closure: { mode: "all", count: 99 } }
+        },
+        positions: [
+          { id: "Plain1", side: "my", predicates: ["ordinary"], help: "The oracle provides two children, but neither matches policy interest.", children: ["Plain2", "Plain3"] },
+          { id: "Plain2", side: "their", predicates: ["dull"], help: "No configured search predicate.", children: [] },
+          { id: "Plain3", side: "their", predicates: ["heavy"], help: "No configured search predicate.", children: [] }
+        ],
+        tests: [{ name: "Closure failure", initial: ["Plain1"], expected: "reject" }]
+      }
+    };
+
+    const BASE_STATES = [
+      { id: "START", kind: "start", icon: "▶", description: "Push the user-supplied initial position cards into Working Memory. The first listed card is arranged to pop first.", events: [{ event: "initial thoughts pushed", to: "POP_THOUGHT" }] },
+      { id: "POP_THOUGHT", kind: "pop", icon: "⇧", description: "Pop the top thought from Working Memory in LIFO order and move it into the examination tray.", events: [{ event: "thought available", to: "CHECK_POSITION" }, { event: "stack empty", to: "REJECT" }] },
+      { id: "CHECK_POSITION", kind: "check", icon: "◇", description: "Ask whether the current position carries a winning predicate, an immediate failure predicate, or requires further expansion.", events: [{ event: "winning predicate", to: "SOLVED" }, { event: "failure predicate", to: "REJECT" }, { event: "my ply", to: "MY_CHILDREN" }, { event: "their ply", to: "THEIR_CHILDREN" }] },
+      { id: "MY_CHILDREN", kind: "search", side: "my", icon: "⌕", description: "Consult the oracle for children and retain them by the configured my-ply predicate order and closure rule.", events: [{ event: "matches pushed", to: "POP_THOUGHT" }, { event: "no matches", to: "POP_THOUGHT" }] },
+      { id: "THEIR_CHILDREN", kind: "search", side: "their", icon: "⌕", description: "Consult the oracle for opponent replies and retain them by the configured reply predicate order and closure rule.", events: [{ event: "replies pushed", to: "POP_THOUGHT" }, { event: "no replies", to: "POP_THOUGHT" }] },
+      { id: "SOLVED", kind: "accept", icon: "✓", description: "Accepting completion state. The popped thought satisfies the policy's winning predicate contract.", events: [{ event: "terminal", to: "ACCEPT" }] },
+      { id: "REJECT", kind: "reject", icon: "×", description: "Rejecting terminal state. Failure can mean an explicit failure predicate, empty Working Memory, invalid input, or exhausted budget.", events: [{ event: "terminal", to: "REJECT" }] }
+    ];
+
+    let project = loadStoredProject() || clone(EXAMPLES.cake);
+    let runtime = makeRuntime();
+    let selectedState = "MY_CHILDREN";
+    let running = false;
+    let paused = false;
+    let locked = false;
+    let dirty = false;
+    let testResults = {};
+
+    function makeRuntime() {
+      return {
+        state: "START",
+        stack: [],
+        current: null,
+        frontier: [],
+        selectedFrontier: [],
+        thoughtCount: 0,
+        status: "ready",
+        result: null,
+        reason: "",
+        lastMatch: "—",
+        action: "waiting",
+        trace: [],
+        timeline: [{ state: "START", label: "start" }]
+      };
+    }
+
+    function loadStoredProject() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed?.schema === SCHEMA ? parsed : null;
+      } catch { return null; }
+    }
+
+    function saveLocal() {
+      try {
+        project.schema = SCHEMA;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+        dirty = false;
+        renderSaveBadge();
+      } catch {}
+    }
+
+    function markDirty() {
+      dirty = true;
+      renderSaveBadge();
+      clearTimeout(markDirty.timer);
+      markDirty.timer = setTimeout(saveLocal, 450);
+    }
+
+    function positionMap() { return new Map(project.positions.map(p => [p.id, p])); }
+    function getPosition(id) { return positionMap().get(id); }
+    function stateDef(id) { return BASE_STATES.find(s => s.id === id); }
+    function getSearchConfig(stateId) { return stateId === "MY_CHILDREN" ? project.policy.mySearch : project.policy.theirSearch; }
+    function currentDelay() { return Number($("#speedSlider").value || 560); }
+    function animationDelay() { return clamp(currentDelay() * .72, 190, 820); }
+
+    function closureLabel(search) {
+      if (!search) return "—";
+      if (search.closure.mode === "all") return "all matching children";
+      if (search.closure.mode === "one_each") return "first match per predicate";
+      return `first ${search.closure.count || 1} matches`;
+    }
+
+    function validateProject(candidate = project) {
+      const issues = [];
+      if (!candidate || candidate.schema !== SCHEMA) issues.push({ level: "error", title: "Unknown project schema", detail: `Expected ${SCHEMA}.` });
+      if (!candidate?.name?.trim()) issues.push({ level: "error", title: "Project name is empty", detail: "Give the policy a readable name." });
+      const positions = Array.isArray(candidate?.positions) ? candidate.positions : [];
+      const ids = positions.map(p => p?.id).filter(Boolean);
+      const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+      if (dupes.length) issues.push({ level: "error", title: "Duplicate position IDs", detail: unique(dupes).join(", ") });
+      const idSet = new Set(ids);
+      if (!positions.length) issues.push({ level: "error", title: "No oracle cards", detail: "At least one unique position is required." });
+      positions.forEach((p, i) => {
+        if (!p?.id) issues.push({ level: "error", title: `Position ${i + 1} has no ID`, detail: "Every oracle card needs a unique ID." });
+        if (!["my", "their"].includes(p?.side)) issues.push({ level: "error", title: `${p?.id || `Position ${i + 1}`} has invalid side`, detail: "Use my or their." });
+        if (!Array.isArray(p?.predicates)) issues.push({ level: "error", title: `${p?.id || `Position ${i + 1}`} predicates are invalid`, detail: "Predicates must be a list of strings." });
+        (p?.children || []).forEach(child => { if (!idSet.has(child)) issues.push({ level: "error", title: `${p.id} points to missing child`, detail: child }); });
+      });
+      (candidate?.initial || []).forEach(id => { if (!idSet.has(id)) issues.push({ level: "error", title: "Missing initial position", detail: id }); });
+      const policy = candidate?.policy;
+      if (!policy) issues.push({ level: "error", title: "Policy is missing", detail: "Define terminal predicates, budgets, and search orders." });
+      else {
+        if (!Array.isArray(policy.winPredicates) || !policy.winPredicates.length) issues.push({ level: "error", title: "No winning predicate", detail: "Acceptance must be explicitly defined." });
+        if (!(Number(policy.thoughtBudget) > 0)) issues.push({ level: "error", title: "Invalid thought budget", detail: "Use a positive integer." });
+        if (!(Number(policy.maxDepth) >= 0)) issues.push({ level: "error", title: "Invalid oracle depth", detail: "Use zero or a positive integer." });
+        [policy.mySearch, policy.theirSearch].forEach((search, i) => {
+          if (!Array.isArray(search?.predicates) || !search.predicates.length) issues.push({ level: "error", title: `${i ? "Their" : "My"} search order is empty`, detail: "Search DFA cards need at least one predicate." });
+          if (!["all", "first", "one_each"].includes(search?.closure?.mode)) issues.push({ level: "error", title: `${i ? "Their" : "My"} closure is invalid`, detail: "Use all, first, or one_each." });
+        });
+      }
+      if (!issues.length) issues.push({ level: "ok", title: "Policy is structurally valid", detail: "Oracle cards, predicate orders, closure rules, and terminal conditions are coherent." });
+      return issues;
+    }
+
+    function renderAll() {
+      $("#projectName").value = project.name;
+      $("#initialInput").value = (project.initial || []).join(" ");
+      renderPolicyEditors();
+      renderOracle();
+      renderTransitions();
+      renderTests();
+      renderValidation();
+      renderPolicyRibbon();
+      renderDfa();
+      renderRuntime();
+      renderTrace();
+      renderSaveBadge();
+    }
+
+    function renderPolicyEditors() {
+      const p = project.policy;
+      $("#winPredicates").value = p.winPredicates.join(", ");
+      $("#failurePredicates").value = p.failurePredicates.join(", ");
+      $("#thoughtBudget").value = p.thoughtBudget;
+      $("#maxDepth").value = p.maxDepth;
+      $("#myClosureMode").value = p.mySearch.closure.mode;
+      $("#myClosureCount").value = p.mySearch.closure.count || 1;
+      $("#theirClosureMode").value = p.theirSearch.closure.mode;
+      $("#theirClosureCount").value = p.theirSearch.closure.count || 1;
+      renderOrderEditor("my", p.mySearch.predicates);
+      renderOrderEditor("their", p.theirSearch.predicates);
+      $("#policySummaryGrid").innerHTML = `
+        <div class="summary-item"><span>Winning state</span><strong>${escapeHtml(p.winPredicates.join(" OR "))}</strong></div>
+        <div class="summary-item"><span>Failure</span><strong>${escapeHtml([...p.failurePredicates, "empty stack", "budget"].join(" / "))}</strong></div>
+        <div class="summary-item"><span>My closure</span><strong>${escapeHtml(closureLabel(p.mySearch))}</strong></div>
+        <div class="summary-item"><span>Their closure</span><strong>${escapeHtml(closureLabel(p.theirSearch))}</strong></div>`;
+    }
+
+    function renderOrderEditor(side, predicates) {
+      const root = side === "my" ? $("#myOrderEditor") : $("#theirOrderEditor");
+      root.innerHTML = predicates.map((predicate, index) => `
+        <div class="order-row" data-side="${side}" data-index="${index}">
+          <span class="order-index">${index + 1}</span>
+          <input value="${escapeHtml(predicate)}" aria-label="Predicate ${index + 1}" />
+          <button data-order-action="up" title="Move up">↑</button>
+          <button data-order-action="down" title="Move down">↓</button>
+        </div>`).join("");
+    }
+
+    function renderOracle() {
+      $("#oracleCount").textContent = `${project.positions.length} cards`;
+      $("#oracleList").innerHTML = project.positions.map(p => `
+        <article class="oracle-mini" data-oracle-id="${escapeHtml(p.id)}">
+          <div class="oracle-mini-head"><strong>${escapeHtml(p.id)}</strong><span class="side-pill ${p.side === "my" ? "my" : "their"}">${p.side === "my" ? "my ply" : "their ply"}</span></div>
+          <div class="predicate-line">${p.predicates.map(x => `<span class="predicate-chip">${escapeHtml(x)}</span>`).join("") || `<span class="predicate-chip">no predicates</span>`}</div>
+          <p>${escapeHtml(p.help || "No help text.")}<br><span class="mono">children: ${(p.children || []).map(escapeHtml).join(", ") || "—"}</span></p>
+        </article>`).join("");
+      $("#oracleJson").value = JSON.stringify(project.positions, null, 2);
+    }
+
+    function renderTransitions() {
+      const rows = BASE_STATES.flatMap(s => s.events.map(e => ({ from:s.id, ...e })));
+      $("#transitionTableBody").innerHTML = rows.map(r => `<tr><td>${escapeHtml(r.from)}</td><td>${escapeHtml(r.event)}</td><td>${escapeHtml(r.to)}</td></tr>`).join("");
+      const s = stateDef(selectedState);
+      const search = s?.kind === "search" ? getSearchConfig(s.id) : null;
+      $("#selectedStateEditor").innerHTML = s ? `
+        <strong style="color:var(--text)">${escapeHtml(s.id)}</strong><br>${escapeHtml(s.description)}
+        ${search ? `<div class="predicate-line">${search.predicates.map((x,i)=>`<span class="predicate-chip match">${i+1}. ${escapeHtml(x)}</span>`).join("")}</div><p class="field-help">Closure: ${escapeHtml(closureLabel(search))}</p>` : ""}` : "Select a state card.";
+    }
+
+    function renderTests() {
+      $("#testList").innerHTML = (project.tests || []).map((t,i) => {
+        const result = testResults[i];
+        const cls = result ? (result === t.expected ? "good" : "bad") : "";
+        const label = result ? `${result.toUpperCase()}${result === t.expected ? " ✓" : " ≠ expected"}` : `expect ${t.expected}`;
+        return `<div class="test-row"><div><strong>${escapeHtml(t.name)}</strong><span>${escapeHtml(t.initial.join(" "))}</span></div><span class="mini-chip ${cls}">${escapeHtml(label)}</span></div>`;
+      }).join("") || `<div class="issue-row"><div><strong>No tests</strong><span>Add tests in project JSON.</span></div></div>`;
+    }
+
+    function renderValidation() {
+      const issues = validateProject();
+      const errors = issues.filter(x => x.level === "error");
+      const warnings = issues.filter(x => x.level === "warn");
+      const badge = $("#validationBadge");
+      badge.className = `validation-badge ${errors.length ? "bad" : warnings.length ? "warn" : "good"}`;
+      badge.textContent = errors.length ? `✕ ${errors.length} policy issue${errors.length === 1 ? "" : "s"}` : warnings.length ? `! ${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "✓ Valid policy";
+      $("#issueCount").textContent = `${issues.length}`;
+      $("#issueList").innerHTML = issues.map(issue => `<div class="issue-row"><div><strong>${escapeHtml(issue.title)}</strong><span>${escapeHtml(issue.detail)}</span></div><span class="mini-chip ${issue.level === "ok" ? "good" : issue.level === "error" ? "bad" : ""}">${issue.level}</span></div>`).join("");
+    }
+
+    function renderSaveBadge() {
+      const badge = $("#saveBadge");
+      badge.className = `save-badge${dirty ? " dirty" : ""}`;
+      badge.textContent = dirty ? "Unsaved changes" : "Saved locally";
+    }
+
+    function renderPolicyRibbon() {
+      const p = project.policy;
+      $("#policyRibbon").innerHTML = `
+        <span class="policy-badge win">WIN <b>${escapeHtml(p.winPredicates.join(" · "))}</b></span>
+        <span class="policy-badge">MY CLOSURE <b>${escapeHtml(closureLabel(p.mySearch))}</b></span>
+        <span class="policy-badge">THEIR CLOSURE <b>${escapeHtml(closureLabel(p.theirSearch))}</b></span>
+        <span class="policy-badge fail">FAIL <b>${escapeHtml([...p.failurePredicates, "empty stack", "budget"].join(" · "))}</b></span>`;
+    }
+
+    function stateCardHtml(state) {
+      const search = state.kind === "search" ? getSearchConfig(state.id) : null;
+      const cls = ["state-card", state.kind === "search" ? "search" : "", state.kind === "accept" || state.kind === "reject" ? `terminal ${state.kind}` : "", runtime.state === state.id ? "active" : "", selectedState === state.id ? "selected" : ""].filter(Boolean).join(" ");
+      return `<article class="${cls}" data-state-id="${state.id}">
+        <div class="state-kind"><span>${state.kind === "search" ? `${state.side === "my" ? "my ply" : "their ply"} · search` : state.kind}</span><span>${runtime.state === state.id ? "● active" : ""}</span></div>
+        <div class="state-icon">${state.icon}</div>
+        <div class="state-name">${state.id}</div>
+        <div class="state-desc">${escapeHtml(state.description)}</div>
+        ${search ? `<div class="search-order"><div class="search-order-label">Looks for, in order:</div>${search.predicates.map((p,i)=>`<div class="search-predicate"><span class="n">${i+1}</span><span>${escapeHtml(p)}</span></div>`).join("")}</div><div class="closure-box">Closure: <strong>${escapeHtml(closureLabel(search))}</strong></div>` : ""}
+        ${!search ? `<div class="state-footer">${state.events.length === 1 ? `${escapeHtml(state.events[0].event)} → ${escapeHtml(state.events[0].to)}` : `${state.events.length} outcomes · click for details`}</div>` : ""}
+      </article>`;
+    }
+
+    function renderDfa() {
+      $("#dfaFlow").innerHTML = BASE_STATES.map((state, i) => `<div class="state-wrap">${stateCardHtml(state)}${i < BASE_STATES.length - 1 ? `<div class="edge-arrow ${isEdgeActive(BASE_STATES[i].id, BASE_STATES[i+1].id) ? "active" : ""}"></div>` : ""}</div>`).join("");
+      renderStateDetail();
+      requestAnimationFrame(() => {
+        const active = $(`.state-card[data-state-id="${runtime.state}"]`);
+        if (active) active.scrollIntoView({ block:"nearest", inline:"center", behavior:"smooth" });
+      });
+    }
+
+    function isEdgeActive(from, to) {
+      const last = runtime.timeline.at(-2)?.state;
+      return last === from && runtime.state === to;
+    }
+
+    function renderStateDetail() {
+      const s = stateDef(selectedState) || stateDef(runtime.state);
+      if (!s) return;
+      $("#detailStateName").textContent = s.id;
+      $("#detailStateKind").textContent = s.kind;
+      $("#detailStateDescription").textContent = s.description;
+      $("#detailEvents").innerHTML = s.events.map(e => `<div class="event-box"><span>${escapeHtml(e.event)}</span><strong>→ ${escapeHtml(e.to)}</strong></div>`).join("");
+    }
+
+    function thoughtCardHtml(item, options = {}) {
+      const p = getPosition(item.id) || item.position || { id:item.id, side:item.side || "my", predicates:item.predicates || [], help:item.help || "" };
+      const side = p.side === "their" ? "their" : "my";
+      const matched = Object.prototype.hasOwnProperty.call(options, "matched") ? options.matched : item.matchedBy;
+      const unmatched = options.unmatched;
+      return `<article class="thought-card ${side === "their" ? "their" : ""} ${matched ? "matched" : ""} ${unmatched ? "unmatched" : ""}" data-position-id="${escapeHtml(p.id)}">
+        ${matched ? `<span class="match-ribbon">matched ${escapeHtml(matched)}</span>` : ""}
+        <div class="thought-top"><span class="side-pill ${side === "my" ? "my" : "their"}">${side === "my" ? "my ply" : "their ply"}</span><span class="depth-chip">depth ${item.depth ?? 0}</span></div>
+        <div class="thought-id">${escapeHtml(p.id)}</div>
+        <div class="thought-help">${escapeHtml(p.help || "No help text.")}</div>
+        <div class="thought-preds">${(p.predicates || []).map(x=>`<span class="predicate-chip ${x === matched ? "match" : ""}">${escapeHtml(x)}</span>`).join("") || `<span class="predicate-chip">no predicates</span>`}</div>
+      </article>`;
+    }
+
+    function renderRuntime() {
+      const budget = project.policy.thoughtBudget;
+      $("#stepReadout").innerHTML = `Thought <strong>${runtime.thoughtCount} / ${budget}</strong>`;
+      $("#budgetText").textContent = `${runtime.thoughtCount} / ${budget}`;
+      $("#budgetMeterFill").style.width = `${clamp((runtime.thoughtCount / budget) * 100, 0, 100)}%`;
+      $("#memoryAction").textContent = runtime.action;
+      $("#lastMatch").textContent = runtime.lastMatch;
+      const stack = [...runtime.stack].reverse();
+      $("#stackCount").textContent = `${stack.length} thought${stack.length === 1 ? "" : "s"}`;
+      $("#stackList").innerHTML = stack.length ? stack.map((item,index) => thoughtCardHtml(item, { matched:null }).replace('class="thought-card', `class="thought-card stack-card${index === 0 ? " top" : ""}`)).join("") + Array.from({length:Math.max(0,3-stack.length)},()=>`<div class="stack-slot"></div>`).join("") : `<div class="stack-empty">[ ]<br>Working Memory is empty.<br>START will push the initial thoughts.</div><div class="stack-slot"></div><div class="stack-slot"></div>`;
+      const current = $("#currentThought");
+      if (runtime.current) {
+        current.className = "current-thought";
+        current.innerHTML = thoughtCardHtml(runtime.current, { matched:null }).replace('class="thought-card', 'class="thought-card');
+        $("#currentThoughtStatus").textContent = "examining";
+      } else {
+        current.className = "current-thought empty";
+        current.innerHTML = "";
+        $("#currentThoughtStatus").textContent = "none";
+      }
+      renderFrontier();
+      renderTimeline();
+      renderStatus();
+      renderControls();
+    }
+
+    function renderFrontier() {
+      $("#frontierCount").textContent = `${runtime.frontier.length} card${runtime.frontier.length === 1 ? "" : "s"}`;
+      if (!runtime.frontier.length) {
+        $("#frontierList").innerHTML = `<div class="frontier-empty">${runtime.current ? "The oracle will expose this thought’s child cards when the DFA enters the appropriate search state." : "Pop a thought, inspect it, and enter a child-search state to consult the oracle."}</div>`;
+        return;
+      }
+      const selectedMap = new Map(runtime.selectedFrontier.map(x => [x.id, x.matchedBy]));
+      $("#frontierList").innerHTML = runtime.frontier.map(item => thoughtCardHtml(item, { matched:selectedMap.get(item.id), unmatched:runtime.selectedFrontier.length && !selectedMap.has(item.id) })).join("");
+    }
+
+    function renderTimeline() {
+      $("#timeline").innerHTML = runtime.timeline.map((item,i) => `<button class="timeline-step ${i < runtime.timeline.length - 1 ? "done" : "current"}" title="${escapeHtml(item.label || item.state)}">${escapeHtml(item.state)}</button>`).join("");
+      requestAnimationFrame(() => { $("#timeline").scrollLeft = $("#timeline").scrollWidth; });
+    }
+
+    function renderStatus() {
+      const el = $("#runSummary");
+      if (runtime.result === "accept") el.innerHTML = `<strong class="good">ACCEPTED — ${escapeHtml(runtime.reason)}</strong>`;
+      else if (runtime.result === "reject") el.innerHTML = `<strong class="bad">REJECTED — ${escapeHtml(runtime.reason)}</strong>`;
+      else if (running && !paused) el.textContent = `Running · ${runtime.state}`;
+      else if (paused) el.textContent = `Paused · ${runtime.state}`;
+      else el.textContent = `${runtime.state} · ${runtime.reason || "Ready"}`;
+    }
+
+    function renderControls() {
+      $("#stepBtn").disabled = locked || !!runtime.result;
+      $("#resetRunBtn").disabled = locked;
+      $("#playBtn").disabled = locked && !running;
+      $("#playBtn").innerHTML = running && !paused ? `Ⅱ <span class="button-label">Pause</span>` : `▶ <span class="button-label">Run</span>`;
+    }
+
+    function renderTrace() {
+      const list = $("#traceList");
+      if (!runtime.trace.length) {
+        list.innerHTML = `<div class="trace-card current"><strong>No thoughts yet</strong><p>Press Step to push the initial position card into Working Memory.</p></div>`;
+        return;
+      }
+      list.innerHTML = runtime.trace.map((t,i)=>`<article class="trace-card ${i === runtime.trace.length-1 ? "current" : ""}"><strong>${escapeHtml(t.title)}</strong><p>${escapeHtml(t.detail)}</p></article>`).join("");
+      requestAnimationFrame(()=>{ list.scrollLeft = list.scrollWidth; });
+    }
+
+    function addTrace(title, detail) {
+      runtime.trace.push({ title, detail });
+      if (runtime.trace.length > 40) runtime.trace.shift();
+      renderTrace();
+    }
+
+    function transition(to, label) {
+      runtime.timeline.push({ state:to, label });
+      runtime.state = to;
+      selectedState = to;
+      renderDfa();
+      renderRuntime();
+      renderTransitions();
+    }
+
+    async function animateCard(sourceEl, targetEl, item, mode, label) {
+      if (!sourceEl || !targetEl || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const source = sourceEl.getBoundingClientRect();
+      const target = targetEl.getBoundingClientRect();
+      if (!source.width || !target.width) return;
+      const ghostWrap = document.createElement("div");
+      ghostWrap.innerHTML = thoughtCardHtml(item);
+      const ghost = ghostWrap.firstElementChild;
+      ghost.classList.add("flight-card", mode === "push" ? "pushing" : "popping");
+      Object.assign(ghost.style, { left:`${source.left}px`, top:`${source.top}px`, width:`${source.width}px`, minWidth:`${source.width}px`, height:`${source.height}px`, position:"fixed" });
+      document.body.appendChild(ghost);
+      const tag = document.createElement("div");
+      tag.className = "flight-label";
+      tag.textContent = label;
+      tag.style.left = `${source.left + source.width/2 - 35}px`;
+      tag.style.top = `${source.top - 14}px`;
+      document.body.appendChild(tag);
+      const targetX = target.left + target.width/2 - source.width/2;
+      const targetY = target.top + Math.min(24, Math.max(4,target.height/2-source.height/2));
+      const dx = targetX - source.left;
+      const dy = targetY - source.top;
+      document.documentElement.style.setProperty("--speed", `${animationDelay()}ms`);
+      await new Promise(requestAnimationFrame);
+      ghost.style.transform = `translate(${dx}px, ${dy}px) scale(${mode === "push" ? .84 : .93}) rotate(${mode === "push" ? -2 : 2}deg)`;
+      ghost.style.opacity = ".24";
+      tag.style.transform = `translate(${dx * .72}px, ${dy * .72}px)`;
+      tag.style.opacity = "0";
+      await sleep(animationDelay() + 30);
+      ghost.remove(); tag.remove();
+      targetEl.classList?.add("pulse");
+      setTimeout(()=>targetEl.classList?.remove("pulse"),650);
+    }
+
+    function getInitialItems() {
+      const ids = listFromInput($("#initialInput").value);
+      return ids.map(id => ({ id, depth:0, matchedBy:"initial" }));
+    }
+
+    function findCandidates(currentItem, search) {
+      const p = getPosition(currentItem.id);
+      if (!p) return { frontier:[], selected:[] };
+      const children = (p.children || []).map(id => ({ id, depth:(currentItem.depth || 0) + 1, parent:p.id }));
+      const selected = [];
+      const used = new Set();
+      outer: for (const predicate of search.predicates) {
+        for (const child of children) {
+          if (used.has(child.id)) continue;
+          const childPos = getPosition(child.id);
+          if (!childPos?.predicates?.includes(predicate)) continue;
+          selected.push({ ...child, matchedBy:predicate });
+          used.add(child.id);
+          if (search.closure.mode === "first" && selected.length >= (search.closure.count || 1)) break outer;
+          if (search.closure.mode === "one_each") break;
+        }
+      }
+      return { frontier:children, selected };
+    }
+
+    async function stepRuntime({ silent = false } = {}) {
+      if (locked || runtime.result) return;
+      const issues = validateProject().filter(i => i.level === "error");
+      if (issues.length) { toast("Fix policy validation errors before running.", "bad"); return; }
+      locked = true; renderControls();
+      try {
+        if (runtime.thoughtCount >= project.policy.thoughtBudget && runtime.state !== "SOLVED" && runtime.state !== "REJECT") {
+          runtime.action = "budget exhausted";
+          runtime.result = "reject";
+          runtime.reason = `thought budget ${project.policy.thoughtBudget} exhausted`;
+          transition("REJECT", "budget exhausted");
+          addTrace("FAIL budget", runtime.reason);
+          return;
+        }
+        runtime.thoughtCount += 1;
+        const state = runtime.state;
+        runtime.action = stateDef(state)?.description.split(".")[0].toLowerCase() || state.toLowerCase();
+        renderRuntime();
+
+        if (state === "START") {
+          const items = getInitialItems();
+          const map = positionMap();
+          const missing = items.filter(x => !map.has(x.id));
+          if (!items.length || missing.length) {
+            runtime.result = "reject";
+            runtime.reason = missing.length ? `unknown initial position: ${missing.map(x=>x.id).join(", ")}` : "no initial thoughts supplied";
+            transition("REJECT", "invalid initial input");
+            addTrace("FAIL input", runtime.reason);
+          } else {
+            for (const item of [...items].reverse()) {
+              const source = $("#initialSource");
+              await animateCard(source, $("#stackInlet"), item, "push", "push initial");
+              runtime.stack.push(item);
+              renderRuntime();
+            }
+            runtime.reason = `pushed ${items.map(x=>x.id).join(", ")}`;
+            addTrace("PUSH initial thoughts", `${items.map(x=>x.id).join(", ")} entered Working Memory; ${items[0].id} is arranged to pop first.`);
+            transition("POP_THOUGHT", "initial thoughts pushed");
+          }
+        } else if (state === "POP_THOUGHT") {
+          if (!runtime.stack.length) {
+            runtime.result = "reject";
+            runtime.reason = "Working Memory is empty; policy closure found no remaining line";
+            addTrace("FAIL closure", runtime.reason);
+            transition("REJECT", "stack empty");
+          } else {
+            const source = $(".stack-card.top");
+            const item = runtime.stack.at(-1);
+            await animateCard(source, $("#currentThought"), item, "pop", "pop to inspect");
+            runtime.stack.pop();
+            runtime.current = item;
+            runtime.frontier = [];
+            runtime.selectedFrontier = [];
+            runtime.lastMatch = item.matchedBy || "initial";
+            runtime.reason = `examining ${item.id}`;
+            addTrace("POP thought", `${item.id} left the top of Working Memory for examination at depth ${item.depth || 0}.`);
+            transition("CHECK_POSITION", "thought available");
+          }
+        } else if (state === "CHECK_POSITION") {
+          const item = runtime.current;
+          const p = item && getPosition(item.id);
+          if (!p) {
+            runtime.result = "reject";
+            runtime.reason = "popped thought has no oracle card";
+            addTrace("FAIL oracle", runtime.reason);
+            transition("REJECT", "missing oracle card");
+          } else {
+            const win = project.policy.winPredicates.find(x => p.predicates.includes(x));
+            const fail = project.policy.failurePredicates.find(x => p.predicates.includes(x));
+            if (win) {
+              runtime.result = "accept";
+              runtime.reason = `${p.id} carries winning predicate ${win}`;
+              runtime.lastMatch = win;
+              addTrace("ACCEPT winning predicate", `${p.id} matched ${win}; the DFA entered its solved completion state.`);
+              transition("SOLVED", "winning predicate");
+              celebrate();
+            } else if (fail) {
+              runtime.result = "reject";
+              runtime.reason = `${p.id} carries failure predicate ${fail}`;
+              runtime.lastMatch = fail;
+              addTrace("FAIL predicate", `${p.id} matched ${fail}; this run terminates in REJECT.`);
+              transition("REJECT", "failure predicate");
+            } else if ((item.depth || 0) >= project.policy.maxDepth) {
+              runtime.reason = `${p.id} reached oracle depth ${project.policy.maxDepth}; backtrack`;
+              runtime.current = null;
+              runtime.frontier = [];
+              runtime.selectedFrontier = [];
+              addTrace("CLOSE depth", `${p.id} was not expanded because the configured oracle depth was reached.`);
+              transition("POP_THOUGHT", "depth closure");
+            } else {
+              const next = p.side === "my" ? "MY_CHILDREN" : "THEIR_CHILDREN";
+              runtime.reason = `${p.id} is ${p.side === "my" ? "my" : "their"} ply; consult ${next}`;
+              addTrace("OBSERVE position", `${p.id} has predicates [${p.predicates.join(", ")}]; no terminal predicate matched, so ${next} will filter its oracle children.`);
+              transition(next, `${p.side} ply`);
+            }
+          }
+        } else if (state === "MY_CHILDREN" || state === "THEIR_CHILDREN") {
+          const search = getSearchConfig(state);
+          const { frontier, selected } = findCandidates(runtime.current, search);
+          runtime.frontier = frontier;
+          runtime.selectedFrontier = selected;
+          runtime.reason = `oracle exposed ${frontier.length}; ${selected.length} matched ${search.predicates.join(" → ")}`;
+          renderRuntime();
+          addTrace("FILTER oracle children", `${state} checked [${search.predicates.join(" → ")}] and applied closure “${closureLabel(search)}.” Matches: ${selected.map(x=>`${x.id}:${x.matchedBy}`).join(", ") || "none"}.`);
+          if (selected.length) {
+            const pushOrder = [...selected].reverse();
+            for (const item of pushOrder) {
+              const source = $(`.frontier-list .thought-card[data-position-id="${CSS.escape(item.id)}"]`);
+              await animateCard(source, $("#stackInlet"), item, "push", `push ${item.matchedBy}`);
+              runtime.stack.push(item);
+              runtime.lastMatch = `${item.matchedBy} → ${item.id}`;
+              renderRuntime();
+            }
+            addTrace("PUSH matching thoughts", `${pushOrder.map(x=>x.id).join(", ")} were pushed in reverse priority so ${selected[0].id} will pop first.`);
+          } else {
+            addTrace("CLOSE no match", `No child matched the ordered predicates. The current branch closes and the policy resumes from the next thought in Working Memory.`);
+          }
+          runtime.current = null;
+          runtime.action = selected.length ? `pushed ${selected.length} matching thought${selected.length === 1 ? "" : "s"}` : "closed branch";
+          transition("POP_THOUGHT", selected.length ? "matches pushed" : "no matches");
+        }
+      } finally {
+        locked = false;
+        renderDfa();
+        renderRuntime();
+        if (!silent) saveLocal();
+      }
+    }
+
+    async function runRuntime() {
+      if (runtime.result) resetRuntime();
+      if (running && !paused) { paused = true; renderControls(); renderStatus(); return; }
+      running = true; paused = false; renderControls(); renderStatus();
+      while (running && !paused && !runtime.result) {
+        await stepRuntime({ silent:true });
+        if (!runtime.result && !paused) await sleep(clamp(currentDelay() * .45, 100, 520));
+      }
+      if (runtime.result) { running = false; paused = false; }
+      renderControls(); renderStatus(); saveLocal();
+    }
+
+    function resetRuntime() {
+      running = false; paused = false; locked = false;
+      runtime = makeRuntime();
+      selectedState = "MY_CHILDREN";
+      renderDfa(); renderRuntime(); renderTrace(); renderTransitions();
+    }
+
+    function evaluateSilently(initialIds) {
+      const map = positionMap();
+      let stack = [...initialIds].reverse().map(id=>({id,depth:0}));
+      let current = null;
+      let state = "START";
+      let budget = 0;
+      // START's initial push is already represented in stack for this pure evaluator.
+      state = "POP_THOUGHT";
+      while (budget++ < project.policy.thoughtBudget) {
+        if (state === "POP_THOUGHT") {
+          if (!stack.length) return "reject";
+          current = stack.pop(); state = "CHECK_POSITION";
+        } else if (state === "CHECK_POSITION") {
+          const p = map.get(current.id); if (!p) return "reject";
+          if (project.policy.winPredicates.some(x=>p.predicates.includes(x))) return "accept";
+          if (project.policy.failurePredicates.some(x=>p.predicates.includes(x))) return "reject";
+          if ((current.depth||0) >= project.policy.maxDepth) { current=null; state="POP_THOUGHT"; continue; }
+          state = p.side === "my" ? "MY_CHILDREN" : "THEIR_CHILDREN";
+        } else if (state === "MY_CHILDREN" || state === "THEIR_CHILDREN") {
+          const p = map.get(current.id); if (!p) return "reject";
+          const search = state === "MY_CHILDREN" ? project.policy.mySearch : project.policy.theirSearch;
+          const children = (p.children||[]).map(id=>({id,depth:(current.depth||0)+1}));
+          const selected=[]; const used=new Set();
+          outer: for (const pred of search.predicates) {
+            for (const child of children) {
+              if (used.has(child.id)) continue;
+              const cp=map.get(child.id); if (!cp?.predicates?.includes(pred)) continue;
+              selected.push(child); used.add(child.id);
+              if (search.closure.mode === "first" && selected.length >= (search.closure.count||1)) break outer;
+              if (search.closure.mode === "one_each") break;
+            }
+          }
+          for (const item of [...selected].reverse()) stack.push(item);
+          current=null; state="POP_THOUGHT";
+        }
+      }
+      return "reject";
+    }
+
+    function applyPolicyFromEditors() {
+      const readOrder = side => $$(side === "my" ? "#myOrderEditor .order-row input" : "#theirOrderEditor .order-row input").map(x=>x.value.trim()).filter(Boolean);
+      project.policy.winPredicates = listFromInput($("#winPredicates").value);
+      project.policy.failurePredicates = listFromInput($("#failurePredicates").value);
+      project.policy.thoughtBudget = Math.max(1, Number($("#thoughtBudget").value) || 1);
+      project.policy.maxDepth = Math.max(0, Number($("#maxDepth").value) || 0);
+      project.policy.mySearch.predicates = readOrder("my");
+      project.policy.theirSearch.predicates = readOrder("their");
+      project.policy.mySearch.closure = { mode:$("#myClosureMode").value, count:Math.max(1,Number($("#myClosureCount").value)||1) };
+      project.policy.theirSearch.closure = { mode:$("#theirClosureMode").value, count:Math.max(1,Number($("#theirClosureCount").value)||1) };
+      markDirty(); resetRuntime(); renderAll(); toast("Policy applied to the visible DFA cards.", "good");
+    }
+
+    function moveOrder(side, index, delta) {
+      const list = side === "my" ? project.policy.mySearch.predicates : project.policy.theirSearch.predicates;
+      const next = index + delta;
+      if (next < 0 || next >= list.length) return;
+      [list[index], list[next]] = [list[next], list[index]];
+      renderPolicyEditors(); renderPolicyRibbon(); renderDfa(); markDirty();
+    }
+
+    function addOrderPredicate(side) {
+      const list = side === "my" ? project.policy.mySearch.predicates : project.policy.theirSearch.predicates;
+      list.push("new_predicate"); renderPolicyEditors(); renderDfa(); markDirty();
+      const inputs = $$(side === "my" ? "#myOrderEditor input" : "#theirOrderEditor input");
+      inputs.at(-1)?.focus(); inputs.at(-1)?.select();
+    }
+
+    function loadExample(key) {
+      project = clone(EXAMPLES[key] || EXAMPLES.cake);
+      $("#exampleSelect").value = key;
+      testResults = {};
+      resetRuntime(); markDirty(); renderAll(); toast(`${project.name} loaded.`, "good");
+    }
+
+    function downloadProject() {
+      project.name = $("#projectName").value.trim() || project.name;
+      project.initial = listFromInput($("#initialInput").value);
+      const blob = new Blob([JSON.stringify(project,null,2)],{type:"application/json"});
+      const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`${project.name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"predicate-policy"}.json`; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000); saveLocal(); toast("Project JSON saved to disk.","good");
+    }
+
+    function toast(message, type="") {
+      const el=document.createElement("div"); el.className=`toast ${type}`; el.textContent=message; $("#toastStack").appendChild(el);
+      setTimeout(()=>{el.style.opacity="0";el.style.transform="translateY(6px)";},2600); setTimeout(()=>el.remove(),3000);
+    }
+
+    function celebrate() {
+      const target=$(".state-card[data-state-id='SOLVED']"); if(!target)return;
+      const r=target.getBoundingClientRect();
+      const palette=["#55e6a5","#67e8f9","#a78bfa","#f9c74f"];
+      for(let i=0;i<24;i++){
+        const c=document.createElement("i"); c.className="confetti"; c.style.left=`${r.left+r.width/2}px`; c.style.top=`${r.top+r.height/2}px`; c.style.background=palette[i%palette.length]; c.style.setProperty("--dx",`${(Math.random()-.5)*260}px`); c.style.setProperty("--dy",`${-50-Math.random()*190}px`); document.body.appendChild(c); setTimeout(()=>c.remove(),1000);
+      }
+    }
+
+    function closeSidebar() { $("#sidebar").classList.remove("open"); $("#sidebarScrim").classList.remove("open"); }
+
+    // Global event bindings
+    $$(".side-tab").forEach(btn=>btn.addEventListener("click",()=>{
+      $$(".side-tab").forEach(x=>x.classList.toggle("active",x===btn));
+      $$(".tab-panel").forEach(x=>x.classList.toggle("active",x.dataset.panel===btn.dataset.tab));
+    }));
+    $("#mobileMenuBtn").addEventListener("click",()=>{ $("#sidebar").classList.toggle("open"); $("#sidebarScrim").classList.toggle("open"); });
+    $("#sidebarScrim").addEventListener("click",closeSidebar);
+    $("#stepBtn").addEventListener("click",()=>stepRuntime());
+    $("#playBtn").addEventListener("click",runRuntime);
+    $("#resetRunBtn").addEventListener("click",resetRuntime);
+    $("#clearTraceBtn").addEventListener("click",()=>{runtime.trace=[];renderTrace();});
+    $("#speedSlider").addEventListener("input",()=>document.documentElement.style.setProperty("--speed",`${animationDelay()}ms`));
+    $("#exampleSelect").addEventListener("change",e=>loadExample(e.target.value));
+    $("#applyPolicyBtn").addEventListener("click",applyPolicyFromEditors);
+    $("#addMyPredicateBtn").addEventListener("click",()=>addOrderPredicate("my"));
+    $("#addTheirPredicateBtn").addEventListener("click",()=>addOrderPredicate("their"));
+    document.addEventListener("click",e=>{
+      const card=e.target.closest(".state-card");
+      if(card){selectedState=card.dataset.stateId;renderDfa();renderTransitions();}
+      const action=e.target.closest("[data-order-action]");
+      if(action){const row=action.closest(".order-row");moveOrder(row.dataset.side,Number(row.dataset.index),action.dataset.orderAction==="up"?-1:1);}
+    });
+    document.addEventListener("input",e=>{
+      const row=e.target.closest(".order-row");
+      if(row){const list=row.dataset.side==="my"?project.policy.mySearch.predicates:project.policy.theirSearch.predicates;list[Number(row.dataset.index)]=e.target.value;renderDfa();renderPolicyRibbon();markDirty();}
+    });
+    $("#applyOracleBtn").addEventListener("click",()=>{
+      try{
+        const positions=JSON.parse($("#oracleJson").value);
+        if(!Array.isArray(positions))throw new Error("Oracle JSON must be an array of position cards.");
+        const candidate={...project,positions}; const errors=validateProject(candidate).filter(x=>x.level==="error");
+        if(errors.length)throw new Error(errors.map(x=>x.title+": "+x.detail).join("\n"));
+        project.positions=positions;markDirty();resetRuntime();renderAll();toast("Oracle cards applied.","good");
+      }catch(err){toast(err.message,"bad");}
+    });
+    $("#formatOracleBtn").addEventListener("click",()=>{try{$("#oracleJson").value=JSON.stringify(JSON.parse($("#oracleJson").value),null,2);}catch(err){toast(err.message,"bad");}});
+    $("#runTestsBtn").addEventListener("click",()=>{
+      testResults={};(project.tests||[]).forEach((t,i)=>testResults[i]=evaluateSilently(t.initial));renderTests();
+      const pass=(project.tests||[]).filter((t,i)=>testResults[i]===t.expected).length;toast(`${pass}/${(project.tests||[]).length} tests passed.`,pass===(project.tests||[]).length?"good":"bad");
+    });
+    $("#projectName").addEventListener("input",e=>{project.name=e.target.value;markDirty();});
+    $("#initialInput").addEventListener("change",e=>{project.initial=listFromInput(e.target.value);markDirty();resetRuntime();});
+    $("#saveProjectBtn").addEventListener("click",downloadProject);
+    $("#openProjectBtn").addEventListener("click",()=>$("#fileInput").click());
+    $("#fileInput").addEventListener("change",async e=>{
+      const file=e.target.files?.[0]; if(!file)return;
+      try{const parsed=JSON.parse(await file.text());const errors=validateProject(parsed).filter(x=>x.level==="error");if(errors.length)throw new Error(errors.map(x=>x.title).join(", "));project=parsed;testResults={};resetRuntime();renderAll();markDirty();toast("Project opened.","good");}catch(err){toast(`Could not open: ${err.message}`,"bad");}finally{e.target.value="";}
+    });
+    $("#resetProjectBtn").addEventListener("click",()=>loadExample($("#exampleSelect").value || "cake"));
+    window.addEventListener("keydown",e=>{
+      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="s"){e.preventDefault();downloadProject();}
+      if(e.code==="Space"&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)){e.preventDefault();runRuntime();}
+      if(e.key==="ArrowRight"&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)){e.preventDefault();stepRuntime();}
+    });
+
+    $("#speedSlider").value = 560;
+    // Infer selected example for stored projects.
+    const matchingExample = Object.entries(EXAMPLES).find(([,v])=>v.name===project.name)?.[0];
+    if(matchingExample) $("#exampleSelect").value=matchingExample;
+    renderAll();
+  })();
+  </script>
+</body>
+</html>
