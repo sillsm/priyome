@@ -10,7 +10,7 @@
  * the DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "1.3.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "1.4.0";
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
 
@@ -400,6 +400,34 @@ function stateSideForFen(fen, rootSide) {
 
 function cloneCard(card) {
   return clone(card);
+}
+
+function controlMarkerCard(parentCard, kind) {
+  const isOr = kind === "or_choice_boundary";
+  const id = `${parentCard.id}/@${isOr ? "or" : "and"}`;
+  return {
+    id,
+    display: isOr ? "OR choice boundary" : "AND reply boundary",
+    label: isOr ? "OR choice boundary" : "AND reply boundary",
+    side: parentCard.side,
+    predicates: [kind, "control_marker"],
+    facts: [`control_marker(${isOr ? "or_choice" : "and_replies"})`],
+    help: isOr
+      ? "Control position: every retained candidate above this boundary failed."
+      : "Control position: every required opponent reply above this boundary was discharged.",
+    fen: parentCard.fen,
+    depth: Number(parentCard.depth) + 1,
+    children: [],
+    expanded: true,
+    prepared: true,
+    move: null,
+    meta: {
+      root: false,
+      parentId: parentCard.id,
+      controlMarker: kind,
+      materialSwing: Number(parentCard.meta?.materialSwing || 0)
+    }
+  };
 }
 
 export class ScratchChessOracle {
@@ -902,6 +930,13 @@ export class ScratchChessOracle {
   _preparePosition(id) {
     const card = this.cards.get(id);
     if (!card) throw new Error(`Oracle position ${id} does not exist`);
+    if (card.meta?.controlMarker) {
+      card.prepared = true;
+      card.expanded = true;
+      card.children = [];
+      if (!this.analysis.has(id)) this.analysis.set(id, []);
+      return this.analysis.get(id);
+    }
     if (card.prepared && this.analysis.has(id)) return this.analysis.get(id);
 
     const game = this._game(card.fen, card.display);
@@ -937,6 +972,37 @@ export class ScratchChessOracle {
       if (threatenedSquares.has(fromIndex)) {
         child.predicates = unique([...child.predicates, "save_piece"]);
         child.facts = unique([...child.facts, `save_piece(${child.move.from})`]);
+      }
+    }
+
+    // Expose which *class* of our moves is available on the parent card. The
+    // DFA—not the oracle—uses these facts to choose one search card. Each search
+    // card can then collect every move in that class before POP_POSITION runs.
+    if (card.side === "my") {
+      const mateMoves = analyses.filter((child) => child.predicates.includes("mate"));
+      const forcingMoves = analyses.filter((child) => child.predicates.some((predicate) =>
+        ["mate_in_1", "move_middle_with_check", "check"].includes(predicate)
+      ));
+      const captureMoves = analyses.filter((child) => child.predicates.some((predicate) =>
+        ["capture_back_of_alignment", "recapture", "capture"].includes(predicate)
+      ));
+      const attackMoves = analyses.filter((child) => child.predicates.includes("attack"));
+
+      if (mateMoves.length) {
+        card.predicates = unique([...card.predicates, "mate_moves_available"]);
+        card.facts = unique([...card.facts, `mate_moves_available(${mateMoves.length})`]);
+      }
+      if (forcingMoves.length) {
+        card.predicates = unique([...card.predicates, "forcing_moves_available"]);
+        card.facts = unique([...card.facts, `forcing_moves_available(${forcingMoves.length})`]);
+      }
+      if (captureMoves.length) {
+        card.predicates = unique([...card.predicates, "capture_moves_available"]);
+        card.facts = unique([...card.facts, `capture_moves_available(${captureMoves.length})`]);
+      }
+      if (attackMoves.length) {
+        card.predicates = unique([...card.predicates, "attack_moves_available"]);
+        card.facts = unique([...card.facts, `attack_moves_available(${attackMoves.length})`]);
       }
     }
 
@@ -1012,8 +1078,12 @@ export class ScratchChessOracle {
       return this.getPosition(id);
     }
 
+    const markerKind = card.side === "my" ? "or_choice_boundary" : "and_reply_boundary";
+    const marker = controlMarkerCard(card, markerKind);
+    const expandedChildren = [...analyses, marker];
+
     const maxPositions = this.options.max_positions;
-    const unseen = analyses.filter((child) => !this.cards.has(child.id));
+    const unseen = expandedChildren.filter((child) => !this.cards.has(child.id));
     if (this.cards.size + unseen.length > maxPositions) {
       card.predicates = unique([...card.predicates, "oracle_limit", "unexplorable"]);
       card.facts = unique([...card.facts, `oracle_limit(${maxPositions})`]);
@@ -1023,10 +1093,11 @@ export class ScratchChessOracle {
       return this.getPosition(id);
     }
 
-    for (const child of analyses) {
+    for (const child of expandedChildren) {
       if (!this.cards.has(child.id)) this.cards.set(child.id, child);
+      if (child.meta?.controlMarker && !this.analysis.has(child.id)) this.analysis.set(child.id, []);
     }
-    card.children = analyses.map((child) => child.id);
+    card.children = expandedChildren.map((child) => child.id);
     card.expanded = true;
     return this.getPosition(id);
   }
