@@ -7,10 +7,10 @@
  * state. This file turns those facts into the finite position cards consumed by
  * predicate.js. It also certifies bounded material-objective reply classes, but
  * it never chooses a policy move, pushes a position, pops a position, or changes
- * the DFA.
+ * the DFA. Every oracle card is an actual ScratchChess board position.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "1.4.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "1.6.0";
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
 
@@ -402,34 +402,6 @@ function cloneCard(card) {
   return clone(card);
 }
 
-function controlMarkerCard(parentCard, kind) {
-  const isOr = kind === "or_choice_boundary";
-  const id = `${parentCard.id}/@${isOr ? "or" : "and"}`;
-  return {
-    id,
-    display: isOr ? "OR choice boundary" : "AND reply boundary",
-    label: isOr ? "OR choice boundary" : "AND reply boundary",
-    side: parentCard.side,
-    predicates: [kind, "control_marker"],
-    facts: [`control_marker(${isOr ? "or_choice" : "and_replies"})`],
-    help: isOr
-      ? "Control position: every retained candidate above this boundary failed."
-      : "Control position: every required opponent reply above this boundary was discharged.",
-    fen: parentCard.fen,
-    depth: Number(parentCard.depth) + 1,
-    children: [],
-    expanded: true,
-    prepared: true,
-    move: null,
-    meta: {
-      root: false,
-      parentId: parentCard.id,
-      controlMarker: kind,
-      materialSwing: Number(parentCard.meta?.materialSwing || 0)
-    }
-  };
-}
-
 export class ScratchChessOracle {
   constructor(config = {}) {
     if (!config || typeof config !== "object" || Array.isArray(config)) {
@@ -747,6 +719,11 @@ export class ScratchChessOracle {
     const candidateBindings = [...inheritedBindings];
 
     for (const binding of availableAlignments) {
+      // The special move-the-middle predicate is only useful when exposing the
+      // bound back piece can meet this policy's material objective. A rook–queen–
+      // pawn line is still reported as an alignment fact, but moving the queen
+      // off it does not outrank ordinary checks.
+      if (binding.backValue < this.options.objective_gain) continue;
       if (move.from !== binding.middle || !check || boardOf(after)[binding.middle]) continue;
       const frontPiece = boardOf(after)[binding.front];
       const backPiece = boardOf(after)[binding.back];
@@ -792,6 +769,13 @@ export class ScratchChessOracle {
     }
 
     if (materialSwing !== 0) facts.push(`material_swing(${materialSwing > 0 ? "+" : ""}${materialSwing})`);
+
+    // A board-position role is factual search structure, not a synthetic marker.
+    // Children of one of our positions are candidate moves (OR alternatives).
+    // Children of an opponent-to-move position are required replies (AND obligations).
+    const searchRole = parentCard.side === "my" ? "our_candidate" : "required_reply";
+    predicates.push(searchRole);
+    facts.push(`${searchRole}(${san})`);
 
     const id = `${parentCard.id}/${move.uci}`;
     const display = `${movePrefix(parentCard.fen)} ${san}`;
@@ -899,13 +883,24 @@ export class ScratchChessOracle {
       return;
     }
 
-    card.predicates = unique([...card.predicates, "reply_classes_certified"]);
+    const recaptureMembers = required.filter((child) => child.predicates.includes("reply_class_recapture"));
+    const refutationMembers = required.filter((child) => child.predicates.includes("objective_refutation"));
+    const repairMembers = required.filter((child) => child.predicates.includes("repairs_objective"));
+
+    card.predicates = unique([
+      ...card.predicates,
+      "reply_classes_certified",
+      ...(recaptureMembers.length ? ["reply_class_recapture_available"] : []),
+      ...(refutationMembers.length ? ["objective_refutation_available"] : []),
+      ...(repairMembers.length ? ["repairs_objective_available"] : [])
+    ]);
     card.facts = unique([
       ...card.facts,
       `reply_classes_certified(${required.length})`,
       `certified_nonclass_replies(${certified.length})`,
-      ...(required.some((child) => child.predicates.includes("recapture")) ? ["reply_class(recapture)"] : []),
-      ...(required.some((child) => child.predicates.includes("repairs_objective")) ? ["reply_class(repairs_objective)"] : [])
+      ...(recaptureMembers.length ? [`reply_class_recapture_available(${recaptureMembers.length})`, "reply_class(recapture)"] : []),
+      ...(refutationMembers.length ? [`objective_refutation_available(${refutationMembers.length})`] : []),
+      ...(repairMembers.length ? [`repairs_objective_available(${repairMembers.length})`, "reply_class(repairs_objective)"] : [])
     ]);
 
     if (!required.length) {
@@ -930,13 +925,6 @@ export class ScratchChessOracle {
   _preparePosition(id) {
     const card = this.cards.get(id);
     if (!card) throw new Error(`Oracle position ${id} does not exist`);
-    if (card.meta?.controlMarker) {
-      card.prepared = true;
-      card.expanded = true;
-      card.children = [];
-      if (!this.analysis.has(id)) this.analysis.set(id, []);
-      return this.analysis.get(id);
-    }
     if (card.prepared && this.analysis.has(id)) return this.analysis.get(id);
 
     const game = this._game(card.fen, card.display);
@@ -975,73 +963,63 @@ export class ScratchChessOracle {
       }
     }
 
-    // Expose which *class* of our moves is available on the parent card. The
-    // DFA—not the oracle—uses these facts to choose one search card. Each search
-    // card can then collect every move in that class before POP_POSITION runs.
-    if (card.side === "my") {
-      const mateMoves = analyses.filter((child) => child.predicates.includes("mate"));
-      const forcingMoves = analyses.filter((child) => child.predicates.some((predicate) =>
-        ["mate_in_1", "move_middle_with_check", "check"].includes(predicate)
-      ));
-      const captureMoves = analyses.filter((child) => child.predicates.some((predicate) =>
-        ["capture_back_of_alignment", "recapture", "capture"].includes(predicate)
-      ));
-      const attackMoves = analyses.filter((child) => child.predicates.includes("attack"));
-
-      if (mateMoves.length) {
-        card.predicates = unique([...card.predicates, "mate_moves_available"]);
-        card.facts = unique([...card.facts, `mate_moves_available(${mateMoves.length})`]);
-      }
-      if (forcingMoves.length) {
-        card.predicates = unique([...card.predicates, "forcing_moves_available"]);
-        card.facts = unique([...card.facts, `forcing_moves_available(${forcingMoves.length})`]);
-      }
-      if (captureMoves.length) {
-        card.predicates = unique([...card.predicates, "capture_moves_available"]);
-        card.facts = unique([...card.facts, `capture_moves_available(${captureMoves.length})`]);
-      }
-      if (attackMoves.length) {
-        card.predicates = unique([...card.predicates, "attack_moves_available"]);
-        card.facts = unique([...card.facts, `attack_moves_available(${attackMoves.length})`]);
-      }
-    }
-
     const replyLimit = Number(this.options.reply_limit);
     if (!Number.isInteger(replyLimit) || replyLimit < 1) throw new Error("oracle reply_limit must be an integer >= 1");
 
-    const boundedReplySet = legal.length <= replyLimit;
-    if (boundedReplySet) {
-      card.predicates = unique([...card.predicates, "legal_replies_at_most_2"]);
-      card.facts = unique([...card.facts, `legal_replies_at_most_2(${legal.length})`]);
+    // Opponent positions are routed by the DFA. A small legal set is directly
+    // enumerable. A checked king may also be enumerated when the complete set
+    // stays within the configured reply-class limit. Otherwise the oracle must
+    // certify semantic reply classes below.
+    // The basic policy enumerates an opponent move set only when it is already
+    // human-sized. A check with more than reply_limit legal answers must be
+    // handled by a certified reply-class state or fail loudly; it is not silently
+    // promoted into an enumerate-everything state.
+    const forcedByCount = card.side === "their" && legal.length <= replyLimit;
+    const forcedByCheck = false;
+    const forcingReplySet = forcedByCount;
+    if (forcingReplySet) {
+      card.predicates = unique([
+        ...card.predicates,
+        "forcing_reply_set",
+        ...(forcedByCount ? ["legal_replies_at_most_2"] : []),
+        ...(forcedByCheck ? ["answers_check"] : [])
+      ]);
+      card.facts = unique([
+        ...card.facts,
+        `forcing_reply_set(${legal.length})`,
+        ...(forcedByCount ? [`legal_replies_at_most_2(${legal.length})`] : []),
+        ...(forcedByCheck ? [`answers_check(${legal.length})`] : [])
+      ]);
       analyses.forEach((child) => {
-        const boundedPredicates = ["forced_reply", "bounded_reply"];
-        const boundedFacts = ["forced_reply", "bounded_reply"];
+        const forcingPredicates = ["forced_reply", "forcing_reply"];
+        const forcingFacts = ["forced_reply", "forcing_reply"];
         if (child.predicates.includes("capture")) {
-          boundedPredicates.push("bounded_capture");
-          boundedFacts.push(`bounded_capture(value=${child.meta.captureValue})`);
+          forcingPredicates.push("forcing_capture");
+          forcingFacts.push(`forcing_capture(value=${child.meta.captureValue})`);
         }
         if (child.predicates.includes("check")) {
-          boundedPredicates.push("bounded_check");
-          boundedFacts.push("bounded_check");
+          forcingPredicates.push("forcing_check");
+          forcingFacts.push("forcing_check");
         }
         if (child.predicates.includes("king_move")) {
-          boundedPredicates.push("bounded_king_move");
-          boundedFacts.push("bounded_king_move");
+          forcingPredicates.push("forcing_king_move");
+          forcingFacts.push("forcing_king_move");
         }
         if (child.predicates.includes("mate_in_1")) {
-          boundedPredicates.push("bounded_mate_in_1");
-          boundedFacts.push("bounded_mate_in_1");
+          forcingPredicates.push("forcing_mate_in_1");
+          forcingFacts.push("forcing_mate_in_1");
         }
-        child.predicates = unique([...child.predicates, ...boundedPredicates]);
-        child.facts = unique([...child.facts, ...boundedFacts]);
+        child.predicates = unique([...child.predicates, ...forcingPredicates]);
+        child.facts = unique([...child.facts, ...forcingFacts]);
       });
-    } else {
-      card.facts = unique([...card.facts, `legal_replies_more_than_2(${legal.length})`]);
+    } else if (card.side === "their") {
+      card.facts = unique([...card.facts, `opponent_legal_replies_unbounded(${legal.length})`]);
     }
 
     this._classifyObjectiveReplies(card, analyses);
 
-    if (card.side === "their" && legal.length > replyLimit
+    if (card.side === "their"
+      && !card.predicates.includes("forcing_reply_set")
       && !card.predicates.includes("reply_classes_certified")
       && !card.predicates.includes("branch_proved")
       && !card.predicates.includes("mated")
@@ -1078,9 +1056,7 @@ export class ScratchChessOracle {
       return this.getPosition(id);
     }
 
-    const markerKind = card.side === "my" ? "or_choice_boundary" : "and_reply_boundary";
-    const marker = controlMarkerCard(card, markerKind);
-    const expandedChildren = [...analyses, marker];
+    const expandedChildren = analyses;
 
     const maxPositions = this.options.max_positions;
     const unseen = expandedChildren.filter((child) => !this.cards.has(child.id));
@@ -1095,7 +1071,6 @@ export class ScratchChessOracle {
 
     for (const child of expandedChildren) {
       if (!this.cards.has(child.id)) this.cards.set(child.id, child);
-      if (child.meta?.controlMarker && !this.analysis.has(child.id)) this.analysis.set(child.id, []);
     }
     card.children = expandedChildren.map((child) => child.id);
     card.expanded = true;
