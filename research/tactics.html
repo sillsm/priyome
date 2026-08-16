@@ -1,331 +1,347 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Predicate Chess Policy Worksheet</title>
-  <style>
-    :root{
-      --bg:#070a0f;--panel:#10151d;--panel2:#0b1017;--line:#2a3544;--text:#edf2f8;
-      --muted:#98a6b8;--gold:#d5aa35;--blue:#58baff;--red:#ff7582;--green:#70dda0;
-      --orange:#ffb86a;--shadow:0 20px 60px rgba(0,0,0,.42);
-      font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;overflow:hidden;color:var(--text);background:
-        radial-gradient(circle at 18% 0%,rgba(88,186,255,.11),transparent 32%),
-        radial-gradient(circle at 88% 0%,rgba(213,170,53,.10),transparent 34%),
-        linear-gradient(#0b1017,#05070a);
-    }
-    button,input,select,textarea{font:inherit}
-    button{
-      border:1px solid rgba(255,255,255,.13);background:linear-gradient(rgba(255,255,255,.08),rgba(255,255,255,.035));
-      color:var(--text);border-radius:10px;padding:8px 10px;font-weight:850;cursor:pointer;
-    }
-    button:hover{border-color:rgba(213,170,53,.58)}
-    button:disabled{opacity:.45;cursor:not-allowed}
-    button.primary{background:linear-gradient(rgba(213,170,53,.28),rgba(213,170,53,.10));border-color:rgba(213,170,53,.50)}
-    button.tiny{font-size:12px;padding:6px 8px;border-radius:8px}
-    input,select,textarea{
-      width:100%;min-width:0;border:1px solid rgba(255,255,255,.13);background:rgba(0,0,0,.25);color:var(--text);
-      border-radius:10px;padding:8px 9px;outline:none;
-    }
-    textarea,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    textarea{resize:vertical;font-size:12px;line-height:1.45}
-    pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-    a{color:#9dd9ff}
-
-    .app{height:100dvh;display:grid;grid-template-rows:48px minmax(0,1fr);gap:14px;padding:14px;max-width:1580px;margin:0 auto}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
-    .brand{display:flex;align-items:center;gap:10px;min-width:0}
-    .back{font-size:30px;color:#ccd5e1;line-height:1}
-    .titleWrap{min-width:0}
-    h1{margin:0;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .sub{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .topStats{display:flex;gap:7px;align-items:center;flex:0 0 auto}
-    .pill{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);border-radius:999px;padding:7px 10px;font-size:12px;white-space:nowrap}
-    .pill strong{color:var(--text)}
-    .pill.ok{border-color:rgba(112,221,160,.45);color:#bff3d2}
-    .pill.warn{border-color:rgba(255,184,106,.50);color:#ffd4a5}
-    .pill.bad{border-color:rgba(255,117,130,.48);color:#ffc0c7}
-
-    main{min-height:0;display:grid;grid-template-columns:minmax(380px,.88fr) minmax(560px,1.12fr);gap:14px}
-    .panel{min-height:0;background:rgba(16,21,29,.94);border:1px solid rgba(255,255,255,.08);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
-    .boardPanel{display:grid;grid-template-rows:auto minmax(0,1fr)}
-    .tools{border-bottom:1px solid var(--line);background:rgba(255,255,255,.025);padding:10px;overflow-x:auto}
-    .btns{display:flex;gap:7px;align-items:center;justify-content:flex-start;flex-wrap:wrap}
-    .topControls{min-width:max-content;flex-wrap:nowrap}
-    .check{border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 8px;color:var(--muted);font-size:12px;font-weight:850;display:flex;gap:7px;align-items:center;white-space:nowrap}
-    .check input{width:auto;accent-color:var(--gold)}
-    .stage{min-height:0;display:grid;place-items:center;padding:14px;background:#0a0f16;overflow:hidden}
-    .boardStack{width:min(100%,calc(100dvh - 218px),780px);max-height:100%;display:flex;flex-direction:column;gap:2px}
-    .boardHost{width:100%;aspect-ratio:1/1;min-width:260px;min-height:260px}
-    .threatRail{height:18px;min-height:18px;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 7px;color:#dce5f1;font:850 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .threatTop{border-bottom:1px solid rgba(255,255,255,.16)}
-    .threatBottom{border-top:1px solid rgba(255,255,255,.16)}
-    .threatLabel{color:#f0d893;flex:0 0 auto}.threatSummary{min-width:0;overflow:hidden;text-overflow:ellipsis}
-
-    .study{display:grid;grid-template-rows:48px minmax(0,1fr)}
-    .tabs{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--line);background:rgba(255,255,255,.025)}
-    .tab{border:0;border-right:1px solid var(--line);border-radius:0;background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px;font-weight:900;min-width:0;padding:6px}
-    .tab:last-child{border-right:0}.tab.active{color:var(--text);background:rgba(255,255,255,.06);box-shadow:inset 0 -3px 0 var(--gold)}
-    .ico{width:23px;height:23px;border-radius:8px;background:rgba(255,255,255,.08);display:grid;place-items:center;flex:0 0 auto}
-    .tabLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
-    .tabBodies{min-height:0}.tabPanel{display:none;height:100%;min-height:0;overflow:auto;padding:14px}.tabPanel.active{display:block}
-
-    .stack{display:grid;gap:11px}.card{border:1px solid rgba(255,255,255,.085);background:rgba(255,255,255,.035);border-radius:14px;padding:10px;min-width:0}
-    .cardHead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
-    .pTitle{font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.theme,.note,.meta{color:var(--muted);font-size:12px;line-height:1.45}
-    .fenText{margin-top:8px;color:#d4deea;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-word;background:rgba(0,0,0,.22);border-radius:9px;padding:8px}
-    .proofBadge{border-radius:999px;padding:6px 9px;font:900 11px ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line);white-space:nowrap}
-    .proofBadge.proven,.proofBadge.solve,.proofBadge.pass{color:#bdf5d1;border-color:rgba(112,221,160,.52)}
-    .proofBadge.refutedWithinPolicy,.proofBadge.fail,.proofBadge.error{color:#ffc1c8;border-color:rgba(255,117,130,.52)}
-    .proofBadge.searching,.proofBadge.idle,.proofBadge.not-run{color:#bfe7ff;border-color:rgba(88,186,255,.52)}
-    .proofBadge.inconclusive{color:#ffd4a5;border-color:rgba(255,184,106,.52)}
-
-    .movesLayout{height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:10px}
-    .reasoningPanel{max-height:118px;overflow:auto;margin-top:7px;display:grid;gap:6px}
-    .reasonItem{border-left:2px solid rgba(88,186,255,.42);padding:5px 8px;color:#cad5e3;font-size:12px;line-height:1.4;background:rgba(0,0,0,.14)}
-    .linePane{min-height:0;overflow:auto;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.16);border-radius:14px;padding:11px;display:grid;align-content:start;gap:9px}
-    .empty{color:var(--muted);border:1px dashed #3b4757;border-radius:12px;padding:12px;line-height:1.45}
-    .lineGroup{border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden;background:rgba(255,255,255,.025)}
-    .lineHead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;background:rgba(255,255,255,.035);font-size:12px;font-weight:900;color:#dfe8f2}
-    .lineMoves{padding:8px;line-height:2.15}.nested{margin:0 8px 8px 16px;padding-left:8px;border-left:2px solid rgba(88,186,255,.25);display:grid;gap:7px}
-    .moveNo{color:var(--muted);font:850 13px ui-monospace,SFMono-Regular,Menlo,monospace;margin-right:4px}
-    .moveChip{display:inline-flex;align-items:center;gap:4px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);border-radius:9px;padding:4px 6px;margin:2px 3px 2px 0;color:#edf3fa;font-weight:950;cursor:pointer}
-    .moveChip.current{border-color:rgba(88,186,255,.72);box-shadow:0 0 0 3px rgba(88,186,255,.12);background:rgba(88,186,255,.10)}
-    .moveChip.main{color:#f3dfa0}.moveChip.var{color:#bbe6ff}.moveReason{font-size:10px;color:var(--muted);font-weight:700}
-    .anchorChip{border-radius:999px;padding:3px 6px;font-size:10px;color:#bfe7ff;border-color:rgba(88,186,255,.28);background:rgba(88,186,255,.08)}
-
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-    .formRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}
-    label.small{color:var(--muted);font-weight:900;font-size:12px;display:block;margin:0 0 5px}
-    .predGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.predCard{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);border-radius:12px;padding:9px}
-    .predKind{font:900 11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffe0a3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.predDesc{color:var(--muted);font-size:11px;line-height:1.35;margin-top:4px}
-    .found{display:grid;gap:7px;margin-top:10px}.foundItem{border:1px solid rgba(255,255,255,.08);border-radius:11px;background:rgba(0,0,0,.18);padding:8px;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}
-    .dot{width:9px;height:9px;border-radius:999px;background:var(--gold)}.dot.in_check,.dot.mate,.dot.pin,.dot.hanging{background:var(--red)}.dot.manual{background:var(--blue)}
-    .predCall{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffe6a3;background:rgba(0,0,0,.28);border-radius:6px;padding:2px 4px}
-
-    .logList{display:grid;gap:7px}.logItem{display:grid;grid-template-columns:66px 1fr;gap:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);border-radius:11px;padding:8px}
-    .logDivider{display:block;text-align:center;color:#f0d893;border-color:rgba(213,170,53,.30);background:rgba(213,170,53,.07);font-weight:950}.time{color:var(--muted);font:900 10px ui-monospace,SFMono-Regular,Menlo,monospace}.logText{font-size:12px;line-height:1.42}
-
-    .policyBanner{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:13px;padding:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center}
-    .policyName{font-weight:950}.policyMeta{color:var(--muted);font-size:12px;line-height:1.4;margin-top:3px}
-    .algoText,.traceText,.policyJson{border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.20);border-radius:12px;padding:11px;white-space:pre-wrap;line-height:1.45;color:#d5dfeb;font-size:12px;max-height:340px;overflow:auto}
-    .traceText{max-height:450px}.policyJson{max-height:330px}.stepList{display:grid;gap:6px}.stepItem{border-left:2px solid rgba(213,170,53,.38);background:rgba(0,0,0,.15);padding:6px 8px;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#ccd7e4}.stepItem.latest{border-left-color:var(--blue);background:rgba(88,186,255,.07)}
-    details{border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:8px;background:rgba(255,255,255,.02)}summary{cursor:pointer;font-weight:900;color:#dce5ef}
-
-    .pgnBox{height:420px;resize:none}.pgnTools{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}.sessionList{display:flex;gap:6px;flex-wrap:wrap}.gameBadge{border:1px solid var(--line);border-radius:999px;padding:4px 7px;font-size:11px;color:var(--muted)}
-    .configGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.configWide{grid-column:1/-1}
-
-    .testLayout{height:100%;display:grid;grid-template-rows:auto auto minmax(180px,.9fr) minmax(260px,1.1fr);gap:10px}
-    .testToolbar{display:grid;grid-template-columns:minmax(150px,.8fr) auto auto auto;gap:8px;align-items:end}
-    .testSummary{display:flex;gap:7px;flex-wrap:wrap}.metric{border:1px solid var(--line);border-radius:999px;padding:5px 8px;font-size:11px;color:var(--muted)}.metric strong{color:var(--text)}
-    .testTableWrap{min-height:0;overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(0,0,0,.16)}
-    table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.07);vertical-align:middle}th{position:sticky;top:0;background:#151c25;color:#b8c5d4;z-index:2}tbody tr{cursor:pointer}tbody tr:hover,tbody tr.selected{background:rgba(88,186,255,.08)}
-    .testStatus{display:inline-flex;border-radius:999px;padding:3px 6px;font:900 10px ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line)}.testStatus.pass{color:#bdf5d1;border-color:rgba(112,221,160,.50)}.testStatus.fail,.testStatus.error{color:#ffc1c8;border-color:rgba(255,117,130,.50)}.testStatus.not-run,.testStatus.running{color:#bfe7ff;border-color:rgba(88,186,255,.50)}
-    .testDetail{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px}.detailHead{display:flex;justify-content:space-between;gap:8px;align-items:center}.detailGrid{min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}.detailPane{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:5px}.detailPane textarea{height:100%;min-height:200px;resize:none}.diffBox{grid-column:1/-1;max-height:135px;overflow:auto;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.18);border-radius:10px;padding:8px;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#ccd7e4}
-
-    @media(max-width:980px){
-      body{overflow:hidden}.app{padding:0;gap:0;grid-template-rows:42px minmax(0,1fr)}.top{padding:4px 8px;background:#0b1017}.sub{display:none}.topStats .pill:nth-child(-n+2){display:none}
-      main{display:grid;grid-template-columns:1fr;grid-template-rows:50dvh 50dvh;gap:0;min-height:0}.panel{border-radius:0;box-shadow:none}
-      .boardPanel{height:50dvh}.tools{padding:5px;height:44px}.stage{padding:0}.boardStack{width:min(100vw,calc(50dvh - 50px));min-width:0;max-height:100%}.boardHost{min-width:0;min-height:0}
-      .study{height:50dvh;grid-template-rows:42px minmax(0,1fr);border-top:2px solid rgba(88,186,255,.38)}.tabs{height:42px}.tab{padding:4px 1px}.tabLabel{display:none}.tabPanel{padding:8px;-webkit-overflow-scrolling:touch}.ico{width:21px;height:21px}
-      .movesLayout{grid-template-rows:auto minmax(0,1fr)}.movesLayout>.card:nth-child(1){display:none}.reasoningPanel{max-height:76px}.linePane{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
-      .predGrid,.grid2,.grid3,.configGrid,.detailGrid{grid-template-columns:1fr}.configWide{grid-column:auto}.testLayout{height:auto;min-height:100%;grid-template-rows:auto auto 250px auto}.testToolbar{grid-template-columns:1fr 1fr}.testToolbar label{grid-column:1/-1}.detailPane textarea{height:230px}.diffBox{grid-column:auto}.pgnBox{height:320px}
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>Predicate Chess Tactics</title>
+<style>
+:root{
+  --bg:#07101a;--bg2:#091421;--panel:rgba(14,26,40,.96);--panel2:rgba(18,33,50,.96);
+  --line:rgba(183,204,230,.16);--line2:rgba(183,204,230,.30);--text:#f5f7fb;
+  --muted:#a6b3c5;--faint:#718096;--purple:#a77cff;--purple2:#7857e8;--blue:#66a8ff;
+  --green:#72dc8b;--red:#ff7185;--amber:#ffc45e;--shadow:0 22px 60px rgba(0,0,0,.34);
+  --radius:18px;--speed:500ms;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:
+  radial-gradient(circle at 16% -10%,rgba(121,87,232,.20),transparent 34%),
+  radial-gradient(circle at 100% 10%,rgba(102,168,255,.12),transparent 30%),
+  linear-gradient(180deg,var(--bg),var(--bg2));overflow-x:hidden}
+button,input,select,textarea{font:inherit}button,select{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.app{min-height:100vh;display:flex;flex-direction:column}
+.topbar{min-height:64px;display:flex;align-items:center;gap:9px;padding:9px 14px;border-bottom:1px solid var(--line);
+  background:rgba(5,12,20,.88);backdrop-filter:blur(20px) saturate(140%);position:sticky;top:0;z-index:40}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}.brand-mark{width:38px;height:38px;border-radius:12px;flex:0 0 auto;
+  display:grid;place-items:center;font-size:21px;color:white;background:linear-gradient(145deg,rgba(102,168,255,.28),rgba(167,124,255,.38));
+  border:1px solid rgba(167,124,255,.47);box-shadow:inset 0 0 22px rgba(167,124,255,.18),0 12px 26px rgba(0,0,0,.25)}
+.brand-copy{min-width:0}.brand-copy strong{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-copy span{display:block;color:var(--muted);font-size:10px;margin-top:2px;white-space:nowrap}.spacer{flex:1}
+.top-controls{display:flex;align-items:center;gap:7px;min-width:0}.select-wrap{min-width:0}.select-wrap.puzzle{width:min(300px,23vw)}
+.select-wrap.policy{width:min(180px,15vw)}
+.control,.status-chip{min-height:38px;border:1px solid var(--line);border-radius:10px;color:var(--text);background:rgba(255,255,255,.045);padding:8px 10px}
+.control:hover{border-color:var(--line2);background:rgba(255,255,255,.075)}
+.control.primary{border-color:rgba(167,124,255,.58);background:linear-gradient(145deg,rgba(124,84,232,.95),rgba(156,93,236,.92));box-shadow:0 12px 28px rgba(103,60,205,.24);font-weight:780}
+.control.icon{width:38px;padding:0;display:grid;place-items:center}.status-chip{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:10px;white-space:nowrap}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--purple);box-shadow:0 0 0 4px rgba(167,124,255,.10)}
+.status-chip.accept{color:var(--green);border-color:rgba(114,220,139,.35);background:rgba(114,220,139,.07)}
+.status-chip.accept .status-dot{background:var(--green);box-shadow:0 0 0 4px rgba(114,220,139,.10)}
+.status-chip.reject{color:var(--red);border-color:rgba(255,113,133,.35);background:rgba(255,113,133,.07)}
+.status-chip.reject .status-dot{background:var(--red);box-shadow:0 0 0 4px rgba(255,113,133,.10)}
+.workspace{width:min(1600px,100%);margin:0 auto;padding:12px;display:grid;grid-template-columns:minmax(420px,.88fr) minmax(540px,1.12fr);gap:12px;flex:1;min-height:0}
+.panel{min-width:0;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(180deg,var(--panel),rgba(9,19,31,.98));box-shadow:var(--shadow);overflow:hidden}
+.panel-head{min-height:57px;display:flex;align-items:center;gap:10px;padding:10px 13px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.018)}
+.panel-head h1,.panel-head h2{margin:0;font-size:14px}.panel-head p{margin:3px 0 0;color:var(--muted);font-size:10px}.panel-head .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.mini-chip{display:inline-flex;align-items:center;gap:5px;min-height:25px;padding:4px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:rgba(255,255,255,.03);font-size:9px;white-space:nowrap}
+.mini-chip.purple{color:#d3c4ff;border-color:rgba(167,124,255,.35);background:rgba(167,124,255,.08)}
+.mini-chip.good{color:var(--green);border-color:rgba(114,220,139,.35);background:rgba(114,220,139,.07)}
+.mini-chip.bad{color:var(--red);border-color:rgba(255,113,133,.35);background:rgba(255,113,133,.07)}
+.board-panel{display:flex;flex-direction:column;min-height:calc(100vh - 90px)}.board-stage{flex:1;min-height:320px;display:grid;place-items:center;padding:14px;background:rgba(2,8,14,.28)}
+.board-wrap{width:min(100%,calc(100vh - 225px),730px);aspect-ratio:1;display:grid;place-items:center}.board-host{width:100%;height:100%;min-width:260px;min-height:260px}
+.board-host.fallback{display:grid;grid-template-columns:repeat(8,1fr);border:1px solid rgba(255,255,255,.16);border-radius:5px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.34)}
+.fallback-square{display:grid;place-items:center;position:relative;font-family:"Arial Unicode MS","Noto Sans Symbols 2",serif;font-size:clamp(25px,4.2vw,60px);line-height:1}.fallback-square.light{background:#c9d2de}.fallback-square.dark{background:#687d98}.fallback-square.w{color:#fafcff;text-shadow:0 1px 2px rgba(0,0,0,.7)}.fallback-square.b{color:#101722;text-shadow:0 1px 1px rgba(255,255,255,.18)}
+.board-info{padding:10px 13px 12px;border-top:1px solid var(--line);display:grid;gap:7px}.node-title-row{display:flex;align-items:center;gap:8px;min-width:0}.node-title-row strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fen{font:10px/1.42 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#c7d3e4;background:rgba(0,0,0,.22);padding:7px 8px;border-radius:9px;word-break:break-word}
+.facts{display:flex;gap:5px;flex-wrap:wrap;max-height:70px;overflow:auto}.fact{font:9px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#cdbaff;border:1px solid rgba(167,124,255,.28);background:rgba(167,124,255,.07);border-radius:999px;padding:4px 7px}
+.fact.predicate{color:#bfe2ff;border-color:rgba(102,168,255,.28);background:rgba(102,168,255,.07)}
+.right-stack{display:grid;grid-template-rows:minmax(300px,.44fr) minmax(430px,.56fr);gap:12px;min-height:calc(100vh - 90px)}
+.tree-panel,.policy-panel{display:flex;flex-direction:column;min-height:0}.tree-body{flex:1;min-height:0;overflow:auto;padding:10px 8px 16px}.tree-list{display:grid;align-content:start}
+.tree-row{--depth:0;position:relative;display:grid;grid-template-columns:27px minmax(0,1fr) auto;gap:7px;align-items:start;min-height:43px;margin-left:calc(var(--depth)*23px);padding:7px 8px 7px 4px;border-radius:10px;color:var(--muted);opacity:.78;cursor:pointer;animation:treeEnter 320ms cubic-bezier(.2,.8,.2,1) both;transition:background 220ms,color 220ms,opacity 220ms,transform 220ms}
+.tree-row::before{content:"";display:var(--connector,block);position:absolute;left:-12px;top:-10px;bottom:50%;width:10px;border-left:1px solid rgba(155,176,203,.24);border-bottom:1px solid rgba(155,176,203,.24);border-radius:0 0 0 7px}
+.tree-row:hover{opacity:1;background:rgba(255,255,255,.035)}.tree-row.selected{box-shadow:inset 0 0 0 1px rgba(102,168,255,.35)}.tree-row.active{background:rgba(167,124,255,.10);color:var(--text);opacity:1;transform:translateX(3px)}
+.tree-row.accepted{background:rgba(114,220,139,.07);color:var(--green);opacity:1}.tree-row.rejected{background:rgba(255,113,133,.07);color:var(--red);opacity:1}.tree-row.closed,.tree-row.discarded{opacity:.5}
+.tree-marker{width:23px;height:23px;border-radius:7px;display:grid;place-items:center;border:1px solid var(--line);background:rgba(255,255,255,.03);font:800 10px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--faint)}
+.tree-row.active .tree-marker{color:var(--purple);border-color:rgba(167,124,255,.46)}.tree-row.accepted .tree-marker{color:var(--green);border-color:rgba(114,220,139,.38)}.tree-row.rejected .tree-marker{color:var(--red);border-color:rgba(255,113,133,.38)}
+.tree-main{min-width:0}.tree-line{font-size:13px;line-height:1.3;word-break:break-word}.tree-line strong{color:inherit;font-weight:790}.because{color:var(--blue);font-size:10px;margin-left:5px}.tree-help,.tree-note{margin-top:3px;color:var(--faint);font-size:9px;line-height:1.4}.tree-side{font:800 8px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);padding-top:3px;white-space:nowrap}
+.tree-result{margin:10px 4px 0;padding:10px 11px;border:1px solid var(--line);border-radius:11px;color:var(--muted);background:rgba(255,255,255,.025);font-size:10px;line-height:1.5}.tree-result.accept{color:var(--green);border-color:rgba(114,220,139,.34);background:rgba(114,220,139,.07)}.tree-result.reject{color:var(--red);border-color:rgba(255,113,133,.34);background:rgba(255,113,133,.07)}
+.tree-empty{min-height:240px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:11px}.tree-legend{display:flex;gap:9px;flex-wrap:wrap;padding:7px 12px 9px;border-top:1px solid var(--line);color:var(--faint);font-size:8px}
+.policy-stage{flex:1;min-height:0;display:flex;flex-direction:column}.routine-strip{display:flex;align-items:center;gap:6px;min-height:35px;padding:7px 12px 2px;overflow-x:auto;scrollbar-width:none}.routine-strip::-webkit-scrollbar{display:none}.routine-chip{border:1px solid var(--line);border-radius:999px;padding:4px 7px;color:var(--faint);background:rgba(255,255,255,.02);font-size:9px;white-space:nowrap}.routine-chip.active{color:#d5c7ff;border-color:rgba(167,124,255,.35);background:rgba(167,124,255,.08)}.routine-arrow{color:var(--faint);font-size:9px}
+.dfa-window{flex:1;min-height:270px;display:flex;align-items:center;overflow-x:auto;overflow-y:hidden;padding:14px max(24px,calc(50% - 154px));scroll-behavior:smooth;scroll-snap-type:x mandatory;scrollbar-width:none;mask-image:linear-gradient(90deg,transparent,black 6%,black 94%,transparent)}.dfa-window::-webkit-scrollbar{display:none}.dfa-flow{display:flex;align-items:center;gap:10px;min-width:max-content}.state-wrap{display:flex;align-items:center;gap:10px}.state-arrow{width:24px;height:2px;background:rgba(178,193,215,.30);position:relative;flex:0 0 24px}.state-arrow::after{content:"";position:absolute;right:-1px;top:-4px;width:8px;height:8px;border-right:2px solid rgba(178,193,215,.50);border-top:2px solid rgba(178,193,215,.50);transform:rotate(45deg)}
+.state-card{scroll-snap-align:center;width:142px;min-height:180px;padding:11px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,rgba(27,42,60,.88),rgba(14,25,39,.96));color:var(--muted);opacity:.50;transform:scale(.92);transition:width var(--speed) cubic-bezier(.2,.8,.2,1),transform var(--speed) cubic-bezier(.2,.8,.2,1),opacity var(--speed),border-color var(--speed),box-shadow var(--speed);overflow:hidden}.state-card.active{width:310px;min-height:265px;opacity:1;transform:scale(1);color:var(--text);border-color:rgba(167,124,255,.66);box-shadow:0 0 0 3px rgba(167,124,255,.07),0 18px 45px rgba(0,0,0,.28)}.state-card.accept.active{border-color:var(--green);box-shadow:0 0 0 3px rgba(114,220,139,.07),0 18px 45px rgba(0,0,0,.28)}.state-card.reject.active{border-color:var(--red);box-shadow:0 0 0 3px rgba(255,113,133,.07),0 18px 45px rgba(0,0,0,.28)}
+.state-kind{display:flex;justify-content:space-between;gap:7px;color:var(--purple);font:800 8px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase}.state-icon{margin-top:12px;font-size:27px;color:var(--purple)}.state-title{margin-top:8px;color:var(--text);font-size:15px;font-weight:850}.state-id{margin-top:3px;color:var(--faint);font:9px ui-monospace,SFMono-Regular,Menlo,monospace}.state-description{margin-top:9px;color:var(--muted);font-size:9px;line-height:1.42}.state-card:not(.active) .state-detail{display:none}.state-card:not(.active) .state-description{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.state-detail{margin-top:11px;padding-top:10px;border-top:1px solid var(--line)}
+.detail-label{margin-bottom:6px;color:var(--muted);font-size:9px}.predicate-list{display:grid;gap:4px}.predicate-row{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:6px;align-items:center;min-height:29px;padding:4px 6px;border:1px solid transparent;border-radius:8px;color:var(--muted);background:rgba(255,255,255,.025);font-size:9px}.predicate-row .n{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:rgba(167,124,255,.14);color:#cbb9ff;font-weight:800}.predicate-row .predicate-status{color:var(--faint);font-size:8px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.predicate-row.next,.predicate-row.checking{color:var(--text);border-color:rgba(167,124,255,.42);background:rgba(167,124,255,.10)}.predicate-row.matched{color:var(--green);background:rgba(114,220,139,.07)}.predicate-row.missed{opacity:.72}.predicate-row.skipped{opacity:.34;text-decoration:line-through}.closure-line{margin-top:8px;padding:6px 7px;border-radius:8px;color:#c5d2e5;background:rgba(102,168,255,.07);font-size:8px}.rule-list{display:grid;gap:5px}.rule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;color:var(--muted);font-size:9px}.rule-row b{color:var(--text)}.call-box{padding:8px;border-radius:9px;background:rgba(102,168,255,.07);color:var(--muted);font-size:9px;line-height:1.5}.call-box strong{color:var(--text)}
+.policy-message{min-height:50px;display:flex;align-items:center;gap:10px;margin:0 11px 8px;padding:8px 10px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.025)}.message-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:var(--purple);box-shadow:0 0 0 4px rgba(167,124,255,.10)}.policy-message strong{display:block;font-size:10px}.policy-message span{display:block;color:var(--muted);font-size:9px;margin-top:2px;line-height:1.35}
+.policy-controls{display:flex;align-items:center;gap:7px;padding:8px 11px;border-top:1px solid var(--line);background:rgba(4,11,19,.56)}.policy-controls .control{min-height:34px;padding:6px 9px;font-size:10px}.policy-controls .speed{margin-left:auto;display:flex;align-items:center;gap:7px;color:var(--muted);font-size:9px}.policy-controls input[type=range]{width:100px;accent-color:var(--purple)}
+@keyframes treeEnter{from{opacity:0;transform:translateY(6px)}}
+.dialog{width:min(1120px,calc(100vw - 24px));height:min(800px,calc(100vh - 24px));padding:0;color:var(--text);background:#0b1623;border:1px solid var(--line2);border-radius:18px;box-shadow:0 30px 100px rgba(0,0,0,.58)}.dialog::backdrop{background:rgba(0,0,0,.70);backdrop-filter:blur(6px)}.dialog-shell{height:100%;display:flex;flex-direction:column}.dialog-head{min-height:60px;padding:9px 13px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--line)}.dialog-head h2{margin:0;font-size:15px}.dialog-tabs{display:flex;gap:5px;padding:7px 11px;border-bottom:1px solid var(--line);overflow-x:auto}.dialog-tab{min-height:32px;padding:5px 9px;border:1px solid transparent;border-radius:8px;color:var(--muted);background:transparent;white-space:nowrap}.dialog-tab.active{color:var(--text);border-color:rgba(167,124,255,.36);background:rgba(167,124,255,.09)}.dialog-body{flex:1;min-height:0;overflow:auto;padding:11px}.dialog-panel{display:none;height:100%}.dialog-panel.active{display:flex;flex-direction:column;gap:9px}.editor-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:9px;min-height:0;flex:1}.code{width:100%;min-height:360px;flex:1;resize:none;padding:11px;border:1px solid var(--line);border-radius:11px;color:#dce7f7;background:#07111d;font:10px/1.52 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;outline:none;tab-size:2}.code:focus{border-color:rgba(167,124,255,.55);box-shadow:0 0 0 3px rgba(167,124,255,.08)}.editor-side{border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.02);padding:10px;overflow:auto}.editor-side h3{margin:0 0 7px;font-size:11px}.editor-side p{margin:0 0 9px;color:var(--muted);font-size:9px;line-height:1.45}.issue{margin-top:6px;padding:7px;border-radius:8px;background:rgba(255,255,255,.03);color:var(--muted);font-size:9px;line-height:1.4}.issue.error{color:var(--red);background:rgba(255,113,133,.07)}.issue.warn{color:var(--amber);background:rgba(255,196,94,.07)}.issue.ok{color:var(--green);background:rgba(114,220,139,.07)}.dialog-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.dialog-actions .control{min-height:34px;padding:6px 9px;font-size:10px}.grammar{margin:0;padding:11px;border:1px solid var(--line);border-radius:11px;background:#07111d;color:#dce7f7;overflow:auto;font:10px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap}.output-box{flex:1;min-height:420px}.batch-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,.42fr) minmax(0,.58fr);gap:9px}.batch-list{min-height:0;overflow:auto;display:grid;align-content:start;gap:6px}.batch-row{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.025);cursor:pointer}.batch-row:hover,.batch-row.selected{border-color:rgba(102,168,255,.38);background:rgba(102,168,255,.07)}.batch-index{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;background:rgba(255,255,255,.04);color:var(--faint);font:800 9px ui-monospace,SFMono-Regular,Menlo,monospace}.batch-row strong{display:block;font-size:10px}.batch-row small{display:block;color:var(--muted);font-size:8px;margin-top:2px}.batch-status{font:850 8px ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line);border-radius:999px;padding:4px 6px;color:var(--muted)}.batch-status.accept{color:var(--green);border-color:rgba(114,220,139,.38)}.batch-status.reject{color:var(--red);border-color:rgba(255,113,133,.38)}.batch-status.unexplorable{color:var(--amber);border-color:rgba(255,196,94,.38)}.batch-detail{min-height:0;display:flex;flex-direction:column;gap:7px}.batch-detail textarea{flex:1;min-height:380px}.toast-stack{position:fixed;right:13px;bottom:13px;z-index:100;display:grid;gap:6px;pointer-events:none}.toast{max-width:360px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:#101f30;box-shadow:var(--shadow);color:var(--text);font-size:10px;animation:treeEnter 220ms ease both}.toast.good{border-color:rgba(114,220,139,.36)}.toast.bad{border-color:rgba(255,113,133,.40)}
+.fatal{margin:auto;width:min(760px,calc(100% - 24px));padding:24px;border:1px solid rgba(255,113,133,.4);border-radius:16px;background:rgba(255,113,133,.07);color:#ffd4d9;line-height:1.6}
+@media(max-width:1120px){.topbar{flex-wrap:wrap}.brand{margin-right:auto}.top-controls{width:100%;order:2}.select-wrap.puzzle{flex:1;width:auto}.select-wrap.policy{width:180px}.workspace{grid-template-columns:minmax(360px,.84fr) minmax(480px,1.16fr)}}
+@media(max-width:920px){.workspace{grid-template-columns:1fr;padding:9px}.board-panel{min-height:auto}.board-stage{padding:10px}.board-wrap{width:min(100%,650px)}.right-stack{grid-template-rows:auto auto;min-height:auto}.tree-panel{min-height:390px}.policy-panel{min-height:430px}.topbar{position:relative}.select-wrap.puzzle{min-width:180px}}
+@media(max-width:620px){.topbar{min-height:56px;padding:7px}.brand-copy span{display:none}.brand-mark{width:34px;height:34px}.top-controls{gap:5px;overflow-x:auto}.select-wrap.policy,.status-chip,.top-controls .control .button-label{display:none}.select-wrap.puzzle{min-width:190px;flex:1}.control.icon,.top-controls button.control{flex:0 0 38px;width:38px;padding:0}#topStepBtn{display:none}.workspace{padding:6px;gap:7px}.panel{border-radius:13px}.panel-head{min-height:51px;padding:8px 10px}.panel-head p{display:none}.board-stage{padding:5px}.board-host{min-width:0;min-height:0}.board-info{padding:8px 9px}.right-stack{gap:7px}.tree-panel{min-height:370px}.tree-body{padding-inline:6px}.tree-row{margin-left:calc(var(--depth)*16px);grid-template-columns:22px minmax(0,1fr);padding-right:5px}.tree-row::before{left:-8px;width:7px}.tree-marker{width:20px;height:20px}.tree-side{display:none}.dfa-window{min-height:285px;padding:12px max(18px,calc(50% - 142px));mask-image:none}.state-card{width:132px;min-height:170px}.state-card.active{width:284px;min-height:252px}.policy-controls{position:sticky;bottom:0;z-index:10;padding:7px}.policy-controls .control{flex:1;min-width:0}.policy-controls .speed{display:none}.dialog{width:100vw;height:100dvh;max-width:none;max-height:none;border:0;border-radius:0}.editor-grid,.batch-layout{grid-template-columns:1fr}.editor-side{max-height:180px}.batch-list{max-height:250px}.batch-detail textarea{min-height:300px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;transition-duration:.001ms!important}}
+</style>
 </head>
 <body>
-<div class="app">
-  <header class="top">
+<div class="app" id="app">
+  <header class="topbar">
     <div class="brand">
-      <div class="back">‹</div>
-      <div class="titleWrap">
-        <h1>Predicate Chess Policy Worksheet</h1>
-        <div class="sub">ScratchChess enumerates legal moves; selectable policies filter them into reproducible human-style traces.</div>
-      </div>
+      <div class="brand-mark" aria-hidden="true">⌕</div>
+      <div class="brand-copy"><strong>Predicate Chess Tactics</strong><span>ScratchChess oracle → predicate.js pushdown policy</span></div>
     </div>
-    <div class="topStats">
-      <div class="pill">games: <strong id="gameCount">1</strong></div>
-      <div class="pill">ply: <strong id="plyTop">root</strong></div>
-      <div class="pill" id="policyPill">policy: <strong id="policyTop">loading</strong></div>
-      <div class="pill" id="proofPill">proof: <strong id="proofTop">idle</strong></div>
+    <div class="status-chip" id="engineChip"><span class="status-dot"></span><span>loading engines…</span></div>
+    <div class="spacer"></div>
+    <div class="top-controls">
+      <label class="select-wrap puzzle"><span class="sr-only">Puzzle</span><select class="control" id="puzzleSelect" aria-label="Puzzle"></select></label>
+      <label class="select-wrap policy"><span class="sr-only">Policy</span><select class="control" id="policySelect" aria-label="Policy"></select></label>
+      <div class="status-chip" id="resultChip"><span class="status-dot"></span><span id="resultText">ready</span></div>
+      <button class="control icon" id="topStepBtn" title="Step policy">▶|<span class="sr-only">Step</span></button>
+      <button class="control primary" id="topRunBtn" title="Run policy">▶ <span class="button-label">Run</span></button>
+      <button class="control" id="batchBtn" title="Run every loaded puzzle">▦ <span class="button-label">Run all</span></button>
+      <button class="control icon" id="editBtn" title="Edit policy and oracle">✎<span class="sr-only">Edit</span></button>
     </div>
   </header>
 
-  <main>
-    <section class="panel boardPanel">
-      <div class="tools">
-        <div class="btns topControls">
-          <button class="tiny primary" id="stepProof">step policy</button>
-          <button class="tiny primary" id="runProof">run policy</button>
-          <button class="tiny" id="restartProof">restart here</button>
-          <label class="check"><input type="checkbox" id="solved" /> solved</label>
-          <button class="tiny" id="prevBtn">← ply</button>
-          <button class="tiny" id="nextBtn">ply →</button>
-          <button class="tiny" id="rootBtn">root</button>
-          <button class="tiny primary" id="notice">notice</button>
-          <button class="tiny" id="flip">↕ flip</button>
-          <button class="tiny" id="clearMarks">clear marks</button>
-        </div>
-      </div>
-      <div class="stage">
-        <div class="boardStack">
-          <div class="threatRail threatTop" id="threatTop"></div>
-          <div id="board" class="boardHost"></div>
-          <div class="threatRail threatBottom" id="threatBottom"></div>
-        </div>
+  <main class="workspace">
+    <section class="panel board-panel">
+      <header class="panel-head">
+        <div><h1 id="puzzleTitle">Loading…</h1><p id="puzzleMeta">loading tactical_positions.md</p></div>
+        <div class="right"><span class="mini-chip" id="rootSideChip">root side —</span><button class="mini-chip" id="flipBtn" type="button">flip</button></div>
+      </header>
+      <div class="board-stage"><div class="board-wrap"><div id="board" class="board-host" aria-label="Chessboard"></div></div></div>
+      <div class="board-info">
+        <div class="node-title-row"><strong id="nodeTitle">Root position</strong><span class="mini-chip purple" id="nodeState">selected card</span><span class="spacer"></span><button class="mini-chip" id="followBtn" type="button">follow current</button></div>
+        <div class="fen" id="fenText">—</div>
+        <div class="facts" id="facts"></div>
       </div>
     </section>
 
-    <section class="panel study">
-      <nav class="tabs">
-        <button class="tab active" data-tab="moves"><span class="ico">♟</span><span class="tabLabel">Line</span></button>
-        <button class="tab" data-tab="predicates"><span class="ico">◇</span><span class="tabLabel">Predicates</span></button>
-        <button class="tab" data-tab="log"><span class="ico">☷</span><span class="tabLabel">Log</span></button>
-        <button class="tab" data-tab="policy"><span class="ico">⚙</span><span class="tabLabel">Policy</span></button>
-        <button class="tab" data-tab="pgn"><span class="ico">♙</span><span class="tabLabel">PGN</span></button>
-        <button class="tab" data-tab="config"><span class="ico">☰</span><span class="tabLabel">Config</span></button>
-        <button class="tab" data-tab="tests"><span class="ico">✓</span><span class="tabLabel">Tests</span></button>
-      </nav>
+    <div class="right-stack">
+      <section class="panel tree-panel">
+        <header class="panel-head">
+          <div><h2>Tree explored by the policy</h2><p>Only cards retained by predicate.js appear here.</p></div>
+          <div class="right"><span class="mini-chip" id="nodeCountChip">0 nodes</span><span class="mini-chip" id="depthChip">depth 0</span></div>
+        </header>
+        <div class="tree-body" id="treeBody"><div class="tree-empty">No runner yet.</div></div>
+        <div class="tree-legend"><span>▶ active</span><span>○ retained</span><span>✓ accept</span><span>× reject</span><span>· closed/discarded</span></div>
+      </section>
 
-      <div class="tabBodies">
-        <section class="tabPanel active" id="tab-moves">
-          <div class="movesLayout">
-            <div class="card">
-              <div class="cardHead">
-                <div><div class="pTitle" id="title">Loading…</div><div class="theme" id="theme">theme: —</div></div>
-                <span class="proofBadge idle" id="lineProofBadge">idle</span>
-              </div>
-              <div class="fenText" id="fenText">—</div>
-            </div>
-            <div class="card">
-              <div class="cardHead"><div><div class="pTitle">Current reasoning</div><div class="meta" id="reasonContext">root position</div></div></div>
-              <div class="reasoningPanel" id="reasoningPanel"><div class="note">No comments on the selected node.</div></div>
-            </div>
-            <div class="linePane" id="line"><div class="empty">Move manually, step the selected policy, or run it to completion.</div></div>
+      <section class="panel policy-panel">
+        <header class="panel-head">
+          <div><h2>Policy search</h2><p>The large card is the exact predicate.js state executing now.</p></div>
+          <div class="right"><span class="mini-chip purple" id="policyNameChip">default</span><span class="mini-chip" id="policyValidityChip">validating…</span></div>
+        </header>
+        <div class="policy-stage">
+          <div class="routine-strip" id="routineStrip"></div>
+          <div class="dfa-window" id="dfaWindow"><div class="dfa-flow" id="dfaFlow"></div></div>
+          <div class="policy-message" id="policyMessage"><div class="message-dot"></div><div><strong>Ready</strong><span>Press Step to enter the policy.</span></div></div>
+          <div class="policy-controls">
+            <button class="control" id="resetBtn">↺ Reset</button>
+            <button class="control" id="stepBtn">▶| Step</button>
+            <button class="control primary" id="runBtn">▶ Run</button>
+            <span class="mini-chip" id="stepCount">0 thoughts</span>
+            <label class="speed">Speed <input id="speedSlider" type="range" min="80" max="1200" step="40" value="520" /><span id="speedReadout">1.0×</span></label>
           </div>
-        </section>
-
-        <section class="tabPanel" id="tab-predicates">
-          <div class="stack">
-            <div class="predGrid" id="predicateCatalog"></div>
-            <div class="grid2">
-              <div class="card">
-                <label class="small">Attach manual predicate to current node</label>
-                <div class="formRow"><input id="predInput" value="focal_square(h7)" /><button id="attachPred">attach</button></div>
-              </div>
-              <div class="card">
-                <label class="small">Board mark mode</label>
-                <div class="btns"><button class="tiny" data-mode="moves">moves</button><button class="tiny" data-mark="Y">yellow</button><button class="tiny" data-mark="R">red</button><button class="tiny" data-arrow="G">arrow</button></div>
-              </div>
-            </div>
-            <div class="found" id="findings"></div>
-          </div>
-        </section>
-
-        <section class="tabPanel" id="tab-log">
-          <div class="stack">
-            <div class="formRow"><input id="logInput" value="I am testing this candidate line." /><button id="addLog">log</button></div>
-            <div class="logList" id="log"></div>
-          </div>
-        </section>
-
-        <section class="tabPanel" id="tab-policy">
-          <div class="stack">
-            <div class="policyBanner" id="policyBanner">
-              <div><div class="policyName" id="policyName">Loading policy…</div><div class="policyMeta" id="policyMeta">—</div></div>
-              <span class="proofBadge idle" id="policyProofBadge">idle</span>
-            </div>
-            <div class="grid2">
-              <div><label class="small" for="policySelect">Selected policy</label><select id="policySelect"></select></div>
-              <div class="btns" style="align-self:end"><button class="tiny" id="reloadPolicy">reload</button><button class="tiny" id="previewPolicy">preview one cycle</button><button class="tiny primary" id="runPolicyPanel">run policy</button></div>
-            </div>
-            <pre class="algoText" id="algoText"></pre>
-            <div><div class="pTitle" style="margin-bottom:6px">Canonical output</div><pre class="traceText" id="traceText">No trace yet.</pre></div>
-            <div><div class="pTitle" style="margin-bottom:6px">Consumed events</div><div class="stepList" id="stepList"></div></div>
-            <details><summary>Validated selected policy JSON</summary><pre class="policyJson" id="policyJson">—</pre></details>
-          </div>
-        </section>
-
-        <section class="tabPanel" id="tab-pgn">
-          <div class="stack">
-            <div class="cardHead"><div class="sessionList" id="sessionList"></div><select id="pgnMode" style="width:auto"><option value="comments">full lines + comments</option><option value="clean">full lines · no comments</option></select></div>
-            <textarea id="pgnText" class="pgnBox" spellcheck="false"></textarea>
-            <div class="pgnTools"><div class="note">Variations and policy comments are retained unless clean mode is selected.</div><div class="btns"><button class="tiny" id="refreshPGN">refresh</button><button class="tiny primary" id="copyPGN">copy</button></div></div>
-          </div>
-        </section>
-
-        <section class="tabPanel" id="tab-config">
-          <div class="stack">
-            <div class="card">
-              <div class="pTitle" style="margin-bottom:8px">Position</div>
-              <div class="configGrid">
-                <div class="configWide"><label class="small" for="puzzleSelect">Choose puzzle</label><select id="puzzleSelect"></select></div>
-                <div><label class="small" for="configTitle">Puzzle title</label><input id="configTitle" /></div>
-                <div><label class="small" for="configTheme">Theme</label><input id="configTheme" /></div>
-                <div class="configWide"><label class="small" for="fenInput">FEN</label><div class="formRow"><input id="fenInput" /><button class="tiny primary" id="loadFen">Load FEN</button></div></div>
-              </div>
-              <div class="btns" style="margin-top:8px"><button class="tiny" id="reset">reset / reload position</button></div>
-              <div class="meta" id="libStatus" style="margin-top:8px">loading…</div>
-            </div>
-            <div class="card"><div class="pTitle">Library metadata</div><div class="meta" id="configSolution" style="margin-top:6px">No library solution supplied.</div><a id="configWhere" target="_blank" rel="noopener" hidden></a></div>
-          </div>
-        </section>
-
-        <section class="tabPanel" id="tab-tests">
-          <div class="testLayout">
-            <div class="testToolbar">
-              <label><span class="small">Show policy</span><select id="testPolicyFilter"><option value="all">all policies</option></select></label>
-              <button class="tiny primary" id="runVisibleTests">run visible</button>
-              <button class="tiny" id="downloadTests">download tuples</button>
-              <button class="tiny" id="reloadTests">reload tests</button>
-            </div>
-            <div class="testSummary" id="testSummary"></div>
-            <div class="testTableWrap"><table><thead><tr><th>#</th><th>name</th><th>policy</th><th>result</th><th></th></tr></thead><tbody id="testRows"></tbody></table></div>
-            <div class="testDetail">
-              <div class="detailHead"><div><div class="pTitle" id="testDetailTitle">Select a test</div><div class="meta" id="testDetailMeta">—</div></div><div class="btns"><button class="tiny" id="loadTestCase">load on board</button><button class="tiny" id="runSelectedTest">run selected</button><button class="tiny" id="acceptActual">accept actual</button><button class="tiny" id="copyActual">copy actual</button></div></div>
-              <div class="detailGrid">
-                <div class="detailPane"><label class="small">Expected output</label><textarea id="expectedOutput" spellcheck="false" readonly></textarea></div>
-                <div class="detailPane"><label class="small">Actual output</label><textarea id="actualOutput" spellcheck="false" readonly></textarea></div>
-                <pre class="diffBox" id="diffOutput">No comparison yet.</pre>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </section>
+        </div>
+      </section>
+    </div>
   </main>
 </div>
 
-<script type="module">
-  import { Game, BoardView } from "/scratchchess.js";
-  import {
-    DEFAULT_POLICY_URL,
-    DEFAULT_TESTS_URL,
-    createReasoner,
-    describeAlgorithm,
-    humanVisibleObservations,
-    inspectPosition,
-    loadPolicy,
-    predicateCatalog,
-    runOnePass,
-    runPolicyTrace
-  } from "/algo.js";
+<dialog class="dialog" id="editorDialog">
+  <div class="dialog-shell">
+    <header class="dialog-head"><h2>Policy and oracle</h2><span class="mini-chip" id="editorPolicyName"></span><div class="spacer"></div><button class="control icon" id="closeEditorBtn" aria-label="Close">×</button></header>
+    <nav class="dialog-tabs">
+      <button class="dialog-tab active" data-tab="policy">Policy JSON</button>
+      <button class="dialog-tab" data-tab="oracle">Oracle JSON</button>
+      <button class="dialog-tab" data-tab="output">FEN · policy · output</button>
+      <button class="dialog-tab" data-tab="grammar">predicate.js grammar</button>
+    </nav>
+    <div class="dialog-body">
+      <section class="dialog-panel active" data-panel="policy">
+        <div class="editor-grid">
+          <textarea class="code" id="policyEditor" spellcheck="false"></textarea>
+          <aside class="editor-side"><h3>Policy validation</h3><p>This is passed directly to unmodified predicate.js. Its ordered states, stack, closures, budgets, CALL/RETURN, accept, and reject behavior are the runtime.</p><div id="policyIssues"></div></aside>
+        </div>
+        <div class="dialog-actions">
+          <button class="control primary" id="applyPolicyBtn">Validate &amp; use policy</button>
+          <button class="control" id="formatPolicyBtn">Format</button>
+          <button class="control" id="importPolicyBtn">Import</button>
+          <button class="control" id="exportPolicyBtn">Export</button>
+          <button class="control" id="defaultPolicyBtn">Load default text</button>
+          <button class="control" id="deletePolicyBtn">Delete saved policy</button>
+        </div>
+      </section>
+      <section class="dialog-panel" data-panel="oracle">
+        <div class="editor-grid">
+          <textarea class="code" id="oracleEditor" spellcheck="false"></textarea>
+          <aside class="editor-side"><h3>Oracle configuration</h3><p>ScratchChess enumerates legal plies. The oracle annotates cards and marks an opponent card <code>unexplorable</code> when its relevant reply set exceeds the configured limit.</p><div id="oracleIssues"></div></aside>
+        </div>
+        <div class="dialog-actions"><button class="control primary" id="applyOracleBtn">Validate &amp; use oracle settings</button><button class="control" id="formatOracleBtn">Format</button><button class="control" id="defaultOracleBtn">Load defaults</button></div>
+      </section>
+      <section class="dialog-panel" data-panel="output">
+        <textarea class="code output-box" id="outputEditor" readonly></textarea>
+        <div class="dialog-actions"><button class="control primary" id="copyOutputBtn">Copy triple</button><button class="control" id="downloadOutputBtn">Download triple</button></div>
+      </section>
+      <section class="dialog-panel" data-panel="grammar"><pre class="grammar" id="grammarPre"></pre></section>
+    </div>
+  </div>
+</dialog>
 
-  const createGame = (options = {}) => new Game(options);
-  const $ = (id) => document.getElementById(id);
-  const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-  const POSITIONS_URL = "/tactical_positions.md";
-  const DEFAULT_POLICY_SPECS = [
-    ["alpha", "/engine/alpha.json"],
-    ["forcer", "/engine/forcer.json"]
-  ];
+<dialog class="dialog" id="batchDialog">
+  <div class="dialog-shell">
+    <header class="dialog-head"><h2>Loaded puzzle run</h2><span class="mini-chip" id="batchSummary">not run</span><div class="spacer"></div><button class="control primary" id="runBatchBtn">Run every puzzle</button><button class="control icon" id="closeBatchBtn" aria-label="Close">×</button></header>
+    <div class="dialog-body"><div class="batch-layout"><div class="batch-list" id="batchList"></div><div class="batch-detail"><textarea class="code" id="batchOutput" readonly></textarea><div class="dialog-actions"><button class="control" id="loadBatchPuzzleBtn">Load on board</button><button class="control" id="copyBatchOutputBtn">Copy triple</button></div></div></div></div>
+  </div>
+</dialog>
 
-  const FALLBACK_MD = `# Tactical Positions
+<input id="policyFileInput" type="file" hidden accept=".json,application/json" />
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+<script src="./predicate.js" onerror="this.onerror=null;this.src='https://priyomes.com/predicate.js'"></script>
+<script id="defaultPolicyData" type="application/json">{
+  "schema": "predicate-policy/v2",
+  "name": "default",
+  "entry": "START",
+  "outcomes": {
+    "accept_state": "SOLVED",
+    "reject_state": "REJECT",
+    "winning_predicates": [
+      "mate",
+      "objective_won"
+    ],
+    "failure_predicates": [
+      "mated",
+      "objective_lost",
+      "unexplorable",
+      "oracle_limit"
+    ]
+  },
+  "budgets": {
+    "thoughts": 80,
+    "depth": 6,
+    "call_depth": 0
+  },
+  "routines": [
+    {
+      "id": "main",
+      "label": "Default forcing search",
+      "entry": "START"
+    }
+  ],
+  "states": [
+    {
+      "id": "START",
+      "routine": "main",
+      "kind": "push_initial",
+      "description": "Push the selected ScratchChess root position.",
+      "on": {
+        "pushed": "NEXT_LINE",
+        "invalid": "REJECT"
+      }
+    },
+    {
+      "id": "NEXT_LINE",
+      "routine": "main",
+      "kind": "pop",
+      "description": "Pop the highest-priority retained position from the LIFO stack.",
+      "on": {
+        "thought": "INSPECT",
+        "empty": "REJECT"
+      }
+    },
+    {
+      "id": "INSPECT",
+      "routine": "main",
+      "kind": "inspect",
+      "terminal_checks": true,
+      "description": "Read this oracle card, check terminal predicates, and route by side to move.",
+      "rules": [
+        {
+          "label": "our ply",
+          "when": {
+            "side": "my"
+          },
+          "to": "SEARCH_OUR_PLIES"
+        },
+        {
+          "label": "opponent ply",
+          "when": {
+            "side": "their"
+          },
+          "to": "SEARCH_OPPONENT_PLIES"
+        }
+      ],
+      "on": {
+        "depth": "NEXT_LINE",
+        "missing": "REJECT"
+      },
+      "default": "NEXT_LINE"
+    },
+    {
+      "id": "SEARCH_OUR_PLIES",
+      "routine": "main",
+      "kind": "search",
+      "side": "my",
+      "description": "Retain at most two legal plies by exact predicate priority.",
+      "predicates": [
+        "mate",
+        "mate_in_1",
+        "check",
+        "capture",
+        "attack"
+      ],
+      "closure": {
+        "mode": "first",
+        "count": 2
+      },
+      "on": {
+        "pushed": "NEXT_LINE",
+        "none": "NEXT_LINE"
+      }
+    },
+    {
+      "id": "SEARCH_OPPONENT_PLIES",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "description": "Retain at most two relevant opponent plies, checking mate, mate in 1, check, capture back, capture, and attack first.",
+      "predicates": [
+        "mated",
+        "mate_in_1",
+        "check",
+        "capture_back",
+        "capture",
+        "attack",
+        "forced_reply",
+        "save_piece",
+        "reply_relevant"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "on": {
+        "pushed": "NEXT_LINE",
+        "none": "NEXT_LINE"
+      }
+    },
+    {
+      "id": "SOLVED",
+      "routine": "main",
+      "kind": "accept",
+      "description": "predicate.js entered the configured accept state."
+    },
+    {
+      "id": "REJECT",
+      "routine": "main",
+      "kind": "reject",
+      "description": "predicate.js rejected, exhausted, closed, or encountered an unexplorable oracle card."
+    }
+  ]
+}
+</script>
+<script id="fallbackPositions" type="text/plain"># Tactical Positions
 
 ## Greek Gift Seed
 fen: r1bq1rk1/ppp2ppp/2n5/3np3/2B1P1b1/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 1
@@ -379,56 +395,126 @@ where: https://lichess.org/training/VRGbv
 
 ## Harass loose piece defender to royal fork
 fen: r2q1rk1/ppp2pbp/2np2p1/5b2/2P1N3/1P2P1P1/PBQP1PBP/R3K2R b KQ - 0 12
-where: https://lichess.org/training/hLWP1`;
+where: https://lichess.org/training/hLWP1
+</script>
+<script type="module">
+(() => {
+  "use strict";
 
-  const state = {
-    game: null,
-    view: null,
-    current: null,
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const clone = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[ch]);
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const DEFAULT_POLICY = JSON.parse($("#defaultPolicyData").textContent);
+  const FALLBACK_MD = $("#fallbackPositions").textContent.trim();
+  const DEFAULT_ORACLE = Object.freeze({ reply_limit: 2, objective_gain: 3, max_positions: 900, mate_probe: true, mate_probe_limit: 48, attack_min_value: 1 });
+  const STORAGE_POLICIES = "priyomes-predicate-tactics-policies-v1";
+  const STORAGE_ORACLE = "priyomes-predicate-tactics-oracle-v1";
+  const HIDDEN_KINDS = new Set(["push_initial", "pop"]);
+  const P = window.PredicatePolicy;
+
+  if (!P) {
+    document.body.innerHTML = '<div class="fatal"><strong>predicate.js could not be loaded.</strong><br>Place the unchanged predicate.js beside tactics.html or make https://priyomes.com/predicate.js available.</div>';
+    return;
+  }
+
+  const app = {
+    scratch: null,
+    Oracle: null,
+    oracleVersion: "—",
     puzzles: [],
+    librarySource: "fallback",
     puzzleIndex: 0,
-    archive: [],
-    logs: [],
-    findings: [],
-    policySpecs: DEFAULT_POLICY_SPECS.map((entry) => [...entry]),
-    policyCache: new Map(),
-    policyId: "alpha",
-    policy: null,
-    policyLoad: null,
-    reasoner: null,
-    proofStatus: "idle",
-    proofRunning: false,
-    engineActing: false,
-    traceOutput: "",
-    consumedEvents: [],
-    threats: new WeakMap(),
-    explorationReasons: new WeakMap(),
-    boardFlipped: false,
-    tests: null,
-    testResults: new Map(),
-    selectedTest: -1,
-    testRunning: false,
-    pgnMode: "comments"
+    defaultPolicy: clone(DEFAULT_POLICY),
+    savedPolicies: loadJsonStorage(STORAGE_POLICIES, {}),
+    policyId: "default",
+    policy: clone(DEFAULT_POLICY),
+    oracleConfig: { ...DEFAULT_ORACLE, ...loadJsonStorage(STORAGE_ORACLE, {}) },
+    oracle: null,
+    runner: null,
+    displayGame: null,
+    boardView: null,
+    selectedCardId: "root",
+    selectedOccurrence: null,
+    followCurrent: true,
+    lastEvent: null,
+    running: false,
+    locked: false,
+    initialized: false,
+    batchRunning: false,
+    batchResults: [],
+    batchSelected: -1
   };
 
-  function esc(value) {
-    return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[char]);
+  function loadJsonStorage(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+    catch { return fallback; }
   }
-  function stamp() { return new Date().toLocaleTimeString([], { minute:"2-digit", second:"2-digit" }); }
-  function fenSide(fen) { return String(fen || "").trim().split(/\s+/)[1] === "b" ? "b" : "w"; }
-  function opposite(side) { return side === "w" ? "b" : "w"; }
-  function normalizeOutput(value) { return String(value ?? "").replace(/\r\n?/g, "\n").replace(/\n+$/, ""); }
-  function setBusy(value) {
-    const busy = Boolean(value);
-    for (const id of ["stepProof","runProof","restartProof","reloadPolicy","previewPolicy","runPolicyPanel"]) $(id).disabled = busy || !state.game || !state.policy;
-    $("runProof").textContent = state.proofRunning ? "running…" : "run policy";
+
+  function saveJsonStorage(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); }
+    catch { /* storage is optional */ }
   }
-  function addLog(text, noRender = false) {
-    state.logs.push({ time:stamp(), text:String(text), title:state.current?.title || "", ply:state.game?.curNode?.ply || 0 });
-    if (state.current) state.current.gameLog.push(state.logs.at(-1));
-    if (!noRender) renderAll();
+
+  function uniqueUrls(paths) {
+    const output = [];
+    for (const path of paths) {
+      try {
+        const value = new URL(path, document.baseURI).href;
+        if (!output.includes(value)) output.push(value);
+      } catch { /* ignore malformed candidate */ }
+    }
+    return output;
   }
-  function divider(text) { state.logs.push({ divider:true, text:String(text) }); }
+
+  async function importFirst(paths, predicate, label) {
+    const errors = [];
+    for (const url of uniqueUrls(paths)) {
+      try {
+        const module = await import(url);
+        if (!predicate || predicate(module)) return { module, url };
+        errors.push(`${url}: module shape did not match`);
+      } catch (error) { errors.push(`${url}: ${error?.message || error}`); }
+    }
+    throw new Error(`${label} could not be loaded. ${errors.join(" | ")}`);
+  }
+
+  async function loadRuntimeModules() {
+    const scratchResult = await importFirst([
+      "./scratchchess.js", "/scratchchess.js", "/research/scratchchess.js", "https://priyomes.com/scratchchess.js"
+    ], (mod) => typeof mod.createGame === "function" || typeof mod.Game === "function", "ScratchChess");
+    const mod = scratchResult.module;
+    const createGame = typeof mod.Game === "function" ? (options = {}) => new mod.Game(options) : mod.createGame;
+    app.scratch = { ...mod, createGame, source: scratchResult.url };
+
+    const oracleResult = await importFirst([
+      "./scratchchess_oracle.js", "/scratchchess_oracle.js", "/research/scratchchess_oracle.js", "/research/tactics/scratchchess_oracle.js"
+    ], (candidate) => typeof candidate.ScratchChessOracle === "function" || typeof candidate.createScratchChessOracle === "function", "scratchchess_oracle.js");
+    app.Oracle = oracleResult.module.ScratchChessOracle;
+    app.oracleVersion = oracleResult.module.SCRATCHCHESS_ORACLE_VERSION || "unknown";
+    app.oracleSource = oracleResult.url;
+  }
+
+  async function fetchText(paths) {
+    for (const url of uniqueUrls(paths)) {
+      try {
+        const response = await fetch(url, { cache: "no-store" });
+        if (response.ok) return { text: await response.text(), url };
+      } catch { /* try next */ }
+    }
+    return null;
+  }
+
+  async function loadDefaultPolicy() {
+    const result = await fetchText(["./default-policy.json", "/default-policy.json", "/research/default-policy.json", "/research/tactics/default-policy.json"]);
+    if (!result) return;
+    try {
+      const parsed = JSON.parse(result.text);
+      const errors = P.validatePolicy(parsed).filter((issue) => issue.level === "error");
+      if (!errors.length) app.defaultPolicy = parsed;
+    } catch { /* embedded default remains authoritative fallback */ }
+  }
 
   function parsePositions(markdown) {
     const output = [];
@@ -438,601 +524,662 @@ where: https://lichess.org/training/hLWP1`;
       const heading = line.match(/^##\s+(.+)$/);
       if (heading) {
         if (current?.fen) output.push(current);
-        current = { title:heading[1].trim(), fen:"", theme:"", solution:"", where:"", notes:[] };
+        current = { title: heading[1].trim(), fen: "", theme: "", solution: "", where: "", notes: [] };
         continue;
       }
       if (!current || !line) continue;
       const field = line.match(/^([a-zA-Z_]+):\s*(.*)$/);
-      if (field) {
-        const key = field[1].toLowerCase();
-        current[key] = field[2].trim();
-      } else current.notes.push(line);
+      if (field) current[field[1].toLowerCase()] = field[2].trim();
+      else current.notes.push(line);
     }
     if (current?.fen) output.push(current);
     return output;
   }
 
-  async function loadLibrary() {
-    let markdown = FALLBACK_MD;
-    let source = "fallback";
-    try {
-      const response = await fetch(POSITIONS_URL, { cache:"no-store" });
-      if (response.ok) { markdown = await response.text(); source = "live"; }
-    } catch {}
-    state.puzzles = parsePositions(markdown);
-    if (!state.puzzles.length) state.puzzles = parsePositions(FALLBACK_MD);
-    $("puzzleSelect").innerHTML = state.puzzles.map((puzzle, index) => `<option value="${index}">${esc(puzzle.title)}${puzzle.theme ? ` · ${esc(puzzle.theme)}` : ""}</option>`).join("");
-    $("libStatus").textContent = `${source} tactical_positions.md · ${state.puzzles.length} puzzles · ${state.tests?.cases?.length || 0} policy tests`;
-    startPosition(state.puzzles[0], { archive:false, reason:"initial load" });
+  async function loadPuzzles() {
+    const live = await fetchText(["/tactical_positions.md", "./tactical_positions.md", "/research/tactical_positions.md"]);
+    let parsed = live ? parsePositions(live.text) : [];
+    if (!parsed.length) parsed = parsePositions(FALLBACK_MD);
+    app.puzzles = parsed;
+    app.librarySource = live && parsed.length ? live.url : "embedded fallback";
+    renderPuzzleSelect();
   }
 
-  function policySpec(id) { return state.policySpecs.find(([policyId]) => policyId === id) || state.policySpecs[0] || ["alpha", DEFAULT_POLICY_URL]; }
-  function renderPolicySelectors() {
-    const options = state.policySpecs.map(([id]) => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
-    $("policySelect").innerHTML = options;
-    $("policySelect").value = state.policyId;
-    $("testPolicyFilter").innerHTML = `<option value="all">all policies</option>${options}`;
+  function currentPuzzle() { return app.puzzles[app.puzzleIndex] || null; }
+  function currentSnapshot() { return app.runner?.snapshot?.() || null; }
+  function policyLabel() { return app.policy?.name || (app.policyId === "default" ? "default" : app.policyId.replace(/^saved:/, "")); }
+
+  function policyOptions() {
+    const options = [{ id: "default", label: app.defaultPolicy.name || "default", policy: app.defaultPolicy }];
+    Object.entries(app.savedPolicies || {}).sort(([a], [b]) => a.localeCompare(b)).forEach(([name, policy]) => options.push({ id: `saved:${name}`, label: name, policy }));
+    return options;
   }
 
-  async function getPolicy(id, { force = false } = {}) {
-    if (!force && state.policyCache.has(id)) return state.policyCache.get(id);
-    const [policyId, url] = policySpec(id);
-    const parsed = new URL(url, location.href);
-    const target = /(^|\.)priyomes\.com$/i.test(parsed.hostname)
-      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
-      : parsed.href;
-    const loaded = await loadPolicy(target, { allowFallback:false });
-    const value = { ...loaded, id:policyId };
-    state.policyCache.set(policyId, value);
-    return value;
+  function renderPuzzleSelect() {
+    $("#puzzleSelect").innerHTML = app.puzzles.map((puzzle, index) => `<option value="${index}">${index + 1}. ${esc(puzzle.title)}${puzzle.theme ? ` · ${esc(puzzle.theme)}` : ""}</option>`).join("");
+    $("#puzzleSelect").value = String(app.puzzleIndex);
   }
 
-  async function selectPolicy(id, { announce = true, force = false } = {}) {
-    setBusy(true);
-    try {
-      const loaded = await getPolicy(id, { force });
-      state.policyId = id;
-      state.policy = loaded.policy;
-      state.policyLoad = loaded;
-      $("policySelect").value = id;
-      resetReasoner({ clearTrace:true, log:false });
-      if (announce) addLog(`selected policy \`${id}\` from ${loaded.url}`, true);
-    } catch (error) {
-      state.policy = null;
-      state.policyLoad = { source:"error", warning:error?.message || String(error) };
-      state.proofStatus = "inconclusive";
-      addLog(`policy load failed: ${error?.message || error}`, true);
-    } finally {
-      setBusy(false);
-      renderAll();
-    }
+  function renderPolicySelect() {
+    const options = policyOptions();
+    if (!options.some((item) => item.id === app.policyId)) app.policyId = "default";
+    $("#policySelect").innerHTML = options.map((item) => `<option value="${esc(item.id)}">${esc(item.label)}</option>`).join("");
+    $("#policySelect").value = app.policyId;
   }
 
-  function archiveCurrent(reason = "") {
-    if (!state.game || !state.current) return;
-    state.archive.push({ title:state.current.title, pgn:exportCurrentPGN(true), proofStatus:state.current.proofStatus, solved:state.current.solved });
-    divider(`archived ${state.current.title}${reason ? ` · ${reason}` : ""}`);
+  function policyById(id) {
+    if (id === "default") return clone(app.defaultPolicy);
+    if (id.startsWith("saved:")) return clone(app.savedPolicies[id.slice(6)]);
+    return clone(app.defaultPolicy);
   }
 
-  function startPosition(puzzle, { archive = true, reason = "" } = {}) {
-    if (archive) archiveCurrent(reason);
-    const record = {
-      title:puzzle?.title || "Custom FEN",
-      fen:puzzle?.fen || START_FEN,
-      theme:puzzle?.theme || "",
-      solution:puzzle?.solution || "",
-      where:puzzle?.where || "",
-      notes:puzzle?.notes || [],
-      solved:false,
-      proofStatus:"idle",
-      proofExhausted:false,
-      gameLog:[]
-    };
-    const game = createGame({ Event:record.title, Site:"Predicate Chess Policy Worksheet", Result:"*" });
-    try { game.loadFEN(record.fen); } catch (error) { alert(`Could not load FEN: ${error?.message || error}`); return; }
-    game.tags.Event = record.title;
-    state.current = record;
-    state.game = game;
-    state.findings = [];
-    state.consumedEvents = [];
-    state.traceOutput = "";
-    state.proofStatus = "idle";
-    state.threats = new WeakMap();
-    state.explorationReasons = new WeakMap();
-    state.boardFlipped = fenSide(record.fen) === "b";
-    try { game.toggleFlip(state.boardFlipped); } catch {}
-    if (!state.view) state.view = new BoardView($("board"), game, { minSizePx:180 });
-    else state.view.setGame(game);
+  function createOracleForPuzzle(puzzle) {
+    const oracle = new app.Oracle({ createGame: app.scratch.createGame, ...clone(app.oracleConfig) });
+    oracle.reset({ fen: puzzle.fen, title: puzzle.title, theme: puzzle.theme || "", solution: puzzle.solution || "", where: puzzle.where || "", policyDepth: Number(app.policy?.budgets?.depth || 0) });
+    return oracle;
+  }
 
-    game.onChange(() => {
-      if (!state.engineActing) {
-        const node = game.curNode;
-        if (node && node !== game.root && !state.explorationReasons.has(node)) {
-          state.explorationReasons.set(node, "manual exploration");
-          addLog(`played \`${node.san || node.uci}\``, true);
-        }
-        resetReasoner({ clearTrace:true, log:false });
-      }
-      renderAll();
-    });
-
-    $("solved").checked = false;
-    resetReasoner({ clearTrace:true, log:false });
-    divider(`position: ${record.title}`);
-    addLog(`loaded FEN \`${record.fen}\``, true);
+  async function startPuzzle(index = app.puzzleIndex, { announce = false } = {}) {
+    stopRunning();
+    app.puzzleIndex = Math.max(0, Math.min(app.puzzles.length - 1, Number(index || 0)));
+    const puzzle = currentPuzzle();
+    if (!puzzle) return;
+    app.oracle = createOracleForPuzzle(puzzle);
+    const project = app.oracle.createProject(app.policy, `${puzzle.title} · ${policyLabel()}`);
+    const errors = P.validateProject(project).filter((issue) => issue.level === "error");
+    if (errors.length) throw new Error(errors.map((issue) => `${issue.title}: ${issue.detail}`).join("\n"));
+    app.runner = P.createRunner(project);
+    app.lastEvent = null;
+    app.selectedCardId = "root";
+    app.selectedOccurrence = null;
+    app.followCurrent = true;
     renderAll();
-  }
-
-  function resetReasoner({ clearTrace = true, log = true } = {}) {
-    if (!state.game || !state.policy) return;
-    state.reasoner = createReasoner({ createGame, policy:state.policy, maxSteps:5000 });
-    state.reasoner.reset(state.game);
-    state.proofStatus = "searching";
-    if (clearTrace) {
-      state.traceOutput = state.reasoner.state.output || "";
-      state.consumedEvents = [];
-      if (state.current) { state.current.proofStatus = "searching"; state.current.proofExhausted = false; }
-    }
-    if (log) addLog(`restarted \`${state.policyId}\` at current board`, true);
-  }
-
-  function ensureReasoner() { if (!state.reasoner && state.game && state.policy) resetReasoner({ log:false }); return state.reasoner; }
-  function attachComment(node, text) {
-    const target = node || state.game?.curNode || state.game?.root;
-    const value = String(text || "").trim();
-    if (!target || !value) return;
-    if (!target.comments) target.comments = [];
-    if (!target.comments.includes(value)) target.comments.push(value);
-  }
-  function rememberThreat(event) {
-    if (!event?.policyThreat) return;
-    const node = event.node || state.game?.curNode;
-    if (!node) return;
-    const side = event.move?.side || opposite(state.game.state.side);
-    const current = state.threats.get(node) || { w:[], b:[] };
-    if (!current[side].includes(event.policyThreat)) current[side].push(event.policyThreat);
-    state.threats.set(node, current);
-  }
-  function consumeEvent(event) {
-    state.consumedEvents.push(event);
-    if (event.observations) state.findings = event.observations;
-    if (event.move) {
-      const node = event.node || state.game.curNode;
-      state.explorationReasons.set(node, event.move.ruleName || event.move.ruleCite || event.role || "policy move");
-      attachComment(node, event.comment || event.log);
-    } else if (event.comment) attachComment(state.game.curNode, event.comment);
-    rememberThreat(event);
-    if (event.type === "done") {
-      state.proofStatus = event.status || state.reasoner?.state?.status || "inconclusive";
-      if (state.current) {
-        state.current.proofStatus = state.proofStatus;
-        state.current.proofExhausted = state.proofStatus !== "proven";
-      }
-    } else state.proofStatus = "searching";
-    addLog(event.log || event.type, true);
-  }
-
-  function stepPolicy() {
-    if (!state.game || !state.policy) return;
-    const reasoner = ensureReasoner();
-    state.engineActing = true;
-    try { consumeEvent(reasoner.step(state.game)); }
-    catch (error) { consumeEvent({ type:"done", status:"inconclusive", log:`ERROR ${error?.message || error}` }); }
-    finally { state.engineActing = false; renderAll(); }
-  }
-
-  async function runPolicy() {
-    if (!state.game || !state.policy || state.proofRunning) return;
-    const reasoner = ensureReasoner();
-    state.proofRunning = true;
-    setBusy(true);
-    state.engineActing = true;
-    try {
-      let guard = 0;
-      while (guard++ < 5000) {
-        const event = reasoner.step(state.game);
-        consumeEvent(event);
-        if (event.type === "done") break;
-        if (guard % 18 === 0) { renderAll(); await new Promise((resolve) => requestAnimationFrame(resolve)); }
-      }
-    } catch (error) {
-      consumeEvent({ type:"done", status:"inconclusive", log:`ERROR ${error?.message || error}` });
-    } finally {
-      state.engineActing = false;
-      state.proofRunning = false;
-      setBusy(false);
-      renderAll();
-    }
-  }
-
-  function notice() {
-    if (!state.game) return;
-    try {
-      const snapshot = inspectPosition({ createGame, game:state.game });
-      state.findings = humanVisibleObservations(snapshot.predicates);
-      const summary = state.findings.map((item) => item.text).join("; ");
-      if (summary) attachComment(state.game.curNode, `SAW ${summary}`);
-      addLog(summary ? `noticed ${state.findings.length}: \`${summary}\`` : "notice found no visible predicates", true);
-    } catch (error) { addLog(`notice failed: ${error?.message || error}`, true); }
+    showCard("root", { force: true });
+    await advanceHidden({ animate: false });
     renderAll();
+    if (announce) toast(`Loaded ${puzzle.title}.`, "good");
   }
 
-  function applyNode(node) {
-    if (!node || !state.game) return;
-    state.engineActing = true;
-    try {
-      const fen = node.fenAfter || state.game.root?.fenAfter || state.current.fen;
-      state.game._applyFENToState(fen);
-      state.game.curNode = node;
-      if (state.game.sel) {
-        state.game.sel.fromSq = null;
-        state.game.sel.legalTo = [];
-      }
-      state.game._emit?.();
-    } finally { state.engineActing = false; }
-    resetReasoner({ clearTrace:true, log:false });
-    renderAll();
-  }
-  function nodeAtPath(path) { let node = state.game?.root; for (const index of path) node = node?.children?.[index]; return node || null; }
-  function pathForNode(target) {
-    const path = [];
-    let node = target;
-    while (node?.parent) { path.unshift(node.parent.children.indexOf(node)); node = node.parent; }
-    return path;
-  }
-  function rootPosition() { applyNode(state.game?.root); }
-  function prevPly() { if (state.game?.curNode?.parent) applyNode(state.game.curNode.parent); }
-  function nextPly() {
-    const node = state.game?.curNode;
-    if (!node?.children?.length) return;
-    const index = Number.isInteger(node.mainChildIndex) ? node.mainChildIndex : 0;
-    applyNode(node.children[index] || node.children[0]);
+  function latestMeaningfulEvent(events) {
+    const priority = ["terminal", "failure-predicate", "winning-predicate", "budget-exhausted", "predicate-checked", "search-complete", "routine-called", "routine-returned", "inspect-routed", "line-selected", "frontier-empty", "depth-closed"];
+    for (const type of priority) {
+      const event = [...(events || [])].reverse().find((item) => item.type === type);
+      if (event) return event;
+    }
+    return events?.at(-1) || null;
   }
 
-
-  function mutateGameUi(callback) {
-    if (!state.game) return;
-    state.engineActing = true;
-    try { callback(state.game); }
-    finally { state.engineActing = false; renderAll(); }
+  function engineStep() {
+    if (!app.runner || app.runner.snapshot().result) return { events: [], snapshot: app.runner?.snapshot?.() };
+    app.oracle.hydrateRunner(app.runner);
+    const result = app.runner.step();
+    const meaningful = latestMeaningfulEvent(result.events);
+    if (meaningful) app.lastEvent = meaningful;
+    const snapshot = result.snapshot;
+    if (app.followCurrent && snapshot.current?.id) {
+      app.selectedCardId = snapshot.current.id;
+      app.selectedOccurrence = snapshot.current.occurrence;
+      showCard(snapshot.current.id);
+    }
+    return result;
   }
 
-  function setTab(name) {
-    document.querySelectorAll(".tab[data-tab]").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === name));
-    document.querySelectorAll(".tabPanel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${name}`));
-    if (name === "pgn") refreshPGN();
-    if (name === "tests") renderTests();
-  }
-
-  function renderTop() {
-    const node = state.game?.curNode;
-    $("title").textContent = state.current?.title || "Untitled";
-    $("theme").textContent = `theme: ${state.current?.theme || "—"}${state.current?.solution ? " · solution in library" : ""}`;
-    $("fenText").textContent = state.game?.exportFEN?.() || state.current?.fen || START_FEN;
-    $("plyTop").textContent = node === state.game?.root ? "root" : String(node?.ply || 0);
-    $("gameCount").textContent = String(state.archive.length + (state.current ? 1 : 0));
-    $("policyTop").textContent = state.policyId || "none";
-    $("policyPill").className = `pill ${state.policy ? "ok" : "bad"}`;
-    $("proofTop").textContent = state.proofStatus;
-    $("proofPill").className = `pill ${state.proofStatus === "proven" ? "ok" : state.current?.proofExhausted ? "bad" : state.proofStatus === "inconclusive" ? "warn" : ""}`;
-    $("lineProofBadge").className = `proofBadge ${state.proofStatus}`;
-    $("lineProofBadge").textContent = state.proofStatus;
-    if (document.activeElement !== $("fenInput")) $("fenInput").value = state.current?.fen || "";
-    if (document.activeElement !== $("configTitle")) $("configTitle").value = state.current?.title || "";
-    if (document.activeElement !== $("configTheme")) $("configTheme").value = state.current?.theme || "";
-    $("configSolution").textContent = state.current?.solution ? `Library solution: ${state.current.solution}` : "No library solution supplied.";
-    const where = $("configWhere");
-    if (state.current?.where) { where.hidden = false; where.href = state.current.where; where.textContent = state.current.where; }
-    else { where.hidden = true; where.removeAttribute("href"); where.textContent = ""; }
-  }
-
-  function renderThreatRail(element, side, values) {
-    const text = (values || []).join(" · ");
-    element.innerHTML = text ? `<span class="threatLabel">Threat:</span><span class="threatSummary">${esc(text)}</span>` : "";
-  }
-  function renderThreats() {
-    const node = state.game?.curNode;
-    const threats = state.threats.get(node) || { w:[], b:[] };
-    const topSide = state.boardFlipped ? "w" : "b";
-    renderThreatRail($("threatTop"), topSide, threats[topSide]);
-    renderThreatRail($("threatBottom"), opposite(topSide), threats[opposite(topSide)]);
-  }
-
-  function nodeComments(node) { return (node?.comments || []).map(String).filter(Boolean); }
-  function renderReasoning() {
-    const node = state.game?.curNode || state.game?.root;
-    $("reasonContext").textContent = node === state.game?.root ? "root position" : `${node?.san || node?.uci || "move"} · ply ${node?.ply || 0}`;
-    const comments = nodeComments(node);
-    $("reasoningPanel").innerHTML = comments.length ? comments.map((text) => `<div class="reasonItem">${esc(text)}</div>`).join("") : '<div class="note">No comments on the selected node.</div>';
-  }
-
-  function movePrefixForNode(node) {
-    const rootSide = state.game?.initialSnap?.side || fenSide(state.current?.fen || START_FEN);
-    const rootFullmove = state.game?.initialSnap?.fullmove || Number(String(state.current?.fen || START_FEN).split(/\s+/)[5] || 1);
-    const ply = node?.ply || 1;
-    const side = ply % 2 === 1 ? rootSide : opposite(rootSide);
-    const moveNumber = rootFullmove + Math.floor((ply - (rootSide === "b" ? 0 : 1)) / 2);
-    return side === "w" ? `${moveNumber}.` : `${moveNumber}...`;
-  }
-  function renderMoveButton(node, kind = "main") {
-    const path = pathForNode(node).join(",");
-    const reason = state.explorationReasons.get(node) || "";
-    return `<span class="moveNo">${movePrefixForNode(node)}</span><button class="moveChip ${kind}${node === state.game.curNode ? " current" : ""}" data-node-path="${path}" title="${esc(reason)}"><span>${esc(node.san || node.uci || "?")}</span>${reason ? `<span class="moveReason">${esc(reason)}</span>` : ""}</button><button class="anchorChip" data-node-path="${path}">↳</button>`;
-  }
-  function renderBranch(node, kind = "main", depth = 0) {
-    const preferred = node.children?.length ? (Number.isInteger(node.mainChildIndex) ? node.mainChildIndex : 0) : -1;
-    const title = depth === 0 ? "Main line" : `Subline · depth ${depth}`;
-    let html = `<section class="lineGroup"><div class="lineHead"><span>${title}</span><span>${esc(state.explorationReasons.get(node) || "policy/manual")}</span></div><div class="lineMoves">`;
-    let current = node;
+  async function advanceHidden({ animate = false } = {}) {
     let guard = 0;
-    const sidelines = [];
-    while (current && guard++ < 160) {
-      html += renderMoveButton(current, kind);
-      const mainIndex = current.children?.length ? (Number.isInteger(current.mainChildIndex) ? current.mainChildIndex : 0) : -1;
-      if (mainIndex < 0) break;
-      current.children.forEach((child, index) => { if (index !== mainIndex) sidelines.push(child); });
-      current = current.children[mainIndex];
+    while (app.runner && !app.runner.snapshot().result && HIDDEN_KINDS.has(app.runner.snapshot().stateKind) && guard < 100) {
+      engineStep();
+      renderAll();
+      if (animate) await sleep(90);
+      guard += 1;
     }
-    html += `</div>`;
-    if (sidelines.length && depth < 16) html += `<div class="nested">${sidelines.map((child) => renderBranch(child, "var", depth + 1)).join("")}</div>`;
-    return `${html}</section>`;
-  }
-  function renderLine() {
-    const root = state.game?.root;
-    if (!root?.children?.length) { $("line").innerHTML = '<div class="empty">No explored line yet. Press step policy, run policy, or make a move.</div>'; return; }
-    const preferred = Number.isInteger(root.mainChildIndex) ? root.mainChildIndex : 0;
-    const main = root.children[preferred] || root.children[0];
-    const alternatives = root.children.filter((_, index) => index !== preferred);
-    $("line").innerHTML = renderBranch(main, "main", 0) + alternatives.map((child) => renderBranch(child, "var", 1)).join("");
   }
 
-  function renderPredicateCatalog() {
-    if ($("predicateCatalog").childElementCount) return;
-    $("predicateCatalog").innerHTML = predicateCatalog().filter((item) => item.humanVisible).map((item) => `<div class="predCard"><div class="predKind">${esc(item.signature)}</div><div class="predDesc">${esc(item.description)}${item.manual ? " Manual." : ""}</div></div>`).join("");
-  }
-  function renderFindings() {
-    $("findings").innerHTML = state.findings.length ? state.findings.map((finding) => `<div class="foundItem"><span class="dot ${esc(finding.predicate || finding.kind)}"></span><div><span class="predCall">${esc(finding.text)}</span><div class="note">${esc([finding.side,finding.detail].filter(Boolean).join(" · "))}</div></div><button class="tiny" data-attach-finding="${esc(finding.text)}">attach</button></div>`).join("") : '<div class="empty">No predicate scan yet. Press notice or consume an OBSERVE event.</div>';
-  }
-  function renderLog() {
-    $("log").innerHTML = state.logs.map((row) => row.divider ? `<div class="logItem logDivider">${esc(row.text)}</div>` : `<div class="logItem"><div class="time">${esc(row.time)}</div><div class="logText">${esc(row.text).replace(/`([^`]+)`/g,"<code>$1</code>")}</div></div>`).join("");
-  }
-  function renderPolicy() {
-    $("policyBanner").className = `policyBanner ${state.policy ? "ok" : "warn"}`;
-    $("policyName").textContent = state.policy?.name || "No valid policy";
-    $("policyMeta").textContent = state.policy ? `${state.policy.version} · filter-only · ${state.policy.profile.max_plies} plies · ${state.policyLoad?.url || ""}` : state.policyLoad?.warning || "Policy unavailable.";
-    $("policyProofBadge").className = `proofBadge ${state.proofStatus}`;
-    $("policyProofBadge").textContent = state.proofStatus;
-    $("algoText").textContent = state.policy ? describeAlgorithm(state.policy) : "A valid policy is required.";
-    $("traceText").textContent = state.traceOutput || "No trace yet.";
-    $("policyJson").textContent = state.policy ? JSON.stringify(state.policy, null, 2) : "—";
-    $("stepList").innerHTML = state.consumedEvents.length ? state.consumedEvents.map((event, index) => `<div class="stepItem${index === state.consumedEvents.length - 1 ? " latest" : ""}">${index + 1}. ${esc(event.log || event.type)}</div>`).join("") : '<div class="empty">No policy events consumed yet.</div>';
-  }
-
-  function stripPgnComments(pgn) {
-    return String(pgn || "").replace(/\{[^{}]*\}/g, " ").replace(/;[^\n]*/g, " ").replace(/[ \t]{2,}/g, " ").replace(/\s+\n/g, "\n").trim();
-  }
-  function exportCurrentPGN(includeComments = true) {
-    if (!state.game || !state.current) return "";
-    const oldResult = state.game.tags.Result;
-    state.game.tags.Result = state.current.solved || state.current.proofStatus === "proven" ? (fenSide(state.current.fen) === "w" ? "1-0" : "0-1") : "*";
-    let pgn = state.game.exportPGN();
-    state.game.tags.Result = oldResult;
-    if (!includeComments) pgn = stripPgnComments(pgn);
-    return pgn;
-  }
-  function sessionPGN(includeComments = true) {
-    const previous = state.archive.map((item) => includeComments ? item.pgn : stripPgnComments(item.pgn));
-    const current = exportCurrentPGN(includeComments);
-    if (current) previous.push(current);
-    return previous.join("\n\n\n");
-  }
-  function refreshPGN() {
-    const include = ($("pgnMode").value || state.pgnMode) !== "clean";
-    state.pgnMode = include ? "comments" : "clean";
-    $("pgnText").value = sessionPGN(include);
-    $("sessionList").innerHTML = [...state.archive.map((item, index) => `<span class="gameBadge">${index + 1}. ${esc(item.title)}</span>`), state.current ? `<span class="gameBadge">${state.archive.length + 1}. ${esc(state.current.title)} · active</span>` : ""].join("");
-  }
-
-  async function loadTests({ force = false } = {}) {
+  async function oneVisibleStep() {
+    if (app.locked || app.running || !app.runner || app.runner.snapshot().result) return;
+    app.locked = true;
     try {
-      const response = await fetch(DEFAULT_TESTS_URL, { cache:force ? "reload" : "no-store" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      state.tests = await response.json();
-      state.policySpecs = (state.tests.policies || DEFAULT_POLICY_SPECS).map((entry) => [...entry]);
-      state.testResults.clear();
-      state.selectedTest = state.tests.cases?.length ? 0 : -1;
-      renderPolicySelectors();
-      $("libStatus").textContent = `${state.puzzles.length} puzzles · ${state.tests.cases?.length || 0} policy tests`;
-    } catch (error) {
-      state.tests = { version:"error", policies:DEFAULT_POLICY_SPECS, cases:[] };
-      state.policySpecs = DEFAULT_POLICY_SPECS.map((entry) => [...entry]);
-      renderPolicySelectors();
-      addLog(`test suite load failed: ${error?.message || error}`, true);
+      engineStep();
+      renderAll();
+      await advanceHidden({ animate: true });
+    } finally {
+      app.locked = false;
+      renderAll();
     }
-    renderTests();
   }
 
-  function visibleTestIndexes() {
-    const filter = $("testPolicyFilter").value || "all";
-    return (state.tests?.cases || []).map((_, index) => index).filter((index) => filter === "all" || state.tests.cases[index][2] === filter);
+  function stopRunning() {
+    app.running = false;
   }
-  function testStatus(index) { return state.testResults.get(index)?.status || "not-run"; }
-  function testCounts(indexes = visibleTestIndexes()) {
-    const counts = { total:indexes.length, pass:0, fail:0, error:0, "not-run":0, running:0 };
-    indexes.forEach((index) => { const status = testStatus(index); counts[status] = (counts[status] || 0) + 1; });
-    return counts;
-  }
-  function firstDiff(expected, actual) {
-    const left = normalizeOutput(expected).split("\n");
-    const right = normalizeOutput(actual).split("\n");
-    const length = Math.max(left.length, right.length);
-    let mismatch = -1;
-    for (let index = 0; index < length; index += 1) if ((left[index] ?? "") !== (right[index] ?? "")) { mismatch = index; break; }
-    if (mismatch < 0) return "Exact match after newline normalization.";
-    const start = Math.max(0, mismatch - 2);
-    const end = Math.min(length, mismatch + 4);
-    const rows = [`First difference at line ${mismatch + 1}.`];
-    for (let index = start; index < end; index += 1) {
-      rows.push(`E ${String(index + 1).padStart(3)} | ${left[index] ?? "<missing>"}`);
-      rows.push(`A ${String(index + 1).padStart(3)} | ${right[index] ?? "<missing>"}`);
+
+  async function runLoop() {
+    if (!app.runner) return;
+    if (app.running) { stopRunning(); renderAll(); return; }
+    if (app.runner.snapshot().result) await startPuzzle(app.puzzleIndex);
+    app.running = true;
+    renderAll();
+    let guard = 0;
+    while (app.running && app.runner && !app.runner.snapshot().result && guard < 10000) {
+      engineStep();
+      renderAll();
+      guard += 1;
+      await sleep(Number($("#speedSlider").value || 520));
     }
-    return rows.join("\n");
+    app.running = false;
+    renderAll();
   }
-  function renderTests() {
-    const cases = state.tests?.cases || [];
-    const indexes = visibleTestIndexes();
-    const counts = testCounts(indexes);
-    $("testSummary").innerHTML = `<span class="metric">visible <strong>${counts.total}</strong></span><span class="metric">pass <strong>${counts.pass}</strong></span><span class="metric">fail <strong>${counts.fail}</strong></span><span class="metric">error <strong>${counts.error}</strong></span><span class="metric">not run <strong>${counts["not-run"]}</strong></span>`;
-    $("testRows").innerHTML = indexes.map((index) => {
-      const [name,,policy] = cases[index];
-      const status = testStatus(index);
-      return `<tr data-test-index="${index}" class="${index === state.selectedTest ? "selected" : ""}"><td>${index + 1}</td><td>${esc(name)}</td><td class="mono">${esc(policy)}</td><td><span class="testStatus ${status}">${status}</span></td><td><button class="tiny" data-run-test="${index}">run</button></td></tr>`;
-    }).join("");
-    renderTestDetail();
+
+  function stateDef(id) { return app.policy?.states?.find((state) => state.id === id); }
+  function routineDef(id) { return app.policy?.routines?.find((routine) => routine.id === id); }
+  function positionCard(id) { return app.oracle?.getPosition?.(id) || app.runner?.positions?.get?.(id) || null; }
+  function cardDisplay(id) { const card = positionCard(id); return card?.display || card?.label || id; }
+
+  function stateTitle(state) {
+    if (!state) return "Unknown state";
+    if (state.kind === "search") return state.side === "their" ? "SEARCH OPPONENT PLIES" : "SEARCH OUR PLIES";
+    if (state.kind === "inspect") return "INSPECT THIS CARD";
+    if (state.kind === "call") return "CALL ROUTINE";
+    if (state.kind === "return") return "RETURN";
+    if (state.kind === "accept") return "ACCEPT";
+    if (state.kind === "reject") return "REJECT";
+    return state.id;
   }
-  function renderTestDetail() {
-    const tuple = state.tests?.cases?.[state.selectedTest];
-    if (!tuple) {
-      $("testDetailTitle").textContent = "Select a test"; $("testDetailMeta").textContent = "—"; $("expectedOutput").value = ""; $("actualOutput").value = ""; $("diffOutput").textContent = "No comparison yet."; return;
+
+  function stateIcon(state) { return ({ search:"⌕", inspect:"◎", call:"↳", return:"↰", accept:"✓", reject:"×", pop:"→", push_initial:"▶" })[state?.kind] || "·"; }
+
+  function visibleStates(snapshot) {
+    const current = stateDef(snapshot.state);
+    const routineId = current?.routine || snapshot.routine;
+    const states = (app.policy?.states || []).filter((state) => state.routine === routineId && !HIDDEN_KINDS.has(state.kind));
+    if (current && !states.some((state) => state.id === current.id) && !HIDDEN_KINDS.has(current.kind)) states.push(current);
+    const accept = stateDef(app.policy?.outcomes?.accept_state);
+    const reject = stateDef(app.policy?.outcomes?.reject_state);
+    if (accept && !states.some((state) => state.id === accept.id)) states.push(accept);
+    if (reject && !states.some((state) => state.id === reject.id)) states.push(reject);
+    return states;
+  }
+
+  function predicateChecks(state, snapshot) {
+    if (snapshot.state !== state.id || !snapshot.search) return (state.predicates || []).map((predicate, index) => ({ predicate, status: index === 0 && snapshot.state === state.id ? "next" : "waiting", selected: [] }));
+    return snapshot.search.checks || [];
+  }
+
+  function stateDetail(state, snapshot) {
+    if (state.kind === "search") {
+      const checks = predicateChecks(state, snapshot);
+      return `<div class="state-detail"><div class="detail-label">Check these predicates in this exact order:</div><div class="predicate-list">${checks.map((check, index) => `<div class="predicate-row ${esc(check.status || "waiting")}"><span class="n">${index + 1}</span><strong>${esc(check.predicate)}</strong><span class="predicate-status">${check.selected?.length ? esc(check.selected.map(cardDisplay).join(" · ")) : check.status === "matched" ? "✓" : check.status === "missed" ? "—" : check.status === "next" ? "next" : ""}</span></div>`).join("")}</div><div class="closure-line">Closure: <strong>${esc(P.closureLabel(state))}</strong></div></div>`;
     }
-    const [name,fen,policy,expected] = tuple;
-    const result = state.testResults.get(state.selectedTest);
-    $("testDetailTitle").textContent = `${state.selectedTest + 1}. ${name}`;
-    $("testDetailMeta").textContent = `${policy} · ${fen}`;
-    $("expectedOutput").value = expected;
-    $("actualOutput").value = result?.actual || "";
-    $("diffOutput").textContent = result ? firstDiff(expected, result.actual) : "Not run.";
-  }
-  async function runTest(index) {
-    const tuple = state.tests?.cases?.[index];
-    if (!tuple) return;
-    const [name,fen,policyId,expected] = tuple;
-    state.testResults.set(index, { status:"running", actual:"" });
-    state.selectedTest = index;
-    renderTests();
-    try {
-      const loaded = await getPolicy(policyId);
-      const result = runPolicyTrace({ createGame, fen, policy:loaded.policy, name });
-      const actual = result.output;
-      const status = normalizeOutput(actual) === normalizeOutput(expected) ? "pass" : "fail";
-      state.testResults.set(index, { status, actual, result });
-    } catch (error) {
-      state.testResults.set(index, { status:"error", actual:`ERROR ${error?.stack || error?.message || error}` });
+    if (state.kind === "inspect") {
+      return `<div class="state-detail"><div class="detail-label">First matching rule wins:</div><div class="rule-list">${(state.rules || []).map((rule, index) => `<div class="rule-row"><b>${index + 1}. ${esc(rule.label || P.conditionLabel(rule.when))}</b><span>→ ${esc(rule.to)}</span></div>`).join("")}</div></div>`;
     }
-    renderTests();
+    if (state.kind === "call") {
+      const routine = routineDef(state.call?.routine);
+      return `<div class="state-detail"><div class="call-box">Enter <strong>${esc(routine?.label || state.call?.routine || "routine")}</strong><br>Return to <strong>${esc(state.call?.return_to || "—")}</strong>.</div></div>`;
+    }
+    if (state.kind === "return") return '<div class="state-detail"><div class="call-box">Pop the current CALL frame and resume its configured return state.</div></div>';
+    if ((state.kind === "accept" || state.kind === "reject") && snapshot.state === state.id) return `<div class="state-detail"><div class="call-box"><strong>${esc(String(snapshot.result || state.kind).toUpperCase())}</strong><br>${esc(snapshot.reason || state.description || "")}</div></div>`;
+    return "";
   }
-  async function runVisibleTests() {
-    if (state.testRunning) return;
-    state.testRunning = true;
-    $("runVisibleTests").disabled = true;
-    try {
-      const indexes = visibleTestIndexes();
-      for (let offset = 0; offset < indexes.length; offset += 1) {
-        await runTest(indexes[offset]);
-        if (offset % 2 === 1) await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  function renderDfa(snapshot) {
+    const states = visibleStates(snapshot);
+    $("#dfaFlow").innerHTML = states.map((state, index) => `<div class="state-wrap"><article class="state-card ${esc(state.kind)} ${state.id === snapshot.state ? "active" : ""}" data-state-id="${esc(state.id)}"><div class="state-kind"><span>${esc(state.kind)}</span><span>${state.id === snapshot.state ? "● NOW" : ""}</span></div><div class="state-icon">${stateIcon(state)}</div><div class="state-title">${esc(stateTitle(state))}</div><div class="state-id">${esc(state.id)}</div><div class="state-description">${esc(state.description || "")}</div>${stateDetail(state, snapshot)}</article>${index < states.length - 1 ? '<div class="state-arrow"></div>' : ""}</div>`).join("");
+    requestAnimationFrame(() => {
+      const active = $(".state-card.active", $("#dfaFlow"));
+      if (active) {
+        const windowEl = $("#dfaWindow");
+        const activeRect = active.getBoundingClientRect();
+        const windowRect = windowEl.getBoundingClientRect();
+        const delta = activeRect.left + activeRect.width / 2 - (windowRect.left + windowRect.width / 2);
+        windowEl.scrollTo({ left: Math.max(0, windowEl.scrollLeft + delta), behavior: "smooth" });
       }
-    } finally { state.testRunning = false; $("runVisibleTests").disabled = false; renderTests(); }
+    });
   }
-  function downloadTests() {
-    if (!state.tests) return;
-    const blob = new Blob([`${JSON.stringify(state.tests, null, 2)}\n`], { type:"application/json" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob); link.download = "test_cases.json"; link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+
+  function renderRoutineStrip(snapshot) {
+    const ids = [];
+    const entryRoutine = stateDef(app.policy?.entry)?.routine || app.policy?.routines?.[0]?.id;
+    if (entryRoutine) ids.push(entryRoutine);
+    (snapshot.callStack || []).forEach((frame) => { if (!ids.includes(frame.calleeRoutine)) ids.push(frame.calleeRoutine); });
+    if (snapshot.routine && !ids.includes(snapshot.routine)) ids.push(snapshot.routine);
+    $("#routineStrip").innerHTML = ids.map((id, index) => `${index ? '<span class="routine-arrow">→</span>' : ""}<span class="routine-chip ${id === snapshot.routine ? "active" : ""}">${esc(routineDef(id)?.label || id)}</span>`).join("");
+  }
+
+  function eventMessage(event, snapshot) {
+    if (!event) return { title: stateTitle(stateDef(snapshot.state)), detail: snapshot.stateKind === "search" ? `Next predicate: ${stateDef(snapshot.state)?.predicates?.[0] || "—"}` : "Press Step to continue." };
+    if (event.type === "predicate-checked") return event.selected?.length
+      ? { title: `Checked “${event.predicate}”`, detail: `Retained ${event.selected.map((item) => cardDisplay(item.id)).join(", ")}.` }
+      : { title: `Checked “${event.predicate}”`, detail: "No unused legal child matched." };
+    if (event.type === "line-selected") return { title: `Popped ${cardDisplay(event.item.id)}`, detail: "This is the next LIFO card selected by predicate.js." };
+    if (event.type === "inspect-routed") return { title: event.label || "Inspect routed", detail: `${cardDisplay(event.item.id)} → ${event.to}.` };
+    if (event.type === "search-complete") return { title: event.selectedCount ? `${event.selectedCount} card${event.selectedCount === 1 ? "" : "s"} retained` : "Search closed", detail: event.selectedCount ? `Closure: ${event.closureLabel}.` : "No child matched this ordered predicate list." };
+    if (event.type === "winning-predicate") return { title: `Winning predicate: ${event.predicate}`, detail: `${cardDisplay(event.item.id)} entered the configured accept state.` };
+    if (event.type === "failure-predicate") return { title: `Failure predicate: ${event.predicate}`, detail: `${cardDisplay(event.item.id)} entered the configured reject state.` };
+    if (event.type === "routine-called") return { title: `CALL ${event.routine}`, detail: `Return state: ${event.returnTo}.` };
+    if (event.type === "routine-returned") return { title: `RETURN from ${event.from}`, detail: `Resume at ${event.returnTo}.` };
+    if (event.type === "budget-exhausted") return { title: "Thought budget exhausted", detail: `Budget: ${event.budget}.` };
+    if (event.type === "frontier-empty") return { title: "No retained card remains", detail: event.reason || "The stack is empty." };
+    if (event.type === "terminal") return { title: String(event.result || snapshot.result || "terminal").toUpperCase(), detail: event.reason || snapshot.reason || "" };
+    return { title: stateTitle(stateDef(snapshot.state)), detail: snapshot.stateDescription || "The policy moved to its next state." };
+  }
+
+  function renderPolicy(snapshot) {
+    renderRoutineStrip(snapshot);
+    renderDfa(snapshot);
+    const message = eventMessage(app.lastEvent, snapshot);
+    $("#policyMessage").innerHTML = `<div class="message-dot"></div><div><strong>${esc(message.title)}</strong><span>${esc(message.detail)}</span></div>`;
+    $("#policyNameChip").textContent = policyLabel();
+    const issues = P.validatePolicy(app.policy);
+    const errors = issues.filter((issue) => issue.level === "error");
+    $("#policyValidityChip").textContent = errors.length ? `${errors.length} error${errors.length === 1 ? "" : "s"}` : `✓ predicate.js ${P.VERSION}`;
+    $("#policyValidityChip").className = `mini-chip ${errors.length ? "bad" : "good"}`;
+    $("#stepCount").textContent = `${snapshot.thoughtCount} thought${snapshot.thoughtCount === 1 ? "" : "s"} · ${snapshot.microStepCount} steps`;
+  }
+
+  function nodeMarker(node) {
+    if (node.status === "accepted") return "✓";
+    if (node.status === "rejected") return "×";
+    if (node.status === "active") return "▶";
+    if (node.status === "closed" || node.status === "discarded") return "·";
+    return "○";
+  }
+
+  function renderTree(snapshot) {
+    const nodes = snapshot.nodes || [];
+    $("#nodeCountChip").textContent = `${nodes.length} node${nodes.length === 1 ? "" : "s"}`;
+    $("#depthChip").textContent = `depth ${nodes.length ? Math.max(...nodes.map((node) => Number(node.depth || 0))) : 0}/${app.policy?.budgets?.depth ?? "—"}`;
+    if (!nodes.length) { $("#treeBody").innerHTML = '<div class="tree-empty">No position card has been pushed.</div>'; return; }
+    const nodeMap = new Map(nodes.map((node) => [node.occurrence, node]));
+    const byParent = new Map();
+    nodes.forEach((node) => {
+      const key = node.parent || "ROOT";
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(node);
+    });
+    byParent.forEach((items) => items.sort((a, b) => a.order - b.order));
+    const lines = [];
+    const walk = (node, depth) => {
+      const card = positionCard(node.id) || {};
+      const because = node.matchedBy && node.matchedBy !== "initial" ? `<span class="because">because ${esc(node.matchedBy)}</span>` : "";
+      const selected = app.selectedOccurrence ? node.occurrence === app.selectedOccurrence : node.id === app.selectedCardId;
+      lines.push(`<div class="tree-row ${esc(node.status)} ${selected ? "selected" : ""}" style="--depth:${depth};--connector:${depth ? "block" : "none"}" data-occurrence="${esc(node.occurrence)}" data-card-id="${esc(node.id)}"><div class="tree-marker">${nodeMarker(node)}</div><div class="tree-main"><div class="tree-line"><strong>${esc(card.display || card.label || node.id)}</strong> ${because}</div>${card.help ? `<div class="tree-help">${esc(card.help)}</div>` : ""}${node.note ? `<div class="tree-note">${esc(node.note)}</div>` : ""}</div><div class="tree-side">${esc(card.side || "")}</div></div>`);
+      (byParent.get(node.occurrence) || []).forEach((child) => walk(child, depth + 1));
+    };
+    (snapshot.roots || []).map((occurrence) => nodeMap.get(occurrence)).filter(Boolean).forEach((root) => walk(root, 0));
+    const result = snapshot.result ? `<div class="tree-result ${esc(snapshot.result)}"><strong>${snapshot.result === "accept" ? "✓ ACCEPT" : "× REJECT"}</strong><br>${esc(snapshot.reason || `predicate.js entered ${snapshot.state}`)}</div>` : "";
+    $("#treeBody").innerHTML = `<div class="tree-list">${lines.join("")}</div>${result}`;
+    requestAnimationFrame(() => $(".tree-row.active", $("#treeBody"))?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  }
+
+  const UNICODE_PIECES = { K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟" };
+  function renderFallbackBoard(fen) {
+    const board = $("#board");
+    board.className = "board-host fallback";
+    const pieces = [];
+    for (const row of String(fen || "").split(" ")[0].split("/")) {
+      for (const char of row) {
+        if (/\d/.test(char)) for (let i = 0; i < Number(char); i += 1) pieces.push("");
+        else pieces.push(char);
+      }
+    }
+    board.innerHTML = pieces.map((piece, index) => {
+      const rank = 8 - Math.floor(index / 8), file = index % 8;
+      const tone = (file + rank) % 2 ? "light" : "dark";
+      const color = piece ? (piece === piece.toUpperCase() ? "w" : "b") : "";
+      return `<div class="fallback-square ${tone} ${color}">${UNICODE_PIECES[piece] || ""}</div>`;
+    }).join("");
+  }
+
+  function showCard(id, { force = false } = {}) {
+    if (!app.oracle || !id) return;
+    const card = positionCard(id);
+    if (!card) return;
+    if (!force && app.displayGame?.exportFEN?.() === card.fen) { renderBoardInfo(card); return; }
+    app.selectedCardId = id;
+    const game = app.scratch.createGame({ Event: card.display || "Predicate Chess", Site: "Predicate Chess Tactics" });
+    game.loadFEN(card.fen);
+    try { game.toggleFlip?.(app.oracle.rootSide === "b"); } catch { /* optional */ }
+    app.displayGame = game;
+    const BoardView = app.scratch.BoardView;
+    if (typeof BoardView === "function") {
+      $("#board").className = "board-host";
+      if (!app.boardView) app.boardView = new BoardView($("#board"), game, { minSizePx: 180 });
+      else app.boardView.setGame(game);
+    } else renderFallbackBoard(card.fen);
+    renderBoardInfo(card);
+  }
+
+  function renderBoardInfo(card = positionCard(app.selectedCardId)) {
+    const puzzle = currentPuzzle();
+    if (!card) return;
+    $("#puzzleTitle").textContent = puzzle?.title || "Position";
+    $("#puzzleMeta").textContent = [puzzle?.theme ? `theme: ${puzzle.theme}` : "", `${app.puzzles.length} loaded`, app.librarySource === "embedded fallback" ? "fallback library" : "live tactical_positions.md"].filter(Boolean).join(" · ");
+    $("#rootSideChip").textContent = `root side ${app.oracle?.rootSide === "b" ? "black" : "white"}`;
+    $("#nodeTitle").textContent = card.display || card.label || card.id;
+    const node = currentSnapshot()?.nodes?.find((item) => item.occurrence === app.selectedOccurrence) || currentSnapshot()?.nodes?.find((item) => item.id === card.id);
+    $("#nodeState").textContent = node?.status || (card.id === "root" ? "root card" : "oracle card");
+    $("#fenText").textContent = card.fen || "—";
+    const predicates = (card.predicates || []).map((value) => `<span class="fact predicate">${esc(value)}</span>`);
+    const facts = (card.facts || []).map((value) => `<span class="fact">${esc(value)}</span>`);
+    $("#facts").innerHTML = [...predicates, ...facts].join("") || '<span class="fact">no predicates yet</span>';
+    $("#followBtn").textContent = app.followCurrent ? "following current" : "follow current";
+  }
+
+  function renderTop(snapshot) {
+    const result = snapshot?.result;
+    const diagnostic = result === "reject" && /unexplorable|oracle_limit/i.test(snapshot?.reason || "")
+      ? "unexplorable"
+      : result && snapshot?.state && snapshot.state !== result.toUpperCase()
+        ? snapshot.state
+        : "";
+    $("#resultText").textContent = result ? [result.toUpperCase(), diagnostic].filter(Boolean).join(" · ") : app.running ? "running" : stateTitle(stateDef(snapshot?.state));
+    $("#resultChip").className = `status-chip ${result || ""}`;
+    $("#engineChip").innerHTML = `<span class="status-dot"></span><span>predicate.js ${esc(P.VERSION)} · oracle ${esc(app.oracleVersion)}</span>`;
+    $("#policySelect").value = app.policyId;
+    $("#puzzleSelect").value = String(app.puzzleIndex);
+    const disabled = !app.initialized || app.locked;
+    ["#topStepBtn", "#stepBtn"].forEach((selector) => { $(selector).disabled = disabled || app.running || Boolean(result); });
+    ["#topRunBtn", "#runBtn"].forEach((selector) => { $(selector).disabled = disabled; });
+    $("#topRunBtn").innerHTML = app.running ? '❚❚ <span class="button-label">Pause</span>' : result ? '↺ <span class="button-label">Run again</span>' : '▶ <span class="button-label">Run</span>';
+    $("#runBtn").textContent = app.running ? "❚❚ Pause" : result ? "↺ Run again" : "▶ Run";
+    $("#resetBtn").disabled = disabled;
+    $("#batchBtn").disabled = !app.initialized || app.batchRunning;
   }
 
   function renderAll() {
-    renderPredicateCatalog();
-    renderTop();
-    renderThreats();
-    renderReasoning();
-    renderLine();
-    renderFindings();
-    renderLog();
-    renderPolicy();
-    refreshPGN();
-    setBusy(state.proofRunning);
+    if (!app.runner) return;
+    const snapshot = app.runner.snapshot();
+    renderTop(snapshot);
+    renderTree(snapshot);
+    renderPolicy(snapshot);
+    renderBoardInfo();
+    syncOutputEditor();
   }
 
-  document.addEventListener("click", (event) => {
-    const tab = event.target.closest(".tab[data-tab]");
-    if (tab) { setTab(tab.dataset.tab); return; }
-    const nodeButton = event.target.closest("[data-node-path]");
-    if (nodeButton) { const path = nodeButton.dataset.nodePath ? nodeButton.dataset.nodePath.split(",").filter(Boolean).map(Number) : []; applyNode(nodeAtPath(path)); return; }
-    const finding = event.target.closest("[data-attach-finding]");
-    if (finding) { attachComment(state.game.curNode, finding.dataset.attachFinding); addLog(`attached \`${finding.dataset.attachFinding}\``); return; }
-    const testRow = event.target.closest("tr[data-test-index]");
-    if (testRow && !event.target.closest("button")) { state.selectedTest = Number(testRow.dataset.testIndex); renderTests(); return; }
-    const runTestButton = event.target.closest("[data-run-test]");
-    if (runTestButton) { runTest(Number(runTestButton.dataset.runTest)); return; }
-    const mode = event.target.closest("[data-mode]"); if (mode) { mutateGameUi((game) => game.setMode(mode.dataset.mode)); return; }
-    const mark = event.target.closest("[data-mark]"); if (mark) { mutateGameUi((game) => { game.setMode("squares"); game.setPigment(mark.dataset.mark); }); return; }
-    const arrow = event.target.closest("[data-arrow]"); if (arrow) { mutateGameUi((game) => { game.setMode("arrows"); game.setPigment(arrow.dataset.arrow); }); }
-  });
+  function formatEvent(event) {
+    if (event.type === "initial-retained") return `PUSH_INITIAL ${(event.items || []).map((item) => cardDisplay(item.id)).join(" · ")}`;
+    if (event.type === "line-selected") return `POP ${cardDisplay(event.item.id)}`;
+    if (event.type === "inspect-routed") return `INSPECT ${cardDisplay(event.item.id)} | ${event.label} -> ${event.to}`;
+    if (event.type === "predicate-checked") return `SEARCH ${event.predicate} | ${event.selected?.length ? `retain ${event.selected.map((item) => cardDisplay(item.id)).join(" · ")}` : "no match"}`;
+    if (event.type === "search-complete") return `CLOSE ${event.closureLabel} | retained ${event.selectedCount}`;
+    if (event.type === "winning-predicate") return `WINNING_PREDICATE ${event.predicate} @ ${cardDisplay(event.item.id)}`;
+    if (event.type === "failure-predicate") return `FAILURE_PREDICATE ${event.predicate} @ ${cardDisplay(event.item.id)}`;
+    if (event.type === "routine-called") return `CALL ${event.routine} return_to=${event.returnTo}`;
+    if (event.type === "routine-returned") return `RETURN ${event.from} -> ${event.returnTo}`;
+    if (event.type === "budget-exhausted") return `BUDGET_EXHAUSTED thoughts=${event.budget}`;
+    if (event.type === "depth-closed") return `DEPTH_CLOSED ${cardDisplay(event.item.id)} depth=${event.depth}`;
+    if (event.type === "frontier-empty") return `STACK_EMPTY ${event.reason || ""}`.trim();
+    if (event.type === "terminal") return `RESULT ${String(event.result || "").toUpperCase()} | ${event.reason || ""}`;
+    return null;
+  }
 
-  $("stepProof").onclick = stepPolicy;
-  $("runProof").onclick = runPolicy;
-  $("runPolicyPanel").onclick = runPolicy;
-  $("restartProof").onclick = () => { resetReasoner(); renderAll(); };
-  $("notice").onclick = notice;
-  $("prevBtn").onclick = prevPly;
-  $("nextBtn").onclick = nextPly;
-  $("rootBtn").onclick = rootPosition;
-  $("flip").onclick = () => { state.boardFlipped = !state.boardFlipped; mutateGameUi((game) => game.toggleFlip()); };
-  $("clearMarks").onclick = () => { mutateGameUi((game) => game.clearMarks()); addLog("cleared board marks"); };
-  $("solved").onchange = (event) => { if (state.current) state.current.solved = Boolean(event.target.checked); addLog(state.current?.solved ? "marked solved" : "marked unsolved"); };
-  $("attachPred").onclick = () => { attachComment(state.game?.curNode, $("predInput").value); addLog(`attached \`${$("predInput").value}\``); };
-  $("predInput").onkeydown = (event) => { if (event.key === "Enter") $("attachPred").click(); };
-  $("addLog").onclick = () => addLog($("logInput").value);
-  $("logInput").onkeydown = (event) => { if (event.key === "Enter") $("addLog").click(); };
-  $("policySelect").onchange = (event) => selectPolicy(event.target.value);
-  $("reloadPolicy").onclick = () => selectPolicy(state.policyId, { force:true });
-  $("previewPolicy").onclick = () => {
-    if (!state.game || !state.policy) return;
+  function formatTriple({ puzzle = currentPuzzle(), policy = app.policy, snapshot = currentSnapshot(), trace = snapshot?.trace || [] } = {}) {
+    const lines = trace.map(formatEvent).filter(Boolean);
+    return [
+      "FEN", puzzle?.fen || "—", "",
+      "POLICY", JSON.stringify(policy, null, 2), "",
+      "OUTPUT", ...(lines.length ? lines : ["No policy events yet."]), "",
+      `FINAL ${snapshot?.result ? snapshot.result.toUpperCase() : "RUNNING"}`,
+      `STATE ${snapshot?.state || "—"}`,
+      `REASON ${snapshot?.reason || "—"}`,
+      `THOUGHTS ${snapshot?.thoughtCount ?? 0}`,
+      `MICRO_STEPS ${snapshot?.microStepCount ?? 0}`
+    ].join("\n");
+  }
+
+  function syncOutputEditor() {
+    if ($("#outputEditor")) $("#outputEditor").value = formatTriple();
+  }
+
+  function issueHtml(issue) { return `<div class="issue ${esc(issue.level)}"><strong>${esc(issue.title)}</strong><br>${esc(issue.detail)}</div>`; }
+  function renderPolicyIssues() {
+    let issues;
+    try { issues = P.validatePolicy(JSON.parse($("#policyEditor").value)); }
+    catch (error) { issues = [{ level:"error", title:"Invalid JSON", detail:error.message }]; }
+    if (!issues.length) issues = [{ level:"ok", title:"Valid policy", detail:"This text binds to predicate-policy/v2." }];
+    $("#policyIssues").innerHTML = issues.map(issueHtml).join("");
+    return issues;
+  }
+
+  function validateOracleConfig(value) {
+    const issues = [];
+    const positiveInt = (key, min = 1) => {
+      const number = Number(value?.[key]);
+      if (!Number.isInteger(number) || number < min) issues.push({ level:"error", title:`Invalid ${key}`, detail:`${key} must be an integer >= ${min}.` });
+    };
+    positiveInt("reply_limit", 1); positiveInt("objective_gain", 1); positiveInt("max_positions", 1); positiveInt("mate_probe_limit", 1); positiveInt("attack_min_value", 0);
+    if (typeof value?.mate_probe !== "boolean") issues.push({ level:"error", title:"Invalid mate_probe", detail:"mate_probe must be true or false." });
+    return issues;
+  }
+
+  function renderOracleIssues() {
+    let issues;
+    try { issues = validateOracleConfig(JSON.parse($("#oracleEditor").value)); }
+    catch (error) { issues = [{ level:"error", title:"Invalid JSON", detail:error.message }]; }
+    if (!issues.length) issues = [{ level:"ok", title:"Valid oracle settings", detail:"The legal-reply and card limits are structurally valid." }];
+    $("#oracleIssues").innerHTML = issues.map(issueHtml).join("");
+    return issues;
+  }
+
+  function syncEditors() {
+    $("#policyEditor").value = JSON.stringify(app.policy, null, 2);
+    $("#oracleEditor").value = JSON.stringify(app.oracleConfig, null, 2);
+    $("#editorPolicyName").textContent = policyLabel();
+    $("#grammarPre").textContent = JSON.stringify(P.GRAMMAR, null, 2);
+    syncOutputEditor(); renderPolicyIssues(); renderOracleIssues();
+    $("#deletePolicyBtn").disabled = app.policyId === "default";
+  }
+
+  function switchEditorTab(name) {
+    $$(".dialog-tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
+    $$(".dialog-panel").forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === name));
+    if (name === "output") syncOutputEditor();
+  }
+
+  function openEditor(tab = "policy") { syncEditors(); switchEditorTab(tab); $("#editorDialog").showModal(); }
+
+  async function applyPolicyEditor() {
     try {
-      const preview = runOnePass({ createGame, game:state.game, policy:state.policy, maxCandidates:8 });
-      state.traceOutput = preview.steps.join("\n"); state.findings = preview.observations || []; addLog(`policy preview: ${preview.log}`, true); setTab("policy"); renderAll();
-    } catch (error) { addLog(`preview failed: ${error?.message || error}`); }
-  };
-  $("puzzleSelect").onchange = (event) => { state.puzzleIndex = Number(event.target.value); startPosition(state.puzzles[state.puzzleIndex], { archive:true, reason:"library selection" }); };
-  $("loadFen").onclick = () => { const fen = $("fenInput").value.trim(); if (fen) startPosition({ title:`Custom FEN ${state.archive.length + 1}`, fen, theme:"custom" }, { archive:true, reason:"custom FEN" }); };
-  $("fenInput").onkeydown = (event) => { if (event.key === "Enter") $("loadFen").click(); };
-  $("reset").onclick = () => startPosition({ ...state.current }, { archive:true, reason:"reset" });
-  $("configTitle").onchange = (event) => { if (!state.current) return; state.current.title = event.target.value.trim() || "Untitled"; state.game.tags.Event = state.current.title; renderAll(); };
-  $("configTheme").onchange = (event) => { if (state.current) state.current.theme = event.target.value.trim(); renderAll(); };
-  $("pgnMode").onchange = refreshPGN;
-  $("refreshPGN").onclick = refreshPGN;
-  $("copyPGN").onclick = async () => { refreshPGN(); try { await navigator.clipboard.writeText($("pgnText").value); addLog("copied PGN"); } catch { addLog("copy failed; select PGN manually"); } };
-  $("testPolicyFilter").onchange = renderTests;
-  $("runVisibleTests").onclick = runVisibleTests;
-  $("downloadTests").onclick = downloadTests;
-  $("reloadTests").onclick = () => loadTests({ force:true });
-  $("runSelectedTest").onclick = () => runTest(state.selectedTest);
-  $("loadTestCase").onclick = async () => {
-    const tuple = state.tests?.cases?.[state.selectedTest]; if (!tuple) return;
-    const [name,fen,policyId] = tuple; await selectPolicy(policyId, { announce:false }); startPosition({ title:name, fen, theme:`test · ${policyId}` }, { archive:true, reason:"test case" }); setTab("moves");
-  };
-  $("acceptActual").onclick = () => {
-    const tuple = state.tests?.cases?.[state.selectedTest]; const result = state.testResults.get(state.selectedTest); if (!tuple || !result?.actual) return;
-    tuple[3] = result.actual; state.testResults.set(state.selectedTest, { ...result, status:"pass" }); renderTests();
-  };
-  $("copyActual").onclick = async () => { const result = state.testResults.get(state.selectedTest); if (!result?.actual) return; try { await navigator.clipboard.writeText(result.actual); } catch {} };
+      const policy = JSON.parse($("#policyEditor").value);
+      const errors = P.validatePolicy(policy).filter((issue) => issue.level === "error");
+      if (errors.length) throw new Error(errors.map((issue) => `${issue.title}: ${issue.detail}`).join("\n"));
+      const baseName = String(policy.name || "custom").trim() || "custom";
+      let name = baseName, suffix = 2;
+      while (app.savedPolicies[name] && JSON.stringify(app.savedPolicies[name]) !== JSON.stringify(policy) && app.policyId !== `saved:${name}`) name = `${baseName} ${suffix++}`;
+      policy.name = name;
+      app.savedPolicies[name] = clone(policy);
+      saveJsonStorage(STORAGE_POLICIES, app.savedPolicies);
+      app.policyId = `saved:${name}`;
+      app.policy = clone(policy);
+      renderPolicySelect();
+      await startPuzzle(app.puzzleIndex);
+      syncEditors();
+      toast(`Using policy ${name}.`, "good");
+    } catch (error) { renderPolicyIssues(); toast(error.message.split("\n")[0], "bad"); }
+  }
 
-  document.addEventListener("keydown", (event) => {
-    if (["INPUT","TEXTAREA","SELECT"].includes(event.target?.tagName)) return;
-    if (event.key === "ArrowLeft") prevPly();
-    if (event.key === "ArrowRight") nextPly();
-  });
+  async function applyOracleEditor() {
+    try {
+      const config = JSON.parse($("#oracleEditor").value);
+      const errors = validateOracleConfig(config).filter((issue) => issue.level === "error");
+      if (errors.length) throw new Error(errors.map((issue) => `${issue.title}: ${issue.detail}`).join("\n"));
+      app.oracleConfig = { ...DEFAULT_ORACLE, ...config };
+      saveJsonStorage(STORAGE_ORACLE, app.oracleConfig);
+      await startPuzzle(app.puzzleIndex);
+      syncEditors();
+      toast("Oracle settings applied.", "good");
+    } catch (error) { renderOracleIssues(); toast(error.message.split("\n")[0], "bad"); }
+  }
+
+  function downloadText(name, text, type = "text/plain") {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.download = name; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 600);
+  }
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); toast("Copied.", "good"); }
+    catch { toast("Clipboard access was blocked.", "bad"); }
+  }
+
+  function slug(value) { return String(value || "predicate-policy").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "predicate-policy"; }
+
+  async function selectPolicy(id) {
+    const next = policyById(id);
+    const errors = P.validatePolicy(next).filter((issue) => issue.level === "error");
+    if (errors.length) { toast(`Saved policy is invalid: ${errors[0].title}`, "bad"); return; }
+    app.policyId = id; app.policy = next;
+    await startPuzzle(app.puzzleIndex);
+    renderPolicySelect();
+  }
+
+  async function deleteCurrentPolicy() {
+    if (!app.policyId.startsWith("saved:")) return;
+    const name = app.policyId.slice(6);
+    delete app.savedPolicies[name];
+    saveJsonStorage(STORAGE_POLICIES, app.savedPolicies);
+    app.policyId = "default"; app.policy = clone(app.defaultPolicy);
+    renderPolicySelect();
+    await startPuzzle(app.puzzleIndex);
+    syncEditors(); toast(`Deleted saved policy ${name}.`, "good");
+  }
+
+  function resultClass(snapshot) {
+    if (snapshot.result === "accept") return "accept";
+    if (/unexplorable|oracle_limit/i.test(snapshot.reason || "")) return "unexplorable";
+    if (snapshot.result === "reject") return "reject";
+    return "not-run";
+  }
+
+  function runHeadless(puzzle) {
+    const oracle = createOracleForPuzzle(puzzle);
+    const project = oracle.createProject(app.policy, `${puzzle.title} · ${policyLabel()}`);
+    const runner = P.createRunner(project);
+    const events = [];
+    let guard = 0;
+    while (!runner.snapshot().result && guard < 10000) {
+      oracle.hydrateRunner(runner);
+      const step = runner.step();
+      events.push(...step.events);
+      guard += 1;
+    }
+    const snapshot = runner.snapshot();
+    return { puzzle, oracle, runner, snapshot, events, guard, status: resultClass(snapshot), triple: formatTriple({ puzzle, policy: app.policy, snapshot, trace: events }) };
+  }
+
+  function renderBatch() {
+    const rows = app.puzzles.map((puzzle, index) => {
+      const result = app.batchResults[index];
+      const status = result?.status || (app.batchRunning && index === app.batchResults.length ? "running" : "not-run");
+      const label = status === "accept" ? "ACCEPT" : status === "unexplorable" ? "UNEXPLORABLE" : status === "reject" ? "REJECT" : status === "running" ? "RUNNING" : "—";
+      return `<div class="batch-row ${index === app.batchSelected ? "selected" : ""}" data-batch-index="${index}"><div class="batch-index">${index + 1}</div><div><strong>${esc(puzzle.title)}</strong><small>${esc(puzzle.theme || puzzle.fen)}</small></div><span class="batch-status ${esc(status)}">${label}</span></div>`;
+    }).join("");
+    $("#batchList").innerHTML = rows;
+    const counts = { accept:0, reject:0, unexplorable:0 };
+    app.batchResults.forEach((result) => { if (counts[result.status] !== undefined) counts[result.status] += 1; });
+    $("#batchSummary").textContent = app.batchResults.length ? `${counts.accept} accept · ${counts.unexplorable} unexplorable · ${counts.reject} reject` : `${app.puzzles.length} puzzles`;
+    const selected = app.batchResults[app.batchSelected];
+    $("#batchOutput").value = selected?.triple || "Select a completed puzzle result.";
+    $("#loadBatchPuzzleBtn").disabled = app.batchSelected < 0;
+    $("#copyBatchOutputBtn").disabled = !selected;
+    $("#runBatchBtn").disabled = app.batchRunning;
+    $("#runBatchBtn").textContent = app.batchRunning ? `Running ${app.batchResults.length + 1}/${app.puzzles.length}…` : "Run every puzzle";
+  }
+
+  async function runBatch() {
+    if (app.batchRunning) return;
+    app.batchRunning = true; app.batchResults = []; app.batchSelected = -1; renderBatch(); renderAll();
+    try {
+      for (let index = 0; index < app.puzzles.length; index += 1) {
+        const result = runHeadless(app.puzzles[index]);
+        app.batchResults[index] = result;
+        app.batchSelected = index;
+        renderBatch();
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+    } finally { app.batchRunning = false; renderBatch(); renderAll(); }
+  }
+
+  function toast(message, tone = "") {
+    const element = document.createElement("div");
+    element.className = `toast ${tone}`; element.textContent = message;
+    $("#toastStack").appendChild(element);
+    setTimeout(() => element.remove(), 3400);
+  }
+
+  function formatJson(textarea) {
+    try { textarea.value = JSON.stringify(JSON.parse(textarea.value), null, 2); }
+    catch (error) { toast(error.message, "bad"); }
+  }
+
+  function bindEvents() {
+    $("#puzzleSelect").addEventListener("change", async (event) => { await startPuzzle(Number(event.target.value), { announce: true }); });
+    $("#policySelect").addEventListener("change", async (event) => { await selectPolicy(event.target.value); });
+    $("#topStepBtn").addEventListener("click", oneVisibleStep); $("#stepBtn").addEventListener("click", oneVisibleStep);
+    $("#topRunBtn").addEventListener("click", runLoop); $("#runBtn").addEventListener("click", runLoop);
+    $("#resetBtn").addEventListener("click", () => startPuzzle(app.puzzleIndex));
+    $("#editBtn").addEventListener("click", () => openEditor("policy"));
+    $("#batchBtn").addEventListener("click", () => { renderBatch(); $("#batchDialog").showModal(); });
+    $("#closeEditorBtn").addEventListener("click", () => $("#editorDialog").close());
+    $("#closeBatchBtn").addEventListener("click", () => $("#batchDialog").close());
+    $("#flipBtn").addEventListener("click", () => { try { app.displayGame?.toggleFlip?.(); } catch {} });
+    $("#followBtn").addEventListener("click", () => { app.followCurrent = true; const current = currentSnapshot()?.current?.id; if (current) showCard(current, { force: true }); renderAll(); });
+    $("#treeBody").addEventListener("click", (event) => {
+      const row = event.target.closest("[data-card-id]"); if (!row) return;
+      app.followCurrent = false; app.selectedCardId = row.dataset.cardId; app.selectedOccurrence = row.dataset.occurrence; showCard(app.selectedCardId, { force: true }); renderAll();
+    });
+    $$(".dialog-tab").forEach((button) => button.addEventListener("click", () => switchEditorTab(button.dataset.tab)));
+    $("#policyEditor").addEventListener("input", renderPolicyIssues); $("#oracleEditor").addEventListener("input", renderOracleIssues);
+    $("#applyPolicyBtn").addEventListener("click", applyPolicyEditor); $("#applyOracleBtn").addEventListener("click", applyOracleEditor);
+    $("#formatPolicyBtn").addEventListener("click", () => { formatJson($("#policyEditor")); renderPolicyIssues(); });
+    $("#formatOracleBtn").addEventListener("click", () => { formatJson($("#oracleEditor")); renderOracleIssues(); });
+    $("#defaultPolicyBtn").addEventListener("click", () => { $("#policyEditor").value = JSON.stringify(app.defaultPolicy, null, 2); renderPolicyIssues(); });
+    $("#defaultOracleBtn").addEventListener("click", () => { $("#oracleEditor").value = JSON.stringify(DEFAULT_ORACLE, null, 2); renderOracleIssues(); });
+    $("#deletePolicyBtn").addEventListener("click", deleteCurrentPolicy);
+    $("#importPolicyBtn").addEventListener("click", () => $("#policyFileInput").click());
+    $("#policyFileInput").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0]; if (!file) return;
+      try { const parsed = JSON.parse(await file.text()); $("#policyEditor").value = JSON.stringify(parsed.policy || parsed, null, 2); renderPolicyIssues(); }
+      catch (error) { toast(error.message, "bad"); }
+      event.target.value = "";
+    });
+    $("#exportPolicyBtn").addEventListener("click", () => downloadText(`${slug(policyLabel())}.json`, JSON.stringify(app.policy, null, 2) + "\n", "application/json"));
+    $("#copyOutputBtn").addEventListener("click", () => copyText($("#outputEditor").value));
+    $("#downloadOutputBtn").addEventListener("click", () => downloadText(`${slug(currentPuzzle()?.title)}-${slug(policyLabel())}.txt`, $("#outputEditor").value));
+    $("#runBatchBtn").addEventListener("click", runBatch);
+    $("#batchList").addEventListener("click", (event) => { const row = event.target.closest("[data-batch-index]"); if (!row) return; app.batchSelected = Number(row.dataset.batchIndex); renderBatch(); });
+    $("#loadBatchPuzzleBtn").addEventListener("click", async () => { if (app.batchSelected < 0) return; $("#batchDialog").close(); await startPuzzle(app.batchSelected, { announce: true }); });
+    $("#copyBatchOutputBtn").addEventListener("click", () => copyText($("#batchOutput").value));
+    $("#speedSlider").addEventListener("input", (event) => { const value = Number(event.target.value); $("#speedReadout").textContent = `${(520 / value).toFixed(1)}×`; });
+    window.addEventListener("keydown", (event) => {
+      if (["INPUT","TEXTAREA","SELECT","BUTTON"].includes(event.target?.tagName)) return;
+      if (event.key === " ") { event.preventDefault(); oneVisibleStep(); }
+      if ((event.key === "r" || event.key === "R") && !$("#editorDialog").open && !$("#batchDialog").open) runLoop();
+      if (event.key === "Escape") { if ($("#editorDialog").open) $("#editorDialog").close(); if ($("#batchDialog").open) $("#batchDialog").close(); }
+    });
+  }
 
   async function init() {
-    renderPredicateCatalog();
-    renderPolicySelectors();
-    await loadTests();
-    await selectPolicy(state.policyId, { announce:false });
-    await loadLibrary();
-    renderAll();
+    try {
+      bindEvents();
+      await Promise.all([loadRuntimeModules(), loadDefaultPolicy()]);
+      app.policy = policyById(app.policyId);
+      const errors = P.validatePolicy(app.policy).filter((issue) => issue.level === "error");
+      if (errors.length) { app.policyId = "default"; app.policy = clone(app.defaultPolicy); }
+      await loadPuzzles();
+      renderPolicySelect();
+      app.initialized = true;
+      await startPuzzle(0);
+      $("#engineChip").title = `ScratchChess: ${app.scratch.source}\nOracle: ${app.oracleSource}`;
+    } catch (error) {
+      console.error(error);
+      document.body.innerHTML = `<div class="fatal"><strong>Predicate Chess could not start.</strong><br>${esc(error?.message || error)}<br><br>Deploy tactics.html with unchanged predicate.js, scratchchess_oracle.js, and ScratchChess.</div>`;
+    }
   }
+
   init();
+})();
 </script>
 </body>
 </html>
