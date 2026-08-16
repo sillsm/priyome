@@ -9,7 +9,10 @@
  * or alter the policy machine.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "1.0.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "1.1.0";
+
+const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
+const OBJECTIVE_REPLY_PREDICATES = Object.freeze(new Set(["mate", "mated", "mate_in_1", "check", "capture"]));
 
 const FILES = "abcdefgh";
 const PROMOTIONS = Object.freeze(["q", "r", "b", "n"]);
@@ -77,8 +80,10 @@ function movePrefix(fen) {
 }
 
 function safeInCheck(game, side) {
-  try { return Boolean(game?._isInCheck?.(normalizeSide(side))); }
-  catch { return false; }
+  if (!game || typeof game._isInCheck !== "function") {
+    throw new Error("ScratchChess Game._isInCheck(side) is required");
+  }
+  return Boolean(game._isInCheck(normalizeSide(side)));
 }
 
 function clearLine(board, from, to, df, dr) {
@@ -193,10 +198,12 @@ function moveNeedsPromotion(game, from, to) {
 }
 
 export function legalMoveRecords(game) {
-  const side = normalizeSide(game?.state?.side);
-  let raw = [];
-  try { raw = game?._allLegalMoves?.(side) || []; }
-  catch { raw = []; }
+  if (!game || typeof game._allLegalMoves !== "function") {
+    throw new Error("ScratchChess Game._allLegalMoves(side) is required");
+  }
+  const side = normalizeSide(game.state?.side);
+  const raw = game._allLegalMoves(side);
+  if (!Array.isArray(raw)) throw new Error("ScratchChess _allLegalMoves(side) did not return an array");
   const records = [];
   for (const item of raw) {
     const from = Number(item?.from ?? item?.fromSq ?? item?.source ?? item?.src);
@@ -225,7 +232,9 @@ export function legalMoveRecords(game) {
 function applyMove(createGame, gameOrFen, move) {
   const game = createGame({ Event: "Predicate Chess oracle", Site: "scratchchess_oracle.js" });
   game.loadFEN(typeof gameOrFen === "string" ? gameOrFen : gameOrFen.exportFEN());
-  if (!game.makeMoveUCI(move.uci || move)) return null;
+  if (!game.makeMoveUCI(move.uci || move)) {
+    throw new Error(`ScratchChess rejected oracle-generated legal move ${move.uci || move}`);
+  }
   if (game.state?.pendingPromotion || game._pendingPromotion) {
     const promotion = String(move.promotion || String(move.uci || move)[4] || "q").toUpperCase();
     game.resolvePendingPromotion(promotion);
@@ -243,7 +252,9 @@ function terminalInfo(game) {
 }
 
 function safeSan(after, move) {
-  return String(after?.curNode?.san || move.uci || "?").trim();
+  const san = String(after?.curNode?.san || "").trim();
+  if (!san) throw new Error(`ScratchChess did not provide SAN for ${move.uci || move}`);
+  return san;
 }
 
 function combineAttackTargets(targets) {
@@ -273,10 +284,10 @@ export class ScratchChessOracle {
     this.createGame = createGame;
     this.options = {
       reply_limit: 2,
-      objective_gain: 3,
-      max_positions: 900,
+      objective_gain: 2,
+      max_positions: 12000,
       mate_probe: true,
-      mate_probe_limit: 48,
+      mate_probe_limit: 96,
       attack_min_value: 1,
       ...options
     };
@@ -337,7 +348,7 @@ export class ScratchChessOracle {
   createProject(policy, name = this.puzzle?.title || "Predicate Chess") {
     if (!policy) throw new Error("createProject requires a predicate.js policy");
     return {
-      schema: globalThis.PredicatePolicy?.PROJECT_SCHEMA || "predicate-policy-dfa-lab/project-v3",
+      schema: PROJECT_SCHEMA,
       name,
       initial: [this.rootId],
       policy: clone(policy),
@@ -450,15 +461,7 @@ export class ScratchChessOracle {
       }
     }
 
-    const objectiveGain = Number(this.options.objective_gain || 3);
-    const returnedToRoot = fenSide(afterFen) === this.rootSide;
-    if (materialSwing >= objectiveGain && returnedToRoot) {
-      predicates.push("objective_won");
-      facts.push(`stable_material_swing(+${materialSwing})`);
-    } else if (materialSwing <= -objectiveGain && returnedToRoot) {
-      predicates.push("objective_lost");
-      facts.push(`stable_material_swing(${materialSwing})`);
-    } else if (materialSwing !== 0) {
+    if (materialSwing !== 0) {
       facts.push(`material_swing(${materialSwing > 0 ? "+" : ""}${materialSwing})`);
     }
 
@@ -473,7 +476,7 @@ export class ScratchChessOracle {
       facts: unique(facts),
       help: predicates.length
         ? `Oracle predicates: ${unique(predicates).join(" · ")}`
-        : "This legal ply has no default-policy predicate.",
+        : "This legal ply has no configured-policy predicate.",
       fen: afterFen,
       depth: Number(parentCard.depth || 0) + 1,
       children: [],
@@ -547,20 +550,59 @@ export class ScratchChessOracle {
       }
     }
 
+    const objectiveGain = Number(this.options.objective_gain);
+    if (!Number.isFinite(objectiveGain) || objectiveGain < 1) {
+      throw new Error("oracle objective_gain must be a number >= 1");
+    }
+    const materialSwing = Number(card.meta?.materialSwing || 0);
+    const forcingReplies = analyses.filter((child) =>
+      child.predicates.some((predicate) => OBJECTIVE_REPLY_PREDICATES.has(predicate))
+    );
+    if (card.side === "their" && materialSwing >= objectiveGain) {
+      if (!inCheck && forcingReplies.length === 0) {
+        card.predicates = unique([...card.predicates, "objective_won"]);
+        card.facts = unique([
+          ...card.facts,
+          `stable_material_swing(+${materialSwing})`,
+          "opponent_mate_check_capture_replies(0)",
+          "quiet_objective"
+        ]);
+        card.help = `Material gain +${materialSwing}; the opponent has no mate, mate-in-one, check, or capture reply.`;
+      } else {
+        card.facts = unique([
+          ...card.facts,
+          `objective_pending_material(+${materialSwing})`,
+          ...(inCheck ? ["objective_pending(in_check)"] : []),
+          ...(forcingReplies.length ? [`opponent_forcing_replies(${forcingReplies.length})`] : [])
+        ]);
+      }
+    }
+
+    const replyLimit = Number(this.options.reply_limit);
+    if (!Number.isInteger(replyLimit) || replyLimit < 1) {
+      throw new Error("oracle reply_limit must be an integer >= 1");
+    }
+
+    // When the move set is already human-sized—or the side to move is answering
+    // check—tag every legal child as a forced reply. This is a chess fact only;
+    // the policy still decides whether and in what order to push those cards.
+    const boundedForcedSet = legal.length <= replyLimit || inCheck;
+    if (boundedForcedSet) {
+      analyses.forEach((child) => {
+        child.predicates = unique([...child.predicates, "forced_reply"]);
+        child.facts = unique([...child.facts, "forced_reply"]);
+      });
+    }
+
     if (card.side === "their" && legal.length) {
       let relevant;
-      if (legal.length <= Number(this.options.reply_limit || 2) || inCheck) {
+      if (boundedForcedSet) {
         relevant = analyses;
-        relevant.forEach((child) => {
-          child.predicates = unique([...child.predicates, "forced_reply"]);
-          child.facts = unique([...child.facts, "forced_reply"]);
-        });
       } else {
         const scary = new Set(["mate", "mated", "mate_in_1", "check", "capture_back", "capture", "attack", "save_piece"]);
         relevant = analyses.filter((child) => child.predicates.some((predicate) => scary.has(predicate)));
       }
 
-      const replyLimit = Math.max(1, Number(this.options.reply_limit || 2));
       if (relevant.length > replyLimit) {
         card.predicates = unique([...card.predicates, "unexplorable"]);
         card.facts = unique([...card.facts, `unexplorable_replies(${relevant.length})`, `reply_limit(${replyLimit})`]);
