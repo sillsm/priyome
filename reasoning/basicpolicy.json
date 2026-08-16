@@ -1,25 +1,26 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
+  "version": "2.2.0",
+  "goal": "gain_at_least_exchange",
   "entry": "START",
   "outcomes": {
     "accept_state": "SOLVED",
     "reject_state": "EXHAUSTED",
     "winning_predicates": [
-      "mate",
-      "objective_won"
+      "pda_complete"
     ],
     "failure_predicates": []
   },
   "budgets": {
-    "thoughts": 1600,
-    "depth": 10,
+    "thoughts": 800,
+    "depth": 12,
     "call_depth": 0
   },
   "routines": [
     {
       "id": "main",
-      "label": "Basic alternating pushdown search",
+      "label": "Basic relational DFA",
       "entry": "START"
     }
   ],
@@ -28,7 +29,8 @@
       "id": "START",
       "routine": "main",
       "kind": "push_initial",
-      "description": "Push the root position onto the position stack.",
+      "label": "Start",
+      "description": "Push the root position onto the retained-position stack.",
       "on": {
         "pushed": "POP_POSITION",
         "invalid": "EXHAUSTED"
@@ -38,27 +40,44 @@
       "id": "POP_POSITION",
       "routine": "main",
       "kind": "pop",
-      "description": "Pop the next retained position from the LIFO stack.",
+      "label": "Pop next position",
+      "description": "Pop the highest-priority retained position. If no required position remains, every obligation has been discharged.",
       "on": {
         "thought": "INSPECT_POSITION",
-        "empty": "EXHAUSTED"
+        "empty": "SOLVED"
       }
     },
     {
       "id": "INSPECT_POSITION",
       "routine": "main",
       "kind": "inspect",
-      "terminal_checks": true,
-      "description": "Accept a proven objective, close a dead line, or transition to the card for the side to move.",
+      "label": "Inspect position",
+      "terminal_checks": false,
+      "description": "Close a proved branch, reject a required branch that is refuted or unexplorable, or choose the next DFA search state from the position predicates.",
       "rules": [
         {
-          "label": "close this line and pop the next position",
+          "label": "required branch refuted or unexplorable",
           "when": {
             "any": [
               "mated",
               "stalemate",
+              "objective_refutation",
+              "objective_refuted",
               "unexplorable",
               "oracle_limit"
+            ]
+          },
+          "to": "EXHAUSTED"
+        },
+        {
+          "label": "branch proved; pop the next retained obligation",
+          "when": {
+            "any": [
+              "mate",
+              "branch_proved",
+              "objective_won",
+              "gain_at_least_exchange_locked",
+              "gain_greater_than_exchange_locked"
             ]
           },
           "to": "POP_POSITION"
@@ -71,28 +90,51 @@
           "to": "SEARCH_OUR_MOVE"
         },
         {
-          "label": "opponent move",
+          "label": "enumerate every opponent reply because there are at most two",
+          "when": {
+            "side": "their",
+            "any": [
+              "legal_replies_at_most_2"
+            ]
+          },
+          "to": "ENUMERATE_BOUNDED_REPLIES"
+        },
+        {
+          "label": "search certified opponent reply classes",
+          "when": {
+            "side": "their",
+            "any": [
+              "reply_classes_certified"
+            ]
+          },
+          "to": "SEARCH_REPLY_CLASSES"
+        },
+        {
+          "label": "opponent reply set was not classified",
           "when": {
             "side": "their"
           },
-          "to": "SEARCH_OPPONENT_MOVE"
+          "to": "EXHAUSTED"
         }
       ],
       "on": {
-        "depth": "POP_POSITION",
+        "depth": "EXHAUSTED",
         "missing": "EXHAUSTED"
       },
-      "default": "POP_POSITION"
+      "default": "EXHAUSTED"
     },
     {
       "id": "SEARCH_OUR_MOVE",
       "routine": "main",
       "kind": "search",
       "side": "my",
-      "description": "Check forced replies first when the legal move set is already bounded; otherwise check mate, mate in one, checks, captures, and attacks. Push at most two positions total.",
+      "label": "Choose our move",
+      "description": "Choose one human tactical idea: mate, move the middle piece with check, take the bound back piece, recapture, then generic forcing moves.",
       "predicates": [
-        "forced_reply",
         "mate",
+        "move_middle_with_check",
+        "capture_back_of_alignment",
+        "recapture",
         "mate_in_1",
         "check",
         "capture",
@@ -100,53 +142,78 @@
       ],
       "closure": {
         "mode": "first",
-        "count": 2
+        "count": 1
       },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "POP_POSITION"
+        "none": "EXHAUSTED"
       }
     },
     {
-      "id": "SEARCH_OPPONENT_MOVE",
+      "id": "ENUMERATE_BOUNDED_REPLIES",
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "description": "Enumerate a bounded forced reply set first; otherwise check mate, mate in one, checks, captures, attacks, and a move that saves the attacked piece. Push at most two positions total.",
+      "label": "Enumerate bounded replies",
+      "description": "When the opponent has no more than two legal replies, retain every reply. Order captures by material damage, then mate threats, checks, king moves, and the remaining bounded reply.",
       "predicates": [
-        "forced_reply",
         "mated",
-        "mate_in_1",
-        "check",
-        "capture",
-        "attack",
-        "save_piece"
+        "bounded_capture",
+        "bounded_mate_in_1",
+        "bounded_check",
+        "bounded_king_move",
+        "bounded_reply"
       ],
       "closure": {
-        "mode": "first",
-        "count": 2
+        "mode": "all"
       },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "POP_POSITION"
+        "none": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "SEARCH_REPLY_CLASSES",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Search reply classes",
+      "description": "When the opponent has more than two legal replies, retain every oracle-certified reply that can refute or repair the material objective. Certified harmless nonclass replies are omitted.",
+      "predicates": [
+        "objective_refutation",
+        "reply_class_recapture",
+        "repairs_objective",
+        "reply_relevant"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "EXHAUSTED"
       }
     },
     {
       "id": "SOLVED",
       "routine": "main",
       "kind": "accept",
-      "description": "Mate or a quiet two-pawn material objective was reached."
+      "label": "Solved",
+      "description": "Every retained opponent obligation was proved and the position stack is empty."
     },
     {
       "id": "EXHAUSTED",
       "routine": "main",
       "kind": "reject",
-      "description": "The position stack emptied without reaching the objective."
+      "label": "Failed loudly",
+      "description": "A required branch was refuted, unexplorable, unclassified, or exceeded the policy budget."
     }
   ],
   "oracle": {
     "reply_limit": 2,
+    "reply_class_limit": 8,
     "objective_gain": 2,
+    "objective_probe_depth": 3,
+    "objective_probe_limit": 96,
     "max_positions": 12000,
     "mate_probe": true,
     "mate_probe_limit": 96,
