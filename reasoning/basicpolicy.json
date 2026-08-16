@@ -1,0 +1,148 @@
+{
+  "schema": "predicate-policy/v2",
+  "name": "basic",
+  "entry": "START",
+  "outcomes": {
+    "accept_state": "SOLVED",
+    "reject_state": "EXHAUSTED",
+    "winning_predicates": ["mate", "objective_won"],
+    "failure_predicates": []
+  },
+  "budgets": {
+    "thoughts": 40,
+    "depth": 4,
+    "call_depth": 4
+  },
+  "routines": [
+    { "id": "main", "label": "Basic search", "entry": "START" },
+    { "id": "position", "label": "Our reply ↔ their reply", "entry": "P_INSPECT" },
+    { "id": "forcing", "label": "Try forcing ideas", "entry": "F_SEARCH" },
+    { "id": "tactical", "label": "Try captures and attacks", "entry": "T_SEARCH" }
+  ],
+  "states": [
+    {
+      "id": "START", "routine": "main", "kind": "push_initial",
+      "description": "Push the root position.",
+      "on": { "pushed": "ROOT_POP", "invalid": "EXHAUSTED" }
+    },
+    {
+      "id": "ROOT_POP", "routine": "main", "kind": "pop",
+      "description": "Pop the next root position.",
+      "on": { "thought": "ROOT_CALL", "empty": "EXHAUSTED" }
+    },
+    {
+      "id": "ROOT_CALL", "routine": "main", "kind": "call",
+      "description": "Search this position, then try the next retained root.",
+      "call": { "routine": "position", "return_to": "ROOT_POP", "resume_current": false }
+    },
+
+    {
+      "id": "P_INSPECT", "routine": "position", "kind": "inspect", "terminal_checks": true,
+      "description": "Accept a win, close a failed branch, or alternate by side to move.",
+      "rules": [
+        {
+          "label": "close only this branch",
+          "when": { "any": ["unexplorable", "oracle_limit", "objective_lost", "mated", "stalemate"] },
+          "to": "P_CLOSE"
+        },
+        { "label": "our reply", "when": { "side": "my" }, "to": "P_CALL_FORCING" },
+        { "label": "their reply", "when": { "side": "their" }, "to": "P_THEIR_SEARCH" }
+      ],
+      "on": { "depth": "P_RETURN", "missing": "P_RETURN" },
+      "default": "P_CLOSE"
+    },
+    {
+      "id": "P_CALL_FORCING", "routine": "position", "kind": "call",
+      "description": "Try at most two mates, mate-in-ones, or checks; then come back for captures.",
+      "call": { "routine": "forcing", "return_to": "P_CALL_TACTICAL", "resume_current": true }
+    },
+    {
+      "id": "P_CALL_TACTICAL", "routine": "position", "kind": "call",
+      "description": "After forcing ideas close, try at most two captures or attacks.",
+      "call": { "routine": "tactical", "return_to": "P_RETURN", "resume_current": false }
+    },
+    {
+      "id": "P_THEIR_SEARCH", "routine": "position", "kind": "search", "side": "their",
+      "description": "Keep at most two scary or relevant opponent replies.",
+      "predicates": ["mate", "mated", "mate_in_1", "check", "capture_back", "capture", "save_piece", "attack"],
+      "closure": { "mode": "first", "count": 2 },
+      "on": { "pushed": "P_CHILD_POP", "none": "P_RETURN" }
+    },
+    {
+      "id": "P_CHILD_POP", "routine": "position", "kind": "pop",
+      "description": "Try the next retained opponent reply.",
+      "on": { "thought": "P_CHILD_CALL", "empty": "P_RETURN" }
+    },
+    {
+      "id": "P_CHILD_CALL", "routine": "position", "kind": "call",
+      "description": "Search that reply as a new position, then return for its sibling.",
+      "call": { "routine": "position", "return_to": "P_CHILD_POP", "resume_current": false }
+    },
+    {
+      "id": "P_CLOSE", "routine": "position", "kind": "search",
+      "description": "Close this branch without rejecting the whole run.",
+      "predicates": ["__close_no_child__"],
+      "closure": { "mode": "first", "count": 1 },
+      "on": { "pushed": "P_RETURN", "none": "P_RETURN" }
+    },
+    {
+      "id": "P_RETURN", "routine": "position", "kind": "return",
+      "description": "Return to the parent frame so its next retained idea can be popped.",
+      "on": { "no_frame": "EXHAUSTED" }
+    },
+
+    {
+      "id": "F_SEARCH", "routine": "forcing", "kind": "search", "side": "my",
+      "description": "Search mate, mate in one, then check; keep no more than two ideas.",
+      "predicates": ["mate", "mate_in_1", "check"],
+      "closure": { "mode": "first", "count": 2 },
+      "on": { "pushed": "F_POP", "none": "F_RETURN" }
+    },
+    {
+      "id": "F_POP", "routine": "forcing", "kind": "pop",
+      "description": "Pop the next forcing idea.",
+      "on": { "thought": "F_CALL", "empty": "F_RETURN" }
+    },
+    {
+      "id": "F_CALL", "routine": "forcing", "kind": "call",
+      "description": "Search the forcing idea, then return for the next one.",
+      "call": { "routine": "position", "return_to": "F_POP", "resume_current": false }
+    },
+    {
+      "id": "F_RETURN", "routine": "forcing", "kind": "return",
+      "description": "Return to the same parent position and continue with captures.",
+      "on": { "no_frame": "EXHAUSTED" }
+    },
+
+    {
+      "id": "T_SEARCH", "routine": "tactical", "kind": "search", "side": "my",
+      "description": "Search capture, then attack; keep no more than two ideas.",
+      "predicates": ["capture", "attack"],
+      "closure": { "mode": "first", "count": 2 },
+      "on": { "pushed": "T_POP", "none": "T_RETURN" }
+    },
+    {
+      "id": "T_POP", "routine": "tactical", "kind": "pop",
+      "description": "Pop the next capture or attack.",
+      "on": { "thought": "T_CALL", "empty": "T_RETURN" }
+    },
+    {
+      "id": "T_CALL", "routine": "tactical", "kind": "call",
+      "description": "Search the tactical idea, then return for the next one.",
+      "call": { "routine": "position", "return_to": "T_POP", "resume_current": false }
+    },
+    {
+      "id": "T_RETURN", "routine": "tactical", "kind": "return",
+      "description": "Return after both tactical ideas close.",
+      "on": { "no_frame": "EXHAUSTED" }
+    },
+
+    { "id": "SOLVED", "routine": "main", "kind": "accept", "description": "A winning predicate was reached." },
+    { "id": "EXHAUSTED", "routine": "main", "kind": "reject", "description": "Every retained line closed without a winning predicate." }
+  ],
+  "oracle": {
+    "reply_limit": 5,
+    "max_positions": 10,
+    "mate_probe_limit": 2
+  }
+}
