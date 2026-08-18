@@ -1,6 +1,6 @@
 /*
  * Priyomes Predicate Policy Engine
- * predicate.js v1.0.0
+ * predicate.js v1.1.0
  *
  * A DOM-free, deterministic engine for coordinate-free predicate policies over
  * finite game trees. The browser UI, storage, animation, examples, and editors
@@ -8,6 +8,7 @@
  *   - policy/project validation
  *   - DFA + bounded LIFO search execution
  *   - ordered predicate filtering and closure
+ *   - invisible delimiter-scoped position frames on the same pending stack
  *   - routine CALL / RETURN semantics
  *   - test-case interpretation
  *   - an inspectable event stream and explored-tree snapshot
@@ -22,7 +23,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function predicatePolicyFactory() {
   "use strict";
 
-  const VERSION = "1.0.0";
+  const VERSION = "1.1.0";
   const POLICY_SCHEMA = "predicate-policy/v2";
   const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
   const STATE_KINDS = Object.freeze([
@@ -58,6 +59,7 @@
   function conditionLabel(when = {}) {
     const parts = [];
     if (when.side) parts.push(`side = ${when.side}`);
+    if (when.frame) parts.push(`frame = ${when.frame}`);
     if (Array.isArray(when.any) && when.any.length) parts.push(`any(${when.any.join(" · ")})`);
     if (Array.isArray(when.all) && when.all.length) parts.push(`all(${when.all.join(" · ")})`);
     if (Array.isArray(when.none) && when.none.length) parts.push(`none(${when.none.join(" · ")})`);
@@ -67,6 +69,7 @@
   function conditionMatches(position, item, when = {}) {
     const predicates = position?.predicates || [];
     if (when.side && position?.side !== when.side) return false;
+    if (when.frame && item?.frameKind !== when.frame) return false;
     if (Array.isArray(when.any) && when.any.length && !when.any.some(predicate => predicates.includes(predicate))) return false;
     if (Array.isArray(when.all) && when.all.length && !when.all.every(predicate => predicates.includes(predicate))) return false;
     if (Array.isArray(when.none) && when.none.some(predicate => predicates.includes(predicate))) return false;
@@ -89,6 +92,7 @@
       if (state.call?.return_to) targets.push(state.call.return_to);
     } else {
       Object.values(state.on || {}).forEach(value => value && targets.push(value));
+      if (state.kind === "search" && state.frame?.on_empty) targets.push(state.frame.on_empty);
     }
     return targets.filter(Boolean);
   }
@@ -166,8 +170,16 @@
         requireTarget(state.on?.pushed, "pushed");
         requireTarget(state.on?.invalid, "invalid");
       } else if (state?.kind === "pop") {
-        requireTarget(state.on?.thought, "thought");
-        requireTarget(state.on?.empty, "empty");
+        if (state.until !== undefined && state.until !== "current_frame") {
+          error(`${name} has invalid pop target`, 'pop.until may only be "current_frame".');
+        }
+        if (state.until === "current_frame") {
+          requireTarget(state.on?.delimiter, "delimiter");
+          requireTarget(state.on?.empty, "empty");
+        } else {
+          requireTarget(state.on?.thought, "thought");
+          requireTarget(state.on?.empty, "empty");
+        }
       } else if (state?.kind === "search") {
         if (!isStringArray(state.predicates)) error(`${name} has no predicate order`, "search.predicates must be a non-empty array of strings.");
         if (!allowedClosure.has(state.closure?.mode)) error(`${name} has invalid closure mode`, state.closure?.mode || "missing");
@@ -179,6 +191,14 @@
           error(`${name} has invalid closure count`, "one_each count, when supplied, must be >= 1.");
         }
         if (state.side && !["my", "their"].includes(state.side)) error(`${name} has invalid side`, state.side);
+        if (state.frame !== undefined) {
+          if (!isObject(state.frame)) {
+            error(`${name} has an invalid stack-frame declaration`, "search.frame must be an object when supplied.");
+          } else {
+            if (!["choice", "replies"].includes(state.frame.kind)) error(`${name} has invalid frame kind`, state.frame.kind || "missing");
+            requireTarget(state.frame.on_empty, "frame.on_empty");
+          }
+        }
         requireTarget(state.on?.pushed, "pushed");
         requireTarget(state.on?.none, "none");
         const duplicates = state.predicates?.filter((item, itemIndex) => state.predicates.indexOf(item) !== itemIndex) || [];
@@ -189,6 +209,7 @@
           requireTarget(rule?.to, `rule ${ruleIndex + 1}`);
           const when = rule?.when || {};
           if (when.side && !["my", "their"].includes(when.side)) error(`${name} rule ${ruleIndex + 1} has invalid side`, when.side);
+          if (when.frame && !["root", "choice", "replies"].includes(when.frame)) error(`${name} rule ${ruleIndex + 1} has invalid frame`, when.frame);
           ["any", "all", "none"].forEach(key => {
             if (when[key] !== undefined && !isStringArray(when[key], true)) {
               error(`${name} rule ${ruleIndex + 1} has invalid ${key}`, "Use an array of predicate strings.");
@@ -320,7 +341,7 @@
       return this.positions.get(id);
     }
 
-    _newOccurrence(id, depth, parentOccurrence, matchedBy, status = "queued") {
+    _newOccurrence(id, depth, parentOccurrence, matchedBy, status = "queued", frame = null) {
       const occurrence = `n${++this._occurrenceCounter}`;
       const node = {
         occurrence,
@@ -335,7 +356,19 @@
       this.runtime.nodes[occurrence] = node;
       this.runtime.nodeOrder.push(occurrence);
       if (!node.parent) this.runtime.roots.push(occurrence);
-      return { id, depth: node.depth, parent: node.parent, matchedBy: node.matchedBy, occurrence };
+      return {
+        stackKind: "position",
+        id,
+        depth: node.depth,
+        parent: node.parent,
+        matchedBy: node.matchedBy,
+        occurrence,
+        frameId: frame?.id || null,
+        frameKind: frame?.kind || null,
+        frameSourceState: frame?.sourceState || null,
+        frameAncestorId: frame?.ancestor?.id || null,
+        frameAncestorOccurrence: frame?.ancestor?.occurrence || null
+      };
     }
 
     _node(itemOrOccurrence) {
@@ -350,6 +383,7 @@
 
     reset(initial = this.project?.initial || []) {
       this._occurrenceCounter = 0;
+      this._frameCounter = 0;
       const entry = this.policy?.entry;
       const entryState = stateDefFromPolicy(this.policy, entry);
       const initialIds = normalizeInitial(initial);
@@ -385,7 +419,12 @@
       if (!initialIds.length) this.runtime.bootstrapError = "no initial position supplied";
       else if (missing.length) this.runtime.bootstrapError = `unknown initial position: ${missing.join(", ")}`;
 
-      this.runtime.initialItems = initialIds.map(id => this._newOccurrence(id, 0, null, "initial", "queued"));
+      this.runtime.initialItems = initialIds.map(id => this._newOccurrence(id, 0, null, "initial", "queued", {
+        id: null,
+        kind: "root",
+        sourceState: null,
+        ancestor: null
+      }));
 
       if (!this.runtime.bootstrapError && entryState && entryState.kind !== "push_initial") {
         if (entryState.kind === "pop") {
@@ -498,6 +537,13 @@
         parent: this.runtime.current.occurrence
       }));
       const predicates = [...(state.predicates || [])];
+      const frame = state.frame ? {
+        id: `f${++this._frameCounter}`,
+        kind: state.frame.kind,
+        sourceState: state.id,
+        onEmpty: state.frame.on_empty,
+        ancestor: clone(this.runtime.current)
+      } : null;
       this.runtime.frontier = clone(frontier);
       this.runtime.selectedFrontier = [];
       this.runtime.search = {
@@ -505,6 +551,7 @@
         parent: clone(this.runtime.current),
         frontier,
         predicates,
+        frame,
         predicateIndex: 0,
         selected: [],
         used: [],
@@ -525,9 +572,30 @@
     _completeSearch(state, session) {
       session.complete = true;
       const selected = session.selected;
-      [...selected].reverse().forEach(item => this.runtime.pending.push(item));
       this.runtime.selectedFrontier = clone(selected);
       if (selected.length) {
+        if (session.frame) {
+          const delimiter = {
+            stackKind: "delimiter",
+            frameId: session.frame.id,
+            frameKind: session.frame.kind,
+            sourceState: session.frame.sourceState,
+            onEmpty: session.frame.onEmpty,
+            ancestor: clone(session.frame.ancestor),
+            childCount: selected.length
+          };
+          this.runtime.pending.push(delimiter);
+          this._emit("delimiter-pushed", { delimiter: clone(delimiter) });
+          [...selected].reverse().forEach(item => this.runtime.pending.push(item));
+          this._emit("positions-pushed", {
+            frameId: session.frame.id,
+            frameKind: session.frame.kind,
+            ancestor: clone(session.frame.ancestor),
+            items: clone(selected)
+          });
+        } else {
+          [...selected].reverse().forEach(item => this.runtime.pending.push(item));
+        }
         this._setNode(session.parent, {
           status: "expanded",
           note: `${selected.length} child${selected.length === 1 ? "" : "ren"} retained by ${state.id}`
@@ -545,12 +613,13 @@
       this._emit("search-complete", {
         position: session.parent.id,
         occurrence: session.parent.occurrence,
+        frame: clone(session.frame),
         selected: clone(selected),
         selectedCount: selected.length,
         closure: clone(state.closure),
         closureLabel: closureLabel(state)
       });
-      this.runtime.current = null;
+      this.runtime.current = selected.length ? null : clone(session.parent);
       this._transition(selected.length ? state.on.pushed : state.on.none, selected.length ? "matches retained" : "no matches");
     }
 
@@ -594,7 +663,7 @@
         if (!childPosition?.predicates?.includes(predicate)) continue;
         matchingIds.push(child.id);
         if (session.selected.length >= maximum) break;
-        const item = this._newOccurrence(child.id, child.depth, child.parent, predicate, "queued");
+        const item = this._newOccurrence(child.id, child.depth, child.parent, predicate, "queued", session.frame);
         session.selected.push(item);
         session.used.push(child.id);
         used.add(child.id);
@@ -632,6 +701,52 @@
       }
     }
 
+    _restoreDelimiter(delimiter, discarded = []) {
+      const ancestor = clone(delimiter.ancestor);
+      this.runtime.current = ancestor;
+      this.runtime.frontier = [];
+      this.runtime.selectedFrontier = [];
+      this.runtime.lastMatch = delimiter.frameKind;
+      this.runtime.reason = `${delimiter.frameKind} frame for ${ancestor?.id || "ancestor"} completed`;
+      if (ancestor) this._setNode(ancestor, { status: "active" });
+      this._emit("delimiter-popped", {
+        delimiter: clone(delimiter),
+        ancestor,
+        discarded: discarded.map(item => item.id)
+      });
+      return ancestor;
+    }
+
+    _popUntilCurrentFrame(state) {
+      const frameId = this.runtime.current?.frameId;
+      if (!frameId) {
+        this._emit("frame-error", { reason: "current position has no enclosing frame" });
+        this._transition(state.on.empty, "missing frame delimiter", "current position has no enclosing frame");
+        return;
+      }
+      const discarded = [];
+      while (this.runtime.pending.length) {
+        const item = this.runtime.pending.pop();
+        if (item?.stackKind === "delimiter") {
+          if (item.frameId !== frameId) {
+            this._emit("frame-error", { reason: `encountered delimiter ${item.frameId} before ${frameId}` });
+            this._transition(state.on.empty, "mismatched frame delimiter", `encountered delimiter ${item.frameId} before ${frameId}`);
+            return;
+          }
+          discarded.forEach(position => this._setNode(position, {
+            status: "discarded",
+            note: `discarded with ${item.frameKind} frame for ${item.ancestor?.id || "ancestor"}`
+          }));
+          this._restoreDelimiter(item, discarded);
+          this._transition(state.on.delimiter, "frame delimiter popped");
+          return;
+        }
+        discarded.push(item);
+      }
+      this._emit("frame-error", { reason: `delimiter ${frameId} was not found` });
+      this._transition(state.on.empty, "frame delimiter missing", `delimiter ${frameId} was not found`);
+    }
+
     step() {
       this._stepEvents = [];
       if (this.runtime.result) return { events: [], snapshot: this.snapshot() };
@@ -664,27 +779,36 @@
           this._transition(state.on.pushed, "initial positions retained");
         }
       } else if (state.kind === "pop") {
-        const base = this._frameBase();
-        if (this.runtime.pending.length <= base) {
-          this.runtime.current = null;
-          this.runtime.frontier = [];
-          this.runtime.selectedFrontier = [];
-          this._emit("frontier-empty", {
-            local: Boolean(this.runtime.callStack.length),
-            routine: this.runtime.routine,
-            reason: this.runtime.callStack.length ? "subroutine has no local line left" : "no retained line remains"
-          });
-          this._transition(state.on.empty, "no retained line", this.runtime.callStack.length ? this.runtime.reason : "every retained line closed");
+        if (state.until === "current_frame") {
+          this._popUntilCurrentFrame(state);
         } else {
-          const item = this.runtime.pending.pop();
-          this.runtime.current = item;
-          this.runtime.frontier = [];
-          this.runtime.selectedFrontier = [];
-          this.runtime.lastMatch = item.matchedBy || "initial";
-          this.runtime.reason = `examining ${item.id}`;
-          this._setNode(item, { status: "active" });
-          this._emit("line-selected", { item: clone(item) });
-          this._transition(state.on.thought, "line selected");
+          const base = this._frameBase();
+          if (this.runtime.pending.length <= base) {
+            this.runtime.current = null;
+            this.runtime.frontier = [];
+            this.runtime.selectedFrontier = [];
+            this._emit("frontier-empty", {
+              local: Boolean(this.runtime.callStack.length),
+              routine: this.runtime.routine,
+              reason: this.runtime.callStack.length ? "subroutine has no local line left" : "no retained line remains"
+            });
+            this._transition(state.on.empty, "no retained line", this.runtime.callStack.length ? this.runtime.reason : "every retained line closed");
+          } else {
+            const item = this.runtime.pending.pop();
+            if (item?.stackKind === "delimiter") {
+              this._restoreDelimiter(item);
+              this._transition(item.onEmpty, "frame exhausted");
+            } else {
+              this.runtime.current = item;
+              this.runtime.frontier = [];
+              this.runtime.selectedFrontier = [];
+              this.runtime.lastMatch = item.matchedBy || "initial";
+              this.runtime.reason = `examining ${item.id}`;
+              this._setNode(item, { status: "active" });
+              this._emit("line-selected", { item: clone(item) });
+              this._transition(state.on.thought, "line selected");
+            }
+          }
         }
       } else if (state.kind === "inspect") {
         const item = this.runtime.current;
@@ -824,7 +948,9 @@
         stateKind: currentState?.kind || null,
         stateDescription: currentState?.description || "",
         routine: this.runtime.routine,
-        pendingCount: this.runtime.pending.length,
+        pendingCount: this.runtime.pending.filter(item => item?.stackKind !== "delimiter").length,
+        delimiterCount: this.runtime.pending.filter(item => item?.stackKind === "delimiter").length,
+        pendingStackCount: this.runtime.pending.length,
         current: this.runtime.current,
         callStack: this.runtime.callStack,
         frontier: this.runtime.frontier,
@@ -903,10 +1029,13 @@
     },
     stateKinds: {
       push_initial: { on: { pushed: "state-id", invalid: "state-id" } },
-      pop: { on: { thought: "state-id", empty: "state-id" } },
+      pop: {
+        until: 'optional "current_frame"',
+        on: { thought: "state-id for ordinary pop", delimiter: "state-id for pop-until", empty: "state-id" }
+      },
       inspect: {
         terminal_checks: "boolean (default true)",
-        rules: [{ label: "text", when: { side: "my|their", any: ["p"], all: ["p"], none: ["p"] }, to: "state-id" }],
+        rules: [{ label: "text", when: { side: "my|their", frame: "root|choice|replies", any: ["p"], all: ["p"], none: ["p"] }, to: "state-id" }],
         default: "optional state-id",
         on: { depth: "optional state-id", missing: "optional state-id" }
       },
@@ -914,6 +1043,7 @@
         side: "optional my|their documentation label",
         predicates: ["checked in exact order"],
         closure: { mode: "first|all|one_each", count: "required for first; optional for one_each" },
+        frame: "optional { kind: choice|replies, on_empty: state-id }; pushes an invisible delimiter",
         on: { pushed: "state-id", none: "state-id" }
       },
       call: { call: { routine: "routine-id", return_to: "state-id", resume_current: "boolean" } },

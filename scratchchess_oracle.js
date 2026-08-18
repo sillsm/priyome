@@ -10,7 +10,7 @@
  * the DFA. Every oracle card is an actual ScratchChess board position.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "1.6.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "1.7.0";
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
 
@@ -855,7 +855,10 @@ export class ScratchChessOracle {
         continue;
       }
       if (isRequiredRecapture) {
-        child.predicates = unique([...child.predicates, "reply_class_recapture", "repairs_objective", "reply_relevant"]);
+        // recapture is already a direct chess predicate on the move. The reply
+        // classifier adds only the objective role; it does not mint a second
+        // move predicate for the same chess fact.
+        child.predicates = unique([...child.predicates, "repairs_objective", "reply_relevant"]);
         child.facts = unique([...child.facts, "reply_class(recapture)", "repairs_objective"]);
         required.push(child);
         continue;
@@ -883,24 +886,21 @@ export class ScratchChessOracle {
       return;
     }
 
-    const recaptureMembers = required.filter((child) => child.predicates.includes("reply_class_recapture"));
+    const recaptureMembers = required.filter((child) => child.predicates.includes("recapture"));
     const refutationMembers = required.filter((child) => child.predicates.includes("objective_refutation"));
     const repairMembers = required.filter((child) => child.predicates.includes("repairs_objective"));
 
     card.predicates = unique([
       ...card.predicates,
-      "reply_classes_certified",
-      ...(recaptureMembers.length ? ["reply_class_recapture_available"] : []),
-      ...(refutationMembers.length ? ["objective_refutation_available"] : []),
-      ...(repairMembers.length ? ["repairs_objective_available"] : [])
+      "reply_classes_certified"
     ]);
     card.facts = unique([
       ...card.facts,
       `reply_classes_certified(${required.length})`,
       `certified_nonclass_replies(${certified.length})`,
-      ...(recaptureMembers.length ? [`reply_class_recapture_available(${recaptureMembers.length})`, "reply_class(recapture)"] : []),
-      ...(refutationMembers.length ? [`objective_refutation_available(${refutationMembers.length})`] : []),
-      ...(repairMembers.length ? [`repairs_objective_available(${repairMembers.length})`, "reply_class(repairs_objective)"] : [])
+      ...(recaptureMembers.length ? [`reply_class(recapture,count=${recaptureMembers.length})`] : []),
+      ...(refutationMembers.length ? [`reply_class(objective_refutation,count=${refutationMembers.length})`] : []),
+      ...(repairMembers.length ? [`reply_class(repairs_objective,count=${repairMembers.length})`] : [])
     ]);
 
     if (!required.length) {
@@ -966,67 +966,37 @@ export class ScratchChessOracle {
     const replyLimit = Number(this.options.reply_limit);
     if (!Number.isInteger(replyLimit) || replyLimit < 1) throw new Error("oracle reply_limit must be an integer >= 1");
 
-    // Opponent positions are routed by the DFA. A small legal set is directly
-    // enumerable. A checked king may also be enumerated when the complete set
-    // stays within the configured reply-class limit. Otherwise the oracle must
-    // certify semantic reply classes below.
-    // The basic policy enumerates an opponent move set only when it is already
-    // human-sized. A check with more than reply_limit legal answers must be
-    // handled by a certified reply-class state or fail loudly; it is not silently
-    // promoted into an enumerate-everything state.
-    const forcedByCount = card.side === "their" && legal.length <= replyLimit;
-    const forcedByCheck = false;
-    const forcingReplySet = forcedByCount;
-    if (forcingReplySet) {
-      card.predicates = unique([
-        ...card.predicates,
-        "forcing_reply_set",
-        ...(forcedByCount ? ["legal_replies_at_most_2"] : []),
-        ...(forcedByCheck ? ["answers_check"] : [])
-      ]);
+    // The DFA needs only one structural routing predicate: whether the full
+    // opponent reply set fits the exhaustive budget. Child moves retain their
+    // ordinary predicates (capture, check, king_move, recapture, and so on),
+    // plus the existing required_reply role. The policy never needs a second
+    // move predicate that restates the same chess fact merely because this set
+    // is small enough to enumerate.
+    const repliesWithinBudget = card.side === "their" && legal.length <= replyLimit;
+    if (repliesWithinBudget) {
+      card.predicates = unique([...card.predicates, "replies_within_budget"]);
       card.facts = unique([
         ...card.facts,
-        `forcing_reply_set(${legal.length})`,
-        ...(forcedByCount ? [`legal_replies_at_most_2(${legal.length})`] : []),
-        ...(forcedByCheck ? [`answers_check(${legal.length})`] : [])
+        `replies_within_budget(count=${legal.length},limit=${replyLimit})`
       ]);
-      analyses.forEach((child) => {
-        const forcingPredicates = ["forced_reply", "forcing_reply"];
-        const forcingFacts = ["forced_reply", "forcing_reply"];
-        if (child.predicates.includes("capture")) {
-          forcingPredicates.push("forcing_capture");
-          forcingFacts.push(`forcing_capture(value=${child.meta.captureValue})`);
-        }
-        if (child.predicates.includes("check")) {
-          forcingPredicates.push("forcing_check");
-          forcingFacts.push("forcing_check");
-        }
-        if (child.predicates.includes("king_move")) {
-          forcingPredicates.push("forcing_king_move");
-          forcingFacts.push("forcing_king_move");
-        }
-        if (child.predicates.includes("mate_in_1")) {
-          forcingPredicates.push("forcing_mate_in_1");
-          forcingFacts.push("forcing_mate_in_1");
-        }
-        child.predicates = unique([...child.predicates, ...forcingPredicates]);
-        child.facts = unique([...child.facts, ...forcingFacts]);
-      });
     } else if (card.side === "their") {
-      card.facts = unique([...card.facts, `opponent_legal_replies_unbounded(${legal.length})`]);
+      card.facts = unique([
+        ...card.facts,
+        `replies_exceed_budget(count=${legal.length},limit=${replyLimit})`
+      ]);
     }
 
     this._classifyObjectiveReplies(card, analyses);
 
     if (card.side === "their"
-      && !card.predicates.includes("forcing_reply_set")
+      && !card.predicates.includes("replies_within_budget")
       && !card.predicates.includes("reply_classes_certified")
       && !card.predicates.includes("branch_proved")
       && !card.predicates.includes("mated")
       && !card.predicates.includes("stalemate")) {
       card.predicates = unique([...card.predicates, "unexplorable"]);
       card.facts = unique([...card.facts, "unexplorable(no_certified_reply_classes)"]);
-      card.help = "Opponent has more than two legal replies and the oracle could not certify objective-relevant reply classes.";
+      card.help = "Opponent replies exceed the exhaustive budget and the oracle could not certify objective-relevant reply classes.";
     }
 
     card.prepared = true;
