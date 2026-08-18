@@ -480,7 +480,7 @@ No policy events yet.</pre>
   }
 
   function latestMeaningfulEvent(events) {
-    const priority = ["terminal", "failure-predicate", "winning-predicate", "budget-exhausted", "predicate-checked", "search-complete", "inspect-routed", "line-selected", "frontier-empty", "depth-closed", "transition"];
+    const priority = ["terminal", "failure-predicate", "winning-predicate", "budget-exhausted", "delimiter-popped", "positions-pushed", "delimiter-pushed", "predicate-checked", "search-complete", "inspect-routed", "line-selected", "frontier-empty", "depth-closed", "transition"];
     for (const type of priority) {
       const event = [...(events || [])].reverse().find((item) => item.type === type);
       if (event) return event;
@@ -576,11 +576,17 @@ No policy events yet.</pre>
       add("root pushed", state.on?.pushed);
       add("invalid root", state.on?.invalid);
     } else if (state.kind === "pop") {
-      add("position popped", state.on?.thought);
-      add("position stack empty", state.on?.empty);
+      if (state.until === "current_frame") {
+        add("current frame delimiter reached", state.on?.delimiter);
+        add("delimiter missing", state.on?.empty);
+      } else {
+        add("position popped", state.on?.thought);
+        add("position stack empty", state.on?.empty);
+      }
     } else if (state.kind === "search") {
       add("one or more positions retained", state.on?.pushed);
       add("no predicate matched", state.on?.none);
+      add(`${state.frame?.kind || "search"} frame exhausted`, state.frame?.on_empty);
     } else if (state.kind === "inspect") {
       (state.rules || []).forEach((rule, index) => add(rule.label || P.conditionLabel(rule.when) || `rule ${index + 1}`, rule.to, "rule"));
       add("default", state.default);
@@ -618,7 +624,10 @@ No policy events yet.</pre>
       const statusText = names.length ? names.join(" · ") : check.status === "matched" ? "retained" : check.status === "missed" ? "none" : check.status === "checking" || check.status === "next" ? "checking" : "";
       return `<div class="predicate-row ${esc(check.status || "waiting")}"><span class="order">${index + 1}</span><strong>${esc(check.predicate)}</strong><span class="matches" title="${esc(statusText)}">${esc(statusText)}</span></div>`;
     }).join("");
-    return `<div class="detail-section"><div class="detail-label">Predicate priority <span>checked top to bottom</span></div><div class="predicate-list">${rows}</div><div class="closure-line">Closure: <strong>${esc(P.closureLabel(state))}</strong></div></div>`;
+    const frame = state.frame
+      ? `<div class="closure-line">Stack frame: <strong>${esc(state.frame.kind)}</strong> · delimiter empty → <strong>${esc(state.frame.on_empty)}</strong></div>`
+      : "";
+    return `<div class="detail-section"><div class="detail-label">Predicate priority <span>checked top to bottom</span></div><div class="predicate-list">${rows}</div><div class="closure-line">Closure: <strong>${esc(P.closureLabel(state))}</strong></div>${frame}</div>`;
   }
 
   function inspectDetailHtml(state, snapshot) {
@@ -726,6 +735,9 @@ No policy events yet.</pre>
       ? { title: `Checked “${event.predicate}”`, detail: `Retained ${event.selected.map((item) => cardDisplay(item.id)).join(", ")}.` }
       : { title: `Checked “${event.predicate}”`, detail: "No unused legal child matched." };
     if (event.type === "line-selected") return { title: `Popped ${cardDisplay(event.item.id)}`, detail: "This is the highest-priority retained position." };
+    if (event.type === "delimiter-pushed") return { title: `Pushed ${event.delimiter?.frameKind || "search"} delimiter`, detail: `Ancestor: ${cardDisplay(event.delimiter?.ancestor?.id)}.` };
+    if (event.type === "positions-pushed") return { title: `Pushed ${event.items?.length || 0} position${event.items?.length === 1 ? "" : "s"}`, detail: (event.items || []).map((item) => cardDisplay(item.id)).join(" · ") };
+    if (event.type === "delimiter-popped") return { title: `Popped back to ${cardDisplay(event.ancestor?.id)}`, detail: `${event.delimiter?.frameKind || "search"} frame complete${event.discarded?.length ? `; ${event.discarded.length} unused position${event.discarded.length === 1 ? "" : "s"} discarded silently` : ""}.` };
     if (event.type === "transition") return { title: `${stateTitle(stateDef(event.from))} → ${stateTitle(stateDef(event.to))}`, detail: event.label || "The DFA followed a transition." };
     if (event.type === "initial-retained") return { title: "Root position pushed", detail: `${event.items?.length || 0} initial position${event.items?.length === 1 ? "" : "s"} retained.` };
     if (event.type === "depth-closed") return { title: "Depth budget reached", detail: `${cardDisplay(event.item.id)} closed at depth ${event.depth}.` };
@@ -903,12 +915,13 @@ No policy events yet.</pre>
 
   function formatEvent(event) {
     if (event.type === "initial-retained") return `PUSH_INITIAL ${(event.items || []).map((item) => cardDisplay(item.id)).join(" · ")}`;
+    if (event.type === "delimiter-pushed") return `PUSH_DELIMITER ${cardDisplay(event.delimiter?.ancestor?.id)} | ${event.delimiter?.frameKind || "search"}`;
+    if (event.type === "positions-pushed") return `PUSH ${(event.items || []).map((item) => cardDisplay(item.id)).join(" · ")}`;
     if (event.type === "line-selected") return `POP ${cardDisplay(event.item.id)}`;
+    if (event.type === "delimiter-popped") return `POP ${cardDisplay(event.ancestor?.id)}`;
     if (event.type === "inspect-routed") return `INSPECT ${cardDisplay(event.item.id)} | ${event.label} -> ${event.to}`;
     if (event.type === "predicate-checked") return `SEARCH ${event.predicate} | ${event.selected?.length ? `retain ${event.selected.map((item) => cardDisplay(item.id)).join(" · ")}` : "no match"}`;
-    if (event.type === "search-complete") return event.selectedCount
-      ? `PUSH ${(event.selected || []).map((item) => cardDisplay(item.id)).join(" · ")} | ${event.closureLabel}`
-      : `CLOSE_LINE ${cardDisplay(event.position)} | no matching move; pop next position`;
+    if (event.type === "search-complete") return null;
     if (event.type === "winning-predicate") return `WINNING_PREDICATE ${event.predicate} @ ${cardDisplay(event.item.id)}`;
     if (event.type === "failure-predicate") return `FAILURE_PREDICATE ${event.predicate} @ ${cardDisplay(event.item.id)}`;
     if (event.type === "budget-exhausted") return `BUDGET_EXHAUSTED thoughts=${event.budget}`;
@@ -1074,6 +1087,7 @@ No policy events yet.</pre>
     grammar.site = {
       dfa_cards: "every policy state is rendered; any number of inspect and search states is allowed",
       transitions: "direct state-to-state transitions only",
+      stack_frames: "each search pushes one invisible delimiter beneath its retained board positions",
       allowed_state_kinds: ["push_initial", "pop", "inspect", "search", "accept", "reject"],
       oracle: "required inside the policy object; unknown and missing options fail loudly"
     };
