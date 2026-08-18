@@ -117,11 +117,11 @@ button,input,select,textarea{font:inherit}button,select{cursor:pointer}button:di
     <div class="right-stack">
       <section class="panel tree-panel">
         <header class="panel-head">
-          <div><h2>Tree explored by the policy</h2><p>Only cards retained by predicate.js appear here.</p></div>
+          <div><h2>Tree explored by the policy</h2><p>Only positions actually popped and examined appear here.</p></div>
           <div class="right"><span class="mini-chip" id="nodeCountChip">0 nodes</span><span class="mini-chip" id="depthChip">depth 0</span></div>
         </header>
         <div class="tree-body" id="treeBody" tabindex="0" role="tree" aria-label="Explored position tree. Use left and right for previous and next; up and down for first and last."><div class="tree-empty">No runner yet.</div></div>
-        <div class="tree-legend"><span>▶ active</span><span>○ retained</span><span>✓ accept</span><span>× reject</span><span>· closed/discarded</span><span>keys: ←/→ previous/next · ↑/↓ first/last</span></div>
+        <div class="tree-legend"><span>▶ active</span><span>○ explored</span><span>✓ accept</span><span>× reject</span><span>· closed</span><span>keys: ←/→ previous/next · ↑/↓ first/last</span></div>
       </section>
 
       <section class="panel policy-panel">
@@ -153,7 +153,7 @@ button,input,select,textarea{font:inherit}button,select{cursor:pointer}button:di
 No policy events yet.</pre>
           </div>
           <div class="policy-view text-policy-view" data-policy-view="pgn">
-            <div class="text-view-toolbar"><strong>Explored PGN</strong><span>variations carry [because predicate] and DFA comments</span><button class="control" id="copyLivePgnBtn" type="button">Copy</button></div>
+            <div class="text-view-toolbar"><strong>Explored PGN</strong><span>only popped positions; variations carry [because predicate] and DFA comments</span><button class="control" id="copyLivePgnBtn" type="button">Copy</button></div>
             <textarea class="pgn-text" id="livePgn" readonly spellcheck="false"></textarea>
           </div>
           <div class="policy-controls">
@@ -781,15 +781,26 @@ No policy events yet.</pre>
     if (node.status === "accepted") return "✓";
     if (node.status === "rejected") return "×";
     if (node.status === "active") return "▶";
-    if (node.status === "closed" || node.status === "discarded") return "·";
+    if (node.status === "closed") return "·";
     return "○";
   }
 
+  function exploredOccurrences(snapshot) {
+    return new Set((snapshot?.trace || [])
+      .filter((event) => event.type === "line-selected" && event.item?.occurrence)
+      .map((event) => event.item.occurrence));
+  }
+
+  function exploredNodes(snapshot) {
+    const explored = exploredOccurrences(snapshot);
+    return (snapshot?.nodes || []).filter((node) => explored.has(node.occurrence));
+  }
+
   function renderTree(snapshot) {
-    const nodes = snapshot.nodes || [];
-    $("#nodeCountChip").textContent = `${nodes.length} node${nodes.length === 1 ? "" : "s"}`;
+    const nodes = exploredNodes(snapshot);
+    $("#nodeCountChip").textContent = `${nodes.length} explored node${nodes.length === 1 ? "" : "s"}`;
     $("#depthChip").textContent = `depth ${nodes.length ? Math.max(...nodes.map((node) => Number(node.depth || 0))) : 0}/${app.policy?.budgets?.depth ?? "—"}`;
-    if (!nodes.length) { $("#treeBody").innerHTML = '<div class="tree-empty">No position card has been pushed.</div>'; return; }
+    if (!nodes.length) { $("#treeBody").innerHTML = '<div class="tree-empty">No position has been popped and examined yet.</div>'; return; }
     const nodeMap = new Map(nodes.map((node) => [node.occurrence, node]));
     const byParent = new Map();
     nodes.forEach((node) => {
@@ -952,7 +963,7 @@ No policy events yet.</pre>
 
   function formatExploredPgn(snapshot = currentSnapshot()) {
     const puzzle = currentPuzzle() || {};
-    const nodes = snapshot?.nodes || [];
+    const nodes = exploredNodes(snapshot);
     const nodeMap = new Map(nodes.map((node) => [node.occurrence, node]));
     const byParent = new Map();
     nodes.forEach((node) => {
@@ -998,7 +1009,6 @@ No policy events yet.</pre>
       if (node.matchedBy && node.matchedBy !== "initial") comments.push(`[because ${node.matchedBy}]`);
       comments.push(...(eventComments.get(node.occurrence) || []));
       if (node.note) comments.push(node.note);
-      else if (node.status === "queued") comments.push("retained for later");
       const comment = comments.map(pgnComment).filter(Boolean).join("; ");
       return `${prefix} ${san}${comment ? ` {${comment}}` : ""}`;
     };
