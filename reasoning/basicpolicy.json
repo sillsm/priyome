@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "2.6.0",
+  "version": "3.0.0",
   "goal": "gain_at_least_exchange",
   "entry": "START",
   "outcomes": {
@@ -13,14 +13,14 @@
     "failure_predicates": []
   },
   "budgets": {
-    "thoughts": 2400,
+    "thoughts": 1600,
     "depth": 48,
     "call_depth": 0
   },
   "routines": [
     {
       "id": "main",
-      "label": "Basic one-card predicate DFA",
+      "label": "Basic delimiter-stack DFA",
       "entry": "START"
     }
   ],
@@ -40,8 +40,8 @@
       "id": "POP_POSITION",
       "routine": "main",
       "kind": "pop",
-      "label": "Pop highest-priority position",
-      "description": "Pop only after the active search card has checked its entire predicate list and pushed every matching board position.",
+      "label": "Pop next position",
+      "description": "Pop the highest-priority retained board position. When a frame delimiter is reached, restore its ancestor and follow the delimiter's DFA transition.",
       "on": {
         "thought": "INSPECT_POSITION",
         "empty": "EXHAUSTED"
@@ -53,10 +53,10 @@
       "kind": "inspect",
       "label": "Inspect board position",
       "terminal_checks": false,
-      "description": "Read the oracle predicates and choose the next DFA state. Board positions remain positions; proof and backtracking are DFA transitions.",
+      "description": "Read the oracle predicates and choose one visible DFA state. Delimiters are stack scope only; every tree node remains a real board position.",
       "rules": [
         {
-          "label": "this line proves the current candidate",
+          "label": "this line is proved",
           "when": {
             "any": [
               "mate",
@@ -66,14 +66,11 @@
               "gain_greater_than_exchange_locked"
             ]
           },
-          "to": "POP_AFTER_PROOF"
+          "to": "LINE_PROVED"
         },
         {
-          "label": "a required opponent reply refutes the candidate",
+          "label": "this line is refuted or unexplorable",
           "when": {
-            "all": [
-              "required_reply"
-            ],
             "any": [
               "mated",
               "stalemate",
@@ -83,54 +80,27 @@
               "oracle_limit"
             ]
           },
-          "to": "POP_AFTER_REQUIRED_FAILURE"
+          "to": "LINE_FAILED"
         },
         {
-          "label": "our candidate failed; try the next candidate",
-          "when": {
-            "all": [
-              "our_candidate"
-            ],
-            "any": [
-              "mated",
-              "stalemate",
-              "objective_refutation",
-              "objective_refuted",
-              "unexplorable",
-              "oracle_limit"
-            ]
-          },
-          "to": "POP_AFTER_CANDIDATE_FAILURE"
-        },
-        {
-          "label": "our turn: scan one ordered predicate list",
+          "label": "our move: scan one ordered predicate list",
           "when": {
             "side": "my"
           },
           "to": "SEARCH_OUR_MOVE"
         },
         {
-          "label": "opponent reply set is forcing and enumerable",
+          "label": "opponent replies fit the exhaustive budget",
           "when": {
             "side": "their",
             "any": [
-              "forcing_reply_set"
+              "replies_within_budget"
             ]
           },
-          "to": "SEARCH_FORCING_REPLIES"
+          "to": "SEARCH_EXHAUSTIVE_REPLIES"
         },
         {
-          "label": "the previous capture creates a recapture reply class",
-          "when": {
-            "side": "their",
-            "any": [
-              "reply_class_recapture_available"
-            ]
-          },
-          "to": "SEARCH_RECAPTURE_REPLY_CLASS"
-        },
-        {
-          "label": "search the certified objective-relevant reply classes",
+          "label": "opponent replies have certified reply classes",
           "when": {
             "side": "their",
             "any": [
@@ -140,15 +110,15 @@
           "to": "SEARCH_REPLY_CLASSES"
         },
         {
-          "label": "opponent replies are not classifiable under this policy",
+          "label": "opponent replies cannot be handled by this policy",
           "when": {
             "side": "their"
           },
-          "to": "POP_AFTER_CANDIDATE_FAILURE"
+          "to": "LINE_FAILED"
         }
       ],
       "on": {
-        "depth": "EXHAUSTED",
+        "depth": "LINE_FAILED",
         "missing": "EXHAUSTED"
       },
       "default": "EXHAUSTED"
@@ -158,68 +128,55 @@
       "routine": "main",
       "kind": "search",
       "side": "my",
-      "label": "Our move \u2014 one ordered predicate card",
-      "description": "One card only. Scan the entire ordered predicate list from top to bottom, retain every legal move that matches at least one predicate, and push the complete priority-ordered set before any position is popped.",
+      "label": "Our move",
+      "description": "One card. Check every predicate in order, retain every matching legal move once, push one choice-frame delimiter, push all retained moves, then pop the highest-priority move.",
       "predicates": [
         "mate",
-        "mate_in_1",
         "move_middle_with_check",
-        "check",
         "capture_back_of_alignment",
         "recapture",
+        "mate_in_1",
+        "check",
         "capture",
         "attack"
       ],
       "closure": {
         "mode": "all"
       },
+      "frame": {
+        "kind": "choice",
+        "on_empty": "LINE_FAILED"
+      },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "POP_AFTER_REQUIRED_FAILURE"
+        "none": "LINE_FAILED"
       }
     },
     {
-      "id": "SEARCH_FORCING_REPLIES",
+      "id": "SEARCH_EXHAUSTIVE_REPLIES",
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Forcing opponent replies",
-      "description": "The opponent move set is already constrained: at most two legal replies, or a bounded set of legal answers to check. Enumerate every reply, ordering the most materially damaging first.",
+      "label": "Exhaustive replies within budget",
+      "description": "The complete legal reply set is small enough to enumerate. Use ordinary chess predicates only, with required_reply as the catch-all, and push every reply in one replies frame.",
       "predicates": [
         "mated",
-        "forcing_capture",
-        "forcing_mate_in_1",
-        "forcing_check",
-        "forcing_king_move",
-        "forcing_reply"
+        "capture",
+        "mate_in_1",
+        "check",
+        "king_move",
+        "required_reply"
       ],
       "closure": {
         "mode": "all"
       },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "POP_AFTER_CANDIDATE_FAILURE"
-      }
-    },
-    {
-      "id": "SEARCH_RECAPTURE_REPLY_CLASS",
-      "routine": "main",
-      "kind": "search",
-      "side": "their",
-      "label": "Recapture reply class",
-      "description": "The preceding move was a material capture. Retain every certified recapture or other reply that can refute or repair the objective; omit only replies certified not to recover it.",
-      "predicates": [
-        "objective_refutation",
-        "reply_class_recapture",
-        "repairs_objective",
-        "reply_relevant"
-      ],
-      "closure": {
-        "mode": "all"
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
       },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "POP_AFTER_CANDIDATE_FAILURE"
+        "none": "LINE_FAILED"
       }
     },
     {
@@ -227,57 +184,55 @@
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Opponent reply classes",
-      "description": "The opponent has too many legal moves to enumerate. Retain every oracle-certified objective refutation or repair class and fail loudly if the set cannot be certified.",
+      "label": "Certified opponent reply classes",
+      "description": "The legal reply set is too large to enumerate. Push every oracle-certified refutation, recapture, or objective-repairing class member in one replies frame.",
       "predicates": [
+        "mated",
         "objective_refutation",
+        "recapture",
         "repairs_objective",
         "reply_relevant"
       ],
       "closure": {
         "mode": "all"
       },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "POP_AFTER_CANDIDATE_FAILURE"
+        "none": "LINE_FAILED"
       }
     },
     {
-      "id": "POP_AFTER_PROOF",
-      "routine": "main",
-      "kind": "pop",
-      "label": "Pop after proof",
-      "description": "A chosen move worked. Pop remaining required opponent replies; lower-priority moves from the same choice will be skipped by the next inspect state.",
-      "on": {
-        "thought": "INSPECT_AFTER_PROOF",
-        "empty": "SOLVED"
-      }
-    },
-    {
-      "id": "INSPECT_AFTER_PROOF",
+      "id": "LINE_PROVED",
       "routine": "main",
       "kind": "inspect",
-      "label": "Continue required replies / skip alternatives",
+      "label": "Propagate proof",
       "terminal_checks": false,
-      "description": "Required opponent replies must still be discharged. Lower-priority alternatives to an already successful move are skipped by DFA transition, not represented as fake positions.",
+      "description": "A choice succeeds by one proved child; a replies frame succeeds only after every retained reply has been discharged.",
       "rules": [
         {
-          "label": "another required opponent reply remains",
+          "label": "a chosen move worked; discard its unused alternatives",
           "when": {
-            "all": [
-              "required_reply"
-            ]
+            "frame": "choice"
           },
-          "to": "INSPECT_POSITION"
+          "to": "DISCARD_CHOICE_FRAME"
         },
         {
-          "label": "skip a lower-priority alternative because this choice already worked",
+          "label": "one required reply is discharged; examine the next reply",
           "when": {
-            "all": [
-              "our_candidate"
-            ]
+            "frame": "replies"
           },
-          "to": "POP_AFTER_PROOF"
+          "to": "POP_POSITION"
+        },
+        {
+          "label": "the root position is proved",
+          "when": {
+            "frame": "root"
+          },
+          "to": "SOLVED"
         }
       ],
       "on": {
@@ -287,99 +242,71 @@
       "default": "EXHAUSTED"
     },
     {
-      "id": "POP_AFTER_CANDIDATE_FAILURE",
+      "id": "LINE_FAILED",
+      "routine": "main",
+      "kind": "inspect",
+      "label": "Propagate failure",
+      "terminal_checks": false,
+      "description": "A failed choice falls through to its next candidate. One failed required reply refutes its parent choice and discards the rest of that reply frame.",
+      "rules": [
+        {
+          "label": "this candidate failed; try the next candidate",
+          "when": {
+            "frame": "choice"
+          },
+          "to": "POP_POSITION"
+        },
+        {
+          "label": "a required reply failed; discard the rest of its reply frame",
+          "when": {
+            "frame": "replies"
+          },
+          "to": "DISCARD_REPLY_FRAME"
+        },
+        {
+          "label": "the root position is not solved by this policy",
+          "when": {
+            "frame": "root"
+          },
+          "to": "EXHAUSTED"
+        }
+      ],
+      "on": {
+        "depth": "EXHAUSTED",
+        "missing": "EXHAUSTED"
+      },
+      "default": "EXHAUSTED"
+    },
+    {
+      "id": "DISCARD_CHOICE_FRAME",
       "routine": "main",
       "kind": "pop",
-      "label": "Pop next candidate",
-      "description": "The current move failed. Pop the next lower-priority move from the same ordered candidate set.",
+      "until": "current_frame",
+      "label": "Commit successful choice",
+      "description": "Silently pop unused sibling positions until this choice-frame delimiter, then restore the ancestor and propagate proof.",
       "on": {
-        "thought": "INSPECT_AFTER_CANDIDATE_FAILURE",
+        "delimiter": "LINE_PROVED",
         "empty": "EXHAUSTED"
       }
     },
     {
-      "id": "INSPECT_AFTER_CANDIDATE_FAILURE",
-      "routine": "main",
-      "kind": "inspect",
-      "label": "Try candidate or propagate failure",
-      "terminal_checks": false,
-      "description": "A sibling candidate is tried normally. Encountering a required reply means no candidate remained to answer that reply, so failure propagates outward.",
-      "rules": [
-        {
-          "label": "try the next candidate",
-          "when": {
-            "all": [
-              "our_candidate"
-            ]
-          },
-          "to": "INSPECT_POSITION"
-        },
-        {
-          "label": "no candidate answered the required reply; propagate failure",
-          "when": {
-            "all": [
-              "required_reply"
-            ]
-          },
-          "to": "POP_AFTER_REQUIRED_FAILURE"
-        }
-      ],
-      "on": {
-        "depth": "EXHAUSTED",
-        "missing": "EXHAUSTED"
-      },
-      "default": "EXHAUSTED"
-    },
-    {
-      "id": "POP_AFTER_REQUIRED_FAILURE",
+      "id": "DISCARD_REPLY_FRAME",
       "routine": "main",
       "kind": "pop",
-      "label": "Pop out of failed reply set",
-      "description": "One required opponent reply refuted the current move. Discard its remaining sibling replies until the next parent-level candidate is reached.",
+      "until": "current_frame",
+      "label": "Abort refuted reply frame",
+      "description": "Silently pop the remaining sibling replies until this replies-frame delimiter, then restore the ancestor and propagate failure.",
       "on": {
-        "thought": "INSPECT_AFTER_REQUIRED_FAILURE",
+        "delimiter": "LINE_FAILED",
         "empty": "EXHAUSTED"
       }
-    },
-    {
-      "id": "INSPECT_AFTER_REQUIRED_FAILURE",
-      "routine": "main",
-      "kind": "inspect",
-      "label": "Discard replies / try parent candidate",
-      "terminal_checks": false,
-      "description": "Skip remaining replies belonging to the failed move. The next candidate belongs to the enclosing choice and is inspected normally.",
-      "rules": [
-        {
-          "label": "discard another reply belonging to the failed candidate",
-          "when": {
-            "all": [
-              "required_reply"
-            ]
-          },
-          "to": "POP_AFTER_REQUIRED_FAILURE"
-        },
-        {
-          "label": "try the next parent-level candidate",
-          "when": {
-            "all": [
-              "our_candidate"
-            ]
-          },
-          "to": "INSPECT_POSITION"
-        }
-      ],
-      "on": {
-        "depth": "EXHAUSTED",
-        "missing": "EXHAUSTED"
-      },
-      "default": "EXHAUSTED"
     },
     {
       "id": "SOLVED",
       "routine": "main",
       "kind": "accept",
       "label": "Solved",
-      "description": "The highest-priority successful choice discharged every required opponent reply. Lower-priority alternatives were skipped by DFA transitions."
+      "description": "A root choice succeeded and every required opponent reply in its nested delimiter frames was discharged."
     },
     {
       "id": "EXHAUSTED",
