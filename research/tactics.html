@@ -249,6 +249,7 @@ No policy events yet.</pre>
     scratch: null,
     Oracle: null,
     oracleVersion: "—",
+    oracleHorizon: null,
     puzzles: [],
     librarySource: PUZZLES_URL,
     puzzleIndex: 0,
@@ -315,13 +316,10 @@ No policy events yet.</pre>
       ["reply_limit", 1],
       ["reply_class_limit", 1],
       ["objective_gain", 1],
-      ["objective_probe_depth", 1],
-      ["objective_probe_limit", 1],
       ["max_positions", 1],
-      ["mate_probe_limit", 1],
       ["attack_min_value", 0]
     ]);
-    const allowedOracleKeys = new Set([...requiredOracleIntegers.keys(), "mate_probe"]);
+    const allowedOracleKeys = new Set(requiredOracleIntegers.keys());
     if (!oracle || typeof oracle !== "object" || Array.isArray(oracle)) {
       error("policy.oracle is required", "Oracle settings live only inside the selected policy.");
     } else {
@@ -333,7 +331,6 @@ No policy events yet.</pre>
         const value = Number(oracle[key]);
         if (!Number.isInteger(value) || value < min) error(`Invalid oracle.${key}`, `${key} must be an integer >= ${min}.`);
       }
-      if (typeof oracle.mate_probe !== "boolean") error("Invalid oracle.mate_probe", "mate_probe must be true or false.");
     }
     return issues;
   }
@@ -358,6 +355,8 @@ No policy events yet.</pre>
     app.Oracle = oracle.ScratchChessOracle;
     app.oracleVersion = oracle.SCRATCHCHESS_ORACLE_VERSION;
     if (!app.oracleVersion) throw new Error(`${ORACLE_URL} did not export SCRATCHCHESS_ORACLE_VERSION`);
+    app.oracleHorizon = oracle.SCRATCHCHESS_ORACLE_HORIZON;
+    if (app.oracleHorizon !== 1) throw new Error(`${ORACLE_URL} must export SCRATCHCHESS_ORACLE_HORIZON = 1`);
     app.oracleSource = ORACLE_URL;
   }
 
@@ -902,7 +901,7 @@ No policy events yet.</pre>
         : "";
     $("#resultText").textContent = result ? [result.toUpperCase(), diagnostic].filter(Boolean).join(" · ") : app.running ? "running" : stateTitle(stateDef(snapshot?.state));
     $("#resultChip").className = `status-chip ${result || ""}`;
-    $("#engineChip").innerHTML = `<span class="status-dot"></span><span>predicate.js ${esc(P.VERSION)} · oracle ${esc(app.oracleVersion)}</span>`;
+    $("#engineChip").innerHTML = `<span class="status-dot"></span><span>predicate.js ${esc(P.VERSION)} · oracle ${esc(app.oracleVersion)} · horizon ${esc(app.oracleHorizon)}</span>`;
     $("#policySelect").value = app.policyId;
     $("#puzzleSelect").value = String(app.puzzleIndex);
     const disabled = !app.initialized || app.locked;
