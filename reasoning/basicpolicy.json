@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "3.0.0",
+  "version": "3.3.0",
   "goal": "gain_at_least_exchange",
   "entry": "START",
   "outcomes": {
@@ -90,6 +90,26 @@
           "to": "SEARCH_OUR_MOVE"
         },
         {
+          "label": "opponent must recover a material gain or create a stronger counterthreat",
+          "when": {
+            "side": "their",
+            "any": [
+              "material_objective_reply_set"
+            ]
+          },
+          "to": "SEARCH_MATERIAL_OBJECTIVE_REPLIES"
+        },
+        {
+          "label": "opponent must repair a pending target capture",
+          "when": {
+            "side": "their",
+            "any": [
+              "target_objective_reply_set"
+            ]
+          },
+          "to": "SEARCH_TARGET_OBJECTIVE_REPLIES"
+        },
+        {
           "label": "opponent replies fit the exhaustive budget",
           "when": {
             "side": "their",
@@ -98,16 +118,6 @@
             ]
           },
           "to": "SEARCH_EXHAUSTIVE_REPLIES"
-        },
-        {
-          "label": "opponent replies have certified reply classes",
-          "when": {
-            "side": "their",
-            "any": [
-              "reply_classes_certified"
-            ]
-          },
-          "to": "SEARCH_REPLY_CLASSES"
         },
         {
           "label": "opponent replies cannot be handled by this policy",
@@ -129,14 +139,16 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "One card. Check every predicate in order, retain every matching legal move once, push one choice-frame delimiter, push all retained moves, then pop the highest-priority move.",
+      "description": "One card. Check every predicate in order, retain every matching legal move once, push one choice-frame delimiter, push all retained moves, then pop the highest-priority move. Relational moves that create or cash out a concrete material objective outrank generic checks and captures.",
       "predicates": [
         "mate",
         "move_middle_with_check",
         "capture_back_of_alignment",
         "recapture",
-        "mate_in_1",
+        "remove_sole_defender",
+        "creates_material_threat",
         "check",
+        "mate_in_1",
         "capture",
         "attack"
       ],
@@ -180,18 +192,41 @@
       }
     },
     {
-      "id": "SEARCH_REPLY_CLASSES",
+      "id": "SEARCH_MATERIAL_OBJECTIVE_REPLIES",
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Certified opponent reply classes",
-      "description": "The legal reply set is too large to enumerate. Push every oracle-certified refutation, recapture, or objective-repairing class member in one replies frame.",
+      "label": "Replies to a banked material gain",
+      "description": "The opponent is already down the configured material objective. Retain only a direct capture or neutralization of the gaining attacker, or a stronger forcing counterthreat such as mate, check, or a mate threat. Ordinary captures elsewhere do not undo the banked gain.",
       "predicates": [
-        "mated",
-        "objective_refutation",
-        "recapture",
-        "repairs_objective",
-        "reply_relevant"
+        "attacker_captured_or_neutralized",
+        "stronger_forcing_counterthreat"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_FAILED"
+      }
+    },
+    {
+      "id": "SEARCH_TARGET_OBJECTIVE_REPLIES",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Replies to a pending target capture",
+      "description": "Our previous move created a concrete pending capture, such as removing a sole effective defender, attacking a target with check, or skewering a valuable piece through the king. Retain only replies that move the target to safety, add an effective defender, capture or neutralize the attacker, make the intended capture cease to win the objective, or create a stronger forcing counterthreat.",
+      "predicates": [
+        "target_moves_to_safety",
+        "target_acquires_effective_defender",
+        "attacker_captured_or_neutralized",
+        "intended_capture_no_longer_wins_objective",
+        "stronger_forcing_counterthreat"
       ],
       "closure": {
         "mode": "all"
@@ -318,7 +353,7 @@
   ],
   "oracle": {
     "reply_limit": 2,
-    "reply_class_limit": 8,
+    "reply_class_limit": 2,
     "objective_gain": 2,
     "objective_probe_depth": 3,
     "objective_probe_limit": 96,
