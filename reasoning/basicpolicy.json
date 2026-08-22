@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "3.3.0",
+  "version": "4.0.0",
   "goal": "gain_at_least_exchange",
   "entry": "START",
   "outcomes": {
@@ -20,7 +20,7 @@
   "routines": [
     {
       "id": "main",
-      "label": "Basic delimiter-stack DFA",
+      "label": "Basic strict-one-ply delimiter-stack DFA",
       "entry": "START"
     }
   ],
@@ -53,29 +53,23 @@
       "kind": "inspect",
       "label": "Inspect board position",
       "terminal_checks": false,
-      "description": "Read the oracle predicates and choose one visible DFA state. Delimiters are stack scope only; every tree node remains a real board position.",
+      "description": "Read only oracle predicates on the current board and its immediate legal children; every proof decision is a visible DFA transition.",
       "rules": [
         {
-          "label": "this line is proved",
+          "label": "this move checkmates",
           "when": {
             "any": [
-              "mate",
-              "branch_proved",
-              "objective_won",
-              "gain_at_least_exchange_locked",
-              "gain_greater_than_exchange_locked"
+              "mate"
             ]
           },
           "to": "LINE_PROVED"
         },
         {
-          "label": "this line is refuted or unexplorable",
+          "label": "this line is refuted or outside the one-ply reply budget",
           "when": {
             "any": [
               "mated",
               "stalemate",
-              "objective_refutation",
-              "objective_refuted",
               "unexplorable",
               "oracle_limit"
             ]
@@ -139,7 +133,7 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "One card. Check every predicate in order, retain every matching legal move once, push one choice-frame delimiter, push all retained moves, then pop the highest-priority move. Relational moves that create or cash out a concrete material objective outrank generic checks and captures.",
+      "description": "One card. Scan predicates in order and push every matching immediate legal move. The oracle supplies only current-board and one-ply facts.",
       "predicates": [
         "mate",
         "move_middle_with_check",
@@ -148,7 +142,6 @@
         "remove_sole_defender",
         "creates_material_threat",
         "check",
-        "mate_in_1",
         "capture",
         "attack"
       ],
@@ -170,11 +163,10 @@
       "kind": "search",
       "side": "their",
       "label": "Exhaustive replies within budget",
-      "description": "The complete legal reply set is small enough to enumerate. Use ordinary chess predicates only, with required_reply as the catch-all, and push every reply in one replies frame.",
+      "description": "No active objective applies and the complete immediate legal reply set fits the budget, so enumerate every reply.",
       "predicates": [
         "mated",
         "capture",
-        "mate_in_1",
         "check",
         "king_move",
         "required_reply"
@@ -197,9 +189,10 @@
       "kind": "search",
       "side": "their",
       "label": "Replies to a banked material gain",
-      "description": "The opponent is already down the configured material objective. Retain only a direct capture or neutralization of the gaining attacker, or a stronger forcing counterthreat such as mate, check, or a mate threat. Ordinary captures elsewhere do not undo the banked gain.",
+      "description": "The opponent is down the banked material objective. On this one-ply card, retain only an immediate recapture/capture of the gaining attacker or an actual checkmate or a check that is not statically neutralizable by an effective non-king capture.",
       "predicates": [
         "attacker_captured_or_neutralized",
+        "recapture",
         "stronger_forcing_counterthreat"
       ],
       "closure": {
@@ -211,7 +204,7 @@
       },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
+        "none": "LINE_PROVED"
       }
     },
     {
@@ -220,7 +213,7 @@
       "kind": "search",
       "side": "their",
       "label": "Replies to a pending target capture",
-      "description": "Our previous move created a concrete pending capture, such as removing a sole effective defender, attacking a target with check, or skewering a valuable piece through the king. Retain only replies that move the target to safety, add an effective defender, capture or neutralize the attacker, make the intended capture cease to win the objective, or create a stronger forcing counterthreat.",
+      "description": "Our previous move created one or more concrete target relations visible on the resulting board. Retain only immediate replies that repair every target relation or give an actual checkmate or a check that is not statically neutralizable by an effective non-king capture.",
       "predicates": [
         "target_moves_to_safety",
         "target_acquires_effective_defender",
@@ -237,7 +230,7 @@
       },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
+        "none": "LINE_PROVED"
       }
     },
     {
@@ -355,11 +348,7 @@
     "reply_limit": 2,
     "reply_class_limit": 2,
     "objective_gain": 2,
-    "objective_probe_depth": 3,
-    "objective_probe_limit": 96,
     "max_positions": 12000,
-    "mate_probe": true,
-    "mate_probe_limit": 96,
     "attack_min_value": 3
   }
 }
