@@ -4,13 +4,19 @@
  * Chess-only adapter for Predicate Chess.
  *
  * ScratchChess owns FEN, legal moves, checks, mate, SAN, promotion, and board
- * state. This file turns those facts into the finite position cards consumed by
- * predicate.js. It also certifies bounded material-objective reply classes, but
- * it never chooses a policy move, pushes a position, pops a position, or changes
- * the DFA. Every oracle card is an actual ScratchChess board position.
+ * state. This file turns the current board and each legal one-ply result into
+ * finite position cards consumed by predicate.js. It never applies a move from
+ * a child position, searches a continuation, proves a branch, chooses a policy
+ * move, pushes or pops the PDA stack, or changes the DFA.
+ *
+ * Horizon contract: for current position P, the oracle may inspect P, enumerate
+ * legal moves m from P, apply each m once to obtain Pm, and assign predicates
+ * derived from P, m, and Pm. All proof and continuation reasoning belongs to the
+ * visible predicate-policy DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "1.9.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.0.0";
+export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
 
@@ -80,18 +86,6 @@ function fenSide(fen) {
   return fenFields(fen)[1];
 }
 
-function normalizedFen(fen) {
-  return fenFields(fen).slice(0, 4).join(" ");
-}
-
-function forceFenSide(fen, side) {
-  const fields = fenFields(fen);
-  fields[1] = normalizeSide(side);
-  // En-passant rights belong to the actual move sequence and can become invalid
-  // when asking the counterfactual question "does this side have mate in one?".
-  fields[3] = "-";
-  return fields.join(" ");
-}
 
 function movePrefix(fen) {
   const fields = fenFields(fen);
@@ -370,26 +364,75 @@ function bindingSurvives(board, binding) {
   );
 }
 
-function childInterestScore(child) {
-  const predicates = new Set(child.predicates || []);
-  let score = 0;
-  if (predicates.has("mate") || predicates.has("mated")) score += 100000;
-  if (predicates.has("move_middle_with_check")) score += 90000;
-  if (predicates.has("capture_back_of_alignment")) score += 85000;
-  if (predicates.has("recapture")) score += 80000;
-  if (predicates.has("remove_sole_defender")) score += 78000;
-  if (predicates.has("creates_material_threat")) score += 76000;
-  if (predicates.has("check")) score += 10000;
-  if (predicates.has("capture")) score += 1000;
-  score += Number(child.meta?.captureValue || 0) * 100;
-  score += Number(child.meta?.materialSwing || 0);
-  return score;
+
+
+function attackersOnBoard(board, target, bySide) {
+  const output = [];
+  for (let from = 0; from < 64; from += 1) {
+    const piece = board[from];
+    if (!piece || piece.color !== bySide || from === target) continue;
+    if (attacksSquare(board, from, target)) output.push(from);
+  }
+  return output;
 }
 
-function compareAnalyses(a, b) {
-  return childInterestScore(b) - childInterestScore(a)
-    || Number(b.meta?.captureValue || 0) - Number(a.meta?.captureValue || 0)
-    || String(a.move?.uci || "").localeCompare(String(b.move?.uci || ""));
+function directionBetween(from, to) {
+  const [fromFile, fromRank] = fr(from);
+  const [toFile, toRank] = fr(to);
+  const df = toFile - fromFile;
+  const dr = toRank - fromRank;
+  if (df === 0 && dr !== 0) return [0, Math.sign(dr)];
+  if (dr === 0 && df !== 0) return [Math.sign(df), 0];
+  if (Math.abs(df) === Math.abs(dr) && df !== 0) return [Math.sign(df), Math.sign(dr)];
+  return null;
+}
+
+function isAbsolutelyPinnedOnBoard(board, square, side) {
+  const piece = board[square];
+  if (!piece || piece.color !== side || piece.type === "k") return false;
+  const king = board.findIndex((item) => item?.color === side && item.type === "k");
+  if (king < 0) return false;
+  const direction = directionBetween(king, square);
+  if (!direction) return false;
+  const [df, dr] = direction;
+  let [file, rank] = fr(king);
+  file += df;
+  rank += dr;
+  while (inBounds(file, rank)) {
+    const current = idx(file, rank);
+    if (current === square) break;
+    if (board[current]) return false;
+    file += df;
+    rank += dr;
+  }
+  if (!inBounds(file, rank)) return false;
+  file += df;
+  rank += dr;
+  while (inBounds(file, rank)) {
+    const current = idx(file, rank);
+    const blocker = board[current];
+    if (!blocker) {
+      file += df;
+      rank += dr;
+      continue;
+    }
+    return blocker.color !== side && sliderSupportsDirection(blocker, df, dr);
+  }
+  return false;
+}
+
+function effectiveDefendersOnBoard(board, target, side) {
+  return attackersOnBoard(board, target, side)
+    .filter((square) => !isAbsolutelyPinnedOnBoard(board, square, side));
+}
+
+function samePieceAt(board, square, descriptor) {
+  const piece = board[square];
+  return Boolean(piece && descriptor && piece.color === descriptor.color && piece.type === descriptor.type);
+}
+
+function targetObjectiveKey(target) {
+  return `${target.attackerSquare}:${target.targetSquare}:${target.source}`;
 }
 
 function factToken(value) {
@@ -411,8 +454,7 @@ export class ScratchChessOracle {
     }
     const allowed = new Set([
       "createGame", "reply_limit", "reply_class_limit", "objective_gain",
-      "objective_probe_depth", "objective_probe_limit", "max_positions",
-      "mate_probe", "mate_probe_limit", "attack_min_value"
+      "max_positions", "attack_min_value"
     ]);
     const unknown = Object.keys(config).filter((key) => !allowed.has(key));
     if (unknown.length) throw new Error(`Unknown oracle option(s): ${unknown.join(", ")}`);
@@ -421,10 +463,7 @@ export class ScratchChessOracle {
       reply_limit: 1,
       reply_class_limit: 1,
       objective_gain: 1,
-      objective_probe_depth: 1,
-      objective_probe_limit: 1,
       max_positions: 1,
-      mate_probe_limit: 1,
       attack_min_value: 0
     };
     for (const [key, minimum] of Object.entries(integerMinimums)) {
@@ -433,27 +472,22 @@ export class ScratchChessOracle {
         throw new Error(`oracle ${key} must be an integer >= ${minimum}`);
       }
     }
-    if (typeof config.mate_probe !== "boolean") throw new Error("oracle mate_probe must be boolean");
     this.createGame = config.createGame;
     this.options = {
       reply_limit: config.reply_limit,
       reply_class_limit: config.reply_class_limit,
       objective_gain: config.objective_gain,
-      objective_probe_depth: config.objective_probe_depth,
-      objective_probe_limit: config.objective_probe_limit,
       max_positions: config.max_positions,
-      mate_probe: config.mate_probe,
-      mate_probe_limit: config.mate_probe_limit,
       attack_min_value: config.attack_min_value
     };
     this.cards = new Map();
     this.analysis = new Map();
-    this.mateOneCache = new Map();
     this.rootSide = null;
     this.rootMaterial = null;
     this.rootId = "root";
     this.puzzle = null;
     this.policyDepth = null;
+    this.horizon = SCRATCHCHESS_ORACLE_HORIZON;
   }
 
   reset({ fen, title, theme = "", solution = "", where = "", policyDepth } = {}) {
@@ -462,7 +496,6 @@ export class ScratchChessOracle {
     if (!Number.isInteger(policyDepth) || policyDepth < 0) throw new Error("Oracle reset requires policyDepth as an integer >= 0");
     this.cards.clear();
     this.analysis.clear();
-    this.mateOneCache.clear();
     this.rootSide = fenSide(fen);
     this.policyDepth = policyDepth;
     const rootGame = this.createGame({ Event: title, Site: "Predicate Chess" });
@@ -480,8 +513,8 @@ export class ScratchChessOracle {
       label: title,
       side: "my",
       predicates: unique(rootPredicates),
-      facts: [theme ? `theme(${factToken(theme)})` : "root_position"],
-      help: "ScratchChess root position.",
+      facts: [theme ? `theme(${factToken(theme)})` : "root_position", "oracle_horizon(1)"],
+      help: "ScratchChess root position. Oracle horizon: current board plus one legal ply.",
       fen,
       depth: 0,
       children: [],
@@ -537,242 +570,100 @@ export class ScratchChessOracle {
     return game;
   }
 
-  _mateInOneFacts(fen, side) {
-    if (!this.options.mate_probe) return [];
-    const key = `${normalizedFen(fen)}|${side}`;
-    if (this.mateOneCache.has(key)) return clone(this.mateOneCache.get(key));
-    const game = this._game(forceFenSide(fen, side), "mate-in-one probe");
-    const legal = legalMoveRecords(game).slice(0, this.options.mate_probe_limit);
-    const output = [];
-    for (const move of legal) {
-      const after = applyMove(this.createGame, game, move);
-      if (!after) continue;
-      const terminal = terminalInfo(after);
-      if (terminal?.kind === "mate" && terminal.winner === side) {
-        output.push({ uci: move.uci, san: safeSan(after, move) });
-      }
-    }
-    this.mateOneCache.set(key, output);
-    return clone(output);
-  }
 
-  _shouldProbeMateThreat(after, moverSide, move, isCapture, isCheck, attackTargets) {
-    if (!this.options.mate_probe) return false;
-    if (isCheck || isCapture || attackTargets.some((target) => target.value >= 3)) return true;
-    const king = kingIndex(after, other(moverSide));
-    if (king < 0) return false;
-    const [kf, kr] = fr(king);
-    const [mf, mr] = fr(move.to);
-    return Math.max(Math.abs(kf - mf), Math.abs(kr - mr)) <= 2;
-  }
-
-  _rawMoveInfo(game, move, parentLastMove = null) {
-    const moverSide = normalizeSide(game.state.side);
-    const boardBefore = boardOf(game);
-    const captured = clone(boardBefore[move.to]);
-    const after = applyMove(this.createGame, game, move);
-    const san = safeSan(after, move);
-    const terminal = terminalInfo(after);
-    const check = safeInCheck(after, other(moverSide));
-    const capture = Boolean(captured) || /x/.test(san);
-    const recapture = Boolean(capture && parentLastMove && move.to === parentLastMove.to);
-    return {
-      move,
-      moverSide,
-      after,
-      afterFen: after.exportFEN(),
-      san,
-      terminal,
-      check,
-      capture,
-      recapture,
-      captureValue: VALUES[captured?.type] || 0,
-      materialSwing: materialBalance(after, this.rootSide) - this.rootMaterial
-    };
-  }
-
-  _objectiveCanBeHeld(fen, depth, memo = new Map()) {
-    const objectiveGain = Number(this.options.objective_gain);
-    const probeLimit = Number(this.options.objective_probe_limit);
-    if (!Number.isFinite(objectiveGain) || objectiveGain < 1) throw new Error("oracle objective_gain must be a number >= 1");
-    if (!Number.isInteger(probeLimit) || probeLimit < 1) throw new Error("oracle objective_probe_limit must be an integer >= 1");
-
-    const key = `${normalizedFen(fen)}|${depth}`;
-    if (memo.has(key)) return memo.get(key);
-    if (depth < 0) return false;
-
-    const game = this._game(fen, "objective lock probe");
-    const side = normalizeSide(game.state.side);
-    const legal = legalMoveRecords(game);
-    const inCheck = safeInCheck(game, side);
-    const swing = materialBalance(game, this.rootSide) - this.rootMaterial;
-
-    if (!legal.length) {
-      const result = inCheck ? other(side) === this.rootSide : false;
-      memo.set(key, result);
-      return result;
-    }
-    if (depth === 0) {
-      const result = swing >= objectiveGain && !inCheck;
-      memo.set(key, result);
-      return result;
-    }
-    if (legal.length > probeLimit) {
-      memo.set(key, false);
-      return false;
-    }
-
-    const infos = legal.map((move) => this._rawMoveInfo(game, move)).sort((a, b) => {
-      const score = (info) => (info.terminal?.kind === "mate" ? 100000 : 0)
-        + (info.check ? 10000 : 0)
-        + (info.capture ? 1000 : 0)
-        + info.captureValue * 100;
-      return score(b) - score(a) || String(a.move.uci).localeCompare(String(b.move.uci));
-    });
-
-    if (side === this.rootSide) {
-      for (const info of infos) {
-        if (this._objectiveCanBeHeld(info.afterFen, depth - 1, memo)) {
-          memo.set(key, true);
-          return true;
-        }
-      }
-      memo.set(key, false);
-      return false;
-    }
-
-    if (swing < objectiveGain) {
-      memo.set(key, false);
-      return false;
-    }
-
-    const forcing = inCheck
-      ? infos
-      : infos.filter((info) => info.terminal?.kind === "mate" || info.check || info.capture);
-    if (!forcing.length) {
-      memo.set(key, true);
-      return true;
-    }
-    const result = forcing.every((info) => this._objectiveCanBeHeld(info.afterFen, depth - 1, memo));
-    memo.set(key, result);
-    return result;
-  }
-
-
-  _gameForSide(fen, side, title) {
-    return this._game(forceFenSide(fen, side), title);
-  }
-
-  _captureOutcomesTo(fen, targetSquare, fromSquare = null) {
-    const game = this._gameForSide(fen, this.rootSide, "objective capture probe");
-    const targetPiece = boardOf(game)[targetSquare];
-    if (!targetPiece || targetPiece.color === this.rootSide || targetPiece.type === "k") return [];
-
-    const moves = legalMoveRecords(game).filter((move) =>
-      move.to === targetSquare && (fromSquare === null || move.from === fromSquare)
-    );
-
-    return moves.map((move) => {
-      const after = applyMove(this.createGame, game, move);
-      const occupant = boardOf(after)[targetSquare];
-      const recaptures = occupant?.color === this.rootSide
-        ? legalMoveRecords(after).filter((reply) => reply.to === targetSquare)
-        : [];
-      return {
-        move: clone(move),
-        afterFen: after.exportFEN(),
-        materialSwing: materialBalance(after, this.rootSide) - this.rootMaterial,
-        recaptures: recaptures.map(clone)
-      };
-    }).sort((a, b) =>
-      b.materialSwing - a.materialSwing
-      || a.recaptures.length - b.recaptures.length
-      || String(a.move.uci).localeCompare(String(b.move.uci))
-    );
-  }
-
-  _winningCaptureOutcome(fen, targetSquare, minimumGain, fromSquare = null) {
-    return this._captureOutcomesTo(fen, targetSquare, fromSquare)
-      .find((outcome) => outcome.materialSwing >= minimumGain && outcome.recaptures.length === 0) || null;
-  }
-
-  _findSoleDefenderObjective(beforeGame, afterGame, move, capturedBefore) {
-    if (!capturedBefore || capturedBefore.color === this.rootSide || capturedBefore.type === "k") return null;
-
-    const beforeFen = beforeGame.exportFEN();
-    const afterFen = afterGame.exportFEN();
+  _staticSoleDefenderTargets(beforeGame, afterGame, move, capturedBefore, materialSwing) {
+    if (!capturedBefore || capturedBefore.color === this.rootSide || capturedBefore.type === "k") return [];
     const beforeBoard = boardOf(beforeGame);
     const afterBoard = boardOf(afterGame);
     const defenderSquare = move.to;
+    const targetSide = capturedBefore.color;
     const minimumGain = Number(this.options.objective_gain);
-    const candidates = [];
+    const output = [];
 
     for (let targetSquare = 0; targetSquare < 64; targetSquare += 1) {
       if (targetSquare === defenderSquare) continue;
-      const beforeTarget = beforeBoard[targetSquare];
-      const afterTarget = afterBoard[targetSquare];
-      if (!beforeTarget || !afterTarget) continue;
-      if (beforeTarget.color !== capturedBefore.color || beforeTarget.type === "k") continue;
-      if (afterTarget.color !== beforeTarget.color || afterTarget.type !== beforeTarget.type) continue;
-      if (!attacksSquare(beforeBoard, defenderSquare, targetSquare)) continue;
-      if ((VALUES[beforeTarget.type] || 0) < minimumGain) continue;
-
-      const beforeOutcomes = this._captureOutcomesTo(beforeFen, targetSquare);
-      const effectiveDefenders = unique(beforeOutcomes.flatMap((outcome) =>
-        outcome.recaptures.map((reply) => reply.from)
-      ));
-      if (effectiveDefenders.length !== 1 || effectiveDefenders[0] !== defenderSquare) continue;
-
-      const winning = this._winningCaptureOutcome(afterFen, targetSquare, minimumGain);
-      if (!winning) continue;
-
-      const attackerPiece = afterBoard[winning.move.from];
-      candidates.push({
-        kind: "sole_defender_removed",
+      const targetBefore = beforeBoard[targetSquare];
+      const targetAfter = afterBoard[targetSquare];
+      if (!targetBefore || !targetAfter || targetBefore.color !== targetSide || targetBefore.type === "k") continue;
+      if (targetAfter.color !== targetSide || targetAfter.type !== targetBefore.type) continue;
+      const defenders = effectiveDefendersOnBoard(beforeBoard, targetSquare, targetSide);
+      if (defenders.length !== 1 || defenders[0] !== defenderSquare) continue;
+      const attackers = attackersOnBoard(afterBoard, targetSquare, this.rootSide)
+        .filter((square) => !isAbsolutelyPinnedOnBoard(afterBoard, square, this.rootSide));
+      if (!attackers.length) continue;
+      const targetValue = VALUES[targetAfter.type] || 0;
+      const projectedMaterialSwing = materialSwing + targetValue;
+      if (projectedMaterialSwing < minimumGain) continue;
+      output.push({
+        source: "sole_defender_removed",
         minimumGain,
         targetSquare,
-        targetPiece: clone(afterTarget),
-        targetValue: VALUES[afterTarget.type] || 0,
+        targetPiece: clone(targetAfter),
+        targetValue,
+        attackerSquare: attackers[0],
+        attackerPiece: clone(afterBoard[attackers[0]]),
         defenderSquare,
         defenderPiece: clone(capturedBefore),
-        attackerSquare: winning.move.from,
-        attackerPiece: clone(attackerPiece),
-        intendedCaptureUci: winning.move.uci,
-        projectedMaterialSwing: winning.materialSwing
+        projectedMaterialSwing,
+        sourceMove: move.uci
+      });
+    }
+    return output;
+  }
+
+  _staticCheckingTargets(afterGame, move, check, materialSwing) {
+    if (!check) return [];
+    const board = boardOf(afterGame);
+    const attacker = board[move.to];
+    if (!attacker || attacker.color !== this.rootSide || !["b", "r", "q"].includes(attacker.type)) return [];
+
+    // A king-adjacent attacker is not promoted to a target objective. That is a
+    // static board predicate, not a legal-response probe; the move remains an
+    // ordinary check for the policy to consider later.
+    const enemyKing = board.findIndex((piece) => piece?.color === other(this.rootSide) && piece.type === "k");
+    if (enemyKing >= 0 && attacksSquare(board, enemyKing, move.to)) return [];
+
+    const minimumGain = Number(this.options.objective_gain);
+    const output = [];
+
+    // Direct attacked targets on the resulting one-ply board.
+    for (let targetSquare = 0; targetSquare < 64; targetSquare += 1) {
+      const targetPiece = board[targetSquare];
+      if (!targetPiece || targetPiece.color === this.rootSide || targetPiece.type === "k") continue;
+      if (!attacksSquare(board, move.to, targetSquare)) continue;
+      const targetValue = VALUES[targetPiece.type] || 0;
+      const projectedMaterialSwing = materialSwing + targetValue;
+      if (targetValue < this.options.attack_min_value || projectedMaterialSwing < minimumGain) continue;
+      output.push({
+        source: "checking_attack",
+        minimumGain,
+        targetSquare,
+        targetPiece: clone(targetPiece),
+        targetValue,
+        attackerSquare: move.to,
+        attackerPiece: clone(attacker),
+        projectedMaterialSwing,
+        sourceMove: move.uci
       });
     }
 
-    return candidates.sort((a, b) =>
-      b.targetValue - a.targetValue
-      || b.projectedMaterialSwing - a.projectedMaterialSwing
-      || a.targetSquare - b.targetSquare
-    )[0] || null;
-  }
-
-  _findSkewerObjective(afterGame, move, check, materialSwing) {
-    if (!check) return null;
-    const board = boardOf(afterGame);
-    const attacker = board[move.to];
-    if (!attacker || attacker.color !== this.rootSide) return null;
-    if (legalMoveRecords(afterGame).some((reply) => reply.to === move.to)) return null;
-    const minimumGain = Number(this.options.objective_gain);
+    // Skewers visible on the resulting one-ply board: attacker, enemy king,
+    // then an enemy material target on the same ray.
     const [attackerFile, attackerRank] = fr(move.to);
-    const candidates = [];
-
     for (const [df, dr] of RAY_DIRECTIONS) {
       if (!sliderSupportsDirection(attacker, df, dr)) continue;
       let file = attackerFile + df;
       let rank = attackerRank + dr;
-      let kingSquare = -1;
-      let kingPiece = null;
+      let blockerSquare = -1;
+      let blockerPiece = null;
       while (inBounds(file, rank)) {
         const square = idx(file, rank);
         const piece = board[square];
         if (piece) {
-          if (kingSquare < 0) {
+          if (blockerSquare < 0) {
             if (piece.color !== this.rootSide && piece.type === "k") {
-              kingSquare = square;
-              kingPiece = clone(piece);
+              blockerSquare = square;
+              blockerPiece = clone(piece);
             } else {
               break;
             }
@@ -780,9 +671,8 @@ export class ScratchChessOracle {
             if (piece.color !== this.rootSide && piece.type !== "k") {
               const targetValue = VALUES[piece.type] || 0;
               const projectedMaterialSwing = materialSwing + targetValue;
-              if (projectedMaterialSwing >= minimumGain) {
-                candidates.push({
-                  kind: "pending_capture",
+              if (targetValue >= this.options.attack_min_value && projectedMaterialSwing >= minimumGain) {
+                output.push({
                   source: "skewer",
                   minimumGain,
                   targetSquare: square,
@@ -790,9 +680,8 @@ export class ScratchChessOracle {
                   targetValue,
                   attackerSquare: move.to,
                   attackerPiece: clone(attacker),
-                  blockerSquare: kingSquare,
-                  blockerPiece: kingPiece,
-                  intendedCaptureUci: `${squareName(move.to)}${squareName(square)}`,
+                  blockerSquare,
+                  blockerPiece,
                   projectedMaterialSwing,
                   sourceMove: move.uci
                 });
@@ -806,91 +695,87 @@ export class ScratchChessOracle {
       }
     }
 
-    return candidates.sort((a, b) =>
-      b.projectedMaterialSwing - a.projectedMaterialSwing
-      || b.targetValue - a.targetValue
-      || a.targetSquare - b.targetSquare
-    )[0] || null;
+    const seen = new Set();
+    return output.filter((target) => {
+      const key = targetObjectiveKey(target);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
-  _findCheckingCaptureObjective(afterGame, move, check, attackTargets, materialSwing) {
-    if (!check) return null;
-    const board = boardOf(afterGame);
-    const attacker = board[move.to];
-    if (!attacker || attacker.color !== this.rootSide) return null;
-    if (legalMoveRecords(afterGame).some((reply) => reply.to === move.to)) return null;
-    const minimumGain = Number(this.options.objective_gain);
-    const candidates = [];
-
-    for (const target of attackTargets || []) {
-      if (target.discovered) continue;
-      if (!attacksSquare(board, move.to, target.target)) continue;
-      const piece = board[target.target];
-      if (!piece || piece.color === this.rootSide || piece.type === "k") continue;
-      const targetValue = VALUES[piece.type] || 0;
-      const projectedMaterialSwing = materialSwing + targetValue;
-      if (projectedMaterialSwing < minimumGain) continue;
-      candidates.push({
-        kind: "pending_capture",
-        source: "checking_attack",
-        minimumGain,
-        targetSquare: target.target,
-        targetPiece: clone(piece),
-        targetValue,
-        attackerSquare: move.to,
-        attackerPiece: clone(attacker),
-        intendedCaptureUci: `${squareName(move.to)}${squareName(target.target)}`,
-        projectedMaterialSwing,
-        sourceMove: move.uci
-      });
+  _targetStillLiveOnBoard(board, target, currentMaterialSwing, movedTargetSquare = null) {
+    const targetSquare = Number.isInteger(movedTargetSquare) ? movedTargetSquare : target.targetSquare;
+    const targetPiece = board[targetSquare];
+    const attackerPiece = board[target.attackerSquare];
+    if (!targetPiece || targetPiece.color === this.rootSide || targetPiece.type === "k") {
+      return { live: false, targetSquare, reason: "target_gone", defenders: [] };
     }
-
-    return candidates.sort((a, b) =>
-      b.projectedMaterialSwing - a.projectedMaterialSwing
-      || b.targetValue - a.targetValue
-      || a.targetSquare - b.targetSquare
-    )[0] || null;
+    if (!attackerPiece || attackerPiece.color !== this.rootSide
+      || attackerPiece.type !== target.attackerPiece?.type) {
+      return { live: false, targetSquare, reason: "attacker_gone", defenders: [] };
+    }
+    if (!attacksSquare(board, target.attackerSquare, targetSquare)) {
+      return { live: false, targetSquare, reason: "line_or_attack_broken", defenders: [] };
+    }
+    const defenders = effectiveDefendersOnBoard(board, targetSquare, targetPiece.color);
+    if (defenders.length) {
+      return { live: false, targetSquare, reason: "defended", defenders };
+    }
+    const projectedMaterialSwing = Number(currentMaterialSwing) + (VALUES[targetPiece.type] || 0);
+    if (projectedMaterialSwing < target.minimumGain) {
+      return { live: false, targetSquare, reason: "below_objective", defenders: [] };
+    }
+    return { live: true, targetSquare, reason: "pending_capture_remains", defenders: [], projectedMaterialSwing };
   }
 
-  _objectiveAfterOurMove(parentCard, beforeGame, afterGame, move, capturedBefore, materialSwing, check, attackTargets) {
+  _objectiveAfterOurMove(parentCard, beforeGame, afterGame, move, capturedBefore, materialSwing, check) {
     const minimumGain = Number(this.options.objective_gain);
     if (materialSwing >= minimumGain) {
+      const inherited = parentCard.meta?.activeObjective;
+      const inheritedAttacker = inherited?.kind === "material_lead"
+        && Number.isInteger(inherited.attackerSquare)
+        && boardOf(afterGame)[inherited.attackerSquare]?.color === this.rootSide
+        ? inherited.attackerSquare
+        : null;
       return {
         kind: "material_lead",
         minimumGain,
         materialSwing,
-        attackerSquare: move.to,
-        attackerPiece: clone(boardOf(afterGame)[move.to]),
+        attackerSquare: capturedBefore ? move.to : inheritedAttacker,
+        attackerPiece: clone(boardOf(afterGame)[capturedBefore ? move.to : inheritedAttacker]),
         sourceMove: move.uci
       };
     }
 
-    const defenderObjective = this._findSoleDefenderObjective(beforeGame, afterGame, move, capturedBefore);
-    if (defenderObjective) return { ...defenderObjective, sourceMove: move.uci };
-
-    const checkingCaptureObjective = this._findCheckingCaptureObjective(
-      afterGame,
-      move,
-      check,
-      attackTargets,
-      materialSwing
-    );
-    if (checkingCaptureObjective) return checkingCaptureObjective;
-
-    const skewerObjective = this._findSkewerObjective(afterGame, move, check, materialSwing);
-    if (skewerObjective) return skewerObjective;
+    const targets = [
+      ...this._staticSoleDefenderTargets(beforeGame, afterGame, move, capturedBefore, materialSwing),
+      ...this._staticCheckingTargets(afterGame, move, check, materialSwing)
+    ];
 
     const inherited = parentCard.meta?.activeObjective;
-    if (inherited && ["sole_defender_removed", "pending_capture"].includes(inherited.kind)) {
-      const stillWinning = this._winningCaptureOutcome(
-        afterGame.exportFEN(),
-        inherited.targetSquare,
-        inherited.minimumGain,
-        inherited.attackerSquare
-      );
-      if (stillWinning) return clone(inherited);
+    if (inherited?.kind === "target_set") {
+      for (const target of inherited.targets || []) {
+        const status = this._targetStillLiveOnBoard(boardOf(afterGame), target, materialSwing);
+        if (status.live) targets.push(clone(target));
+      }
     }
-    return null;
+
+    const seen = new Set();
+    const uniqueTargets = targets.filter((target) => {
+      const key = targetObjectiveKey(target);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (!uniqueTargets.length) return null;
+    return {
+      kind: "target_set",
+      minimumGain,
+      targets: uniqueTargets,
+      projectedMaterialSwing: Math.max(...uniqueTargets.map((target) => target.projectedMaterialSwing)),
+      sourceMove: move.uci
+    };
   }
 
   _tagObjectiveReply(child, objective) {
@@ -901,116 +786,96 @@ export class ScratchChessOracle {
       if (fact) facts.push(fact);
     };
 
-    if (objective.kind === "material_lead") {
-      // A banked material gain is not undone merely because the opponent captures
-      // something elsewhere. For this basic policy, the reply is relevant only
-      // if it directly removes/neutralizes the piece that banked the gain, or if
-      // it creates a stronger forcing counterthreat below.
-      const capturedAttacker = Number.isInteger(objective.attackerSquare)
-        && child.move?.toIndex === objective.attackerSquare
-        && child.move?.captured?.color === this.rootSide;
-      if (capturedAttacker) {
-        add(
-          "attacker_captured_or_neutralized",
-          `attacker_captured_or_neutralized(${child.move.san},${squareName(objective.attackerSquare)})`
-        );
-      }
-    } else if (["sole_defender_removed", "pending_capture"].includes(objective.kind)) {
-      const game = this._game(child.fen, `${child.display} objective reply`);
-      const board = boardOf(game);
-      const targetMoved = child.move?.fromIndex === objective.targetSquare;
-      const targetPiece = targetMoved
-        ? board[child.move.toIndex]
-        : board[objective.targetSquare];
-
-      if (targetMoved) {
-        const stillWinning = targetPiece
-          ? this._winningCaptureOutcome(
-              child.fen,
-              child.move.toIndex,
-              objective.minimumGain
-            )
-          : null;
-        if (!stillWinning) {
-          add(
-            "target_moves_to_safety",
-            `target_moves_to_safety(${child.move.san},${squareName(objective.targetSquare)}->${squareName(child.move.toIndex)})`
-          );
-        }
-      } else {
-        const exactOutcomes = this._captureOutcomesTo(
-          child.fen,
-          objective.targetSquare,
-          objective.attackerSquare
-        );
-        const intended = exactOutcomes[0] || null;
-        const anyWinning = this._winningCaptureOutcome(
-          child.fen,
-          objective.targetSquare,
-          objective.minimumGain
-        );
-
-        if (!intended && !anyWinning) {
-          add(
-            "attacker_captured_or_neutralized",
-            `attacker_captured_or_neutralized(${squareName(objective.attackerSquare)})`
-          );
-        }
-        if (intended?.recaptures?.length) {
-          add(
-            "target_acquires_effective_defender",
-            `target_acquires_effective_defender(${squareName(objective.targetSquare)},count=${intended.recaptures.length})`
-          );
-        }
-        if ((intended && intended.materialSwing < objective.minimumGain)
-          || (!intended && !anyWinning && targetPiece)) {
-          add(
-            "intended_capture_no_longer_wins_objective",
-            `intended_capture_no_longer_wins_objective(${objective.intendedCaptureUci})`
-          );
-        }
-      }
-    }
-
-    const counterThreats = [];
-    if (child.predicates.includes("mated")) counterThreats.push("mate");
-    if (child.predicates.includes("check")) counterThreats.push("check");
-    if (child.predicates.includes("mate_in_1")) counterThreats.push("mate_in_1");
-    if (counterThreats.length) {
-      const objectivelyHarmless = objective.kind === "material_lead"
-        && !child.predicates.includes("mated")
-        && this._objectiveCanBeHeld(child.fen, Number(this.options.objective_probe_depth));
-      if (!objectivelyHarmless) {
-        add(
-          "stronger_forcing_counterthreat",
-          `stronger_forcing_counterthreat(${counterThreats.join("+")})`
-        );
-      } else {
+    const isMate = child.predicates.includes("mated");
+    const isCheck = child.predicates.includes("check");
+    let checkNeutralizableByCapture = false;
+    if (isCheck && Number.isInteger(child.move?.toIndex)) {
+      const replyBoard = boardOf(this._game(child.fen, `${child.display} static check reply`));
+      const effectiveCapturers = effectiveDefendersOnBoard(
+        replyBoard,
+        child.move.toIndex,
+        this.rootSide
+      ).filter((square) => replyBoard[square]?.type !== "k");
+      checkNeutralizableByCapture = effectiveCapturers.length > 0;
+      if (checkNeutralizableByCapture) {
         child.facts = unique([
           ...child.facts,
-          `certified_counterthreat_harmless(${counterThreats.join("+")})`
+          `check_neutralizable_by_effective_capture(${effectiveCapturers.map(squareName).join(",")})`
         ]);
       }
     }
-
-    if (predicates.length) {
-      child.predicates = unique([...child.predicates, ...predicates]);
-      child.facts = unique([...child.facts, ...facts]);
+    if (isMate || (isCheck && !checkNeutralizableByCapture)) {
+      add(
+        "stronger_forcing_counterthreat",
+        `stronger_forcing_counterthreat(${isMate ? "mate" : "check"})`
+      );
     }
-    return predicates;
-  }
 
+    if (objective.kind === "material_lead") {
+      const capturesAttacker = Number.isInteger(objective.attackerSquare)
+        && child.move?.toIndex === objective.attackerSquare
+        && child.move?.captured?.color === this.rootSide;
+      if (capturesAttacker || child.predicates.includes("recapture")) {
+        add(
+          "attacker_captured_or_neutralized",
+          `attacker_captured_or_neutralized(${child.move?.san || child.display})`
+        );
+      }
+    } else if (objective.kind === "target_set") {
+      const game = this._game(child.fen, `${child.display} one-ply objective reply`);
+      const board = boardOf(game);
+      const statuses = [];
+      const reasonPredicates = new Set();
+
+      for (const target of objective.targets || []) {
+        const movedTargetSquare = child.move?.fromIndex === target.targetSquare
+          ? child.move.toIndex
+          : null;
+        const status = this._targetStillLiveOnBoard(
+          board,
+          target,
+          child.meta?.materialSwing,
+          movedTargetSquare
+        );
+        statuses.push({ target, status, movedTargetSquare });
+        if (status.live) continue;
+        if (Number.isInteger(movedTargetSquare)) reasonPredicates.add("target_moves_to_safety");
+        if (status.reason === "defended") reasonPredicates.add("target_acquires_effective_defender");
+        if (status.reason === "attacker_gone") reasonPredicates.add("attacker_captured_or_neutralized");
+        if (["line_or_attack_broken", "below_objective", "target_gone"].includes(status.reason)) {
+          reasonPredicates.add("intended_capture_no_longer_wins_objective");
+        }
+        facts.push(
+          `objective_target_status(target=${squareName(target.targetSquare)},status=${status.reason})`
+        );
+      }
+
+      const allTargetsRepaired = statuses.length > 0 && statuses.every(({ status }) => !status.live);
+      if (allTargetsRepaired) {
+        if (!reasonPredicates.size) reasonPredicates.add("intended_capture_no_longer_wins_objective");
+        for (const predicate of reasonPredicates) {
+          add(predicate, `${predicate}(${child.move?.san || child.display})`);
+        }
+      } else if (statuses.some(({ status }) => !status.live)) {
+        facts.push("partial_objective_repair");
+      }
+    }
+
+    if (predicates.length) child.predicates = unique([...child.predicates, ...predicates]);
+    if (facts.length) child.facts = unique([...child.facts, ...facts]);
+    return unique(predicates);
+  }
   _analyzeMove(parentCard, game, move) {
     const moverSide = normalizeSide(game.state.side);
     const boardBefore = boardOf(game);
     const mover = clone(boardBefore[move.from]);
     const capturedBefore = clone(boardBefore[move.to]);
     const beforeMaterial = materialBalance(game, this.rootSide);
-    const after = applyMove(this.createGame, game, move);
+    const after = applyMove(this.createGame, game, move); // the oracle's only applied ply
     const san = safeSan(after, move);
     const afterFen = after.exportFEN();
-    const terminal = terminalInfo(after);
-    const check = safeInCheck(after, other(moverSide));
+    const mate = /#$/.test(san);
+    const check = mate || safeInCheck(after, other(moverSide));
     const capture = Boolean(capturedBefore) || /x/.test(san);
     const recapture = Boolean(capture && parentCard.meta?.lastMove && move.to === parentCard.meta.lastMove.to);
     const directTargets = movedTargets(after, move.to, moverSide);
@@ -1022,15 +887,10 @@ export class ScratchChessOracle {
     const predicates = [];
     const facts = [];
 
-    if (terminal?.kind === "mate" && terminal.winner === moverSide) {
+    if (mate) {
       predicates.push(moverSide === this.rootSide ? "mate" : "mated");
-      facts.push("mate");
-    }
-    if (terminal?.kind === "stalemate") {
-      predicates.push("stalemate");
-      facts.push("stalemate");
-    }
-    if (check && terminal?.kind !== "mate") {
+      facts.push(`mate(${san})`);
+    } else if (check) {
       predicates.push("check");
       facts.push(`check(${san})`);
     }
@@ -1064,10 +924,6 @@ export class ScratchChessOracle {
     const candidateBindings = [...inheritedBindings];
 
     for (const binding of availableAlignments) {
-      // The special move-the-middle predicate is only useful when exposing the
-      // bound back piece can meet this policy's material objective. A rook–queen–
-      // pawn line is still reported as an alignment fact, but moving the queen
-      // off it does not outrank ordinary checks.
       if (binding.backValue < this.options.objective_gain) continue;
       if (move.from !== binding.middle || !check || boardOf(after)[binding.middle]) continue;
       const frontPiece = boardOf(after)[binding.front];
@@ -1079,10 +935,6 @@ export class ScratchChessOracle {
       candidateBindings.push({ ...clone(binding), phase: "middle_cleared", middleMove: san });
     }
 
-    // Test the inherited relation before asking whether it survives the move.
-    // A front-to-back capture necessarily empties the old front square and
-    // replaces the enemy back piece, so the binding will not survive *after*
-    // the move even though this move is precisely the relation's cash-out.
     let alignmentCapture = null;
     for (const binding of candidateBindings) {
       if (moverSide !== binding.side || move.from !== binding.front || move.to !== binding.back || !capture) continue;
@@ -1113,47 +965,36 @@ export class ScratchChessOracle {
         move,
         capturedBefore,
         materialSwing,
-        check,
-        attackTargets
+        check
       );
       if (activeObjective?.kind === "material_lead") {
         predicates.push("material_objective_active");
         facts.push(`active_objective(material_lead,gain=${activeObjective.materialSwing},minimum=${activeObjective.minimumGain})`);
-      } else if (activeObjective?.kind === "sole_defender_removed") {
-        predicates.push("remove_sole_defender", "target_objective_active");
-        facts.push(
-          `remove_sole_defender(target=${coloredPieceLabel(activeObjective.targetPiece, activeObjective.targetSquare)},defender=${coloredPieceLabel(activeObjective.defenderPiece, activeObjective.defenderSquare)})`
-        );
-        facts.push(
-          `intended_capture(${activeObjective.intendedCaptureUci},attacker=${coloredPieceLabel(activeObjective.attackerPiece, activeObjective.attackerSquare)},projected_swing=${activeObjective.projectedMaterialSwing})`
-        );
-      } else if (activeObjective?.kind === "pending_capture") {
+      } else if (activeObjective?.kind === "target_set") {
         predicates.push("creates_material_threat", "target_objective_active");
-        facts.push(
-          `creates_material_threat(source=${activeObjective.source},target=${coloredPieceLabel(activeObjective.targetPiece, activeObjective.targetSquare)},attacker=${coloredPieceLabel(activeObjective.attackerPiece, activeObjective.attackerSquare)},projected_swing=${activeObjective.projectedMaterialSwing})`
-        );
-        if (Number.isInteger(activeObjective.blockerSquare)) {
-          facts.push(
-            `skewer(attacker=${coloredPieceLabel(activeObjective.attackerPiece, activeObjective.attackerSquare)},middle=${coloredPieceLabel(activeObjective.blockerPiece, activeObjective.blockerSquare)},target=${coloredPieceLabel(activeObjective.targetPiece, activeObjective.targetSquare)})`
-          );
+        if ((activeObjective.targets || []).some((target) => target.source === "sole_defender_removed")) {
+          predicates.push("remove_sole_defender");
         }
-      }
-    }
-
-    let mateThreats = [];
-    if (!terminal && this._shouldProbeMateThreat(after, moverSide, move, capture, check, attackTargets)) {
-      mateThreats = this._mateInOneFacts(afterFen, moverSide);
-      if (mateThreats.length) {
-        predicates.push("mate_in_1");
-        facts.push(`mate_in_1(${mateThreats.slice(0, 3).map((item) => factToken(item.san)).join(",")})`);
+        for (const target of (activeObjective.targets || []).slice(0, 6)) {
+          facts.push(
+            `creates_material_threat(source=${target.source},target=${coloredPieceLabel(target.targetPiece, target.targetSquare)},attacker=${coloredPieceLabel(target.attackerPiece, target.attackerSquare)},projected_swing=${target.projectedMaterialSwing})`
+          );
+          if (Number.isInteger(target.blockerSquare)) {
+            facts.push(
+              `skewer(attacker=${coloredPieceLabel(target.attackerPiece, target.attackerSquare)},middle=${coloredPieceLabel(target.blockerPiece, target.blockerSquare)},target=${coloredPieceLabel(target.targetPiece, target.targetSquare)})`
+            );
+          }
+          if (Number.isInteger(target.defenderSquare)) {
+            facts.push(
+              `remove_sole_defender(target=${coloredPieceLabel(target.targetPiece, target.targetSquare)},defender=${coloredPieceLabel(target.defenderPiece, target.defenderSquare)})`
+            );
+          }
+        }
       }
     }
 
     if (materialSwing !== 0) facts.push(`material_swing(${materialSwing > 0 ? "+" : ""}${materialSwing})`);
 
-    // A board-position role is factual search structure, not a synthetic marker.
-    // Children of one of our positions are candidate moves (OR alternatives).
-    // Children of an opponent-to-move position are required replies (AND obligations).
     const searchRole = parentCard.side === "my" ? "our_candidate" : "required_reply";
     predicates.push(searchRole);
     facts.push(`${searchRole}(${san})`);
@@ -1168,7 +1009,7 @@ export class ScratchChessOracle {
       predicates: unique(predicates),
       facts: unique(facts),
       help: predicates.length
-        ? `Oracle predicates: ${unique(predicates).join(" · ")}`
+        ? `One-ply oracle predicates: ${unique(predicates).join(" · ")}`
         : "This legal ply has no configured-policy predicate.",
       fen: afterFen,
       depth: Number(parentCard.depth) + 1,
@@ -1201,12 +1042,12 @@ export class ScratchChessOracle {
         activeAlignmentBindings: survivingBindings.map(clone),
         alignmentCapture,
         activeObjective: clone(activeObjective),
-        mateThreats,
         materialBefore: beforeMaterial,
         materialAfter: afterMaterial,
         materialSwing,
         captureValue: VALUES[capturedBefore?.type] || 0,
-        legalReplyCount: null
+        legalReplyCount: null,
+        oracleHorizon: 1
       }
     };
   }
@@ -1227,67 +1068,32 @@ export class ScratchChessOracle {
       throw new Error("oracle reply_class_limit must be an integer >= 1");
     }
 
+    const routePredicate = objective.kind === "material_lead"
+      ? "material_objective_reply_set"
+      : "target_objective_reply_set";
     card.predicates = unique([
       ...card.predicates,
-      objective.kind === "material_lead"
-        ? "material_objective_active"
-        : "target_objective_active"
+      objective.kind === "material_lead" ? "material_objective_active" : "target_objective_active",
+      ...(relevant.length <= limit ? [routePredicate] : [])
     ]);
     card.facts = unique([
       ...card.facts,
       `active_objective(${objective.kind})`,
       `objective_reply_count(${relevant.length})`,
-      `objective_reply_limit(${limit})`
+      `objective_reply_limit(${limit})`,
+      ...(relevant.length <= limit ? [`${routePredicate}(count=${relevant.length})`] : [])
     ]);
 
     if (relevant.length > limit) {
       card.predicates = unique([...card.predicates, "unexplorable"]);
-      card.facts = unique([
-        ...card.facts,
-        `unexplorable_objective_replies(${relevant.length})`
-      ]);
-      card.help = `${relevant.length} replies can repair or outrank the active objective; the policy limit is ${limit}.`;
+      card.facts = unique([...card.facts, `unexplorable_objective_replies(${relevant.length})`]);
+      card.help = `${relevant.length} one-ply replies match the active objective card; the policy limit is ${limit}.`;
       return true;
     }
 
-    if (!relevant.length) {
-      const currentSwing = Number(card.meta?.materialSwing || 0);
-      const lockedGain = ["sole_defender_removed", "pending_capture"].includes(objective.kind)
-        ? Number(objective.projectedMaterialSwing)
-        : currentSwing;
-      card.predicates = unique([
-        ...card.predicates,
-        "branch_proved",
-        "objective_won",
-        ...(lockedGain > Number(objective.minimumGain)
-          ? ["gain_greater_than_exchange_locked"]
-          : ["gain_at_least_exchange_locked"])
-      ]);
-      card.facts = unique([
-        ...card.facts,
-        "all_objective_replies_excluded",
-        ...(Number.isFinite(lockedGain) ? [`locked_material_gain(${lockedGain >= 0 ? "+" : ""}${lockedGain})`] : []),
-        ...(["sole_defender_removed", "pending_capture"].includes(objective.kind) && Number.isFinite(currentSwing)
-          ? [`current_material_swing(${currentSwing >= 0 ? "+" : ""}${currentSwing})`]
-          : [])
-      ]);
-      card.help = objective.kind === "material_lead"
-        ? "No opponent reply directly recovers the banked material gain or creates an unresolved stronger forcing counterthreat."
-        : "No opponent reply moves the target to safety, restores an effective defender, neutralizes the attacker, defeats the intended capture, or creates a stronger forcing counterthreat.";
-      return true;
-    }
-
-    const routePredicate = objective.kind === "material_lead"
-      ? "material_objective_reply_set"
-      : "target_objective_reply_set";
-    card.predicates = unique([...card.predicates, routePredicate]);
-    card.facts = unique([
-      ...card.facts,
-      `${routePredicate}(count=${relevant.length})`
-    ]);
     card.help = objective.kind === "material_lead"
-      ? `${relevant.length} repl${relevant.length === 1 ? "y" : "ies"} can directly recover the banked gain or create an unresolved stronger forcing counterthreat.`
-      : `${relevant.length} repl${relevant.length === 1 ? "y" : "ies"} can repair the pending target capture or create a stronger forcing counterthreat.`;
+      ? `${relevant.length} immediate repl${relevant.length === 1 ? "y" : "ies"} recapture the gain or give check. Zero matches are proved by the DFA card's none transition.`
+      : `${relevant.length} immediate repl${relevant.length === 1 ? "y" : "ies"} repair every pending target objective or give check. Zero matches are proved by the DFA card's none transition.`;
     return true;
   }
 
@@ -1301,7 +1107,7 @@ export class ScratchChessOracle {
     const legal = legalMoveRecords(game);
     const inCheck = safeInCheck(game, sideToMove);
     if (inCheck) card.predicates = unique([...card.predicates, "in_check"]);
-    card.facts = unique([...card.facts, `legal_moves(${legal.length})`, ...(inCheck ? ["in_check"] : [])]);
+    card.facts = unique([...card.facts, `legal_moves(${legal.length})`, ...(inCheck ? ["in_check"] : []), "oracle_horizon(1)"]);
     card.meta.legalReplyCount = legal.length;
 
     const terminal = terminalInfo(game);
@@ -1318,10 +1124,12 @@ export class ScratchChessOracle {
       card.facts = unique([...card.facts, ...alignments.slice(0, 8).map(alignmentFact)]);
     }
 
+    // Exactly one applied move per legal response. Lexical UCI ordering is only
+    // deterministic presentation; predicate order in the DFA supplies interest.
     const analyses = legal
       .map((move) => this._analyzeMove(card, game, move))
       .filter(Boolean)
-      .sort(compareAnalyses);
+      .sort((a, b) => String(a.move?.uci || "").localeCompare(String(b.move?.uci || "")));
 
     const threatenedSquares = new Set((card.meta?.attackTargets || []).map((target) => Number(target.square)));
     for (const child of analyses) {
@@ -1335,39 +1143,26 @@ export class ScratchChessOracle {
     const replyLimit = Number(this.options.reply_limit);
     if (!Number.isInteger(replyLimit) || replyLimit < 1) throw new Error("oracle reply_limit must be an integer >= 1");
 
-    // Active objectives are classified before raw legal-move enumeration. If an
-    // opponent is already down the material objective—or must repair a pending
-    // target capture—the DFA sees only positively identified objective
-    // replies. A full legal set is enumerated only when no active objective exists.
     const objectiveHandled = this._classifyObjectiveReplies(card, analyses);
-    const repliesWithinBudget = card.side === "their"
-      && !objectiveHandled
-      && legal.length <= replyLimit;
+    const repliesWithinBudget = card.side === "their" && !objectiveHandled && legal.length <= replyLimit;
 
     if (repliesWithinBudget) {
       card.predicates = unique([...card.predicates, "replies_within_budget"]);
-      card.facts = unique([
-        ...card.facts,
-        `replies_within_budget(count=${legal.length},limit=${replyLimit})`
-      ]);
+      card.facts = unique([...card.facts, `replies_within_budget(count=${legal.length},limit=${replyLimit})`]);
     } else if (card.side === "their" && !objectiveHandled) {
-      card.facts = unique([
-        ...card.facts,
-        `replies_exceed_budget(count=${legal.length},limit=${replyLimit})`
-      ]);
+      card.facts = unique([...card.facts, `replies_exceed_budget(count=${legal.length},limit=${replyLimit})`]);
     }
 
     if (card.side === "their"
       && !card.predicates.includes("replies_within_budget")
       && !card.predicates.includes("material_objective_reply_set")
       && !card.predicates.includes("target_objective_reply_set")
-      && !card.predicates.includes("branch_proved")
       && !card.predicates.includes("mated")
       && !card.predicates.includes("stalemate")
       && !card.predicates.includes("unexplorable")) {
       card.predicates = unique([...card.predicates, "unexplorable"]);
-      card.facts = unique([...card.facts, "unexplorable(no_objective_reply_card)"]);
-      card.help = "Opponent replies exceed the exhaustive budget and no active objective generated a bounded reply set.";
+      card.facts = unique([...card.facts, "unexplorable(no_one_ply_reply_card)"]);
+      card.help = "Opponent replies exceed the exhaustive budget and no active one-ply objective card applies.";
     }
 
     card.prepared = true;
@@ -1452,6 +1247,7 @@ export class ScratchChessOracle {
   summary() {
     return {
       version: SCRATCHCHESS_ORACLE_VERSION,
+      horizon: SCRATCHCHESS_ORACLE_HORIZON,
       puzzle: clone(this.puzzle),
       rootSide: this.rootSide,
       rootMaterial: this.rootMaterial,
