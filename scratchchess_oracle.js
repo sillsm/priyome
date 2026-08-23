@@ -15,7 +15,7 @@
  * visible predicate-policy DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.0.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.1.0";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
@@ -424,6 +424,45 @@ function isAbsolutelyPinnedOnBoard(board, square, side) {
 function effectiveDefendersOnBoard(board, target, side) {
   return attackersOnBoard(board, target, side)
     .filter((square) => !isAbsolutelyPinnedOnBoard(board, square, side));
+}
+
+function effectiveAttackersOnBoard(board, target, side) {
+  return attackersOnBoard(board, target, side)
+    .filter((square) => !isAbsolutelyPinnedOnBoard(board, square, side));
+}
+
+function findAddedTacticalAttacks(beforeBoard, afterBoard, moverSide) {
+  const looseNonPawns = [];
+  const pinnedPieces = [];
+
+  for (let target = 0; target < 64; target += 1) {
+    const targetPiece = afterBoard[target];
+    if (!targetPiece || targetPiece.color === moverSide || targetPiece.type === "k") continue;
+
+    const beforeAttackers = new Set(effectiveAttackersOnBoard(beforeBoard, target, moverSide));
+    const afterAttackers = effectiveAttackersOnBoard(afterBoard, target, moverSide);
+    const addedAttackers = afterAttackers.filter((square) => !beforeAttackers.has(square));
+    if (afterAttackers.length <= beforeAttackers.size || !addedAttackers.length) continue;
+
+    const defenders = effectiveDefendersOnBoard(afterBoard, target, targetPiece.color);
+    const record = {
+      target,
+      targetPiece: clone(targetPiece),
+      addedAttackers,
+      afterAttackers,
+      defenders
+    };
+
+    if (targetPiece.type !== "p" && defenders.length === 0) looseNonPawns.push(record);
+    if (isAbsolutelyPinnedOnBoard(afterBoard, target, targetPiece.color)) pinnedPieces.push(record);
+  }
+
+  const order = (a, b) =>
+    (VALUES[b.targetPiece?.type] || 0) - (VALUES[a.targetPiece?.type] || 0)
+    || a.target - b.target;
+  looseNonPawns.sort(order);
+  pinnedPieces.sort(order);
+  return { looseNonPawns, pinnedPieces };
 }
 
 function samePieceAt(board, square, descriptor) {
@@ -909,10 +948,29 @@ export class ScratchChessOracle {
       facts.push(`recapture(${san},${squareName(move.to)})`);
     }
     if (attackTargets.length) {
-      predicates.push("attack");
       attackTargets.slice(0, 6).forEach((target) => {
         facts.push(`${target.discovered ? "discovered_" : ""}attack(${pieceLongLabel(target.piece, target.target)})`);
       });
+    }
+
+    if (moverSide === this.rootSide) {
+      const tacticalAttacks = findAddedTacticalAttacks(boardBefore, boardOf(after), moverSide);
+      if (tacticalAttacks.looseNonPawns.length) {
+        predicates.push("add_attacker_to_loose_non_pawn_piece");
+        tacticalAttacks.looseNonPawns.slice(0, 6).forEach((target) => {
+          facts.push(
+            `add_attacker_to_loose_non_pawn_piece(target=${coloredPieceLabel(target.targetPiece, target.target)},added=${target.addedAttackers.map(squareName).join("+")})`
+          );
+        });
+      }
+      if (tacticalAttacks.pinnedPieces.length) {
+        predicates.push("add_attacker_to_pinned_piece");
+        tacticalAttacks.pinnedPieces.slice(0, 6).forEach((target) => {
+          facts.push(
+            `add_attacker_to_pinned_piece(target=${coloredPieceLabel(target.targetPiece, target.target)},added=${target.addedAttackers.map(squareName).join("+")})`
+          );
+        });
+      }
     }
 
     const availableAlignments = moverSide === this.rootSide
