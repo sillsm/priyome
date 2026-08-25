@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "4.1.1",
+  "version": "5.0.0",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -9,7 +9,7 @@
     "accept_state": "SOLVED",
     "reject_state": "EXHAUSTED",
     "winning_predicates": [
-      "pda_complete"
+      "mate"
     ],
     "failure_predicates": []
   },
@@ -21,7 +21,7 @@
   "routines": [
     {
       "id": "main",
-      "label": "Basic strict-one-ply delimiter-stack DFA",
+      "label": "Basic human chess DFA",
       "entry": "START"
     }
   ],
@@ -42,7 +42,7 @@
       "routine": "main",
       "kind": "pop",
       "label": "Pop next position",
-      "description": "Pop the highest-priority retained board position. When a frame delimiter is reached, restore its ancestor and follow the delimiter's DFA transition.",
+      "description": "Pop the highest-priority retained board position. A delimiter marks where the current batch ends.",
       "on": {
         "thought": "INSPECT_POSITION",
         "empty": "EXHAUSTED"
@@ -52,12 +52,12 @@
       "id": "INSPECT_POSITION",
       "routine": "main",
       "kind": "inspect",
-      "label": "Inspect board position",
+      "label": "Inspect position",
       "terminal_checks": false,
-      "description": "Read only oracle predicates on the current board and its immediate legal children; every proof decision is a visible DFA transition.",
+      "description": "Choose the next card from ordinary chess facts visible in the current position.",
       "rules": [
         {
-          "label": "this move checkmates",
+          "label": "we gave mate",
           "when": {
             "any": [
               "mate"
@@ -66,56 +66,96 @@
           "to": "LINE_PROVED"
         },
         {
-          "label": "this line is refuted or outside the one-ply reply budget",
+          "label": "we are mated, stalemated, or there are too many replies for this basic policy",
           "when": {
             "any": [
               "mated",
               "stalemate",
-              "unexplorable",
-              "oracle_limit"
+              "more_than_two_relevant_replies",
+              "more_than_two_legal_replies"
             ]
           },
           "to": "LINE_FAILED"
         },
         {
-          "label": "our move: scan one ordered predicate list",
+          "label": "we answered a check and remain up the material objective",
+          "when": {
+            "all": [
+              "check_response",
+              "up_material"
+            ]
+          },
+          "to": "LINE_PROVED"
+        },
+        {
+          "label": "the two-ply check extension ended without preserving the material objective",
+          "when": {
+            "any": [
+              "check_response"
+            ]
+          },
+          "to": "LINE_FAILED"
+        },
+        {
+          "label": "our king is in check",
+          "when": {
+            "side": "my",
+            "any": [
+              "in_check"
+            ]
+          },
+          "to": "SEARCH_CHECK_RESPONSES"
+        },
+        {
+          "label": "our move",
           "when": {
             "side": "my"
           },
           "to": "SEARCH_OUR_MOVE"
         },
         {
-          "label": "opponent must recover a material gain or create a stronger counterthreat",
+          "label": "we are up the material objective",
           "when": {
             "side": "their",
             "any": [
-              "material_objective_reply_set"
+              "up_material"
             ]
           },
-          "to": "SEARCH_MATERIAL_OBJECTIVE_REPLIES"
+          "to": "SEARCH_WHEN_UP_MATERIAL"
         },
         {
-          "label": "opponent must repair a pending target capture",
+          "label": "the opponent has two or fewer legal moves",
           "when": {
             "side": "their",
             "any": [
-              "target_objective_reply_set"
+              "two_or_fewer_legal_moves"
             ]
           },
-          "to": "SEARCH_TARGET_OBJECTIVE_REPLIES"
+          "to": "SEARCH_ALL_REPLIES"
         },
         {
-          "label": "opponent replies fit the exhaustive budget",
+          "label": "the current position contains a skewer",
           "when": {
             "side": "their",
             "any": [
-              "replies_within_budget"
+              "skewer"
             ]
           },
-          "to": "SEARCH_EXHAUSTIVE_REPLIES"
+          "to": "SEARCH_REPLIES_TO_SKEWER"
         },
         {
-          "label": "opponent replies cannot be handled by this policy",
+          "label": "the current position contains an attacked or loose piece",
+          "when": {
+            "side": "their",
+            "any": [
+              "attacked_piece",
+              "loose_piece"
+            ]
+          },
+          "to": "SEARCH_REPLIES_TO_ATTACKED_PIECE"
+        },
+        {
+          "label": "this basic policy cannot narrow the opponent's replies",
           "when": {
             "side": "their"
           },
@@ -134,14 +174,16 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "One card. Scan predicates in order and push every matching immediate legal move. Generic attacks are excluded; the final two predicates retain only moves that add an effective attacker to a loose non-pawn piece or to an absolutely pinned piece.",
+      "description": "Scan one human chess list in order and push every matching legal move. The first matching predicate supplies the move's priority.",
       "predicates": [
         "mate",
         "move_middle_with_check",
         "capture_back_of_alignment",
         "recapture",
+        "capture_loose_non_pawn_piece",
         "remove_sole_defender",
-        "creates_material_threat",
+        "check_and_attack_piece",
+        "skewer",
         "check",
         "capture",
         "add_attacker_to_loose_non_pawn_piece",
@@ -160,18 +202,46 @@
       }
     },
     {
-      "id": "SEARCH_EXHAUSTIVE_REPLIES",
+      "id": "SEARCH_CHECK_RESPONSES",
+      "routine": "main",
+      "kind": "search",
+      "side": "my",
+      "label": "Answer the check",
+      "description": "A check earns a two-ply extension: the checking move and one answer. Prefer mate, recapture, capture, another check, then any legal king response. After the answer, stop and ask whether the material objective survived.",
+      "predicates": [
+        "mate",
+        "recapture",
+        "capture",
+        "check",
+        "king_move",
+        "legal_move"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "choice",
+        "on_empty": "LINE_FAILED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_FAILED"
+      }
+    },
+    {
+      "id": "SEARCH_ALL_REPLIES",
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Exhaustive replies within budget",
-      "description": "No active objective applies and the complete immediate legal reply set fits the budget, so enumerate every reply.",
+      "label": "All replies",
+      "description": "The opponent has at most two legal moves, so examine both. Captures, checks, and moves that save an attacked piece are ordered first.",
       "predicates": [
         "mated",
         "capture",
         "check",
+        "save_piece",
         "king_move",
-        "required_reply"
+        "legal_move"
       ],
       "closure": {
         "mode": "all"
@@ -186,16 +256,16 @@
       }
     },
     {
-      "id": "SEARCH_MATERIAL_OBJECTIVE_REPLIES",
+      "id": "SEARCH_WHEN_UP_MATERIAL",
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Replies to a banked material gain",
-      "description": "The opponent is down the banked material objective. On this one-ply card, retain only an immediate recapture/capture of the gaining attacker or an actual checkmate or a check that is not statically neutralizable by an effective non-king capture.",
+      "label": "Replies while we are up material",
+      "description": "When the opponent is down the material objective, consider only mate, recapture, and check. A check is followed for exactly one answering move, completing a two-ply check extension.",
       "predicates": [
-        "attacker_captured_or_neutralized",
+        "mated",
         "recapture",
-        "stronger_forcing_counterthreat"
+        "check"
       ],
       "closure": {
         "mode": "all"
@@ -210,18 +280,48 @@
       }
     },
     {
-      "id": "SEARCH_TARGET_OBJECTIVE_REPLIES",
+      "id": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Replies to a pending target capture",
-      "description": "Our previous move created one or more concrete target relations visible on the resulting board. Retain only immediate replies that repair every target relation or give an actual checkmate or a check that is not statically neutralizable by an effective non-king capture.",
+      "label": "Replies to an attacked piece",
+      "description": "Consider ordinary ways to answer an attack: capture the attacker, move or defend the piece, block the attack, give check, or make a capture.",
       "predicates": [
-        "target_moves_to_safety",
-        "target_acquires_effective_defender",
-        "attacker_captured_or_neutralized",
-        "intended_capture_no_longer_wins_objective",
-        "stronger_forcing_counterthreat"
+        "mated",
+        "capture_attacker",
+        "move_attacked_piece",
+        "defend_attacked_piece",
+        "block_attack",
+        "check",
+        "capture"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_PROVED"
+      }
+    },
+    {
+      "id": "SEARCH_REPLIES_TO_SKEWER",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Replies to a skewer",
+      "description": "Consider ordinary ways to answer a skewer: capture the skewering piece, move or defend the skewered piece, block the line, give check, or make a capture.",
+      "predicates": [
+        "mated",
+        "capture_attacker",
+        "move_skewered_piece",
+        "defend_skewered_piece",
+        "block_skewer",
+        "check",
+        "capture"
       ],
       "closure": {
         "mode": "all"
@@ -241,7 +341,7 @@
       "kind": "inspect",
       "label": "Propagate proof",
       "terminal_checks": false,
-      "description": "A choice succeeds by one proved child; a replies frame succeeds only after every retained reply has been discharged.",
+      "description": "One successful candidate proves a choice frame. Every retained opponent reply must be discharged before a replies frame is proved.",
       "rules": [
         {
           "label": "a chosen move worked; discard its unused alternatives",
@@ -251,7 +351,7 @@
           "to": "DISCARD_CHOICE_FRAME"
         },
         {
-          "label": "one required reply is discharged; examine the next reply",
+          "label": "one opponent reply is discharged; examine the next",
           "when": {
             "frame": "replies"
           },
@@ -277,7 +377,7 @@
       "kind": "inspect",
       "label": "Propagate failure",
       "terminal_checks": false,
-      "description": "A failed choice falls through to its next candidate. One failed required reply refutes its parent choice and discards the rest of that reply frame.",
+      "description": "A failed candidate falls through to the next candidate. A failed opponent reply refutes the parent choice.",
       "rules": [
         {
           "label": "this candidate failed; try the next candidate",
@@ -287,7 +387,7 @@
           "to": "POP_POSITION"
         },
         {
-          "label": "a required reply failed; discard the rest of its reply frame",
+          "label": "an opponent reply refuted this candidate",
           "when": {
             "frame": "replies"
           },
@@ -313,7 +413,7 @@
       "kind": "pop",
       "until": "current_frame",
       "label": "Commit successful choice",
-      "description": "Silently pop unused sibling positions until this choice-frame delimiter, then restore the ancestor and propagate proof.",
+      "description": "Discard unused sibling moves until the choice delimiter, restore the ancestor, and propagate proof.",
       "on": {
         "delimiter": "LINE_PROVED",
         "empty": "EXHAUSTED"
@@ -324,8 +424,8 @@
       "routine": "main",
       "kind": "pop",
       "until": "current_frame",
-      "label": "Abort refuted reply frame",
-      "description": "Silently pop the remaining sibling replies until this replies-frame delimiter, then restore the ancestor and propagate failure.",
+      "label": "Abort refuted replies",
+      "description": "Discard the remaining sibling replies until the replies delimiter, restore the ancestor, and propagate failure.",
       "on": {
         "delimiter": "LINE_FAILED",
         "empty": "EXHAUSTED"
@@ -336,14 +436,14 @@
       "routine": "main",
       "kind": "accept",
       "label": "Solved",
-      "description": "A root choice succeeded and every required opponent reply in its nested delimiter frames was discharged."
+      "description": "A root move worked against every retained opponent reply."
     },
     {
       "id": "EXHAUSTED",
       "routine": "main",
       "kind": "reject",
       "label": "Failed loudly",
-      "description": "Every candidate failed, or a required line was refuted, unexplorable, missing, or over budget."
+      "description": "Every candidate failed, or this basic policy could not narrow a required reply set."
     }
   ],
   "oracle": {
