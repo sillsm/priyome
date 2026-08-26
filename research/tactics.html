@@ -256,7 +256,7 @@ No policy events yet.</pre>
 <input id="policyFileInput" type="file" hidden accept=".json,application/json" />
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-<script src="/predicate.js"></script>
+<script src="/predicate.js?v=1.1.0"></script>
 <script type="module">
 (() => {
   "use strict";
@@ -266,13 +266,14 @@ No policy events yet.</pre>
   const clone = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[ch]);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const SCRATCHCHESS_URL = "/research/scratchchess.js";
-  const ORACLE_URL = "/scratchchess_oracle.js";
+  const SCRATCHCHESS_URL = "/research/scratchchess.js?v=796098e1957517e";
+  const ORACLE_URL = "/scratchchess_oracle.js?v=2.4.0";
   const BASIC_POLICY_URL = "/reasoning/basicpolicy.json";
   const PUZZLES_URL = "/tactical_positions.md";
   const STORAGE_POLICIES = "priyomes-predicate-tactics-policies-v2";
   const STORAGE_SETTINGS = "priyomes-predicate-tactics-settings-v1";
   const HIDDEN_KINDS = new Set();
+  const TACTICS_BUILD = "2026-08-26-solution-pv-alignment-chain";
   const P = window.PredicatePolicy;
 
   if (!P) {
@@ -1038,7 +1039,7 @@ No policy events yet.</pre>
         : "";
     $("#resultText").textContent = result ? [result.toUpperCase(), diagnostic].filter(Boolean).join(" · ") : app.running ? "running" : stateTitle(stateDef(snapshot?.state));
     $("#resultChip").className = `status-chip ${result || ""}`;
-    $("#engineChip").innerHTML = `<span class="status-dot"></span><span>predicate.js ${esc(P.VERSION)} · oracle ${esc(app.oracleVersion)} · horizon ${esc(app.oracleHorizon)}</span>`;
+    $("#engineChip").innerHTML = `<span class="status-dot"></span><span>predicate.js ${esc(P.VERSION)} · oracle ${esc(app.oracleVersion)} · horizon ${esc(app.oracleHorizon)} · ${esc(TACTICS_BUILD)}</span>`;
     $("#policySelect").value = app.policyId;
     $("#puzzleSelect").value = String(app.puzzleIndex);
     const disabled = !app.initialized || app.locked;
@@ -1114,6 +1115,19 @@ No policy events yet.</pre>
     });
     byParent.forEach((items) => items.sort((a, b) => a.order - b.order));
 
+    // A choice frame is existential: the child that reached
+    // DISCARD_CHOICE_FRAME is the move the policy actually committed to. Make
+    // that solved choice the PGN mainline even when a higher-priority candidate
+    // was explored and refuted first. Required opponent replies remain sibling
+    // variations under that principal variation.
+    const committedChoiceByParent = new Map();
+    for (const event of snapshot?.trace || []) {
+      if (event.type !== "inspect-routed" || event.to !== "DISCARD_CHOICE_FRAME") continue;
+      const occurrence = event.item?.occurrence;
+      const node = occurrence ? nodeMap.get(occurrence) : null;
+      if (node?.parent) committedChoiceByParent.set(node.parent, node.occurrence);
+    }
+
     const acceptedBelow = new Map();
     const hasAccepted = (node) => {
       if (!node) return false;
@@ -1122,7 +1136,14 @@ No policy events yet.</pre>
       acceptedBelow.set(node.occurrence, value);
       return value;
     };
-    const orderedChildren = (parentOccurrence) => [...(byParent.get(parentOccurrence) || [])].sort((a, b) => Number(hasAccepted(b)) - Number(hasAccepted(a)) || a.order - b.order);
+    const orderedChildren = (parentOccurrence) => {
+      const committed = committedChoiceByParent.get(parentOccurrence);
+      return [...(byParent.get(parentOccurrence) || [])].sort((a, b) =>
+        Number(b.occurrence === committed) - Number(a.occurrence === committed)
+        || Number(hasAccepted(b)) - Number(hasAccepted(a))
+        || a.order - b.order
+      );
+    };
 
     const moveText = (node) => {
       const card = getPosition(node.id) || {};
@@ -1159,11 +1180,11 @@ No policy events yet.</pre>
 
     const renderVariation = (node, depth, seen) => {
       if (!node || seen.has(node.occurrence)) return [];
-      const nextSeen = new Set(seen);
-      nextSeen.add(node.occurrence);
+      // renderPosition marks its parent occurrence as visited. Do not pre-mark the
+      // variation node here or its explored continuation disappears from PGN.
       return [
         `${indent(depth)}${moveText(node)}`,
-        ...renderPosition(node.occurrence, depth + 1, nextSeen)
+        ...renderPosition(node.occurrence, depth + 1, new Set(seen))
       ];
     };
 
