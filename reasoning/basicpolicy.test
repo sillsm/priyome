@@ -7,19 +7,19 @@
 [PredicateResult "ACCEPT"]
 [PredicateCompare "EQUAL"]
 
-22. Bh7+ {move_middle_with_check; [SEARCH_OUR_MOVE]}
+22. Bh7+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
 	22... Kxh7 {capture; [SEARCH_ALL_REPLIES]}
 	(
 		22... Kh8 {king_move; [SEARCH_ALL_REPLIES]}
-			23. Rxc8 {capture_back_of_alignment; [SEARCH_OUR_MOVE]}
+			23. Rxc8 {capture_back_of_alignment; [SEARCH_ALIGNMENT_CAPTURE_CHAIN]}
 				23... Rxc8 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
 				(
 					23... Qxf2+ {check; [SEARCH_WHEN_UP_MATERIAL]}
 						24. Rxf2 {recapture; [SEARCH_CHECK_RESPONSES]}
 				)
-					24. Qxc8+ {recapture; [SEARCH_OUR_MOVE]}
+					24. Qxc8+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
 	)
-		23. Rxc8 {capture_back_of_alignment; [SEARCH_OUR_MOVE]}
+		23. Rxc8 {capture_back_of_alignment; [SEARCH_ALIGNMENT_CAPTURE_CHAIN]}
 			23... Rxc8 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
 			(
 				23... Qxf2+ {check; [SEARCH_WHEN_UP_MATERIAL]}
@@ -39,17 +39,44 @@
 [PredicateResult "ACCEPT"]
 [PredicateCompare "EQUAL"]
 
-1... Qxg2+ {check_and_attack_piece; [SEARCH_OUR_MOVE]}
+1... Qxg2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
 	2. Rf2 {save_piece; [SEARCH_ALL_REPLIES]}
 	(
 		2. Kd3 {king_move; [SEARCH_ALL_REPLIES]}
 			2... Qxf3 {capture_loose_non_pawn_piece; [SEARCH_OUR_MOVE]}
+			(
+				2... Qxc2+ {check_with_one_reply; [SEARCH_OUR_MOVE]}
+					3. Kxc2 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+			)
+			(
+				2... Qd2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+					3. Qxd2 {capture; [SEARCH_ALL_REPLIES]}
+			)
+			(
+				2... Qf1+ {check_and_attack_piece; [SEARCH_OUR_MOVE]}
+					3. Rxf1 {capture_attacker; [SEARCH_REPLIES_TO_ATTACKED_PIECE]}
+			)
+			(
+				2... Qe2+ {check; [SEARCH_OUR_MOVE]}
+			)
+			(
+				2... Rd1+ {check; [SEARCH_OUR_MOVE]}
+					3. Qxd1 {defend_attacked_piece; [SEARCH_REPLIES_TO_ATTACKED_PIECE]}
+			)
 				3. Rb8+ {check_with_one_reply; [SEARCH_WHEN_UP_MATERIAL]}
 					3... Kf7 {king_move; [SEARCH_CHECK_RESPONSES]}
 	)
-		2... Qxf2+ {recapture; [SEARCH_OUR_MOVE]}
+		2... Qxf2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
 			3. Kxf2 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
 				3... Rh2+ {skewer; [SEARCH_OUR_MOVE]}
+				(
+					3... Rg2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+						4. Kxg2 {capture; [SEARCH_ALL_REPLIES]}
+				)
+				(
+					3... Rf1+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+						4. Kxf1 {capture; [SEARCH_ALL_REPLIES]}
+				)
 *
 
 [Event "Capture chain with alignment"]
@@ -65,33 +92,70 @@
 (
 	18... Qxc2+ {check_with_one_reply; [SEARCH_OUR_MOVE]}
 		19. Qxc2 {capture; [SEARCH_ALL_REPLIES]}
-			19... Rxc2+ {recapture; [SEARCH_OUR_MOVE]}
-			(
-				19... Bxg5+ {check; [SEARCH_OUR_MOVE]}
-			)
-			(
-				19... Bxe4 {capture_defender_of_alignment_target; [SEARCH_OUR_MOVE]}
-			)
-			(
-				19... Rxh4 {capture; [SEARCH_OUR_MOVE]}
-			)
-				20. Kxc2 {capture; [SEARCH_ALL_REPLIES]}
-					20... Bxe4+ {check; [SEARCH_OUR_MOVE]}
-					(
-						20... Bxg5 {capture; [SEARCH_OUR_MOVE]}
-					)
-					(
-						20... Rxh4 {capture; [SEARCH_OUR_MOVE]}
-					)
 )
 	19. fxe4 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
 		19... Bxg5 {capture_alignment_target; [SEARCH_ALIGNMENT_CAPTURE_CHAIN]}
 			20. Qxg5 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
 			(
 				20. hxg5 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
-					20... Rxh1 {capture_back_of_alignment; [SEARCH_OUR_MOVE]}
+					20... Rxh1 {capture_back_of_alignment; [SEARCH_ALIGNMENT_CAPTURE_CHAIN]}
 			)
 				20... Qxc2# {mate; [SEARCH_OUR_MOVE]}
+*
+
+[Event "Queen Mobility Loose Knight"]
+[Site "Predicate Chess Tactics"]
+[Result "*"]
+[SetUp "1"]
+[FEN "r3k2r/pp2bppp/1q2p3/3pP3/3n2B1/2N5/PP3PPP/1R1Q1RK1 w kq - 0 15"]
+[Policy "basic"]
+[PredicateResult "ACCEPT"]
+[PredicateCompare "EQUAL"]
+
+15. Na4 {safely_add_attacker_to_defender_of_loose_piece; [SEARCH_OUR_MOVE]}
+(
+	15. Qa4+ {check_and_attack_piece; [SEARCH_OUR_MOVE]}
+)
+(
+	15. Nxd5 {capture; [SEARCH_OUR_MOVE]}
+)
+(
+	15. Qxd4 {capture; [SEARCH_OUR_MOVE]}
+		15... Qxd4 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+)
+(
+	15. Bxe6 {capture; [SEARCH_OUR_MOVE]}
+)
+	15... Qb4 {move_defender_while_still_defending_loose_piece; [SEARCH_REPLIES_TO_ATTACKED_DEFENDER]}
+		16. a3 {safely_add_attacker_to_defender_of_loose_piece; [SEARCH_OUR_MOVE]}
+		(
+			16. Qxd4 {capture; [SEARCH_OUR_MOVE]}
+				16... Qxd4 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+		)
+		(
+			16. Bxe6 {capture; [SEARCH_OUR_MOVE]}
+		)
+			16... Qc4 {move_defender_while_still_defending_loose_piece; [SEARCH_REPLIES_TO_ATTACKED_DEFENDER]}
+				17. Rc1 {safely_add_attacker_to_defender_of_loose_piece; [SEARCH_OUR_MOVE]}
+				(
+					17. Qxd4 {capture; [SEARCH_OUR_MOVE]}
+						17... Qxd4 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+				)
+				(
+					17. Bxe6 {capture; [SEARCH_OUR_MOVE]}
+				)
+*
+
+[Event "Queen Mobility Loose Knight — queen-check is not the solution PV"]
+[Site "Predicate Chess Tactics"]
+[Result "*"]
+[SetUp "1"]
+[FEN "r3k2r/pp2bppp/1q2p3/3pP3/3n2B1/2N5/PP3PPP/1R1Q1RK1 w kq - 0 15"]
+[Policy "basic"]
+[PredicateResult "ACCEPT"]
+[PredicateCompare "NOT_EQUAL"]
+
+15. Qa4+ {check_and_attack_piece; [SEARCH_OUR_MOVE]}
 *
 
 [Event "Capture chain with alignment — queen-check is not the solution PV"]

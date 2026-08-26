@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "5.2.0",
+  "version": "5.3.0",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -77,6 +77,27 @@
           "to": "LINE_FAILED"
         },
         {
+          "label": "an opponent recapture erased the material objective with no bound continuation",
+          "when": {
+            "all": [
+              "recapture"
+            ],
+            "none": [
+              "up_material",
+              "mate_available",
+              "winning_recapture_available",
+              "skewer_available",
+              "capture_back_of_alignment_available",
+              "alignment_back_piece_exposed",
+              "alignment_capture_chain",
+              "defender_of_loose_piece_is_attacked",
+              "attacked_piece",
+              "skewer"
+            ]
+          },
+          "to": "LINE_FAILED"
+        },
+        {
           "label": "we answered a check and remain up the material objective",
           "when": {
             "all": [
@@ -116,11 +137,31 @@
           "to": "SEARCH_ALIGNMENT_CAPTURE_CHAIN"
         },
         {
+          "label": "cash an exposed back piece in the alignment",
+          "when": {
+            "side": "my",
+            "any": [
+              "alignment_back_piece_exposed"
+            ]
+          },
+          "to": "SEARCH_ALIGNMENT_CAPTURE_CHAIN"
+        },
+        {
           "label": "our move",
           "when": {
             "side": "my"
           },
           "to": "SEARCH_OUR_MOVE"
+        },
+        {
+          "label": "the defender of a loose piece is attacked",
+          "when": {
+            "side": "their",
+            "any": [
+              "defender_of_loose_piece_is_attacked"
+            ]
+          },
+          "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
         },
         {
           "label": "we are up the material objective",
@@ -183,21 +224,21 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "Scan one human chess list in order and push every matching legal move. Checks with one legal reply come before checks with two legal replies, then all other checks.",
+      "description": "Scan one human chess list in order and push every matching legal move. After mate, checks with one legal reply come first, then checks with two legal replies, then relation-specific and other checks. Captures come next. The first attack idea safely adds an attacker to the sole defender of an already attacked non-pawn piece.",
       "predicates": [
         "mate",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "move_middle_with_check",
+        "check_and_attack_piece",
+        "skewer",
+        "check",
         "capture_back_of_alignment",
         "recapture",
         "capture_loose_non_pawn_piece",
-        "remove_sole_defender",
-        "check_and_attack_piece",
-        "skewer",
-        "check_with_one_reply",
-        "check_with_two_replies",
-        "check",
         "capture_defender_of_alignment_target",
         "capture",
+        "safely_add_attacker_to_defender_of_loose_piece",
         "add_attacker_to_loose_non_pawn_piece",
         "add_attacker_to_pinned_piece"
       ],
@@ -219,7 +260,7 @@
       "kind": "search",
       "side": "my",
       "label": "Alignment capture chain",
-      "description": "A slider, an enemy middle piece, and an enemy back piece are aligned; the middle piece also defends another piece. Prefer capturing that defended piece, then cash the back piece if the middle piece moves off the line.",
+      "description": "A slider, an enemy middle piece, and an enemy back piece are aligned; the middle piece also defends another piece. This temporary card cashes the already-observed relation before starting unrelated checks: capture the defended alignment target, then capture the exposed back piece if the middle piece leaves the line.",
       "predicates": [
         "mate",
         "capture_alignment_target",
@@ -230,6 +271,7 @@
         "check",
         "capture_loose_non_pawn_piece",
         "capture",
+        "safely_add_attacker_to_defender_of_loose_piece",
         "add_attacker_to_loose_non_pawn_piece",
         "add_attacker_to_pinned_piece"
       ],
@@ -376,6 +418,31 @@
         "check_with_two_replies",
         "check",
         "capture"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_PROVED"
+      }
+    },
+    {
+      "id": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Replies while a defender is attacked",
+      "description": "A non-pawn piece is attacked and has exactly one effective defender; our last move safely attacked that defender. Retain only a move that puts the defender on a safe square while it still defends the loose piece, a capture that does the same, or a direct capture of the attacking piece.",
+      "predicates": [
+        "mated",
+        "move_defender_while_still_defending_loose_piece",
+        "capture_and_keep_defending_loose_piece",
+        "capture_attacker"
       ],
       "closure": {
         "mode": "all"
