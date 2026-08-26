@@ -15,7 +15,7 @@
  * visible predicate-policy DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.2.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.4.0";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
@@ -470,6 +470,161 @@ function samePieceAt(board, square, descriptor) {
   return Boolean(piece && descriptor && piece.color === descriptor.color && piece.type === descriptor.type);
 }
 
+function rayHasMiddleAndBack(board, front, middle, back, direction) {
+  const [df, dr] = direction || [];
+  if (!Number.isInteger(df) || !Number.isInteger(dr) || (!df && !dr)) return false;
+  let [file, rank] = fr(front);
+  file += df;
+  rank += dr;
+  let first = -1;
+  while (inBounds(file, rank)) {
+    const square = idx(file, rank);
+    if (board[square]) {
+      if (first < 0) first = square;
+      else return first === middle && square === back;
+    }
+    file += df;
+    rank += dr;
+  }
+  return false;
+}
+
+function alignmentDefenderChainFact(chain) {
+  const others = (chain.otherDefenders || [])
+    .map((item) => coloredPieceLabel(item.piece, item.square))
+    .join("+") || "none";
+  return `alignment_middle_defends_piece(front=${coloredPieceLabel(chain.frontPiece, chain.front)},middle=${coloredPieceLabel(chain.middlePiece, chain.middle)},back=${coloredPieceLabel(chain.backPiece, chain.back)},target=${coloredPieceLabel(chain.targetPiece, chain.target)},other_defenders=${others})`;
+}
+
+function findAlignmentDefenderChains(game, side, minimumGain) {
+  const board = boardOf(game);
+  const enemy = other(side);
+  const output = [];
+  const seen = new Set();
+
+  for (let front = 0; front < 64; front += 1) {
+    const frontPiece = board[front];
+    if (!frontPiece || frontPiece.color !== side) continue;
+    const [frontFile, frontRank] = fr(front);
+
+    for (const [df, dr] of RAY_DIRECTIONS) {
+      if (!sliderSupportsDirection(frontPiece, df, dr)) continue;
+      let file = frontFile + df;
+      let rank = frontRank + dr;
+      let middle = -1;
+      let back = -1;
+
+      while (inBounds(file, rank)) {
+        const square = idx(file, rank);
+        const piece = board[square];
+        if (piece) {
+          if (middle < 0) {
+            if (piece.color !== enemy || piece.type === "k") break;
+            middle = square;
+          } else {
+            if (piece.color === enemy && piece.type !== "k") back = square;
+            break;
+          }
+        }
+        file += df;
+        rank += dr;
+      }
+
+      if (middle < 0 || back < 0) continue;
+      const middlePiece = board[middle];
+      const backPiece = board[back];
+      const backValue = VALUES[backPiece?.type] || 0;
+      if (backValue < minimumGain) continue;
+
+      for (let target = 0; target < 64; target += 1) {
+        if (target === middle || target === back) continue;
+        const targetPiece = board[target];
+        if (!targetPiece || targetPiece.color !== enemy || ["p", "k"].includes(targetPiece.type)) continue;
+        if (!attacksSquare(board, middle, target)) continue;
+
+        const defenders = effectiveDefendersOnBoard(board, target, enemy);
+        if (!defenders.includes(middle)) continue;
+        const otherDefenderSquares = defenders.filter((square) => square !== middle);
+        if (!otherDefenderSquares.length) continue;
+        const attackers = effectiveAttackersOnBoard(board, target, side);
+        if (!attackers.length) continue;
+
+        const key = `${front}:${middle}:${back}:${target}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        output.push({
+          kind: "alignment_defender_chain",
+          side,
+          front,
+          middle,
+          back,
+          target,
+          direction: [df, dr],
+          frontPiece: clone(frontPiece),
+          middlePiece: clone(middlePiece),
+          backPiece: clone(backPiece),
+          targetPiece: clone(targetPiece),
+          backValue,
+          targetValue: VALUES[targetPiece.type] || 0,
+          otherDefenders: otherDefenderSquares.map((square) => ({ square, piece: clone(board[square]) })),
+          attackers: attackers.map((square) => ({ square, piece: clone(board[square]) }))
+        });
+      }
+    }
+  }
+
+  return output.sort((a, b) =>
+    b.backValue - a.backValue
+    || b.targetValue - a.targetValue
+    || a.front - b.front
+    || a.middle - b.middle
+    || a.target - b.target
+  );
+}
+
+function alignmentDefenderChainSurvives(board, chain) {
+  return Boolean(
+    samePieceAt(board, chain.front, chain.frontPiece)
+    && samePieceAt(board, chain.middle, chain.middlePiece)
+    && samePieceAt(board, chain.back, chain.backPiece)
+    && samePieceAt(board, chain.target, chain.targetPiece)
+    && rayHasMiddleAndBack(board, chain.front, chain.middle, chain.back, chain.direction)
+    && attacksSquare(board, chain.middle, chain.target)
+    && effectiveAttackersOnBoard(board, chain.target, chain.side).length
+  );
+}
+
+function refreshAlignmentDefenderChain(board, chain) {
+  const refreshed = clone(chain);
+  const enemy = other(chain.side);
+  refreshed.otherDefenders = effectiveDefendersOnBoard(board, chain.target, enemy)
+    .filter((square) => square !== chain.middle)
+    .map((square) => ({ square, piece: clone(board[square]) }));
+  refreshed.attackers = effectiveAttackersOnBoard(board, chain.target, chain.side)
+    .map((square) => ({ square, piece: clone(board[square]) }));
+  return refreshed;
+}
+
+function openedAlignmentBinding(board, chain) {
+  if (!samePieceAt(board, chain.front, chain.frontPiece)) return null;
+  if (!samePieceAt(board, chain.back, chain.backPiece)) return null;
+  if (board[chain.middle]) return null;
+  if (!attacksSquare(board, chain.front, chain.back)) return null;
+  return {
+    side: chain.side,
+    front: chain.front,
+    middle: chain.middle,
+    back: chain.back,
+    direction: clone(chain.direction),
+    frontPiece: clone(chain.frontPiece),
+    middlePiece: clone(chain.middlePiece),
+    backPiece: clone(chain.backPiece),
+    backValue: chain.backValue,
+    phase: "middle_cleared",
+    source: "alignment_capture_chain"
+  };
+}
+
 function targetObjectiveKey(target) {
   return `${target.attackerSquare}:${target.targetSquare}:${target.source}`;
 }
@@ -568,7 +723,9 @@ export class ScratchChessOracle {
         lastMove: null,
         attackTargets: [],
         alignments: [],
+        alignmentDefenderChains: [],
         activeAlignmentBindings: [],
+        activeAlignmentChains: [],
         alignmentCapture: null,
         activeObjective: null,
         materialSwing: 0
@@ -871,6 +1028,7 @@ export class ScratchChessOracle {
     const afterFen = after.exportFEN();
     const mate = /#$/.test(san);
     const check = mate || safeInCheck(after, other(moverSide));
+    const legalReplyCount = legalMoveRecords(after).length;
     const capture = Boolean(capturedBefore) || /x/.test(san);
     const recapture = Boolean(capture && parentCard.meta?.lastMove && move.to === parentCard.meta.lastMove.to);
     const directTargets = movedTargets(after, move.to, moverSide);
@@ -886,8 +1044,11 @@ export class ScratchChessOracle {
       predicates.push(moverSide === this.rootSide ? "mate" : "mated");
       facts.push(`mate(${san})`);
     } else if (check) {
+      if (legalReplyCount === 1) predicates.push("check_with_one_reply");
+      if (legalReplyCount === 2) predicates.push("check_with_two_replies");
       predicates.push("check");
       facts.push(`check(${san})`);
+      facts.push(`check_reply_count(${legalReplyCount})`);
     }
     if (mover?.type === "k") {
       predicates.push("king_move");
@@ -981,10 +1142,71 @@ export class ScratchChessOracle {
       break;
     }
 
-    const survivingBindings = candidateBindings.filter((binding) => {
-      if (alignmentCapture && binding.back === alignmentCapture.target) return false;
-      return bindingSurvives(boardOf(after), binding);
-    });
+    const boardAfter = boardOf(after);
+    const availableAlignmentChains = moverSide === this.rootSide
+      ? (parentCard.meta?.alignmentDefenderChains?.length
+          ? parentCard.meta.alignmentDefenderChains.map(clone)
+          : findAlignmentDefenderChains(game, moverSide, Number(this.options.objective_gain)))
+      : [];
+    const inheritedAlignmentChains = Array.isArray(parentCard.meta?.activeAlignmentChains)
+      ? parentCard.meta.activeAlignmentChains.map(clone)
+      : [];
+    const activeAlignmentChains = [];
+    const openedBindings = [];
+
+    if (moverSide === this.rootSide && capture) {
+      for (const chain of availableAlignmentChains) {
+        const defender = (chain.otherDefenders || []).find((item) => item.square === move.to);
+        if (!defender || !alignmentDefenderChainSurvives(boardAfter, chain)) continue;
+        predicates.push("capture_defender_of_alignment_target");
+        facts.push(alignmentDefenderChainFact(chain));
+        facts.push(`capture_defender_of_alignment_target(${san},defender=${coloredPieceLabel(defender.piece, defender.square)},target=${coloredPieceLabel(chain.targetPiece, chain.target)})`);
+        activeAlignmentChains.push({
+          ...refreshAlignmentDefenderChain(boardAfter, chain),
+          phase: "defender_captured",
+          removedDefenderSquare: defender.square,
+          removedDefenderPiece: clone(defender.piece),
+          sourceMove: move.uci
+        });
+      }
+    }
+
+    for (const chain of inheritedAlignmentChains) {
+      if (chain.phase === "defender_captured") {
+        if (moverSide === this.rootSide && capture && move.to === chain.target
+          && alignmentDefenderChainSurvives(boardBefore, chain)) {
+          predicates.push("capture_alignment_target");
+          facts.push(alignmentDefenderChainFact(chain));
+          facts.push(`capture_alignment_target(${san},target=${coloredPieceLabel(chain.targetPiece, chain.target)})`);
+          activeAlignmentChains.push({
+            ...clone(chain),
+            phase: "target_captured",
+            targetCaptureMove: move.uci,
+            capturingPiece: clone(boardAfter[move.to])
+          });
+        } else if (alignmentDefenderChainSurvives(boardAfter, chain)) {
+          activeAlignmentChains.push(refreshAlignmentDefenderChain(boardAfter, chain));
+        }
+      } else if (chain.phase === "target_captured") {
+        if (moverSide !== this.rootSide && move.from === chain.middle) {
+          const binding = openedAlignmentBinding(boardAfter, chain);
+          if (binding) {
+            openedBindings.push(binding);
+            facts.push(alignmentDefenderChainFact(chain));
+            facts.push(`alignment_square_cleared(${squareName(chain.middle)})`);
+            facts.push(`back_piece_exposed(${coloredPieceLabel(chain.backPiece, chain.back)})`);
+          }
+        }
+      }
+    }
+
+    const survivingBindings = [
+      ...candidateBindings.filter((binding) => {
+        if (alignmentCapture && binding.back === alignmentCapture.target) return false;
+        return bindingSurvives(boardAfter, binding);
+      }),
+      ...openedBindings
+    ];
 
     let activeObjective = clone(parentCard.meta?.activeObjective || null);
     if (moverSide === this.rootSide) {
@@ -1066,14 +1288,16 @@ export class ScratchChessOracle {
           discovered: Boolean(target.discovered)
         })),
         alignments: [],
+        alignmentDefenderChains: [],
         activeAlignmentBindings: survivingBindings.map(clone),
+        activeAlignmentChains: activeAlignmentChains.map(clone),
         alignmentCapture,
         activeObjective: clone(activeObjective),
         materialBefore: beforeMaterial,
         materialAfter: afterMaterial,
         materialSwing,
         captureValue: VALUES[capturedBefore?.type] || 0,
-        legalReplyCount: null,
+        legalReplyCount,
         oracleHorizon: 1
       }
     };
@@ -1154,6 +1378,29 @@ export class ScratchChessOracle {
     if (alignments.length) {
       card.predicates = unique([...card.predicates, "alignment"]);
       card.facts = unique([...card.facts, ...alignments.slice(0, 8).map(alignmentFact)]);
+    }
+
+    const alignmentDefenderChains = sideToMove === this.rootSide
+      ? findAlignmentDefenderChains(game, sideToMove, Number(this.options.objective_gain))
+      : [];
+    card.meta.alignmentDefenderChains = alignmentDefenderChains.map(clone);
+    if (alignmentDefenderChains.length) {
+      card.predicates = unique([...card.predicates, "alignment_middle_defends_piece"]);
+      card.facts = unique([
+        ...card.facts,
+        ...alignmentDefenderChains.slice(0, 8).map(alignmentDefenderChainFact)
+      ]);
+    }
+
+    const activeAlignmentChains = Array.isArray(card.meta?.activeAlignmentChains)
+      ? card.meta.activeAlignmentChains.filter((chain) => chain.phase === "defender_captured")
+      : [];
+    if (sideToMove === this.rootSide && activeAlignmentChains.length) {
+      card.predicates = unique([...card.predicates, "alignment_capture_chain"]);
+      card.facts = unique([
+        ...card.facts,
+        ...activeAlignmentChains.slice(0, 8).map(alignmentDefenderChainFact)
+      ]);
     }
 
     // Exactly one applied move per legal response. Lexical UCI ordering is only
