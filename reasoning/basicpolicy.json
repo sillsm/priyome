@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "5.0.0",
+  "version": "5.2.0",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -66,13 +66,12 @@
           "to": "LINE_PROVED"
         },
         {
-          "label": "we are mated, stalemated, or there are too many replies for this basic policy",
+          "label": "we are mated, stalemated, or there are too many relevant replies for this basic policy",
           "when": {
             "any": [
               "mated",
               "stalemate",
-              "more_than_two_relevant_replies",
-              "more_than_two_legal_replies"
+              "more_than_two_relevant_replies"
             ]
           },
           "to": "LINE_FAILED"
@@ -105,6 +104,16 @@
             ]
           },
           "to": "SEARCH_CHECK_RESPONSES"
+        },
+        {
+          "label": "continue the visible alignment capture chain",
+          "when": {
+            "side": "my",
+            "any": [
+              "alignment_capture_chain"
+            ]
+          },
+          "to": "SEARCH_ALIGNMENT_CAPTURE_CHAIN"
         },
         {
           "label": "our move",
@@ -174,7 +183,7 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "Scan one human chess list in order and push every matching legal move. The first matching predicate supplies the move's priority.",
+      "description": "Scan one human chess list in order and push every matching legal move. Checks with one legal reply come before checks with two legal replies, then all other checks.",
       "predicates": [
         "mate",
         "move_middle_with_check",
@@ -184,7 +193,42 @@
         "remove_sole_defender",
         "check_and_attack_piece",
         "skewer",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "check",
+        "capture_defender_of_alignment_target",
+        "capture",
+        "add_attacker_to_loose_non_pawn_piece",
+        "add_attacker_to_pinned_piece"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "choice",
+        "on_empty": "LINE_FAILED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_FAILED"
+      }
+    },
+    {
+      "id": "SEARCH_ALIGNMENT_CAPTURE_CHAIN",
+      "routine": "main",
+      "kind": "search",
+      "side": "my",
+      "label": "Alignment capture chain",
+      "description": "A slider, an enemy middle piece, and an enemy back piece are aligned; the middle piece also defends another piece. Prefer capturing that defended piece, then cash the back piece if the middle piece moves off the line.",
+      "predicates": [
+        "mate",
+        "capture_alignment_target",
+        "capture_back_of_alignment",
+        "recapture",
+        "check_with_one_reply",
+        "check_with_two_replies",
+        "check",
+        "capture_loose_non_pawn_piece",
         "capture",
         "add_attacker_to_loose_non_pawn_piece",
         "add_attacker_to_pinned_piece"
@@ -207,11 +251,13 @@
       "kind": "search",
       "side": "my",
       "label": "Answer the check",
-      "description": "A check earns a two-ply extension: the checking move and one answer. Prefer mate, recapture, capture, another check, then any legal king response. After the answer, stop and ask whether the material objective survived.",
+      "description": "A check earns a two-ply extension: the checking move and one answer. Prefer mate, recapture, capture, then checks ordered by one reply, two replies, and other checks, then any legal king response.",
       "predicates": [
         "mate",
         "recapture",
         "capture",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "check",
         "king_move",
         "legal_move"
@@ -234,10 +280,12 @@
       "kind": "search",
       "side": "their",
       "label": "All replies",
-      "description": "The opponent has at most two legal moves, so examine both. Captures, checks, and moves that save an attacked piece are ordered first.",
+      "description": "The opponent has at most two legal moves, so examine both. Captures and checks are ordered first; checks with fewer legal replies are preferred.",
       "predicates": [
         "mated",
         "capture",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "check",
         "save_piece",
         "king_move",
@@ -261,10 +309,12 @@
       "kind": "search",
       "side": "their",
       "label": "Replies while we are up material",
-      "description": "When the opponent is down the material objective, consider only mate, recapture, and check. A check is followed for exactly one answering move, completing a two-ply check extension.",
+      "description": "When the opponent is down the material objective, consider only mate, recapture, and checks ordered by one reply, two replies, then other checks. A check is followed for exactly one answering move.",
       "predicates": [
         "mated",
         "recapture",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "check"
       ],
       "closure": {
@@ -285,13 +335,15 @@
       "kind": "search",
       "side": "their",
       "label": "Replies to an attacked piece",
-      "description": "Consider ordinary ways to answer an attack: capture the attacker, move or defend the piece, block the attack, give check, or make a capture.",
+      "description": "Consider ordinary ways to answer an attack: capture the attacker, move or defend the piece, block the attack, give a forcing check, or make a capture.",
       "predicates": [
         "mated",
         "capture_attacker",
         "move_attacked_piece",
         "defend_attacked_piece",
         "block_attack",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "check",
         "capture"
       ],
@@ -313,13 +365,15 @@
       "kind": "search",
       "side": "their",
       "label": "Replies to a skewer",
-      "description": "Consider ordinary ways to answer a skewer: capture the skewering piece, move or defend the skewered piece, block the line, give check, or make a capture.",
+      "description": "Consider ordinary ways to answer a skewer: capture the skewering piece, move or defend the skewered piece, block the line, give a forcing check, or make a capture.",
       "predicates": [
         "mated",
         "capture_attacker",
         "move_skewered_piece",
         "defend_skewered_piece",
         "block_skewer",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "check",
         "capture"
       ],
