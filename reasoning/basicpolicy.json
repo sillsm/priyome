@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "5.8.0",
+  "version": "5.9.0",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -104,16 +104,6 @@
           "to": "LINE_FAILED"
         },
         {
-          "label": "refute the named mate-threat response on the next ply",
-          "when": {
-            "side": "my",
-            "any": [
-              "mate_threat_response_pending"
-            ]
-          },
-          "to": "SEARCH_MATE_THREAT_RESPONSE_REFUTATION"
-        },
-        {
           "label": "an opponent recapture erased the material objective with no bound continuation",
           "when": {
             "all": [
@@ -214,14 +204,14 @@
           "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
         },
         {
-          "label": "the opponent must answer our visible mate-in-one threat",
+          "label": "first ask whether the opponent can capture the mate-threat piece or supporter",
           "when": {
             "side": "their",
             "any": [
               "threaten_mate_in_1"
             ]
           },
-          "to": "SEARCH_REPLIES_TO_MATE_THREAT"
+          "to": "SEARCH_CAPTURE_REPLIES_TO_MATE_THREAT"
         },
         {
           "label": "the opponent may recapture or check after we captured the mate-threat interposer",
@@ -304,9 +294,11 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "Scan one human chess list in order and push every matching legal move. After mate: checks with one reply, a visible mate-in-one threat, checks with two replies, then capture an undefended non-pawn before broader checks and captures.",
+      "description": "Scan one ordinary human chess list in order. Existing mate-threat continuation moves use this same card: mate, a visible capture of the responder or edge mating-net move, then checks, mate threats, captures, and positional attacks.",
       "predicates": [
         "mate",
+        "capture_mate_threat_responder",
+        "queen_rook_edge_mate_net",
         "check_with_one_reply",
         "threaten_mate_in_1",
         "check_with_two_replies",
@@ -369,31 +361,6 @@
       }
     },
     {
-      "id": "SEARCH_MATE_THREAT_RESPONSE_REFUTATION",
-      "routine": "main",
-      "kind": "search",
-      "side": "my",
-      "label": "One-ply refutation of a mate-threat response",
-      "description": "The opponent tried a named answer to the mate threat. Show the response on the board, then retain one immediate mate, capture of the responding piece that wins the material objective, or the first move of a recognized queen-rook edge mating net.",
-      "predicates": [
-        "mate",
-        "capture_mate_threat_responder",
-        "queen_rook_edge_mate_net"
-      ],
-      "closure": {
-        "mode": "first",
-        "count": 1
-      },
-      "frame": {
-        "kind": "choice",
-        "on_empty": "LINE_FAILED"
-      },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "SEARCH_OUR_MOVE"
-      }
-    },
-    {
       "id": "SEARCH_MATE_THREAT_CONTINUATION",
       "routine": "main",
       "kind": "search",
@@ -443,19 +410,52 @@
       }
     },
     {
+      "id": "POP_MATE_THREAT_CAPTURE_REPLY",
+      "routine": "main",
+      "kind": "pop",
+      "label": "Play the capture reply",
+      "description": "Pop that opponent reply, then return immediately to the ordinary best-move card for our turn.",
+      "on": {
+        "thought": "SEARCH_OUR_MOVE",
+        "empty": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "SEARCH_CAPTURE_REPLIES_TO_MATE_THREAT",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Capture reply to mate in one",
+      "description": "Before enumerating the broader mate-threat reply classes, retain the first legal reply that captures the mating piece or its supporter. If none exists, fall through to the ordinary named reply card.",
+      "predicates": [
+        "capture_mate_threat_piece",
+        "capture_mate_threat_supporter"
+      ],
+      "closure": {
+        "mode": "first",
+        "count": 1
+      },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
+      "on": {
+        "pushed": "POP_MATE_THREAT_CAPTURE_REPLY",
+        "none": "SEARCH_REPLIES_TO_MATE_THREAT"
+      }
+    },
+    {
       "id": "SEARCH_REPLIES_TO_MATE_THREAT",
       "routine": "main",
       "kind": "search",
       "side": "their",
       "label": "Live replies to mate in one",
-      "description": "Enumerate every legal reply matching a named human mate-threat response idea. Even a visibly bad countercheck, king escape, interposition, target move, or defender move is pushed and shown before its one-ply refutation.",
+      "description": "When no reply captures the mating piece or its supporter, enumerate every legal reply matching an ordinary named human mate-threat response idea. Each reply then returns to the normal inspection and best-move cards.",
       "predicates": [
         "mated",
         "check_with_one_reply",
         "check_with_two_replies",
         "check",
-        "capture_mate_threat_piece",
-        "capture_mate_threat_supporter",
         "move_mating_target",
         "king_escape_from_mate_threat",
         "add_defender_to_mating_square",
