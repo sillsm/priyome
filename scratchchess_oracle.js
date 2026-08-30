@@ -15,7 +15,7 @@
  * visible predicate-policy DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.9.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.9.1";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
@@ -1074,7 +1074,9 @@ function queenRookEdgeMateNetAfterTargetMove(board, threat, child) {
     if (board[check1] || board[threat.mateSquare]) return null;
     return {
       step,
-      firstMoveUci: `${squareName(threat.attackerSquare)}${squareName(check1)}`,
+      refutationFrom: threat.attackerSquare,
+      refutationTo: check1,
+      refutationUci: `${squareName(threat.attackerSquare)}${squareName(check1)}`,
       witness: `Q${squareName(check1)}+ K${squareName(kingReply)} Qx${squareName(child.move.toIndex)}+ K${squareName(threat.kingSquare)} Q${squareName(threat.mateSquare)}#`,
       reason: "mating_pawn_advance_enters_queen_rook_edge_net"
     };
@@ -1087,7 +1089,9 @@ function queenRookEdgeMateNetAfterTargetMove(board, threat, child) {
   const matingSquare = idx(mateFile, mateRank + supportDirection[1]);
   return {
     step,
-    firstMoveUci: `${squareName(threat.attackerSquare)}${squareName(check1)}`,
+    refutationFrom: threat.attackerSquare,
+    refutationTo: check1,
+    refutationUci: `${squareName(threat.attackerSquare)}${squareName(check1)}`,
     witness: `Q${squareName(check1)}+ K${squareName(threat.mateSquare)} Rx${squareName(child.move.toIndex)}+ K${squareName(forcedKingReply)} Q${squareName(matingSquare)}#`,
     reason: "mating_pawn_advance_enters_queen_rook_edge_net"
   };
@@ -1499,6 +1503,25 @@ export class ScratchChessOracle {
       : null;
     const capturedMateThreatBlocker = Boolean(moverSide === this.rootSide && capture && inheritedMateBlocker
       && move.to === inheritedMateBlocker.blockerSquare);
+    const inheritedMateResponse = parentCard.meta?.activeObjective?.kind === "mate_threat_response"
+      ? parentCard.meta.activeObjective
+      : null;
+    const mateResponseRefutation = inheritedMateResponse?.refutation || null;
+    const matchesMateResponseRefutation = Boolean(moverSide === this.rootSide
+      && mateResponseRefutation
+      && move.from === mateResponseRefutation.from
+      && move.to === mateResponseRefutation.to);
+    if (matchesMateResponseRefutation && mateResponseRefutation.kind === "capture_responder") {
+      predicates.push("capture_mate_threat_responder");
+      facts.push(`capture_mate_threat_responder(${san},response=${inheritedMateResponse.responseSan || inheritedMateResponse.responseMove},gain=${mateResponseRefutation.gain || 0})`);
+    }
+    if (matchesMateResponseRefutation && mateResponseRefutation.kind === "queen_rook_edge_mate_net") {
+      predicates.push("queen_rook_edge_mate_net");
+      facts.push(`queen_rook_edge_mate_net(${san},line=${factToken(mateResponseRefutation.witness)})`);
+    }
+    if (matchesMateResponseRefutation && mateResponseRefutation.kind === "mate") {
+      facts.push(`mate_threat_response_refutation(${san},mate=${factToken(mateResponseRefutation.witness)})`);
+    }
     if (capturedMateThreatBlocker) {
       predicates.push("capture_mate_threat_interposer");
       facts.push(`capture_mate_threat_interposer(${san},${coloredPieceLabel(inheritedMateBlocker.blockerPiece, inheritedMateBlocker.blockerSquare)})`);
@@ -1685,12 +1708,8 @@ export class ScratchChessOracle {
       const blockerStillPresent = inheritedBlockedThreat
         && boardAfter[inheritedBlockedThreat.blockerSquare]
         && boardAfter[inheritedBlockedThreat.blockerSquare].color === other(this.rootSide);
-      const edgeMateNetMove = inheritedBlockedThreat?.edgeMateNet
-        && move.uci === inheritedBlockedThreat.edgeMateNet.firstMoveUci;
-      if (edgeMateNetMove) {
-        predicates.push("queen_rook_edge_mate_net");
-        facts.push(`queen_rook_edge_mate_net(${san},line=${factToken(inheritedBlockedThreat.edgeMateNet.witness)})`);
-        activeObjective = null;
+      if (inheritedMateResponse) {
+        activeObjective = matchesMateResponseRefutation ? null : clone(inheritedMateResponse);
       } else if (capturedMateThreatBlocker) {
         activeObjective = {
           kind: "mate_threat_interposer_captured",
@@ -1757,15 +1776,6 @@ export class ScratchChessOracle {
     } else if (activeObjective?.kind === "defender_chase") {
       activeObjective = updateDefenderChaseOnBoard(boardAfter, activeObjective, move);
       if (activeObjective) facts.push(defenderChaseFact(activeObjective));
-    }
-
-    if (moverSide !== this.rootSide
-      && activeObjective?.kind === "mate_threat_interposer_captured"
-      && !check
-      && materialSwing >= Number(this.options.objective_gain)) {
-      predicates.push("mate_threat_refutation_survived");
-      facts.push(`mate_threat_refutation_survived(${san},gain=${materialSwing})`);
-      activeObjective = null;
     }
 
     if (materialSwing !== 0) facts.push(`material_swing(${materialSwing > 0 ? "+" : ""}${materialSwing})`);
@@ -1897,10 +1907,6 @@ export class ScratchChessOracle {
       return [];
     };
 
-    // First classify every move that expresses one of the policy's agreed
-    // human mate-defense ideas. A matching defense is always LIVE—even when
-    // the resulting position already contains an obvious one-ply refutation.
-    // The DFA must pop the move and show that refutation on the board.
     const predicates = [];
     const facts = [];
     const add = (predicate, fact) => {
@@ -1908,11 +1914,12 @@ export class ScratchChessOracle {
       if (fact) facts.push(fact);
     };
 
-    if (child.predicates.includes("check")) {
-      // Keep the ordinary check/check_with_N_replies predicates already
-      // attached by the one-ply oracle. The mate-threat card lists them.
-      facts.push(`mate_threat_countercheck(${child.move?.san || child.display})`);
-    }
+    // Classify every agreed human mate-response idea before considering any
+    // closure. A matching response is always pushed and shown, even when the
+    // next ply has an obvious mate or queen capture.
+    const checkPredicates = ["check_with_one_reply", "check_with_two_replies", "check"]
+      .filter((predicate) => child.predicates.includes(predicate));
+    checkPredicates.forEach((predicate) => add(predicate, `${predicate}(${child.move?.san || child.display})`));
 
     const capturedSquare = Number(child.move?.toIndex);
     const captured = child.move?.captured || null;
@@ -1974,33 +1981,82 @@ export class ScratchChessOracle {
       );
     }
 
-    if (child.predicates.includes("king_move")) {
+    const movedThreatenedKing = child.move?.mover?.color === other(this.rootSide)
+      && child.move?.mover?.type === "k"
+      && child.move?.fromIndex === threat.kingSquare;
+    if (movedThreatenedKing) {
       add(
-        "king_move",
-        `king_move_against_mate_threat(${child.move?.san || child.display})`
+        "king_escape_from_mate_threat",
+        `king_escape_from_mate_threat(${child.move?.san || child.display},from=${squareName(threat.kingSquare)},to=${squareName(movedTo)})`
       );
     }
 
-    const agreedResponse = child.predicates.includes("check") || predicates.length > 0;
-    if (agreedResponse) {
-      const edgeMateNet = movedMatingTarget
-        ? queenRookEdgeMateNetAfterTargetMove(board, threat, child)
-        : null;
-      if (edgeMateNet) {
-        facts.push(`queen_rook_edge_mate_net_available(first=${edgeMateNet.firstMoveUci},line=${factToken(edgeMateNet.witness)})`);
+    const immediateQueenMate = findStaticQueenMateMove(board, this.rootSide);
+    const queenLoss = staticQueenLossWitness(
+      board,
+      other(this.rootSide),
+      this.rootSide,
+      Number(this.options.objective_gain)
+    );
+    const pawnNet = queenRookEdgeMateNetAfterTargetMove(board, threat, child);
+
+    if (predicates.length) {
+      let refutation = null;
+      if (immediateQueenMate) {
+        refutation = {
+          kind: "mate",
+          from: immediateQueenMate.from,
+          to: immediateQueenMate.to,
+          uci: `${squareName(immediateQueenMate.from)}${squareName(immediateQueenMate.to)}`,
+          witness: immediateQueenMate.witness
+        };
+        facts.push(`mate_threat_one_ply_refutation(mate=${factToken(immediateQueenMate.witness)})`);
+      } else if (queenLoss) {
+        refutation = {
+          kind: "capture_responder",
+          from: queenLoss.attackerSquare,
+          to: queenLoss.queenSquare,
+          uci: `${squareName(queenLoss.attackerSquare)}${squareName(queenLoss.queenSquare)}`,
+          witness: queenLoss.witness,
+          gain: queenLoss.gain
+        };
+        facts.push(`mate_threat_one_ply_refutation(capture=${factToken(queenLoss.witness)},gain=${queenLoss.gain})`);
+      } else if (pawnNet) {
+        refutation = {
+          kind: "queen_rook_edge_mate_net",
+          from: pawnNet.refutationFrom,
+          to: pawnNet.refutationTo,
+          uci: pawnNet.refutationUci,
+          witness: pawnNet.witness,
+          step: pawnNet.step
+        };
+        facts.push(`queen_rook_edge_mate_net(step=${pawnNet.step},line=${factToken(pawnNet.witness)})`);
       }
-      if (interposed && !capturedThreatPiece && !capturedSupporter) {
+
+      // Rg6-like interpositions with no immediate continuation remain in the
+      // existing visible Qh4+ / capture-interposer line. Every other named
+      // response carries context only so the ordinary best-move card can see
+      // the already-existing responder-capture or edge-mating-net move predicates.
+      if (interposed && !refutation && !capturedThreatPiece && !capturedSupporter) {
         child.meta.activeObjective = {
           kind: "mate_threat_interposed",
           originalThreat: clone(threat),
           blockerSquare: child.move.toIndex,
           blockerPiece: clone(board[child.move.toIndex]),
-          phase: board[child.move.toIndex]?.type === "q" ? "cash_blocker" : "need_forcing_check",
-          edgeMateNet: clone(edgeMateNet),
+          phase: "need_forcing_check",
           sourceMove: threat.sourceMove
         };
       } else {
-        child.meta.activeObjective = null;
+        child.meta.activeObjective = {
+          kind: "mate_threat_response",
+          originalThreat: clone(threat),
+          responseMove: child.move?.uci,
+          responseSan: child.move?.san,
+          responsePredicates: unique(predicates),
+          responderSquare: movedTo,
+          responderPiece: clone(board[movedTo]),
+          refutation: clone(refutation)
+        };
       }
 
       child.predicates = unique([...child.predicates, ...predicates]);
@@ -2009,18 +2065,11 @@ export class ScratchChessOracle {
         `mate_threat_answered(${threat.mateMoveUci})`,
         ...facts
       ]);
-      return unique([
-        ...(child.predicates.includes("check_with_one_reply") ? ["check_with_one_reply"] : []),
-        ...(child.predicates.includes("check_with_two_replies") ? ["check_with_two_replies"] : []),
-        ...(child.predicates.includes("check") ? ["check"] : []),
-        ...predicates
-      ]);
+      return unique(predicates);
     }
 
-    // Only moves outside the agreed response vocabulary may close without
-    // being explored. They either leave the mate in place, visibly lose a
-    // queen, or remain unclassified and therefore fail loudly.
-    const immediateQueenMate = findStaticQueenMateMove(board, this.rootSide);
+    // Non-predicated replies are closed by the policy boundary, with a concrete
+    // witness when one is visible.
     if (immediateQueenMate) {
       return close(
         stillVisible ? "mate_threat_still_exists" : immediateQueenMate.reason,
@@ -2028,18 +2077,18 @@ export class ScratchChessOracle {
         [`mate_available(${immediateQueenMate.witness})`]
       );
     }
-
-    const queenLoss = staticQueenLossWitness(
-      board,
-      other(this.rootSide),
-      this.rootSide,
-      Number(this.options.objective_gain)
-    );
     if (queenLoss) {
       return close(
         queenLoss.reason,
         queenLoss.witness,
         [`queen_loss_closure(target=${squareName(queenLoss.queenSquare)},attacker=${squareName(queenLoss.attackerSquare)},gain=${queenLoss.gain})`]
+      );
+    }
+    if (pawnNet) {
+      return close(
+        pawnNet.reason,
+        pawnNet.witness,
+        [`queen_rook_edge_mate_net(step=${pawnNet.step},line=${factToken(pawnNet.witness)})`]
       );
     }
 
@@ -2052,7 +2101,6 @@ export class ScratchChessOracle {
     ]);
     return ["unclassified_mate_threat_reply"];
   }
-
 
   _tagDefenderChaseReply(child, chase) {
     const updated = child.meta?.activeObjective;
@@ -2109,7 +2157,7 @@ export class ScratchChessOracle {
         "interpose_mate_threat_battery",
         "add_defender_to_mating_square",
         "move_mating_target",
-        "king_move",
+        "king_escape_from_mate_threat",
         "unclassified_mate_threat_reply"
       ];
     } else if (tactic?.kind === "defender_chase") {
@@ -2162,7 +2210,7 @@ export class ScratchChessOracle {
       card.predicates = unique([...card.predicates, "more_than_two_relevant_replies"]);
       card.help = `${relevant.length} immediate replies match the visible human reply card; the policy limit is ${limit}.`;
     } else if (tactic?.kind === "mate_threat") {
-      card.help = `${relevant.length} immediate replies match the agreed mate-defense predicates; every one is a required reply obligation.`;
+      card.help = `${relevant.length} named mate-threat responses are live and will all be explored.`;
     } else if (tactic?.kind === "mate_threat_interposer_captured") {
       card.help = `${relevant.length} live recapture/check replies remain after explicit material closures.`;
     }
@@ -2216,16 +2264,6 @@ export class ScratchChessOracle {
       card.facts = unique([
         ...card.facts,
         ...activeAlignmentChains.slice(0, 8).map(alignmentDefenderChainFact)
-      ]);
-    }
-
-    if (sideToMove === this.rootSide
-      && card.meta?.activeObjective?.kind === "mate_threat_interposed"
-      && card.meta.activeObjective.edgeMateNet?.firstMoveUci) {
-      card.predicates = unique([...card.predicates, "mate_threat_edge_net_ready"]);
-      card.facts = unique([
-        ...card.facts,
-        `mate_threat_edge_net_ready(first=${card.meta.activeObjective.edgeMateNet.firstMoveUci},line=${factToken(card.meta.activeObjective.edgeMateNet.witness)})`
       ]);
     }
 
