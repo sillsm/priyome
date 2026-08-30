@@ -15,7 +15,7 @@
  * visible predicate-policy DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.5.0";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.9.0";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
@@ -719,6 +719,380 @@ function openedAlignmentBinding(board, chain) {
   };
 }
 
+
+function cloneBoardPosition(board) {
+  return board.map((piece) => piece ? { ...piece } : null);
+}
+
+function adjacentSquares(square) {
+  const [file, rank] = fr(square);
+  const output = [];
+  for (let df = -1; df <= 1; df += 1) {
+    for (let dr = -1; dr <= 1; dr += 1) {
+      if (!df && !dr) continue;
+      const nextFile = file + df;
+      const nextRank = rank + dr;
+      if (inBounds(nextFile, nextRank)) output.push(idx(nextFile, nextRank));
+    }
+  }
+  return output;
+}
+
+function raySquaresBetween(from, to) {
+  const direction = directionBetween(from, to);
+  if (!direction) return [];
+  const [df, dr] = direction;
+  let [file, rank] = fr(from);
+  file += df;
+  rank += dr;
+  const output = [];
+  while (inBounds(file, rank)) {
+    const square = idx(file, rank);
+    if (square === to) return output;
+    output.push(square);
+    file += df;
+    rank += dr;
+  }
+  return [];
+}
+
+function kingHasStaticEscapeAfterContactCapture(board, kingSquare, defenderSide, attackerSide) {
+  for (const destination of adjacentSquares(kingSquare)) {
+    const occupant = board[destination];
+    if (occupant?.color === defenderSide) continue;
+    const next = cloneBoardPosition(board);
+    next[kingSquare] = null;
+    next[destination] = { color: defenderSide, type: "k", id: "static-king" };
+    if (!attackersOnBoard(next, destination, attackerSide).length) return true;
+  }
+  return false;
+}
+
+/**
+ * Recognize a visible contact-mate capture threat without asking ScratchChess
+ * to play a second ply. The relation is entirely on the current board:
+ * an attacking piece can capture an enemy piece next to the king, the capturing
+ * piece would give contact check, the mating square is protected, no effective
+ * non-king defender can capture there, and the king has no static escape square.
+ */
+function findVisibleMateInOneThreats(board, attackerSide) {
+  const defenderSide = other(attackerSide);
+  const kingSquare = board.findIndex((piece) => piece?.color === defenderSide && piece.type === "k");
+  if (kingSquare < 0) return [];
+  const output = [];
+  const seen = new Set();
+
+  for (const mateSquare of adjacentSquares(kingSquare)) {
+    const targetPiece = board[mateSquare];
+    if (!targetPiece || targetPiece.color !== defenderSide || targetPiece.type === "k") continue;
+
+    for (let attackerSquare = 0; attackerSquare < 64; attackerSquare += 1) {
+      const attackerPiece = board[attackerSquare];
+      if (!attackerPiece || attackerPiece.color !== attackerSide || attackerPiece.type === "k") continue;
+      if (!attacksSquare(board, attackerSquare, mateSquare)) continue;
+
+      const afterMateCapture = cloneBoardPosition(board);
+      afterMateCapture[attackerSquare] = null;
+      afterMateCapture[mateSquare] = { ...attackerPiece };
+      if (!attacksSquare(afterMateCapture, mateSquare, kingSquare)) continue;
+
+      const ownKing = afterMateCapture.findIndex((piece) => piece?.color === attackerSide && piece.type === "k");
+      if (ownKing >= 0 && attackersOnBoard(afterMateCapture, ownKing, defenderSide).length) continue;
+
+      const supportSquares = effectiveAttackersOnBoard(afterMateCapture, mateSquare, attackerSide)
+        .filter((square) => square !== mateSquare && square !== attackerSquare);
+      if (!supportSquares.length) continue;
+
+      const nonKingCapturers = effectiveAttackersOnBoard(afterMateCapture, mateSquare, defenderSide)
+        .filter((square) => afterMateCapture[square]?.type !== "k");
+      if (nonKingCapturers.length) continue;
+      if (kingHasStaticEscapeAfterContactCapture(afterMateCapture, kingSquare, defenderSide, attackerSide)) continue;
+
+      const supportSquare = supportSquares.find((square) => {
+        const piece = afterMateCapture[square];
+        const direction = directionBetween(square, mateSquare);
+        return direction && sliderSupportsDirection(piece, ...direction);
+      }) ?? supportSquares[0];
+      const supportPiece = afterMateCapture[supportSquare];
+      const lineSquares = supportPiece && directionBetween(supportSquare, mateSquare)
+        && sliderSupportsDirection(supportPiece, ...directionBetween(supportSquare, mateSquare))
+        ? raySquaresBetween(supportSquare, mateSquare)
+        : [];
+      const key = `${attackerSquare}:${mateSquare}:${kingSquare}:${supportSquare}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      output.push({
+        kind: "mate_threat",
+        attackerSide,
+        defenderSide,
+        attackerSquare,
+        attackerPiece: clone(attackerPiece),
+        mateSquare,
+        targetPiece: clone(targetPiece),
+        kingSquare,
+        kingPiece: clone(board[kingSquare]),
+        supportSquare,
+        supportPiece: clone(supportPiece),
+        lineSquares,
+        mateMoveUci: `${squareName(attackerSquare)}${squareName(mateSquare)}`
+      });
+    }
+  }
+  return output;
+}
+
+function mateThreatFact(threat) {
+  return `threaten_mate_in_1(move=${threat.mateMoveUci},attacker=${coloredPieceLabel(threat.attackerPiece, threat.attackerSquare)},target=${coloredPieceLabel(threat.targetPiece, threat.mateSquare)},king=${coloredPieceLabel(threat.kingPiece, threat.kingSquare)},support=${coloredPieceLabel(threat.supportPiece, threat.supportSquare)})`;
+}
+
+function sameMateThreat(left, right) {
+  return Boolean(left && right
+    && left.attackerSquare === right.attackerSquare
+    && left.mateSquare === right.mateSquare
+    && left.kingSquare === right.kingSquare);
+}
+
+function newEffectiveAttackers(beforeBoard, afterBoard, target, side, { excludeKing = false } = {}) {
+  const before = new Set(effectiveAttackersOnBoard(beforeBoard, target, side));
+  return effectiveAttackersOnBoard(afterBoard, target, side).filter((square) => {
+    if (before.has(square)) return false;
+    if (excludeKing && afterBoard[square]?.type === "k") return false;
+    return true;
+  });
+}
+
+
+function pieceSanLetter(piece) {
+  return ({ p: "", n: "N", b: "B", r: "R", q: "Q", k: "K" })[piece?.type] ?? "?";
+}
+
+function captureWitness(board, from, to) {
+  const piece = board[from];
+  const prefix = piece?.type === "p" ? squareName(from)[0] : pieceSanLetter(piece);
+  return `${prefix}x${squareName(to)}`;
+}
+
+function staticQueenLossWitness(board, losingSide, winningSide, objectiveGain) {
+  const queenSquares = [];
+  for (let square = 0; square < 64; square += 1) {
+    const piece = board[square];
+    if (piece?.color === losingSide && piece.type === "q") queenSquares.push(square);
+  }
+  for (const queenSquare of queenSquares) {
+    const defenders = effectiveDefendersOnBoard(board, queenSquare, losingSide)
+      .filter((square) => square !== queenSquare);
+    const attackers = effectiveAttackersOnBoard(board, queenSquare, winningSide)
+      .sort((a, b) => (VALUES[board[a]?.type] || 0) - (VALUES[board[b]?.type] || 0) || a - b);
+    for (const attackerSquare of attackers) {
+      const attacker = board[attackerSquare];
+      if (!attacker) continue;
+      if (attacker.type === "k") {
+        const next = cloneBoardPosition(board);
+        next[attackerSquare] = null;
+        next[queenSquare] = clone(attacker);
+        if (attackersOnBoard(next, queenSquare, losingSide).length) continue;
+        return {
+          queenSquare,
+          attackerSquare,
+          gain: VALUES.q,
+          witness: captureWitness(board, attackerSquare, queenSquare),
+          reason: "king_captures_queen"
+        };
+      }
+      const attackerValue = VALUES[attacker.type] || 0;
+      const gain = defenders.length ? VALUES.q - attackerValue : VALUES.q;
+      if (gain < Number(objectiveGain)) continue;
+      return {
+        queenSquare,
+        attackerSquare,
+        gain,
+        witness: captureWitness(board, attackerSquare, queenSquare),
+        reason: defenders.length ? "lower_value_piece_trades_for_queen" : "queen_is_undefended"
+      };
+    }
+  }
+  return null;
+}
+
+function materialPreservingBlockWitness(board, checkedSide, materialSwing, objectiveGain) {
+  if (Number(materialSwing) < Number(objectiveGain)) return null;
+  const kingSquare = board.findIndex((piece) => piece?.color === checkedSide && piece.type === "k");
+  if (kingSquare < 0) return null;
+  const enemy = other(checkedSide);
+  const checkers = attackersOnBoard(board, kingSquare, enemy);
+  for (const checkerSquare of checkers) {
+    const checker = board[checkerSquare];
+    const direction = directionBetween(checkerSquare, kingSquare);
+    if (!checker || !direction || !sliderSupportsDirection(checker, ...direction)) continue;
+    for (const blockSquare of raySquaresBetween(checkerSquare, kingSquare)) {
+      if (board[blockSquare]) continue;
+      const blockers = effectiveAttackersOnBoard(board, blockSquare, checkedSide)
+        .filter((square) => board[square]?.type !== "k");
+      for (const blockerSquare of blockers) {
+        const next = cloneBoardPosition(board);
+        next[blockSquare] = clone(next[blockerSquare]);
+        next[blockerSquare] = null;
+        if (attackersOnBoard(next, kingSquare, enemy).length) continue;
+        const blockWitness = `${pieceSanLetter(board[blockerSquare])}${squareName(blockSquare)}`;
+
+        // A checking queen may capture the blocker. Close the check only when
+        // that continuation visibly loses the queen to an effective recapture.
+        if (checker.type === "q" && attacksSquare(next, checkerSquare, blockSquare)) {
+          const afterQueenCapture = cloneBoardPosition(next);
+          afterQueenCapture[checkerSquare] = null;
+          afterQueenCapture[blockSquare] = clone(checker);
+          const queenLoss = staticQueenLossWitness(afterQueenCapture, enemy, checkedSide, objectiveGain);
+          if (!queenLoss) continue;
+          return {
+            checkerSquare,
+            blockSquare,
+            blockerSquare,
+            witness: `${blockWitness} Qx${squareName(blockSquare)}+ ${queenLoss.witness}`,
+            reason: "check_block_forces_queen_trade"
+          };
+        }
+
+        return {
+          checkerSquare,
+          blockSquare,
+          blockerSquare,
+          witness: blockWitness,
+          reason: "check_can_be_blocked_while_material_gain_survives"
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function staticMoveIsMate(board, from, to, attackerSide) {
+  const moving = board[from];
+  if (!moving || moving.color !== attackerSide || moving.type !== "q") return false;
+  if (board[to]?.color === attackerSide) return false;
+  if (!attacksSquare(board, from, to)) return false;
+  const defenderSide = other(attackerSide);
+  const projected = cloneBoardPosition(board);
+  projected[from] = null;
+  projected[to] = clone(moving);
+  const ownKing = projected.findIndex((piece) => piece?.color === attackerSide && piece.type === "k");
+  if (ownKing >= 0 && attackersOnBoard(projected, ownKing, defenderSide).length) return false;
+  const kingSquare = projected.findIndex((piece) => piece?.color === defenderSide && piece.type === "k");
+  if (kingSquare < 0 || !attacksSquare(projected, to, kingSquare)) return false;
+
+  const kingPiece = clone(projected[kingSquare]);
+  for (const escape of adjacentSquares(kingSquare)) {
+    const occupant = projected[escape];
+    if (occupant?.color === defenderSide) continue;
+    const next = cloneBoardPosition(projected);
+    next[kingSquare] = null;
+    next[escape] = kingPiece;
+    if (!attackersOnBoard(next, escape, attackerSide).length) return false;
+  }
+
+  for (const capturer of attackersOnBoard(projected, to, defenderSide)) {
+    const next = cloneBoardPosition(projected);
+    const piece = clone(next[capturer]);
+    next[capturer] = null;
+    next[to] = piece;
+    const nextKing = piece?.type === "k" ? to : kingSquare;
+    if (!attackersOnBoard(next, nextKing, attackerSide).length) return false;
+  }
+
+  const direction = directionBetween(to, kingSquare);
+  if (direction && sliderSupportsDirection(projected[to], ...direction)) {
+    for (const blockSquare of raySquaresBetween(to, kingSquare)) {
+      if (projected[blockSquare]) continue;
+      for (let blocker = 0; blocker < 64; blocker += 1) {
+        const piece = projected[blocker];
+        if (!piece || piece.color !== defenderSide || piece.type === "k") continue;
+        let canBlock = attacksSquare(projected, blocker, blockSquare);
+        if (piece.type === "p") {
+          const [bf, br] = fr(blocker);
+          const [tf, tr] = fr(blockSquare);
+          const forward = piece.color === "w" ? 1 : -1;
+          canBlock = bf === tf && tr - br === forward && !projected[blockSquare];
+        }
+        if (!canBlock || isAbsolutelyPinnedOnBoard(projected, blocker, defenderSide)) continue;
+        const next = cloneBoardPosition(projected);
+        next[blockSquare] = clone(piece);
+        next[blocker] = null;
+        if (!attackersOnBoard(next, kingSquare, attackerSide).length) return false;
+      }
+    }
+  }
+  return true;
+}
+
+function findStaticQueenMateMove(board, attackerSide) {
+  for (let from = 0; from < 64; from += 1) {
+    const piece = board[from];
+    if (!piece || piece.color !== attackerSide || piece.type !== "q") continue;
+    for (let to = 0; to < 64; to += 1) {
+      if (!staticMoveIsMate(board, from, to, attackerSide)) continue;
+      return {
+        from,
+        to,
+        witness: `Q${board[to] ? "x" : ""}${squareName(to)}#`,
+        reason: "reply_allows_immediate_queen_mate"
+      };
+    }
+  }
+  return null;
+}
+
+function queenRookEdgeMateNetAfterTargetMove(board, threat, child) {
+  if (!threat || threat.attackerPiece?.type !== "q" || threat.supportPiece?.type !== "r") return null;
+  if (child.move?.mover?.type !== "p" || child.move?.fromIndex !== threat.mateSquare) return null;
+  const [mateFile, mateRank] = fr(threat.mateSquare);
+  const [kingFile, kingRank] = fr(threat.kingSquare);
+  const [queenFile, queenRank] = fr(threat.attackerSquare);
+  const [destinationFile, destinationRank] = fr(child.move.toIndex);
+  const supportDirection = directionBetween(threat.mateSquare, threat.supportSquare);
+  if (!supportDirection || supportDirection[0] !== 0) return null;
+  const kingDf = kingFile - mateFile;
+  const kingDr = kingRank - mateRank;
+  if (Math.abs(kingDf) !== 1 || Math.abs(kingDr) !== 1) return null;
+  if (queenRank !== mateRank || queenFile - mateFile !== -kingDf) return null;
+  if (supportDirection[1] !== -kingDr) return null;
+  if (destinationFile !== mateFile) return null;
+  const step = (destinationRank - mateRank) * supportDirection[1];
+  if (![1, 2].includes(step)) return null;
+  const support = board[threat.supportSquare];
+  const queen = board[threat.attackerSquare];
+  const king = board[threat.kingSquare];
+  const movedPawn = board[child.move.toIndex];
+  if (!support || support.color !== threat.attackerSide || support.type !== "r") return null;
+  if (!queen || queen.color !== threat.attackerSide || queen.type !== "q") return null;
+  if (!king || king.color !== threat.defenderSide || king.type !== "k") return null;
+  if (!movedPawn || movedPawn.color !== threat.defenderSide || movedPawn.type !== "p") return null;
+  const kingIsCorner = [kingFile, kingRank].every((value) => value === 0 || value === 7);
+  if (!kingIsCorner) return null;
+
+  if (step === 1) {
+    const check1 = idx(queenFile, queenRank + supportDirection[1]);
+    const kingReply = idx(kingFile, mateRank);
+    if (board[check1] || board[threat.mateSquare]) return null;
+    return {
+      step,
+      firstMoveUci: `${squareName(threat.attackerSquare)}${squareName(check1)}`,
+      witness: `Q${squareName(check1)}+ K${squareName(kingReply)} Qx${squareName(child.move.toIndex)}+ K${squareName(threat.kingSquare)} Q${squareName(threat.mateSquare)}#`,
+      reason: "mating_pawn_advance_enters_queen_rook_edge_net"
+    };
+  }
+
+  const check1 = idx(kingFile, destinationRank);
+  if (board[check1]) return null;
+  if (!attacksSquare(board, threat.supportSquare, child.move.toIndex)) return null;
+  const forcedKingReply = idx(mateFile - kingDf, destinationRank - supportDirection[1]);
+  const matingSquare = idx(mateFile, mateRank + supportDirection[1]);
+  return {
+    step,
+    firstMoveUci: `${squareName(threat.attackerSquare)}${squareName(check1)}`,
+    witness: `Q${squareName(check1)}+ K${squareName(threat.mateSquare)} Rx${squareName(child.move.toIndex)}+ K${squareName(forcedKingReply)} Q${squareName(matingSquare)}#`,
+    reason: "mating_pawn_advance_enters_queen_rook_edge_net"
+  };
+}
+
 function targetObjectiveKey(target) {
   return `${target.attackerSquare}:${target.targetSquare}:${target.source}`;
 }
@@ -742,7 +1116,7 @@ export class ScratchChessOracle {
     }
     const allowed = new Set([
       "createGame", "reply_limit", "reply_class_limit", "objective_gain",
-      "max_positions", "attack_min_value"
+      "max_positions", "attack_min_value", "mate_threat_limit"
     ]);
     const unknown = Object.keys(config).filter((key) => !allowed.has(key));
     if (unknown.length) throw new Error(`Unknown oracle option(s): ${unknown.join(", ")}`);
@@ -752,7 +1126,8 @@ export class ScratchChessOracle {
       reply_class_limit: 1,
       objective_gain: 1,
       max_positions: 1,
-      attack_min_value: 0
+      attack_min_value: 0,
+      mate_threat_limit: 1
     };
     for (const [key, minimum] of Object.entries(integerMinimums)) {
       const value = config[key];
@@ -766,7 +1141,8 @@ export class ScratchChessOracle {
       reply_class_limit: config.reply_class_limit,
       objective_gain: config.objective_gain,
       max_positions: config.max_positions,
-      attack_min_value: config.attack_min_value
+      attack_min_value: config.attack_min_value,
+      mate_threat_limit: config.mate_threat_limit
     };
     this.cards = new Map();
     this.analysis = new Map();
@@ -822,6 +1198,7 @@ export class ScratchChessOracle {
         activeAlignmentChains: [],
         alignmentCapture: null,
         activeObjective: null,
+        mateThreatCount: 0,
         materialSwing: 0
       }
     };
@@ -1109,13 +1486,22 @@ export class ScratchChessOracle {
       facts.push(`capture_value(${VALUES[capturedBefore?.type] || 0})`);
       if (capturedBefore && !["p", "k"].includes(capturedBefore.type)
         && effectiveDefendersOnBoard(boardBefore, move.to, capturedBefore.color).length === 0) {
-        predicates.push("capture_loose_non_pawn_piece");
-        facts.push(`capture_loose_non_pawn_piece(${san},${capturedLabel})`);
+        predicates.push("capture_undefended_non_pawn_piece");
+        facts.push(`capture_undefended_non_pawn_piece(${san},${capturedLabel})`);
       }
     }
     if (recapture) {
       predicates.push("recapture");
       facts.push(`recapture(${san},${squareName(move.to)})`);
+    }
+    const inheritedMateBlocker = parentCard.meta?.activeObjective?.kind === "mate_threat_interposed"
+      ? parentCard.meta.activeObjective
+      : null;
+    const capturedMateThreatBlocker = Boolean(moverSide === this.rootSide && capture && inheritedMateBlocker
+      && move.to === inheritedMateBlocker.blockerSquare);
+    if (capturedMateThreatBlocker) {
+      predicates.push("capture_mate_threat_interposer");
+      facts.push(`capture_mate_threat_interposer(${san},${coloredPieceLabel(inheritedMateBlocker.blockerPiece, inheritedMateBlocker.blockerSquare)})`);
     }
     if (parentCard.side === "my" && parentCard.predicates.includes("in_check")) {
       predicates.push("check_response");
@@ -1132,6 +1518,24 @@ export class ScratchChessOracle {
       attackTargets.slice(0, 6).forEach((target) => {
         facts.push(`${target.discovered ? "discovered_" : ""}attack(${pieceLongLabel(target.piece, target.target)})`);
       });
+    }
+
+    const inheritedMateThreatCount = Number(parentCard.meta?.mateThreatCount || 0);
+    let createdMateThreat = null;
+    if (moverSide === this.rootSide && !mate && !capture
+      && inheritedMateThreatCount < Number(this.options.mate_threat_limit)) {
+      const beforeThreats = findVisibleMateInOneThreats(boardBefore, moverSide);
+      const afterBoard = boardOf(after);
+      const visibleThreats = findVisibleMateInOneThreats(afterBoard, moverSide)
+        .filter((candidate) => !beforeThreats.some((existing) => sameMateThreat(existing, candidate)))
+        // A queen that can be taken immediately is not a safe mate threat. The
+        // capture may be answered, but the threat itself has disappeared.
+        .filter((candidate) => effectiveAttackersOnBoard(afterBoard, candidate.attackerSquare, other(moverSide)).length === 0);
+      if (visibleThreats.length) {
+        createdMateThreat = { ...clone(visibleThreats[0]), sourceMove: move.uci, phase: "threat" };
+        predicates.push("threaten_mate_in_1");
+        facts.push(mateThreatFact(createdMateThreat));
+      }
     }
 
     let createdDefenderChase = null;
@@ -1277,17 +1681,55 @@ export class ScratchChessOracle {
 
     let activeObjective = clone(parentCard.meta?.activeObjective || null);
     if (moverSide === this.rootSide) {
-      activeObjective = createdDefenderChase || this._objectiveAfterOurMove(
-        parentCard,
-        game,
-        after,
-        move,
-        capturedBefore,
-        materialSwing,
-        check
-      );
+      const inheritedBlockedThreat = activeObjective?.kind === "mate_threat_interposed" ? activeObjective : null;
+      const blockerStillPresent = inheritedBlockedThreat
+        && boardAfter[inheritedBlockedThreat.blockerSquare]
+        && boardAfter[inheritedBlockedThreat.blockerSquare].color === other(this.rootSide);
+      const edgeMateNetMove = inheritedBlockedThreat?.edgeMateNet
+        && move.uci === inheritedBlockedThreat.edgeMateNet.firstMoveUci;
+      if (edgeMateNetMove) {
+        predicates.push("queen_rook_edge_mate_net");
+        facts.push(`queen_rook_edge_mate_net(${san},line=${factToken(inheritedBlockedThreat.edgeMateNet.witness)})`);
+        activeObjective = null;
+      } else if (capturedMateThreatBlocker) {
+        activeObjective = {
+          kind: "mate_threat_interposer_captured",
+          minimumGain: Number(this.options.objective_gain),
+          materialSwing,
+          originalThreat: clone(inheritedMateBlocker.originalThreat),
+          blockerSquare: inheritedMateBlocker.blockerSquare,
+          blockerPiece: clone(inheritedMateBlocker.blockerPiece),
+          sourceMove: move.uci
+        };
+      } else if (inheritedBlockedThreat && blockerStillPresent && !capture) {
+        activeObjective = {
+          ...clone(inheritedBlockedThreat),
+          phase: check && legalReplyCount === 1 ? "cash_blocker" : inheritedBlockedThreat.phase
+        };
+      } else {
+        activeObjective = createdMateThreat || createdDefenderChase || this._objectiveAfterOurMove(
+          parentCard,
+          game,
+          after,
+          move,
+          capturedBefore,
+          materialSwing,
+          check
+        );
+      }
       const createdNow = activeObjective?.sourceMove === move.uci;
-      if (activeObjective?.kind === "defender_chase") {
+      if (activeObjective?.kind === "mate_threat_interposer_captured") {
+        predicates.push("mate_threat_interposer_captured");
+        facts.push(`mate_threat_interposer_captured(${san},gain=${materialSwing})`);
+      } else if (activeObjective?.kind === "mate_threat") {
+        predicates.push("threaten_mate_in_1");
+        if (!facts.includes(mateThreatFact(activeObjective))) facts.push(mateThreatFact(activeObjective));
+      } else if (activeObjective?.kind === "mate_threat_interposed") {
+        predicates.push(activeObjective.phase === "cash_blocker"
+          ? "mate_threat_interposer_ready_to_capture"
+          : "mate_threat_interposed");
+        facts.push(`mate_threat_interposed(blocker=${coloredPieceLabel(activeObjective.blockerPiece, activeObjective.blockerSquare)},phase=${activeObjective.phase})`);
+      } else if (activeObjective?.kind === "defender_chase") {
         predicates.push("defender_of_loose_piece_is_attacked");
         facts.push(defenderChaseFact(activeObjective));
       } else if (activeObjective?.kind === "attacked_piece") {
@@ -1306,9 +1748,24 @@ export class ScratchChessOracle {
           );
         }
       }
+    } else if (activeObjective?.kind === "mate_threat_interposed") {
+      const blocker = boardAfter[activeObjective.blockerSquare];
+      activeObjective = blocker && blocker.color === moverSide
+        ? clone(activeObjective)
+        : null;
+      if (activeObjective) facts.push(`mate_threat_interposed(blocker=${coloredPieceLabel(blocker, activeObjective.blockerSquare)},phase=${activeObjective.phase})`);
     } else if (activeObjective?.kind === "defender_chase") {
       activeObjective = updateDefenderChaseOnBoard(boardAfter, activeObjective, move);
       if (activeObjective) facts.push(defenderChaseFact(activeObjective));
+    }
+
+    if (moverSide !== this.rootSide
+      && activeObjective?.kind === "mate_threat_interposer_captured"
+      && !check
+      && materialSwing >= Number(this.options.objective_gain)) {
+      predicates.push("mate_threat_refutation_survived");
+      facts.push(`mate_threat_refutation_survived(${san},gain=${materialSwing})`);
+      activeObjective = null;
     }
 
     if (materialSwing !== 0) facts.push(`material_swing(${materialSwing > 0 ? "+" : ""}${materialSwing})`);
@@ -1358,6 +1815,7 @@ export class ScratchChessOracle {
         activeAlignmentChains: activeAlignmentChains.map(clone),
         alignmentCapture,
         activeObjective: clone(activeObjective),
+        mateThreatCount: inheritedMateThreatCount + (createdMateThreat ? 1 : 0),
         materialBefore: beforeMaterial,
         materialAfter: afterMaterial,
         materialSwing,
@@ -1366,6 +1824,233 @@ export class ScratchChessOracle {
         oracleHorizon: 1
       }
     };
+  }
+
+
+  _tagPostInterposerReply(card, child, tactic) {
+    const board = boardOf(this._game(child.fen, `${child.display} post-interposer reply`));
+    const rawCheck = child.predicates.includes("check");
+    const rawRecapture = child.predicates.includes("recapture");
+
+    const close = (reason, witness, extraFacts = []) => {
+      child.meta.activeObjective = null;
+      const fact = `closed_post_interposer_reply(${child.move?.san || child.display},reason=${reason}${witness ? `,witness=${factToken(witness)}` : ""})`;
+      child.facts = unique([...child.facts, fact, ...extraFacts]);
+      card.facts = unique([...card.facts, fact]);
+      return [];
+    };
+
+    const queenLoss = staticQueenLossWitness(
+      board,
+      other(this.rootSide),
+      this.rootSide,
+      Number(this.options.objective_gain)
+    );
+    if (queenLoss) {
+      return close(
+        queenLoss.reason,
+        queenLoss.witness,
+        [`queen_loss_closure(target=${squareName(queenLoss.queenSquare)},attacker=${squareName(queenLoss.attackerSquare)},gain=${queenLoss.gain})`]
+      );
+    }
+
+    if (rawCheck) {
+      const block = materialPreservingBlockWitness(
+        board,
+        this.rootSide,
+        child.meta?.materialSwing,
+        Number(this.options.objective_gain)
+      );
+      if (block) {
+        return close(
+          block.reason,
+          block.witness,
+          [`material_preserving_check_answer(block=${squareName(block.blockSquare)},piece=${squareName(block.blockerSquare)})`]
+        );
+      }
+      child.predicates = unique([...child.predicates, "countercheck_survives"]);
+      child.facts = unique([...child.facts, `countercheck_survives(${child.move?.san || child.display})`]);
+      return ["countercheck_survives"];
+    }
+
+    if (rawRecapture) {
+      child.predicates = unique([...child.predicates, "safe_recapture"]);
+      child.facts = unique([...child.facts, `safe_recapture(${child.move?.san || child.display})`]);
+      return ["safe_recapture"];
+    }
+    return [];
+  }
+
+
+  _tagMateThreatReply(card, child, threat) {
+    const beforeBoard = boardOf(this._game(card.fen, `${card.display} mate-threat position`));
+    const board = boardOf(this._game(child.fen, `${child.display} mate-threat reply`));
+    const stillVisible = findVisibleMateInOneThreats(board, this.rootSide)
+      .some((candidate) => candidate.attackerSquare === threat.attackerSquare
+        && candidate.mateSquare === threat.mateSquare);
+
+    const close = (reason, witness, extraFacts = []) => {
+      child.meta.activeObjective = null;
+      const fact = `closed_mate_threat_reply(${child.move?.san || child.display},reason=${reason}${witness ? `,witness=${factToken(witness)}` : ""})`;
+      child.facts = unique([...child.facts, `mate_threat_answered(${threat.mateMoveUci})`, fact, ...extraFacts]);
+      card.facts = unique([...card.facts, fact]);
+      return [];
+    };
+
+    // First classify every move that expresses one of the policy's agreed
+    // human mate-defense ideas. A matching defense is always LIVE—even when
+    // the resulting position already contains an obvious one-ply refutation.
+    // The DFA must pop the move and show that refutation on the board.
+    const predicates = [];
+    const facts = [];
+    const add = (predicate, fact) => {
+      predicates.push(predicate);
+      if (fact) facts.push(fact);
+    };
+
+    if (child.predicates.includes("check")) {
+      // Keep the ordinary check/check_with_N_replies predicates already
+      // attached by the one-ply oracle. The mate-threat card lists them.
+      facts.push(`mate_threat_countercheck(${child.move?.san || child.display})`);
+    }
+
+    const capturedSquare = Number(child.move?.toIndex);
+    const captured = child.move?.captured || null;
+    const capturedThreatPiece = capturedSquare === threat.attackerSquare
+      && captured?.color === this.rootSide
+      && captured?.type === threat.attackerPiece?.type;
+    if (capturedThreatPiece) {
+      add(
+        "capture_mate_threat_piece",
+        `capture_mate_threat_piece(${child.move?.san || child.display},${coloredPieceLabel(threat.attackerPiece, threat.attackerSquare)})`
+      );
+    }
+
+    const capturedSupporter = Number.isInteger(threat.supportSquare)
+      && capturedSquare === threat.supportSquare
+      && captured?.color === this.rootSide
+      && captured?.type === threat.supportPiece?.type;
+    if (capturedSupporter) {
+      add(
+        "capture_mate_threat_supporter",
+        `capture_mate_threat_supporter(${child.move?.san || child.display},${coloredPieceLabel(threat.supportPiece, threat.supportSquare)})`
+      );
+    }
+
+    const batteryLine = Array.isArray(threat.lineSquares) ? threat.lineSquares : [];
+    const movedTo = Number(child.move?.toIndex);
+    const interposed = batteryLine.includes(movedTo)
+      && board[movedTo]?.color === other(this.rootSide)
+      && Number.isInteger(threat.supportSquare)
+      && !attacksSquare(board, threat.supportSquare, threat.mateSquare);
+    if (interposed) {
+      add(
+        "interpose_mate_threat_battery",
+        `interpose_mate_threat_battery(${child.move?.san || child.display},square=${squareName(movedTo)})`
+      );
+    }
+
+    const newMateSquareDefenders = newEffectiveAttackers(
+      beforeBoard,
+      board,
+      threat.mateSquare,
+      other(this.rootSide),
+      { excludeKing: true }
+    );
+    if (newMateSquareDefenders.length) {
+      add(
+        "add_defender_to_mating_square",
+        `add_defender_to_mating_square(${child.move?.san || child.display},square=${squareName(threat.mateSquare)},defenders=${newMateSquareDefenders.map(squareName).join("+")})`
+      );
+    }
+
+    const movedMatingTarget = child.move?.fromIndex === threat.mateSquare
+      && child.move?.mover?.color === other(this.rootSide)
+      && child.move?.mover?.type === threat.targetPiece?.type;
+    if (movedMatingTarget) {
+      add(
+        "move_mating_target",
+        `move_mating_target(${child.move?.san || child.display},from=${squareName(threat.mateSquare)})`
+      );
+    }
+
+    if (child.predicates.includes("king_move")) {
+      add(
+        "king_move",
+        `king_move_against_mate_threat(${child.move?.san || child.display})`
+      );
+    }
+
+    const agreedResponse = child.predicates.includes("check") || predicates.length > 0;
+    if (agreedResponse) {
+      const edgeMateNet = movedMatingTarget
+        ? queenRookEdgeMateNetAfterTargetMove(board, threat, child)
+        : null;
+      if (edgeMateNet) {
+        facts.push(`queen_rook_edge_mate_net_available(first=${edgeMateNet.firstMoveUci},line=${factToken(edgeMateNet.witness)})`);
+      }
+      if (interposed && !capturedThreatPiece && !capturedSupporter) {
+        child.meta.activeObjective = {
+          kind: "mate_threat_interposed",
+          originalThreat: clone(threat),
+          blockerSquare: child.move.toIndex,
+          blockerPiece: clone(board[child.move.toIndex]),
+          phase: board[child.move.toIndex]?.type === "q" ? "cash_blocker" : "need_forcing_check",
+          edgeMateNet: clone(edgeMateNet),
+          sourceMove: threat.sourceMove
+        };
+      } else {
+        child.meta.activeObjective = null;
+      }
+
+      child.predicates = unique([...child.predicates, ...predicates]);
+      child.facts = unique([
+        ...child.facts,
+        `mate_threat_answered(${threat.mateMoveUci})`,
+        ...facts
+      ]);
+      return unique([
+        ...(child.predicates.includes("check_with_one_reply") ? ["check_with_one_reply"] : []),
+        ...(child.predicates.includes("check_with_two_replies") ? ["check_with_two_replies"] : []),
+        ...(child.predicates.includes("check") ? ["check"] : []),
+        ...predicates
+      ]);
+    }
+
+    // Only moves outside the agreed response vocabulary may close without
+    // being explored. They either leave the mate in place, visibly lose a
+    // queen, or remain unclassified and therefore fail loudly.
+    const immediateQueenMate = findStaticQueenMateMove(board, this.rootSide);
+    if (immediateQueenMate) {
+      return close(
+        stillVisible ? "mate_threat_still_exists" : immediateQueenMate.reason,
+        immediateQueenMate.witness,
+        [`mate_available(${immediateQueenMate.witness})`]
+      );
+    }
+
+    const queenLoss = staticQueenLossWitness(
+      board,
+      other(this.rootSide),
+      this.rootSide,
+      Number(this.options.objective_gain)
+    );
+    if (queenLoss) {
+      return close(
+        queenLoss.reason,
+        queenLoss.witness,
+        [`queen_loss_closure(target=${squareName(queenLoss.queenSquare)},attacker=${squareName(queenLoss.attackerSquare)},gain=${queenLoss.gain})`]
+      );
+    }
+
+    child.meta.activeObjective = null;
+    child.predicates = unique([...child.predicates, "unclassified_mate_threat_reply"]);
+    child.facts = unique([
+      ...child.facts,
+      `mate_threat_answered(${threat.mateMoveUci})`,
+      `unclassified_mate_threat_reply(${child.move?.san || child.display})`
+    ]);
+    return ["unclassified_mate_threat_reply"];
   }
 
 
@@ -1407,8 +2092,26 @@ export class ScratchChessOracle {
 
     let replyPredicates = null;
     const tactic = card.meta?.activeObjective || null;
-    if (card.predicates.includes("up_material")) {
+    if (tactic?.kind === "mate_threat_interposer_captured") {
+      analyses.forEach((child) => this._tagPostInterposerReply(card, child, tactic));
+      replyPredicates = ["mated", "safe_recapture", "countercheck_survives"];
+    } else if (card.predicates.includes("up_material")) {
       replyPredicates = ["mated", "recapture", "check"];
+    } else if (tactic?.kind === "mate_threat") {
+      analyses.forEach((child) => this._tagMateThreatReply(card, child, tactic));
+      replyPredicates = [
+        "mated",
+        "check_with_one_reply",
+        "check_with_two_replies",
+        "check",
+        "capture_mate_threat_piece",
+        "capture_mate_threat_supporter",
+        "interpose_mate_threat_battery",
+        "add_defender_to_mating_square",
+        "move_mating_target",
+        "king_move",
+        "unclassified_mate_threat_reply"
+      ];
     } else if (tactic?.kind === "defender_chase") {
       analyses.forEach((child) => this._tagDefenderChaseReply(child, tactic));
       replyPredicates = [
@@ -1451,11 +2154,17 @@ export class ScratchChessOracle {
 
     card.facts = unique([
       ...card.facts,
-      `relevant_replies(count=${relevant.length},limit=${limit},predicates=${replyPredicates.join("+")})`
+      tactic?.kind === "mate_threat"
+        ? `mate_threat_replies(count=${relevant.length},predicates=${replyPredicates.join("+")})`
+        : `relevant_replies(count=${relevant.length},limit=${limit},predicates=${replyPredicates.join("+")})`
     ]);
-    if (relevant.length > limit) {
+    if (relevant.length > limit && tactic?.kind !== "mate_threat") {
       card.predicates = unique([...card.predicates, "more_than_two_relevant_replies"]);
       card.help = `${relevant.length} immediate replies match the visible human reply card; the policy limit is ${limit}.`;
+    } else if (tactic?.kind === "mate_threat") {
+      card.help = `${relevant.length} immediate replies match the agreed mate-defense predicates; every one is a required reply obligation.`;
+    } else if (tactic?.kind === "mate_threat_interposer_captured") {
+      card.help = `${relevant.length} live recapture/check replies remain after explicit material closures.`;
     }
     return true;
   }
@@ -1510,6 +2219,30 @@ export class ScratchChessOracle {
       ]);
     }
 
+    if (sideToMove === this.rootSide
+      && card.meta?.activeObjective?.kind === "mate_threat_interposed"
+      && card.meta.activeObjective.edgeMateNet?.firstMoveUci) {
+      card.predicates = unique([...card.predicates, "mate_threat_edge_net_ready"]);
+      card.facts = unique([
+        ...card.facts,
+        `mate_threat_edge_net_ready(first=${card.meta.activeObjective.edgeMateNet.firstMoveUci},line=${factToken(card.meta.activeObjective.edgeMateNet.witness)})`
+      ]);
+    }
+
+    if (sideToMove === this.rootSide
+      && card.meta?.activeObjective?.kind === "mate_threat_interposed"
+      && card.meta.activeObjective.phase === "cash_blocker") {
+      card.predicates = unique([...card.predicates, "mate_threat_interposer_ready_to_capture"]);
+      card.facts = unique([
+        ...card.facts,
+        `mate_threat_interposer_ready_to_capture(${coloredPieceLabel(card.meta.activeObjective.blockerPiece, card.meta.activeObjective.blockerSquare)})`
+      ]);
+    }
+    if (sideToMove === this.rootSide && card.meta?.activeObjective?.kind === "mate_threat_interposer_recaptured") {
+      card.predicates = unique([...card.predicates, "mate_threat_followup_capture_ready"]);
+      card.facts = unique([...card.facts, "mate_threat_followup_capture_ready"]);
+    }
+
     // Exactly one applied move per legal response. Lexical UCI ordering is only
     // deterministic presentation; predicate order in the DFA supplies interest.
     const analyses = legal
@@ -1521,7 +2254,8 @@ export class ScratchChessOracle {
       ["mate", "mate_available"],
       ["recapture", "recapture_available"],
       ["skewer", "skewer_available"],
-      ["capture_back_of_alignment", "capture_back_of_alignment_available"]
+      ["capture_back_of_alignment", "capture_back_of_alignment_available"],
+      ["capture_mate_threat_interposer", "capture_mate_threat_interposer_available"]
     ];
     for (const [movePredicate, positionPredicate] of availableMovePredicates) {
       const matches = analyses.filter((child) => child.predicates.includes(movePredicate));
@@ -1565,7 +2299,7 @@ export class ScratchChessOracle {
     if (card.side === "their" && card.predicates.includes("up_material")) {
       classified = this._classifyHumanReplies(card, analyses);
     } else if (card.side === "their"
-      && ["attacked_piece", "skewer", "defender_chase"].includes(card.meta?.activeObjective?.kind)) {
+      && ["attacked_piece", "skewer", "defender_chase", "mate_threat", "mate_threat_interposer_captured"].includes(card.meta?.activeObjective?.kind)) {
       classified = this._classifyHumanReplies(card, analyses);
     }
 
