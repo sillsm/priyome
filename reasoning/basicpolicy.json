@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "5.3.0",
+  "version": "5.7.0",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -66,12 +66,38 @@
           "to": "LINE_PROVED"
         },
         {
-          "label": "we are mated, stalemated, or there are too many relevant replies for this basic policy",
+          "label": "the visible queen-rook edge mating net is established",
+          "when": {
+            "any": [
+              "queen_rook_edge_mate_net"
+            ]
+          },
+          "to": "LINE_PROVED"
+        },
+        {
+          "label": "the displayed mate-threat refutation survives the opponent reply and keeps the material objective",
+          "when": {
+            "any": [
+              "mate_threat_refutation_survived"
+            ]
+          },
+          "to": "LINE_PROVED"
+        },
+        {
+          "label": "we are mated or stalemated",
           "when": {
             "any": [
               "mated",
-              "stalemate",
-              "more_than_two_relevant_replies"
+              "stalemate"
+            ]
+          },
+          "to": "LINE_FAILED"
+        },
+        {
+          "label": "the mate-threat reply card could not classify this opponent reply",
+          "when": {
+            "any": [
+              "unclassified_mate_threat_reply"
             ]
           },
           "to": "LINE_FAILED"
@@ -92,7 +118,9 @@
               "alignment_capture_chain",
               "defender_of_loose_piece_is_attacked",
               "attacked_piece",
-              "skewer"
+              "skewer",
+              "mate_threat_followup_capture_ready",
+              "mate_threat_interposer_was_recaptured"
             ]
           },
           "to": "LINE_FAILED"
@@ -125,6 +153,27 @@
             ]
           },
           "to": "SEARCH_CHECK_RESPONSES"
+        },
+        {
+          "label": "play the first forcing move of the visible queen-rook edge mating net",
+          "when": {
+            "side": "my",
+            "any": [
+              "mate_threat_edge_net_ready"
+            ]
+          },
+          "to": "SEARCH_MATE_THREAT_CONTINUATION"
+        },
+        {
+          "label": "continue after a mate-threat interposition",
+          "when": {
+            "side": "my",
+            "any": [
+              "mate_threat_interposer_ready_to_capture",
+              "mate_threat_followup_capture_ready"
+            ]
+          },
+          "to": "SEARCH_MATE_THREAT_CONTINUATION"
         },
         {
           "label": "continue the visible alignment capture chain",
@@ -162,6 +211,36 @@
             ]
           },
           "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
+        },
+        {
+          "label": "the opponent must answer our visible mate-in-one threat",
+          "when": {
+            "side": "their",
+            "any": [
+              "threaten_mate_in_1"
+            ]
+          },
+          "to": "SEARCH_REPLIES_TO_MATE_THREAT"
+        },
+        {
+          "label": "the opponent may recapture or check after we captured the mate-threat interposer",
+          "when": {
+            "side": "their",
+            "any": [
+              "mate_threat_interposer_captured"
+            ]
+          },
+          "to": "SEARCH_REPLIES_AFTER_MATE_INTERPOSER_CAPTURE"
+        },
+        {
+          "label": "more than two relevant replies remain after the current human reply card",
+          "when": {
+            "side": "their",
+            "any": [
+              "more_than_two_relevant_replies"
+            ]
+          },
+          "to": "LINE_FAILED"
         },
         {
           "label": "we are up the material objective",
@@ -224,18 +303,19 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "Scan one human chess list in order and push every matching legal move. After mate, checks with one legal reply come first, then checks with two legal replies, then relation-specific and other checks. Captures come next. The first attack idea safely adds an attacker to the sole defender of an already attacked non-pawn piece.",
+      "description": "Scan one human chess list in order and push every matching legal move. After mate: checks with one reply, a visible mate-in-one threat, checks with two replies, then capture an undefended non-pawn before broader checks and captures.",
       "predicates": [
         "mate",
         "check_with_one_reply",
+        "threaten_mate_in_1",
         "check_with_two_replies",
+        "capture_undefended_non_pawn_piece",
         "move_middle_with_check",
         "check_and_attack_piece",
         "skewer",
         "check",
         "capture_back_of_alignment",
         "recapture",
-        "capture_loose_non_pawn_piece",
         "capture_defender_of_alignment_target",
         "capture",
         "safely_add_attacker_to_defender_of_loose_piece",
@@ -269,7 +349,7 @@
         "check_with_one_reply",
         "check_with_two_replies",
         "check",
-        "capture_loose_non_pawn_piece",
+        "capture_undefended_non_pawn_piece",
         "capture",
         "safely_add_attacker_to_defender_of_loose_piece",
         "add_attacker_to_loose_non_pawn_piece",
@@ -285,6 +365,88 @@
       "on": {
         "pushed": "POP_POSITION",
         "none": "LINE_FAILED"
+      }
+    },
+    {
+      "id": "SEARCH_MATE_THREAT_CONTINUATION",
+      "routine": "main",
+      "kind": "search",
+      "side": "my",
+      "label": "Continue after the mate-threat interposition",
+      "description": "After a mate-threat defense interposes a piece, continue with the forcing move or capture that refutes that specific defense. This remains our choice card: the first fully proved continuation wins.",
+      "predicates": [
+        "mate",
+        "queen_rook_edge_mate_net",
+        "capture_mate_threat_interposer",
+        "capture_undefended_non_pawn_piece"
+      ],
+      "closure": {
+        "mode": "first",
+        "count": 1
+      },
+      "frame": {
+        "kind": "choice",
+        "on_empty": "LINE_FAILED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_FAILED"
+      }
+    },
+    {
+      "id": "SEARCH_REPLIES_AFTER_MATE_INTERPOSER_CAPTURE",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Live replies after capturing the interposer",
+      "description": "We have captured the mate-threat interposer and banked the material objective. Push every recapture that keeps the queen safe and every countercheck without a material-preserving immediate answer. Closed recaptures and checks remain in the oracle facts but are not live reply obligations.",
+      "predicates": [
+        "mated",
+        "safe_recapture",
+        "countercheck_survives"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_PROVED"
+      }
+    },
+    {
+      "id": "SEARCH_REPLIES_TO_MATE_THREAT",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "All replies to mate in one",
+      "description": "Our previous move created a visible mate-in-one threat. Explore every immediate opponent move that matches an agreed human defense predicate\u2014even a bad defense. Nonmatching moves are closed because they do not answer the threat; matching moves are universal reply obligations and must be refuted on the board.",
+      "predicates": [
+        "mated",
+        "check_with_one_reply",
+        "check_with_two_replies",
+        "check",
+        "capture_mate_threat_piece",
+        "capture_mate_threat_supporter",
+        "interpose_mate_threat_battery",
+        "add_defender_to_mating_square",
+        "move_mating_target",
+        "king_move",
+        "unclassified_mate_threat_reply"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_PROVED"
       }
     },
     {
@@ -572,6 +734,7 @@
     "reply_class_limit": 2,
     "objective_gain": 2,
     "max_positions": 12000,
-    "attack_min_value": 3
+    "attack_min_value": 3,
+    "mate_threat_limit": 1
   }
 }
