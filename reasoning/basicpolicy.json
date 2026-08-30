@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "5.7.0",
+  "version": "5.8.0",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -66,24 +66,6 @@
           "to": "LINE_PROVED"
         },
         {
-          "label": "the visible queen-rook edge mating net is established",
-          "when": {
-            "any": [
-              "queen_rook_edge_mate_net"
-            ]
-          },
-          "to": "LINE_PROVED"
-        },
-        {
-          "label": "the displayed mate-threat refutation survives the opponent reply and keeps the material objective",
-          "when": {
-            "any": [
-              "mate_threat_refutation_survived"
-            ]
-          },
-          "to": "LINE_PROVED"
-        },
-        {
           "label": "we are mated or stalemated",
           "when": {
             "any": [
@@ -94,6 +76,25 @@
           "to": "LINE_FAILED"
         },
         {
+          "label": "capturing the mate-threat responder wins the material objective",
+          "when": {
+            "all": [
+              "capture_mate_threat_responder",
+              "up_material"
+            ]
+          },
+          "to": "LINE_PROVED"
+        },
+        {
+          "label": "the edge mating-net refutation answers the mate-threat response",
+          "when": {
+            "any": [
+              "queen_rook_edge_mate_net"
+            ]
+          },
+          "to": "LINE_PROVED"
+        },
+        {
           "label": "the mate-threat reply card could not classify this opponent reply",
           "when": {
             "any": [
@@ -101,6 +102,16 @@
             ]
           },
           "to": "LINE_FAILED"
+        },
+        {
+          "label": "refute the named mate-threat response on the next ply",
+          "when": {
+            "side": "my",
+            "any": [
+              "mate_threat_response_pending"
+            ]
+          },
+          "to": "SEARCH_MATE_THREAT_RESPONSE_REFUTATION"
         },
         {
           "label": "an opponent recapture erased the material objective with no bound continuation",
@@ -153,16 +164,6 @@
             ]
           },
           "to": "SEARCH_CHECK_RESPONSES"
-        },
-        {
-          "label": "play the first forcing move of the visible queen-rook edge mating net",
-          "when": {
-            "side": "my",
-            "any": [
-              "mate_threat_edge_net_ready"
-            ]
-          },
-          "to": "SEARCH_MATE_THREAT_CONTINUATION"
         },
         {
           "label": "continue after a mate-threat interposition",
@@ -368,15 +369,39 @@
       }
     },
     {
+      "id": "SEARCH_MATE_THREAT_RESPONSE_REFUTATION",
+      "routine": "main",
+      "kind": "search",
+      "side": "my",
+      "label": "One-ply refutation of a mate-threat response",
+      "description": "The opponent tried a named answer to the mate threat. Show the response on the board, then retain one immediate mate, capture of the responding piece that wins the material objective, or the first move of a recognized queen-rook edge mating net.",
+      "predicates": [
+        "mate",
+        "capture_mate_threat_responder",
+        "queen_rook_edge_mate_net"
+      ],
+      "closure": {
+        "mode": "first",
+        "count": 1
+      },
+      "frame": {
+        "kind": "choice",
+        "on_empty": "LINE_FAILED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "SEARCH_OUR_MOVE"
+      }
+    },
+    {
       "id": "SEARCH_MATE_THREAT_CONTINUATION",
       "routine": "main",
       "kind": "search",
       "side": "my",
       "label": "Continue after the mate-threat interposition",
-      "description": "After a mate-threat defense interposes a piece, continue with the forcing move or capture that refutes that specific defense. This remains our choice card: the first fully proved continuation wins.",
+      "description": "A forcing check has made the mate-threat interposer capturable, or its recapture exposed an undefended non-pawn. Capture that exact visible target and do not start another idea.",
       "predicates": [
         "mate",
-        "queen_rook_edge_mate_net",
         "capture_mate_threat_interposer",
         "capture_undefended_non_pawn_piece"
       ],
@@ -422,8 +447,8 @@
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "All replies to mate in one",
-      "description": "Our previous move created a visible mate-in-one threat. Explore every immediate opponent move that matches an agreed human defense predicate\u2014even a bad defense. Nonmatching moves are closed because they do not answer the threat; matching moves are universal reply obligations and must be refuted on the board.",
+      "label": "Live replies to mate in one",
+      "description": "Enumerate every legal reply matching a named human mate-threat response idea. Even a visibly bad countercheck, king escape, interposition, target move, or defender move is pushed and shown before its one-ply refutation.",
       "predicates": [
         "mated",
         "check_with_one_reply",
@@ -431,10 +456,10 @@
         "check",
         "capture_mate_threat_piece",
         "capture_mate_threat_supporter",
-        "interpose_mate_threat_battery",
-        "add_defender_to_mating_square",
         "move_mating_target",
-        "king_move",
+        "king_escape_from_mate_threat",
+        "add_defender_to_mating_square",
+        "interpose_mate_threat_battery",
         "unclassified_mate_threat_reply"
       ],
       "closure": {
