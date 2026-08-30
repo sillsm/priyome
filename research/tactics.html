@@ -267,13 +267,13 @@ No policy events yet.</pre>
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[ch]);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SCRATCHCHESS_URL = "/research/scratchchess.js?v=796098e1957517e";
-  const ORACLE_URL = "/scratchchess_oracle.js?v=2.5.0";
+  const ORACLE_URL = "/scratchchess_oracle.js?v=2.9.0";
   const BASIC_POLICY_URL = "/reasoning/basicpolicy.json";
   const PUZZLES_URL = "/tactical_positions.md";
   const STORAGE_POLICIES = "priyomes-predicate-tactics-policies-v2";
   const STORAGE_SETTINGS = "priyomes-predicate-tactics-settings-v1";
   const HIDDEN_KINDS = new Set();
-  const TACTICS_BUILD = "2026-08-26-queen-defender-chase";
+  const TACTICS_BUILD = "2026-08-29-explicit-mate-threat-replies";
   const P = window.PredicatePolicy;
 
   if (!P) {
@@ -374,7 +374,8 @@ No policy events yet.</pre>
       ["reply_class_limit", 1],
       ["objective_gain", 1],
       ["max_positions", 1],
-      ["attack_min_value", 0]
+      ["attack_min_value", 0],
+      ["mate_threat_limit", 1]
     ]);
     const allowedOracleKeys = new Set(requiredOracleIntegers.keys());
     if (!oracle || typeof oracle !== "object" || Array.isArray(oracle)) {
@@ -916,7 +917,8 @@ No policy events yet.</pre>
       const source = {
         predicate: event.predicate,
         cardId: event.state,
-        cardLabel: card?.label || card?.id || event.state
+        cardLabel: card?.label || card?.id || event.state,
+        cardSide: card?.side || null
       };
       for (const item of event.selected || []) {
         if (!item?.occurrence) continue;
@@ -1136,10 +1138,22 @@ No policy events yet.</pre>
       acceptedBelow.set(node.occurrence, value);
       return value;
     };
+    const continuationHeight = new Map();
+    const heightBelow = (node) => {
+      if (!node) return 0;
+      if (continuationHeight.has(node.occurrence)) return continuationHeight.get(node.occurrence);
+      const children = byParent.get(node.occurrence) || [];
+      const value = children.length ? 1 + Math.max(...children.map(heightBelow)) : 0;
+      continuationHeight.set(node.occurrence, value);
+      return value;
+    };
     const orderedChildren = (parentOccurrence) => {
+      const children = [...(byParent.get(parentOccurrence) || [])];
       const committed = committedChoiceByParent.get(parentOccurrence);
-      return [...(byParent.get(parentOccurrence) || [])].sort((a, b) =>
+      const isReplyBatch = children.some((child) => generated.get(child.occurrence)?.cardSide === "their");
+      return children.sort((a, b) =>
         Number(b.occurrence === committed) - Number(a.occurrence === committed)
+        || (isReplyBatch ? heightBelow(b) - heightBelow(a) : 0)
         || Number(hasAccepted(b)) - Number(hasAccepted(a))
         || a.order - b.order
       );
@@ -1396,6 +1410,11 @@ No policy events yet.</pre>
     if (!new Set(["EQUAL", "NOT_EQUAL"]).has(compare)) {
       throw new Error(`Test ${index + 1} PredicateCompare must be EQUAL or NOT_EQUAL`);
     }
+    const maxExploredText = String(headers.PredicateMaxExplored || "").trim();
+    const maxExplored = maxExploredText ? Number(maxExploredText) : null;
+    if (maxExploredText && (!Number.isInteger(maxExplored) || maxExplored < 1)) {
+      throw new Error(`Test ${index + 1} PredicateMaxExplored must be a positive integer`);
+    }
     return {
       index,
       name: headers.Event,
@@ -1403,6 +1422,7 @@ No policy events yet.</pre>
       policy: headers.Policy,
       expectedResult,
       compare,
+      maxExplored,
       headers,
       source,
       expectedMovetext: movetext
@@ -1500,15 +1520,23 @@ No policy events yet.</pre>
     const relationPass = test.compare === "EQUAL" ? equal : !equal;
     const actualResult = String(headless.snapshot.result || "").toUpperCase();
     const resultPass = actualResult === test.expectedResult;
-    const pass = relationPass && resultPass;
+    const exploredCount = exploredNodes(headless.snapshot).length;
+    const exploredPass = test.maxExplored === null || exploredCount <= test.maxExplored;
+    const pass = relationPass && resultPass && exploredPass;
     const relationDescription = test.compare === "EQUAL"
       ? (equal ? "Movetext matched." : "Movetext did not match.")
       : (!equal ? "Negative comparison passed: movetext differed as required." : "Negative comparison failed: movetext unexpectedly matched.");
+    const exploredDescription = test.maxExplored === null
+      ? `Explored ${exploredCount} positions.`
+      : `Explored ${exploredCount}/${test.maxExplored} allowed positions${exploredPass ? "." : " — limit exceeded."}`;
     return {
       status: pass ? "pass" : "fail",
       pass,
       relationPass,
       resultPass,
+      exploredPass,
+      exploredCount,
+      maxExplored: test.maxExplored,
       expectedResult: test.expectedResult,
       actualResult,
       compare: test.compare,
@@ -1516,7 +1544,7 @@ No policy events yet.</pre>
       expectedMovetext: test.expectedMovetext,
       actualMovetext,
       actualPgn: headless.pgn,
-      detail: `${relationDescription} PredicateResult expected ${test.expectedResult}, actual ${actualResult}.`,
+      detail: `${relationDescription} PredicateResult expected ${test.expectedResult}, actual ${actualResult}. ${exploredDescription}`,
       diff: firstCanonicalDifference(test.expectedMovetext, actualMovetext),
       headless
     };
@@ -1567,7 +1595,7 @@ No policy events yet.</pre>
         const result = results[index];
         const status = result?.status || "not-run";
         const label = status === "pass" ? "PASS" : status === "fail" ? "FAIL" : status === "error" ? "ERROR" : status === "running" ? "RUNNING" : "—";
-        return `<div class="policy-test-row ${index === app.policyTestSelected ? "selected" : ""}" data-policy-test-index="${index}"><span class="batch-index">${index + 1}</span><div><strong>${esc(test.name)}</strong><small>${esc(test.compare)} · expect ${esc(test.expectedResult)}</small></div><span class="policy-test-status ${esc(status)}">${label}</span></div>`;
+        return `<div class="policy-test-row ${index === app.policyTestSelected ? "selected" : ""}" data-policy-test-index="${index}"><span class="batch-index">${index + 1}</span><div><strong>${esc(test.name)}</strong><small>${esc(test.compare)} · expect ${esc(test.expectedResult)}${test.maxExplored === null ? "" : ` · max ${test.maxExplored} positions`}</small></div><span class="policy-test-status ${esc(status)}">${label}</span></div>`;
       }).join("") : '<div class="issue warn"><strong>No tests loaded.</strong><br>The selected policy must declare an absolute .test path.</div>';
 
     const test = tests[app.policyTestSelected];
@@ -1581,7 +1609,7 @@ No policy events yet.</pre>
       return;
     }
     $("#policyTestDetailTitle").textContent = `${app.policyTestSelected + 1}. ${test.name}`;
-    $("#policyTestDetailMode").textContent = `${test.compare} · ${test.expectedResult}`;
+    $("#policyTestDetailMode").textContent = `${test.compare} · ${test.expectedResult}${test.maxExplored === null ? "" : ` · max ${test.maxExplored} positions`}`;
     $("#policyTestExpected").value = test.expectedMovetext;
     $("#policyTestActual").value = result?.actualMovetext || "";
     $("#policyTestDiff").textContent = result ? `${result.detail || result.status || ""}\n\n${result.diff || ""}`.trim() : "Not run.";
