@@ -61,7 +61,7 @@ button,input,select,textarea{font:inherit}button,select{cursor:pointer}button:di
 .tree-row.accepted{background:rgba(114,220,139,.07);color:var(--green);opacity:1}.tree-row.rejected{background:rgba(255,113,133,.07);color:var(--red);opacity:1}.tree-row.closed,.tree-row.discarded{opacity:.5}
 .tree-marker{width:23px;height:23px;border-radius:7px;display:grid;place-items:center;border:1px solid var(--line);background:rgba(255,255,255,.03);font:800 10px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--faint)}
 .tree-row.active .tree-marker{color:var(--purple);border-color:rgba(167,124,255,.46)}.tree-row.accepted .tree-marker{color:var(--green);border-color:rgba(114,220,139,.38)}.tree-row.rejected .tree-marker{color:var(--red);border-color:rgba(255,113,133,.38)}
-.tree-main{min-width:0}.tree-line{font-size:13px;line-height:1.3;word-break:break-word}.tree-line strong{color:inherit;font-weight:790}.because{color:var(--blue);font-size:10px;margin-left:5px}.tree-help,.tree-note{margin-top:3px;color:var(--faint);font-size:9px;line-height:1.4}.tree-side{font:800 8px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);padding-top:3px;white-space:nowrap}
+.tree-main{min-width:0}.tree-line{font-size:13px;line-height:1.3;word-break:break-word}.tree-line strong{color:inherit;font-weight:790}.because{color:var(--blue);font-size:10px;margin-left:5px}.principal-check{display:inline-grid;place-items:center;width:14px;height:14px;margin-left:5px;border:1px solid rgba(114,220,139,.45);border-radius:50%;background:rgba(114,220,139,.12);color:var(--green);font:900 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;vertical-align:1px}.tree-row.claimed-win .tree-line strong{color:var(--text)}.tree-help,.tree-note{margin-top:3px;color:var(--faint);font-size:9px;line-height:1.4}.tree-side{font:800 8px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);padding-top:3px;white-space:nowrap}
 .tree-result{margin:10px 4px 0;padding:10px 11px;border:1px solid var(--line);border-radius:11px;color:var(--muted);background:rgba(255,255,255,.025);font-size:10px;line-height:1.5}.tree-result.accept{color:var(--green);border-color:rgba(114,220,139,.34);background:rgba(114,220,139,.07)}.tree-result.reject{color:var(--red);border-color:rgba(255,113,133,.34);background:rgba(255,113,133,.07)}
 .tree-empty{min-height:240px;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:11px}.tree-legend{display:flex;gap:9px;flex-wrap:wrap;padding:7px 12px 9px;border-top:1px solid var(--line);color:var(--faint);font-size:8px}
 .policy-stage{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}.policy-view{display:none;flex:1;min-height:0}.policy-view.active{display:flex;flex-direction:column}
@@ -121,7 +121,7 @@ button,input,select,textarea{font:inherit}button,select{cursor:pointer}button:di
           <div class="right"><span class="mini-chip" id="nodeCountChip">0 nodes</span><span class="mini-chip" id="depthChip">depth 0</span></div>
         </header>
         <div class="tree-body" id="treeBody" tabindex="0" role="tree" aria-label="Explored position tree. Use left and right for previous and next; up and down for first and last."><div class="tree-empty">No runner yet.</div></div>
-        <div class="tree-legend"><span>▶ active</span><span>○ explored</span><span>✓ accept</span><span>× reject</span><span>· closed</span><span>keys: ←/→ previous/next · ↑/↓ first/last</span></div>
+        <div class="tree-legend"><span>▶ active</span><span>○ explored</span><span>✓ accept</span><span><span class="principal-check" aria-hidden="true">✓</span> claimed line</span><span>× reject</span><span>· closed</span><span>keys: ←/→ previous/next · ↑/↓ first/last</span></div>
       </section>
 
       <section class="panel policy-panel">
@@ -267,13 +267,13 @@ No policy events yet.</pre>
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[ch]);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SCRATCHCHESS_URL = "/research/scratchchess.js?v=796098e1957517e";
-  const ORACLE_URL = "/scratchchess_oracle.js?v=2.9.1";
-  const BASIC_POLICY_URL = "/reasoning/basicpolicy.json";
+  const ORACLE_URL = "/scratchchess_oracle.js?v=2.14.2-hard-top5-all-our-choice-cards";
+  const BASIC_POLICY_URL = "/reasoning/basicpolicy.json?v=6.3.4-hard-top5-all-our-choice-cards";
   const PUZZLES_URL = "/tactical_positions.md";
   const STORAGE_POLICIES = "priyomes-predicate-tactics-policies-v2";
   const STORAGE_SETTINGS = "priyomes-predicate-tactics-settings-v1";
   const HIDDEN_KINDS = new Set();
-  const TACTICS_BUILD = "2026-08-30-mate-reply-normal-search-v3";
+  const TACTICS_BUILD = "2026-09-01-hard-top5-all-our-choice-cards";
   const P = window.PredicatePolicy;
 
   if (!P) {
@@ -286,6 +286,7 @@ No policy events yet.</pre>
     Oracle: null,
     oracleVersion: "—",
     oracleHorizon: null,
+    oracleTerminalProbe: null,
     puzzles: [],
     librarySource: PUZZLES_URL,
     puzzleIndex: 0,
@@ -374,8 +375,7 @@ No policy events yet.</pre>
       ["reply_class_limit", 1],
       ["objective_gain", 1],
       ["max_positions", 1],
-      ["attack_min_value", 0],
-      ["mate_threat_limit", 1]
+      ["attack_min_value", 0]
     ]);
     const allowedOracleKeys = new Set(requiredOracleIntegers.keys());
     if (!oracle || typeof oracle !== "object" || Array.isArray(oracle)) {
@@ -389,6 +389,148 @@ No policy events yet.</pre>
         const value = Number(oracle[key]);
         if (!Number.isInteger(value) || value < min) error(`Invalid oracle.${key}`, `${key} must be an integer >= ${min}.`);
       }
+    }
+
+    const states = Array.isArray(policy?.states) ? policy.states : [];
+    const stateById = new Map(states.map((state) => [state?.id, state]));
+    const proof = policy?.proof;
+    if (!proof || typeof proof !== "object" || Array.isArray(proof)) {
+      error("policy.proof is required", "Declare terminal_predicates, quiet_closure_states, and quiet_definition.");
+    } else {
+      const terminal = Array.isArray(proof.terminal_predicates)
+        ? [...new Set(proof.terminal_predicates.map(String).map((value) => value.trim()).filter(Boolean))]
+        : [];
+      const allowedTerminal = new Set(["mate", "up_material"]);
+      if (!terminal.length) error("Missing proof terminal predicates", "proof.terminal_predicates must contain mate and up_material.");
+      const missingTerminal = [...allowedTerminal].filter((predicate) => !terminal.includes(predicate));
+      const extraTerminal = terminal.filter((predicate) => !allowedTerminal.has(predicate));
+      if (missingTerminal.length) error("Incomplete proof terminal predicates", `Missing: ${missingTerminal.join(", ")}.`);
+      if (extraTerminal.length) error("Non-terminal proof predicate", `${extraTerminal.join(", ")} may rank a move, but may not prove a win.`);
+      const automaticWinning = Array.isArray(policy?.outcomes?.winning_predicates) ? policy.outcomes.winning_predicates : [];
+      const automaticExtra = automaticWinning.filter((predicate) => !allowedTerminal.has(predicate));
+      if (automaticExtra.length) error("Invalid automatic winning predicate", automaticExtra.join(", "));
+
+      const quietIds = Array.isArray(proof.quiet_closure_states)
+        ? [...new Set(proof.quiet_closure_states.map(String).map((value) => value.trim()).filter(Boolean))]
+        : [];
+      const quietSet = new Set(quietIds);
+      if (!quietIds.length) error("No quiet closure states", "proof.quiet_closure_states must explicitly name every selective reply card allowed to close on no match.");
+      if (!String(proof.quiet_definition || "").trim()) error("Quiet closure is undefined", "proof.quiet_definition must explain what omitted replies mean.");
+      quietIds.forEach((id) => {
+        const state = stateById.get(id);
+        if (!state) return error("Unknown quiet closure state", id);
+        if (state.kind !== "search" || state.side !== "their" || state.frame?.kind !== "replies") {
+          error("Invalid quiet closure state", `${id} must be an opponent search with a replies frame.`);
+        }
+        if (state.on?.none !== "LINE_PROVED" && state.frame?.on_empty !== "LINE_PROVED") {
+          error("Quiet state cannot close proof", `${id} has no no-match or frame-exhaustion transition to LINE_PROVED.`);
+        }
+      });
+
+      const forcedEntries = Array.isArray(proof.forced_closure_states) ? proof.forced_closure_states : [];
+      const forcedByState = new Map();
+      if (!String(proof.forced_definition || "").trim()) {
+        error("Forced closure is undefined", "proof.forced_definition must explain the complement certificate used by every forced closure state.");
+      }
+      forcedEntries.forEach((entry, index) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          return error("Invalid forced closure declaration", `Entry ${index + 1} must be an object.`);
+        }
+        const id = String(entry.state || "").trim();
+        const retained = String(entry.retained_predicate || "").trim();
+        const closed = String(entry.closed_predicate || "").trim();
+        const witness = String(entry.witness_fact || "").trim();
+        if (!id || !retained || !closed || !witness) {
+          return error("Incomplete forced closure declaration", `Entry ${index + 1} needs state, retained_predicate, closed_predicate, and witness_fact.`);
+        }
+        if (forcedByState.has(id)) error("Duplicate forced closure state", id);
+        forcedByState.set(id, { retained, closed, witness });
+        const state = stateById.get(id);
+        if (!state) return error("Unknown forced closure state", id);
+        if (state.kind !== "search" || state.side !== "their" || state.frame?.kind !== "replies" || state.closure?.mode !== "all") {
+          error("Invalid forced closure state", `${id} must be an opponent search with closure all and a replies frame.`);
+        }
+        if (!Array.isArray(state.predicates) || state.predicates.length !== 1 || state.predicates[0] !== retained) {
+          error("Forced closure retained predicate mismatch", `${id} must search only ${retained}.`);
+        }
+        if (state.forced_complement?.predicate !== closed || state.forced_complement?.witness_fact !== witness) {
+          error("Forced closure complement mismatch", `${id}.forced_complement must declare ${closed} with witness ${witness}.`);
+        }
+        if (state.on?.none !== "LINE_PROVED" || state.frame?.on_empty !== "LINE_PROVED") {
+          error("Forced closure cannot discharge the partition", `${id} must prove both an empty retained set and an exhausted retained reply frame.`);
+        }
+      });
+
+      const conditionPredicates = (when = {}) => [
+        ...(Array.isArray(when.any) ? when.any : []),
+        ...(Array.isArray(when.all) ? when.all : [])
+      ];
+      const ourMoveCandidateLimit = Number(policy?.our_move_candidate_limit);
+      if (!Number.isInteger(ourMoveCandidateLimit) || ourMoveCandidateLimit !== 5) {
+        error("Our-move candidate limit is not five", "policy.our_move_candidate_limit must equal 5.");
+      }
+      const ourMoveState = stateById.get("SEARCH_OUR_MOVE");
+      if (!ourMoveState || ourMoveState.kind !== "search" || ourMoveState.side !== "my") {
+        error("Missing ordinary our-move search", "SEARCH_OUR_MOVE must be a my-side search state.");
+      }
+      const mySearchStates = states.filter((state) => state?.kind === "search" && state?.side === "my");
+      if (!mySearchStates.length) error("No root-side choice searches", "At least SEARCH_OUR_MOVE must exist.");
+      mySearchStates.forEach((state) => {
+        if (state.frame?.kind !== "choice") {
+          error("Root-side search is not existential", `${state.id} must use a choice frame.`);
+          return;
+        }
+        if (state.closure?.mode !== "first" || Number(state.closure?.count) !== ourMoveCandidateLimit) {
+          error("Root-side candidate budget is not hard-capped", `${state.id} must retain at most the first ${ourMoveCandidateLimit} distinct predicate-matched moves.`);
+        }
+        if (state.frame?.on_empty !== "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED") {
+          error("Root-side exhaustion is not explicit", `${state.id} must route an exhausted choice frame to OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED.`);
+        }
+        if (state.on?.none !== "OUR_MOVE_NO_MATCH") {
+          error("Root-side no-match is not explicit", `${state.id}.on.none must route to OUR_MOVE_NO_MATCH.`);
+        }
+      });
+      states.filter((state) => state?.kind === "search" && state?.side === "their" && state?.frame?.kind === "replies")
+        .forEach((state) => {
+          if (state.closure?.mode !== "all") {
+            error("Opponent replies are not universal", `${state.id} must use closure all; we do not choose the opponent's move.`);
+          }
+        });
+
+      states.forEach((state) => {
+        if (state.kind === "inspect") {
+          (state.rules || []).forEach((rule, index) => {
+            if (rule?.to !== "LINE_PROVED") return;
+            const witnesses = conditionPredicates(rule.when).filter((predicate) => terminal.includes(predicate));
+            if (!witnesses.length) {
+              error("Pattern cannot directly prove a win", `${state.id} rule ${index + 1} reaches LINE_PROVED without mate or up_material.`);
+            }
+          });
+          if (state.default === "LINE_PROVED") error("Inspect default cannot prove a win", state.id);
+        }
+        if (state.kind === "search") {
+          const provesOnNone = state.on?.none === "LINE_PROVED";
+          const provesOnFrame = state.frame?.on_empty === "LINE_PROVED";
+          const exhaustiveLegalReplies = state.side === "their"
+            && state.frame?.kind === "replies"
+            && state.closure?.mode === "all"
+            && Array.isArray(state.predicates)
+            && state.predicates.includes("legal_move");
+          const certifiedForced = forcedByState.has(state.id);
+          if (provesOnNone && !quietSet.has(state.id) && !certifiedForced) {
+            error("Undeclared closure proof", `${state.id}.on.none reaches LINE_PROVED without a quiet or forced closure declaration.`);
+          }
+          if (provesOnFrame && !exhaustiveLegalReplies && !quietSet.has(state.id) && !certifiedForced) {
+            error("Selective reply frame can falsely prove", `${state.id}.frame.on_empty reaches LINE_PROVED without exhaustive legal_move coverage, an explicit quiet declaration, or a forced complement certificate.`);
+          }
+          if ((provesOnNone || provesOnFrame) && state.side !== "their") {
+            error("Our search cannot close as quiet", `${state.id} reaches LINE_PROVED from a non-opponent search.`);
+          }
+        } else if (state.kind !== "inspect" && state.kind !== "pop") {
+          const direct = Object.entries(state.on || {}).filter(([, target]) => target === "LINE_PROVED");
+          if (direct.length) error("Uncertified proof transition", `${state.id}: ${direct.map(([key]) => key).join(", ")}`);
+        }
+      });
     }
     return issues;
   }
@@ -415,6 +557,8 @@ No policy events yet.</pre>
     if (!app.oracleVersion) throw new Error(`${ORACLE_URL} did not export SCRATCHCHESS_ORACLE_VERSION`);
     app.oracleHorizon = oracle.SCRATCHCHESS_ORACLE_HORIZON;
     if (app.oracleHorizon !== 1) throw new Error(`${ORACLE_URL} must export SCRATCHCHESS_ORACLE_HORIZON = 1`);
+    app.oracleTerminalProbe = oracle.SCRATCHCHESS_ORACLE_TERMINAL_PROBE;
+    if (app.oracleTerminalProbe !== "mate_in_1") throw new Error(`${ORACLE_URL} must export SCRATCHCHESS_ORACLE_TERMINAL_PROBE = mate_in_1`);
     app.oracleSource = ORACLE_URL;
   }
 
@@ -585,6 +729,7 @@ No policy events yet.</pre>
     if (!app.runner || app.runner.snapshot().result) return { events: [], snapshot: app.runner?.snapshot?.() };
     app.oracle.hydrateRunner(app.runner);
     const result = app.runner.step();
+    assertOurMoveBatchClamp(result.events, app.policy);
     const meaningful = latestMeaningfulEvent(result.events);
     if (meaningful) app.lastEvent = meaningful;
     const snapshot = result.snapshot;
@@ -851,7 +996,14 @@ No policy events yet.</pre>
     if (event.type === "initial-retained") return { title: "Root position pushed", detail: `${event.items?.length || 0} initial position${event.items?.length === 1 ? "" : "s"} retained.` };
     if (event.type === "depth-closed") return { title: "Depth budget reached", detail: `${cardDisplay(event.item.id)} closed at depth ${event.depth}.` };
     if (event.type === "inspect-routed") return { title: event.label || "Inspect routed", detail: `${cardDisplay(event.item.id)} → ${event.to}.` };
-    if (event.type === "search-complete") return { title: event.selectedCount ? `${event.selectedCount} card${event.selectedCount === 1 ? "" : "s"} retained` : "Search closed", detail: event.selectedCount ? `Closure: ${event.closureLabel}.` : "No child matched this ordered predicate list." };
+    if (event.type === "search-complete") {
+      const state = policyStateDef(app.policy, event.state);
+      if (isOurMoveChoiceState(state)) {
+        const limit = Number(app.policy?.our_move_candidate_limit || 5);
+        return { title: `OUR MOVE batch retained ${event.selectedCount || 0}/${limit}`, detail: `${event.state} is hard-capped; lower-priority matching moves were not pushed.` };
+      }
+      return { title: event.selectedCount ? `${event.selectedCount} card${event.selectedCount === 1 ? "" : "s"} retained` : "Search closed", detail: event.selectedCount ? `Closure: ${event.closureLabel}.` : "No child matched this ordered predicate list." };
+    }
     if (event.type === "winning-predicate") return { title: `Winning predicate: ${event.predicate}`, detail: `${cardDisplay(event.item.id)} entered the configured accept state.` };
     if (event.type === "failure-predicate") return { title: `Failure predicate: ${event.predicate}`, detail: `${cardDisplay(event.item.id)} entered the configured reject state.` };
     if (event.type === "budget-exhausted") return { title: "Thought budget exhausted", detail: `Budget: ${event.budget}.` };
@@ -871,8 +1023,13 @@ No policy events yet.</pre>
     renderDfa(snapshot);
     const goal = app.policy?.goal || (app.policy?.outcomes?.winning_predicates || []).join(" or ") || "unspecified";
     const threshold = Number(app.policy?.oracle?.objective_gain);
+    const proofTerminals = app.policy?.proof?.terminal_predicates || [];
+    const quietCount = app.policy?.proof?.quiet_closure_states?.length || 0;
+    const proofText = proofTerminals.length
+      ? `${proofTerminals.join(" or ")} within ${app.policy?.budgets?.depth ?? "—"} plies · ${quietCount} declared quiet card${quietCount === 1 ? "" : "s"}`
+      : "proof contract missing";
     const current = snapshot.current?.id ? cardDisplay(snapshot.current.id) : "between positions";
-    $("#objectiveRule").innerHTML = `<strong>DFA:</strong> ${app.policy?.states?.length || 0} states · <strong>goal:</strong> ${esc(goal)}${Number.isFinite(threshold) ? ` · <strong>material threshold:</strong> +${threshold}` : ""} · <strong>run mode:</strong> ${app.fastMode ? "fast" : "microstep"} · <strong>retained positions:</strong> ${snapshot.pendingCount} · <strong>executing:</strong> ${esc(snapshot.state)} · ${esc(current)}`;
+    $("#objectiveRule").innerHTML = `<strong>DFA:</strong> ${app.policy?.states?.length || 0} states · <strong>goal:</strong> ${esc(goal)}${Number.isFinite(threshold) ? ` · <strong>material threshold:</strong> +${threshold}` : ""} · <strong>proof:</strong> ${esc(proofText)} · <strong>run mode:</strong> ${app.fastMode ? "fast" : "microstep"} · <strong>retained positions:</strong> ${snapshot.pendingCount} · <strong>executing:</strong> ${esc(snapshot.state)} · ${esc(current)}`;
     const message = eventMessage(app.lastEvent, snapshot);
     $("#policyMessage").innerHTML = `<div class="message-dot"></div><div><strong>${esc(message.title)}</strong><span>${esc(message.detail)}</span></div>`;
     $("#policyNameChip").textContent = policyLabel();
@@ -909,6 +1066,50 @@ No policy events yet.</pre>
     return policy?.states?.find((state) => state.id === id) || null;
   }
 
+  function isOurMoveChoiceState(state) {
+    return state?.kind === "search" && state?.side === "my" && state?.frame?.kind === "choice";
+  }
+
+  function ourMoveBatchAudit(snapshot, policy = app.policy) {
+    const limit = Number(policy?.our_move_candidate_limit || 5);
+    const stateById = new Map((policy?.states || []).map((state) => [state?.id, state]));
+    const batches = [];
+    let sequence = 0;
+    for (const event of snapshot?.trace || []) {
+      if (event.type !== "search-complete") continue;
+      const state = stateById.get(event.state);
+      if (!isOurMoveChoiceState(state)) continue;
+      sequence += 1;
+      const selected = Array.isArray(event.selected) ? event.selected : [];
+      batches.push({
+        sequence,
+        state: event.state,
+        position: event.position,
+        occurrence: event.occurrence || null,
+        selectedCount: Number(event.selectedCount || selected.length || 0),
+        selected: clone(selected),
+        limit
+      });
+    }
+    const maxSelected = batches.length ? Math.max(...batches.map((batch) => batch.selectedCount)) : 0;
+    const violations = batches.filter((batch) => batch.selectedCount > limit);
+    return { limit, maxSelected, batchCount: batches.length, batches, violations, pass: violations.length === 0 };
+  }
+
+  function assertOurMoveBatchClamp(events, policy = app.policy) {
+    const limit = Number(policy?.our_move_candidate_limit || 5);
+    const stateById = new Map((policy?.states || []).map((state) => [state?.id, state]));
+    for (const event of events || []) {
+      if (event.type !== "search-complete") continue;
+      const state = stateById.get(event.state);
+      if (!isOurMoveChoiceState(state)) continue;
+      const count = Number(event.selectedCount || event.selected?.length || 0);
+      if (count > limit) {
+        throw new Error(`OUR MOVE CANDIDATE LIMIT BREACH: ${event.state} retained ${count} candidates at ${event.position}; hard limit is ${limit}.`);
+      }
+    }
+  }
+
   function moveGenerationByOccurrence(snapshot, policy = app.policy) {
     const generated = new Map();
     for (const event of snapshot?.trace || []) {
@@ -925,17 +1126,107 @@ No policy events yet.</pre>
         generated.set(item.occurrence, source);
       }
     }
+    const stateById = new Map((policy?.states || []).map((state) => [state?.id, state]));
+    let batchSequence = 0;
+    for (const event of snapshot?.trace || []) {
+      if (event.type !== "search-complete") continue;
+      const state = stateById.get(event.state);
+      if (!isOurMoveChoiceState(state)) continue;
+      batchSequence += 1;
+      const items = Array.isArray(event.selected) ? event.selected : [];
+      items.forEach((item, index) => {
+        if (!item?.occurrence) return;
+        const prior = generated.get(item.occurrence) || {
+          predicate: item.matchedBy || "matched",
+          cardId: event.state,
+          cardLabel: state?.label || state?.id || event.state,
+          cardSide: state?.side || null
+        };
+        generated.set(item.occurrence, {
+          ...prior,
+          ourMoveBatch: batchSequence,
+          ourMoveCandidateIndex: index + 1,
+          ourMoveBatchSize: items.length,
+          ourMoveCandidateLimit: Number(policy?.our_move_candidate_limit || 5)
+        });
+      });
+    }
     return generated;
   }
 
-  function moveSourceText(source, separator = " · ") {
+  function moveSourceText(source, separator = " · ", includeBatch = false) {
     if (!source) return "";
-    return `${source.predicate}${separator}[${source.cardId}]`;
+    const base = `${source.predicate}${separator}[${source.cardId}]`;
+    if (!includeBatch || !source.ourMoveBatch) return base;
+    return `${base}${separator}OUR_MOVE_BATCH ${source.ourMoveBatch} candidate ${source.ourMoveCandidateIndex}/${source.ourMoveBatchSize} hard-limit ${source.ourMoveCandidateLimit}`;
+  }
+
+  function claimedWinningOccurrences(snapshot, policy = app.policy) {
+    const claimed = new Set();
+    if (snapshot?.result !== "accept") return claimed;
+    const nodes = exploredNodes(snapshot);
+    const generated = moveGenerationByOccurrence(snapshot, policy);
+    const nodeMap = new Map(nodes.map((node) => [node.occurrence, node]));
+    const byParent = new Map();
+    nodes.forEach((node) => {
+      const key = node.parent || "ROOT";
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key).push(node);
+    });
+    byParent.forEach((items) => items.sort((a, b) => a.order - b.order));
+
+    const committedChoiceByParent = new Map();
+    for (const event of snapshot?.trace || []) {
+      if (event.type !== "inspect-routed" || event.to !== "DISCARD_CHOICE_FRAME") continue;
+      const node = event.item?.occurrence ? nodeMap.get(event.item.occurrence) : null;
+      if (node?.parent) committedChoiceByParent.set(node.parent, node.occurrence);
+    }
+    const acceptedBelow = new Map();
+    const hasAccepted = (node) => {
+      if (!node) return false;
+      if (acceptedBelow.has(node.occurrence)) return acceptedBelow.get(node.occurrence);
+      const value = node.status === "accepted" || (byParent.get(node.occurrence) || []).some(hasAccepted);
+      acceptedBelow.set(node.occurrence, value);
+      return value;
+    };
+    const continuationHeight = new Map();
+    const heightBelow = (node) => {
+      if (!node) return 0;
+      if (continuationHeight.has(node.occurrence)) return continuationHeight.get(node.occurrence);
+      const children = byParent.get(node.occurrence) || [];
+      const value = children.length ? 1 + Math.max(...children.map(heightBelow)) : 0;
+      continuationHeight.set(node.occurrence, value);
+      return value;
+    };
+    const orderedChildren = (parentOccurrence) => {
+      const children = [...(byParent.get(parentOccurrence) || [])];
+      const committed = committedChoiceByParent.get(parentOccurrence);
+      const isReplyBatch = children.some((child) => generated.get(child.occurrence)?.cardSide === "their");
+      return children.sort((a, b) =>
+        Number(b.occurrence === committed) - Number(a.occurrence === committed)
+        || (isReplyBatch ? heightBelow(b) - heightBelow(a) : 0)
+        || Number(hasAccepted(b)) - Number(hasAccepted(a))
+        || a.order - b.order
+      );
+    };
+
+    const roots = (snapshot?.roots || []).map((occurrence) => nodeMap.get(occurrence)).filter(Boolean);
+    let current = roots.find(hasAccepted) || roots[0] || null;
+    const seen = new Set();
+    while (current && !seen.has(current.occurrence)) {
+      seen.add(current.occurrence);
+      const next = orderedChildren(current.occurrence)[0] || null;
+      if (!next) break;
+      claimed.add(next.occurrence);
+      current = next;
+    }
+    return claimed;
   }
 
   function renderTree(snapshot) {
     const nodes = exploredNodes(snapshot);
     const generated = moveGenerationByOccurrence(snapshot);
+    const claimedLine = claimedWinningOccurrences(snapshot);
     $("#nodeCountChip").textContent = `${nodes.length} explored node${nodes.length === 1 ? "" : "s"}`;
     $("#depthChip").textContent = `depth ${nodes.length ? Math.max(...nodes.map((node) => Number(node.depth || 0))) : 0}/${app.policy?.budgets?.depth ?? "—"}`;
     if (!nodes.length) { $("#treeBody").innerHTML = '<div class="tree-empty">No position has been popped and examined yet.</div>'; return; }
@@ -951,9 +1242,11 @@ No policy events yet.</pre>
     const walk = (node, depth) => {
       const card = positionCard(node.id) || {};
       const source = generated.get(node.occurrence);
-      const because = source ? `<span class="because">${esc(moveSourceText(source))}</span>` : "";
+      const because = source ? `<span class="because">${esc(moveSourceText(source, " · ", true))}</span>` : "";
       const selected = app.selectedOccurrence ? node.occurrence === app.selectedOccurrence : node.id === app.selectedCardId;
-      lines.push(`<div id="tree-${esc(node.occurrence)}" class="tree-row ${esc(node.status)} ${selected ? "selected" : ""}" role="treeitem" aria-selected="${selected ? "true" : "false"}" aria-level="${depth + 1}" style="--depth:${depth};--connector:${depth ? "block" : "none"}" data-occurrence="${esc(node.occurrence)}" data-card-id="${esc(node.id)}"><div class="tree-marker">${nodeMarker(node)}</div><div class="tree-main"><div class="tree-line"><strong>${esc(card.display || card.label || node.id)}</strong> ${because}</div></div></div>`);
+      const onClaimedLine = claimedLine.has(node.occurrence);
+      const claimedCheck = onClaimedLine ? '<span class="principal-check" title="Claimed winning line" aria-label="Claimed winning line">✓</span>' : "";
+      lines.push(`<div id="tree-${esc(node.occurrence)}" class="tree-row ${esc(node.status)} ${selected ? "selected" : ""} ${onClaimedLine ? "claimed-win" : ""}" role="treeitem" aria-selected="${selected ? "true" : "false"}" aria-level="${depth + 1}" style="--depth:${depth};--connector:${depth ? "block" : "none"}" data-occurrence="${esc(node.occurrence)}" data-card-id="${esc(node.id)}"><div class="tree-marker">${nodeMarker(node)}</div><div class="tree-main"><div class="tree-line"><strong>${esc(card.display || card.label || node.id)}</strong>${claimedCheck} ${because}</div></div></div>`);
       (byParent.get(node.occurrence) || []).forEach((child) => walk(child, depth + 1));
     };
     (snapshot.roots || []).map((occurrence) => nodeMap.get(occurrence)).filter(Boolean).forEach((root) => walk(root, 0));
@@ -1041,7 +1334,7 @@ No policy events yet.</pre>
         : "";
     $("#resultText").textContent = result ? [result.toUpperCase(), diagnostic].filter(Boolean).join(" · ") : app.running ? "running" : stateTitle(stateDef(snapshot?.state));
     $("#resultChip").className = `status-chip ${result || ""}`;
-    $("#engineChip").innerHTML = `<span class="status-dot"></span><span>predicate.js ${esc(P.VERSION)} · oracle ${esc(app.oracleVersion)} · horizon ${esc(app.oracleHorizon)} · ${esc(TACTICS_BUILD)}</span>`;
+    $("#engineChip").innerHTML = `<span class="status-dot"></span><span>predicate.js ${esc(P.VERSION)} · oracle ${esc(app.oracleVersion)} · horizon ${esc(app.oracleHorizon)} + ${esc(app.oracleTerminalProbe || "no terminal probe")} · ${esc(TACTICS_BUILD)}</span>`;
     $("#policySelect").value = app.policyId;
     $("#puzzleSelect").value = String(app.puzzleIndex);
     const disabled = !app.initialized || app.locked;
@@ -1069,9 +1362,20 @@ No policy events yet.</pre>
     if (event.type === "positions-pushed") return `PUSH ${(event.items || []).map((item) => cardDisplay(item.id)).join(" · ")}`;
     if (event.type === "line-selected") return `POP ${cardDisplay(event.item.id)}`;
     if (event.type === "delimiter-popped") return `POP ${cardDisplay(event.ancestor?.id)}`;
-    if (event.type === "inspect-routed") return `INSPECT ${cardDisplay(event.item.id)} | ${event.label} -> ${event.to}`;
+    if (event.type === "inspect-routed") {
+      if (event.state === "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED") return `OUR_MOVE_TOP5_EXHAUSTED ${cardDisplay(event.item.id)} | ${event.label}`;
+      if (event.state === "OUR_MOVE_NO_MATCH") return `OUR_MOVE_NO_MATCH ${cardDisplay(event.item.id)} | ${event.label}`;
+      return `INSPECT ${cardDisplay(event.item.id)} | ${event.label} -> ${event.to}`;
+    }
     if (event.type === "predicate-checked") return `SEARCH ${event.predicate} | ${event.selected?.length ? `retain ${event.selected.map((item) => cardDisplay(item.id)).join(" · ")}` : "no match"}`;
-    if (event.type === "search-complete") return null;
+    if (event.type === "search-complete") {
+      const state = policyStateDef(app.policy, event.state);
+      if (isOurMoveChoiceState(state)) {
+        const limit = Number(app.policy?.our_move_candidate_limit || 5);
+        return `OUR_MOVE_BATCH ${event.state} | retained ${event.selectedCount || 0}/${limit} candidates @ ${cardDisplay(event.position)}`;
+      }
+      return null;
+    }
     if (event.type === "winning-predicate") return `WINNING_PREDICATE ${event.predicate} @ ${cardDisplay(event.item.id)}`;
     if (event.type === "failure-predicate") return `FAILURE_PREDICATE ${event.predicate} @ ${cardDisplay(event.item.id)}`;
     if (event.type === "budget-exhausted") return `BUDGET_EXHAUSTED thoughts=${event.budget}`;
@@ -1083,11 +1387,14 @@ No policy events yet.</pre>
 
   function formatLiveOutput(snapshot = currentSnapshot(), trace = snapshot?.trace || []) {
     const lines = trace.map(formatEvent).filter(Boolean);
+    const batchAudit = ourMoveBatchAudit(snapshot, app.policy);
     return [
       "OUTPUT", "", ...(lines.length ? lines : ["No policy events yet."]), "",
       `FINAL ${snapshot?.result ? snapshot.result.toUpperCase() : "RUNNING"}`,
       `STATE ${snapshot?.state || "—"}`,
       `REASON ${snapshot?.reason || "—"}`,
+      `OUR_MOVE_BATCHES ${batchAudit.batchCount}`,
+      `OUR_MOVE_MAX_BATCH ${batchAudit.maxSelected}/${batchAudit.limit} ${batchAudit.pass ? "PASS" : "FAIL"}`,
       `THOUGHTS ${snapshot?.thoughtCount ?? 0}`,
       `MICRO_STEPS ${snapshot?.microStepCount ?? 0}`
     ].join("\n");
@@ -1100,11 +1407,37 @@ No policy events yet.</pre>
     return { side: parts[1] === "b" ? "b" : "w", fullmove: Math.max(1, Number(parts[5] || 1)) };
   }
 
+  function pgnDiagnosticsByOccurrence(snapshot) {
+    const output = new Map();
+    const add = (occurrence, text) => {
+      if (!occurrence || !text) return;
+      if (!output.has(occurrence)) output.set(occurrence, []);
+      const items = output.get(occurrence);
+      if (!items.includes(text)) items.push(text);
+    };
+    for (const event of snapshot?.trace || []) {
+      if (event.type === "inspect-routed" && event.item?.occurrence) {
+        if (event.state === "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED") {
+          add(event.item.occurrence, "FAIL: OUR MOVE TOP-5 EXHAUSTED; lower-priority moves not searched");
+        } else if (event.state === "OUR_MOVE_NO_MATCH") {
+          add(event.item.occurrence, "FAIL: OUR MOVE NO MATCH");
+        } else if (event.to === "LINE_FAILED") {
+          add(event.item.occurrence, `FAIL: ${event.label || "policy line failed"}`);
+        }
+      } else if (event.type === "depth-closed" && event.item?.occurrence) {
+        add(event.item.occurrence, `FAIL: depth budget ${event.depth} reached`);
+      }
+    }
+    return output;
+  }
+
   function formatExploredPgn(snapshot = currentSnapshot(), options = {}) {
     const puzzle = options.puzzle || currentPuzzle() || {};
     const policy = options.policy || app.policy;
     const oracle = options.oracle || app.oracle;
     const policyName = options.policyName || policy?.name || policyLabel();
+    const includeDiagnostics = options.includeDiagnostics !== false;
+    const diagnostics = includeDiagnostics ? pgnDiagnosticsByOccurrence(snapshot) : new Map();
     const getPosition = (id) => oracle?.getPosition?.(id) || positionCard(id) || null;
     const nodes = exploredNodes(snapshot);
     const generated = moveGenerationByOccurrence(snapshot, policy);
@@ -1167,7 +1500,10 @@ No policy events yet.</pre>
       const prefix = turn.side === "w" ? `${turn.fullmove}.` : `${turn.fullmove}...`;
       const san = card.move?.san || card.display || card.label || node.id;
       const source = generated.get(node.occurrence);
-      const comment = source ? pgnComment(moveSourceText(source, "; ")) : "";
+      const comments = [];
+      if (source) comments.push(moveSourceText(source, "; ", includeDiagnostics));
+      if (includeDiagnostics) comments.push(...(diagnostics.get(node.occurrence) || []));
+      const comment = pgnComment(comments.filter(Boolean).join("; "));
       return `${prefix} ${san}${comment ? ` {${comment}}` : ""}`;
     };
 
@@ -1212,6 +1548,7 @@ No policy events yet.</pre>
     });
     const movetext = moveLines.join("\n");
     const resultLabel = snapshot?.result ? snapshot.result.toUpperCase() : "RUNNING";
+    const batchAudit = ourMoveBatchAudit(snapshot, policy);
     const headers = [
       `[Event "${pgnTag(puzzle.title || "Predicate Chess Tactic")}"]`,
       `[Site "Predicate Chess Tactics"]`,
@@ -1219,7 +1556,13 @@ No policy events yet.</pre>
       `[SetUp "1"]`,
       `[FEN "${pgnTag(puzzle.fen || "")}"]`,
       `[Policy "${pgnTag(policyName)}"]`,
-      `[PredicateResult "${pgnTag(resultLabel)}"]`
+      `[PredicateResult "${pgnTag(resultLabel)}"]`,
+      `[PredicatePositionsReached "${exploredNodes(snapshot).length}"]`,
+      `[PredicateOurMoveCandidateLimit "${pgnTag(batchAudit.limit)}"]`,
+      `[PredicateOurMoveBatchCount "${pgnTag(batchAudit.batchCount)}"]`,
+      `[PredicateMaxOurMoveBatch "${pgnTag(batchAudit.maxSelected)}"]`,
+      `[PredicateOurMoveClampStatus "${batchAudit.pass ? "PASS" : "FAIL"}"]`,
+      `[PredicateFinalReason "${pgnTag(snapshot?.reason || "")}"]`
     ];
     return `${headers.join("\n")}\n\n${movetext || "{No explored move yet.}"}\n*`;
   }
@@ -1258,6 +1601,8 @@ No policy events yet.</pre>
       stack_frames: "each search pushes one invisible delimiter beneath its retained board positions",
       allowed_state_kinds: ["push_initial", "pop", "inspect", "search", "accept", "reject"],
       oracle: "required inside the policy object; unknown and missing options fail loudly",
+      proof: "terminal_predicates are exactly mate and up_material; selective no-match proof is allowed only in explicitly declared quiet_closure_states",
+      our_move_candidate_limit: "must equal 5; every my-side choice search is hard-capped and audited at runtime",
       test_file: "optional absolute /path/name.test; PolicyTest fails loudly when absent"
     };
     return grammar;
@@ -1358,12 +1703,15 @@ No policy events yet.</pre>
     while (!runner.snapshot().result && guard < 10000) {
       oracle.hydrateRunner(runner);
       const step = runner.step();
+      assertOurMoveBatchClamp(step.events, policy);
       events.push(...step.events);
       guard += 1;
     }
     const snapshot = runner.snapshot();
     if (!snapshot.result) throw new Error(`${puzzle.title}: engine safety limit 10000 reached without ACCEPT or REJECT`);
-    return { puzzle, policy, oracle, runner, snapshot, events, guard, status: resultClass(snapshot), pgn: formatExploredPgn(snapshot, { puzzle, policy, oracle, policyName }), triple: formatTriple({ puzzle, policy, snapshot, trace: events }) };
+    const pgn = formatExploredPgn(snapshot, { puzzle, policy, oracle, policyName, includeDiagnostics: true });
+    const comparisonPgn = formatExploredPgn(snapshot, { puzzle, policy, oracle, policyName, includeDiagnostics: false });
+    return { puzzle, policy, oracle, runner, snapshot, events, guard, status: resultClass(snapshot), pgn, comparisonPgn, triple: formatTriple({ puzzle, policy, snapshot, trace: events }) };
   }
 
   function decodePgnHeaderValue(value) {
@@ -1415,6 +1763,11 @@ No policy events yet.</pre>
     if (maxExploredText && (!Number.isInteger(maxExplored) || maxExplored < 1)) {
       throw new Error(`Test ${index + 1} PredicateMaxExplored must be a positive integer`);
     }
+    const maxOurMoveBatchText = String(headers.PredicateMaxOurMoveBatch || "").trim();
+    const maxOurMoveBatch = maxOurMoveBatchText ? Number(maxOurMoveBatchText) : null;
+    if (maxOurMoveBatchText && (!Number.isInteger(maxOurMoveBatch) || maxOurMoveBatch < 1)) {
+      throw new Error(`Test ${index + 1} PredicateMaxOurMoveBatch must be a positive integer`);
+    }
     return {
       index,
       name: headers.Event,
@@ -1423,6 +1776,7 @@ No policy events yet.</pre>
       expectedResult,
       compare,
       maxExplored,
+      maxOurMoveBatch,
       headers,
       source,
       expectedMovetext: movetext
@@ -1515,20 +1869,24 @@ No policy events yet.</pre>
     if (test.policy !== identity) throw new Error(`${test.name}: test policy ${test.policy} does not match selected policy ${identity}`);
     const puzzle = { title: test.name, fen: test.fen, theme: "policy test", solution: "", where: "", notes: [] };
     const headless = runHeadless(puzzle, clone(option.policy), identity);
-    const actualMovetext = extractPgnMovetext(headless.pgn);
+    const actualMovetext = extractPgnMovetext(headless.comparisonPgn || headless.pgn);
     const equal = canonicalPgnMovetext(actualMovetext) === canonicalPgnMovetext(test.expectedMovetext);
     const relationPass = test.compare === "EQUAL" ? equal : !equal;
     const actualResult = String(headless.snapshot.result || "").toUpperCase();
     const resultPass = actualResult === test.expectedResult;
     const exploredCount = exploredNodes(headless.snapshot).length;
     const exploredPass = test.maxExplored === null || exploredCount <= test.maxExplored;
-    const pass = relationPass && resultPass && exploredPass;
+    const batchAudit = ourMoveBatchAudit(headless.snapshot, option.policy);
+    const batchLimit = test.maxOurMoveBatch === null ? Number(option.policy?.our_move_candidate_limit || 5) : test.maxOurMoveBatch;
+    const batchPass = batchAudit.pass && batchAudit.maxSelected <= batchLimit;
+    const pass = relationPass && resultPass && exploredPass && batchPass;
     const relationDescription = test.compare === "EQUAL"
       ? (equal ? "Movetext matched." : "Movetext did not match.")
       : (!equal ? "Negative comparison passed: movetext differed as required." : "Negative comparison failed: movetext unexpectedly matched.");
     const exploredDescription = test.maxExplored === null
       ? `Explored ${exploredCount} positions.`
       : `Explored ${exploredCount}/${test.maxExplored} allowed positions${exploredPass ? "." : " — limit exceeded."}`;
+    const batchDescription = `Largest root-side choice batch ${batchAudit.maxSelected}/${batchLimit}${batchPass ? "." : " — hard candidate limit breached."}`;
     return {
       status: pass ? "pass" : "fail",
       pass,
@@ -1537,6 +1895,10 @@ No policy events yet.</pre>
       exploredPass,
       exploredCount,
       maxExplored: test.maxExplored,
+      batchPass,
+      maxOurMoveBatch: batchAudit.maxSelected,
+      expectedMaxOurMoveBatch: batchLimit,
+      ourMoveBatchAudit: batchAudit,
       expectedResult: test.expectedResult,
       actualResult,
       compare: test.compare,
@@ -1544,7 +1906,7 @@ No policy events yet.</pre>
       expectedMovetext: test.expectedMovetext,
       actualMovetext,
       actualPgn: headless.pgn,
-      detail: `${relationDescription} PredicateResult expected ${test.expectedResult}, actual ${actualResult}. ${exploredDescription}`,
+      detail: `${relationDescription} PredicateResult expected ${test.expectedResult}, actual ${actualResult}. ${exploredDescription} ${batchDescription}`,
       diff: firstCanonicalDifference(test.expectedMovetext, actualMovetext),
       headless
     };
@@ -1595,7 +1957,7 @@ No policy events yet.</pre>
         const result = results[index];
         const status = result?.status || "not-run";
         const label = status === "pass" ? "PASS" : status === "fail" ? "FAIL" : status === "error" ? "ERROR" : status === "running" ? "RUNNING" : "—";
-        return `<div class="policy-test-row ${index === app.policyTestSelected ? "selected" : ""}" data-policy-test-index="${index}"><span class="batch-index">${index + 1}</span><div><strong>${esc(test.name)}</strong><small>${esc(test.compare)} · expect ${esc(test.expectedResult)}${test.maxExplored === null ? "" : ` · max ${test.maxExplored} positions`}</small></div><span class="policy-test-status ${esc(status)}">${label}</span></div>`;
+        return `<div class="policy-test-row ${index === app.policyTestSelected ? "selected" : ""}" data-policy-test-index="${index}"><span class="batch-index">${index + 1}</span><div><strong>${esc(test.name)}</strong><small>${esc(test.compare)} · expect ${esc(test.expectedResult)}${test.maxExplored === null ? "" : ` · max ${test.maxExplored} positions`}${test.maxOurMoveBatch === null ? "" : ` · OUR MOVE ≤${test.maxOurMoveBatch}`}</small></div><span class="policy-test-status ${esc(status)}">${label}</span></div>`;
       }).join("") : '<div class="issue warn"><strong>No tests loaded.</strong><br>The selected policy must declare an absolute .test path.</div>';
 
     const test = tests[app.policyTestSelected];
@@ -1609,7 +1971,7 @@ No policy events yet.</pre>
       return;
     }
     $("#policyTestDetailTitle").textContent = `${app.policyTestSelected + 1}. ${test.name}`;
-    $("#policyTestDetailMode").textContent = `${test.compare} · ${test.expectedResult}${test.maxExplored === null ? "" : ` · max ${test.maxExplored} positions`}`;
+    $("#policyTestDetailMode").textContent = `${test.compare} · ${test.expectedResult}${test.maxExplored === null ? "" : ` · max ${test.maxExplored} positions`}${test.maxOurMoveBatch === null ? "" : ` · OUR MOVE ≤${test.maxOurMoveBatch}`}`;
     $("#policyTestExpected").value = test.expectedMovetext;
     $("#policyTestActual").value = result?.actualMovetext || "";
     $("#policyTestDiff").textContent = result ? `${result.detail || result.status || ""}\n\n${result.diff || ""}`.trim() : "Not run.";
