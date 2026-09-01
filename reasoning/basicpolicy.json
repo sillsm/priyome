@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "5.9.0",
+  "version": "6.3.4-hard-top5-all-our-choice-cards",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -76,35 +76,22 @@
           "to": "LINE_FAILED"
         },
         {
-          "label": "capturing the mate-threat responder wins the material objective",
+          "label": "we are up the material objective and our check permits neither recapture nor countercheck",
           "when": {
+            "side": "their",
             "all": [
-              "capture_mate_threat_responder",
-              "up_material"
+              "up_material",
+              "in_check"
+            ],
+            "none": [
+              "recapture_available",
+              "countercheck_available"
             ]
           },
           "to": "LINE_PROVED"
         },
         {
-          "label": "the edge mating-net refutation answers the mate-threat response",
-          "when": {
-            "any": [
-              "queen_rook_edge_mate_net"
-            ]
-          },
-          "to": "LINE_PROVED"
-        },
-        {
-          "label": "the mate-threat reply card could not classify this opponent reply",
-          "when": {
-            "any": [
-              "unclassified_mate_threat_reply"
-            ]
-          },
-          "to": "LINE_FAILED"
-        },
-        {
-          "label": "an opponent recapture erased the material objective with no bound continuation",
+          "label": "a non-mate-defense recapture erased the material objective with no bound continuation",
           "when": {
             "all": [
               "recapture"
@@ -120,8 +107,9 @@
               "defender_of_loose_piece_is_attacked",
               "attacked_piece",
               "skewer",
-              "mate_threat_followup_capture_ready",
-              "mate_threat_interposer_was_recaptured"
+              "check_with_only_interpositions",
+              "capture_mate_threat_piece",
+              "capture_mate_threat_supporter"
             ]
           },
           "to": "LINE_FAILED"
@@ -156,17 +144,6 @@
           "to": "SEARCH_CHECK_RESPONSES"
         },
         {
-          "label": "continue after a mate-threat interposition",
-          "when": {
-            "side": "my",
-            "any": [
-              "mate_threat_interposer_ready_to_capture",
-              "mate_threat_followup_capture_ready"
-            ]
-          },
-          "to": "SEARCH_MATE_THREAT_CONTINUATION"
-        },
-        {
           "label": "continue the visible alignment capture chain",
           "when": {
             "side": "my",
@@ -194,46 +171,6 @@
           "to": "SEARCH_OUR_MOVE"
         },
         {
-          "label": "the defender of a loose piece is attacked",
-          "when": {
-            "side": "their",
-            "any": [
-              "defender_of_loose_piece_is_attacked"
-            ]
-          },
-          "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
-        },
-        {
-          "label": "first ask whether the opponent can capture the mate-threat piece or supporter",
-          "when": {
-            "side": "their",
-            "any": [
-              "threaten_mate_in_1"
-            ]
-          },
-          "to": "SEARCH_CAPTURE_REPLIES_TO_MATE_THREAT"
-        },
-        {
-          "label": "the opponent may recapture or check after we captured the mate-threat interposer",
-          "when": {
-            "side": "their",
-            "any": [
-              "mate_threat_interposer_captured"
-            ]
-          },
-          "to": "SEARCH_REPLIES_AFTER_MATE_INTERPOSER_CAPTURE"
-        },
-        {
-          "label": "more than two relevant replies remain after the current human reply card",
-          "when": {
-            "side": "their",
-            "any": [
-              "more_than_two_relevant_replies"
-            ]
-          },
-          "to": "LINE_FAILED"
-        },
-        {
           "label": "we are up the material objective",
           "when": {
             "side": "their",
@@ -244,6 +181,16 @@
           "to": "SEARCH_WHEN_UP_MATERIAL"
         },
         {
+          "label": "the checking slider leaves only interpositions",
+          "when": {
+            "side": "their",
+            "any": [
+              "check_with_only_interpositions"
+            ]
+          },
+          "to": "SEARCH_ALL_REPLIES"
+        },
+        {
           "label": "the opponent has two or fewer legal moves",
           "when": {
             "side": "their",
@@ -252,6 +199,36 @@
             ]
           },
           "to": "SEARCH_ALL_REPLIES"
+        },
+        {
+          "label": "enumerate every genuine defense to the mate-in-one threat",
+          "when": {
+            "side": "their",
+            "any": [
+              "threaten_mate_in_1"
+            ]
+          },
+          "to": "SEARCH_REPLIES_TO_MATE_THREAT"
+        },
+        {
+          "label": "the defender of a loose piece is attacked",
+          "when": {
+            "side": "their",
+            "any": [
+              "defender_of_loose_piece_is_attacked"
+            ]
+          },
+          "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
+        },
+        {
+          "label": "more than two relevant replies remain after the current human reply card",
+          "when": {
+            "side": "their",
+            "any": [
+              "more_than_two_relevant_replies"
+            ]
+          },
+          "to": "LINE_FAILED"
         },
         {
           "label": "the current position contains a skewer",
@@ -294,15 +271,14 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "Scan one ordinary human chess list in order. Existing mate-threat continuation moves use this same card: mate, a visible capture of the responder or edge mating-net move, then checks, mate threats, captures, and positional attacks.",
+      "description": "Scan the ordered ordinary move predicates and retain at most the first five distinct matching legal moves. If none proves the line, fail explicitly at the candidate-budget boundary. A proved move must end in mate, the material objective, or an explicit policy closure. This root-side choice card is hard-capped at five distinct candidates; exhausting those five fails loudly.",
       "predicates": [
         "mate",
-        "capture_mate_threat_responder",
-        "queen_rook_edge_mate_net",
+        "check_with_only_interpositions",
         "check_with_one_reply",
-        "threaten_mate_in_1",
         "check_with_two_replies",
         "capture_undefended_non_pawn_piece",
+        "threaten_mate_in_1",
         "move_middle_with_check",
         "check_and_attack_piece",
         "skewer",
@@ -316,15 +292,16 @@
         "add_attacker_to_pinned_piece"
       ],
       "closure": {
-        "mode": "all"
+        "mode": "first",
+        "count": 5
       },
       "frame": {
         "kind": "choice",
-        "on_empty": "LINE_FAILED"
+        "on_empty": "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED"
       },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
+        "none": "OUR_MOVE_NO_MATCH"
       }
     },
     {
@@ -333,7 +310,7 @@
       "kind": "search",
       "side": "my",
       "label": "Alignment capture chain",
-      "description": "A slider, an enemy middle piece, and an enemy back piece are aligned; the middle piece also defends another piece. This temporary card cashes the already-observed relation before starting unrelated checks: capture the defended alignment target, then capture the exposed back piece if the middle piece leaves the line.",
+      "description": "A slider, an enemy middle piece, and an enemy back piece are aligned; the middle piece also defends another piece. This temporary card cashes the already-observed relation before starting unrelated checks: capture the defended alignment target, then capture the exposed back piece if the middle piece leaves the line. This root-side choice card is hard-capped at five distinct candidates; exhausting those five fails loudly.",
       "predicates": [
         "mate",
         "capture_alignment_target",
@@ -349,99 +326,16 @@
         "add_attacker_to_pinned_piece"
       ],
       "closure": {
-        "mode": "all"
+        "mode": "first",
+        "count": 5
       },
       "frame": {
         "kind": "choice",
-        "on_empty": "LINE_FAILED"
+        "on_empty": "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED"
       },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
-      }
-    },
-    {
-      "id": "SEARCH_MATE_THREAT_CONTINUATION",
-      "routine": "main",
-      "kind": "search",
-      "side": "my",
-      "label": "Continue after the mate-threat interposition",
-      "description": "A forcing check has made the mate-threat interposer capturable, or its recapture exposed an undefended non-pawn. Capture that exact visible target and do not start another idea.",
-      "predicates": [
-        "mate",
-        "capture_mate_threat_interposer",
-        "capture_undefended_non_pawn_piece"
-      ],
-      "closure": {
-        "mode": "first",
-        "count": 1
-      },
-      "frame": {
-        "kind": "choice",
-        "on_empty": "LINE_FAILED"
-      },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
-      }
-    },
-    {
-      "id": "SEARCH_REPLIES_AFTER_MATE_INTERPOSER_CAPTURE",
-      "routine": "main",
-      "kind": "search",
-      "side": "their",
-      "label": "Live replies after capturing the interposer",
-      "description": "We have captured the mate-threat interposer and banked the material objective. Push every recapture that keeps the queen safe and every countercheck without a material-preserving immediate answer. Closed recaptures and checks remain in the oracle facts but are not live reply obligations.",
-      "predicates": [
-        "mated",
-        "safe_recapture",
-        "countercheck_survives"
-      ],
-      "closure": {
-        "mode": "all"
-      },
-      "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
-      },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_PROVED"
-      }
-    },
-    {
-      "id": "POP_MATE_THREAT_CAPTURE_REPLY",
-      "routine": "main",
-      "kind": "pop",
-      "label": "Play the capture reply",
-      "description": "Pop that opponent reply, then return immediately to the ordinary best-move card for our turn.",
-      "on": {
-        "thought": "SEARCH_OUR_MOVE",
-        "empty": "EXHAUSTED"
-      }
-    },
-    {
-      "id": "SEARCH_CAPTURE_REPLIES_TO_MATE_THREAT",
-      "routine": "main",
-      "kind": "search",
-      "side": "their",
-      "label": "Capture reply to mate in one",
-      "description": "Before enumerating the broader mate-threat reply classes, retain the first legal reply that captures the mating piece or its supporter. If none exists, fall through to the ordinary named reply card.",
-      "predicates": [
-        "capture_mate_threat_piece",
-        "capture_mate_threat_supporter"
-      ],
-      "closure": {
-        "mode": "first",
-        "count": 1
-      },
-      "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
-      },
-      "on": {
-        "pushed": "POP_MATE_THREAT_CAPTURE_REPLY",
-        "none": "SEARCH_REPLIES_TO_MATE_THREAT"
+        "none": "OUR_MOVE_NO_MATCH"
       }
     },
     {
@@ -449,18 +343,10 @@
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Live replies to mate in one",
-      "description": "When no reply captures the mating piece or its supporter, enumerate every legal reply matching an ordinary named human mate-threat response idea. Each reply then returns to the normal inspection and best-move cards.",
+      "label": "Genuine replies to mate in one",
+      "description": "Partition every legal opponent reply by the resulting board. Retain every reply after which our side has no legal mate in one. Every omitted reply must carry mate_in_1_available and at least one exact mating-move witness. Each retained defense returns to ordinary inspection.",
       "predicates": [
-        "mated",
-        "check_with_one_reply",
-        "check_with_two_replies",
-        "check",
-        "move_mating_target",
-        "king_escape_from_mate_threat",
-        "add_defender_to_mating_square",
-        "interpose_mate_threat_battery",
-        "unclassified_mate_threat_reply"
+        "no_mate_in_1_available"
       ],
       "closure": {
         "mode": "all"
@@ -472,6 +358,10 @@
       "on": {
         "pushed": "POP_POSITION",
         "none": "LINE_PROVED"
+      },
+      "forced_complement": {
+        "predicate": "mate_in_1_available",
+        "witness_fact": "mate_in_1_move"
       }
     },
     {
@@ -480,7 +370,7 @@
       "kind": "search",
       "side": "my",
       "label": "Answer the check",
-      "description": "A check earns a two-ply extension: the checking move and one answer. Prefer mate, recapture, capture, then checks ordered by one reply, two replies, and other checks, then any legal king response.",
+      "description": "A check earns a two-ply extension: the checking move and one answer. Prefer mate, recapture, capture, then checks ordered by one reply, two replies, and other checks, then any legal king response. This root-side choice card is hard-capped at five distinct candidates; exhausting those five fails loudly.",
       "predicates": [
         "mate",
         "recapture",
@@ -492,15 +382,16 @@
         "legal_move"
       ],
       "closure": {
-        "mode": "all"
+        "mode": "first",
+        "count": 5
       },
       "frame": {
         "kind": "choice",
-        "on_empty": "LINE_FAILED"
+        "on_empty": "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED"
       },
       "on": {
         "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
+        "none": "OUR_MOVE_NO_MATCH"
       }
     },
     {
@@ -538,7 +429,7 @@
       "kind": "search",
       "side": "their",
       "label": "Replies while we are up material",
-      "description": "When the opponent is down the material objective, consider only mate, recapture, and checks ordered by one reply, two replies, then other checks. A check is followed for exactly one answering move.",
+      "description": "When the opponent is down the material objective, consider only mate, recapture, and checks ordered by one reply, two replies, then other checks. A check is followed for exactly one answering move. Unmatched moves are quiet under this card\u2019s explicit reply vocabulary.",
       "predicates": [
         "mated",
         "recapture",
@@ -564,7 +455,7 @@
       "kind": "search",
       "side": "their",
       "label": "Replies to an attacked piece",
-      "description": "Consider ordinary ways to answer an attack: capture the attacker, move or defend the piece, block the attack, give a forcing check, or make a capture.",
+      "description": "Consider ordinary ways to answer an attack: capture the attacker, move or defend the piece, block the attack, give a forcing check, or make a capture. Unmatched moves are quiet under this card\u2019s explicit reply vocabulary.",
       "predicates": [
         "mated",
         "capture_attacker",
@@ -594,7 +485,7 @@
       "kind": "search",
       "side": "their",
       "label": "Replies to a skewer",
-      "description": "Consider ordinary ways to answer a skewer: capture the skewering piece, move or defend the skewered piece, block the line, give a forcing check, or make a capture.",
+      "description": "Consider ordinary ways to answer a skewer: capture the skewering piece, move or defend the skewered piece, block the line, give a forcing check, or make a capture. Unmatched moves are quiet under this card\u2019s explicit reply vocabulary.",
       "predicates": [
         "mated",
         "capture_attacker",
@@ -624,12 +515,14 @@
       "kind": "search",
       "side": "their",
       "label": "Replies while a defender is attacked",
-      "description": "A non-pawn piece is attacked and has exactly one effective defender; our last move safely attacked that defender. Retain only a move that puts the defender on a safe square while it still defends the loose piece, a capture that does the same, or a direct capture of the attacking piece.",
+      "description": "A non-pawn piece is attacked and has exactly one effective defender; our last move safely attacked that defender. Retain a bounded forcing check, a move that puts the defender on a safe square while it still defends the target, or a capture of either the chaser or the target\u2019s original attacker. Other replies are the policy\u2019s declared quiet boundary.",
       "predicates": [
         "mated",
+        "capture_attacker",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "move_defender_while_still_defending_loose_piece",
-        "capture_and_keep_defending_loose_piece",
-        "capture_attacker"
+        "capture_and_keep_defending_loose_piece"
       ],
       "closure": {
         "mode": "all"
@@ -642,6 +535,46 @@
         "pushed": "POP_POSITION",
         "none": "LINE_PROVED"
       }
+    },
+    {
+      "id": "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED",
+      "routine": "main",
+      "kind": "inspect",
+      "label": "OUR MOVE TOP-5 EXHAUSTED",
+      "terminal_checks": false,
+      "description": "All five retained candidates from the current root-side choice card failed. Stop this line loudly instead of silently scanning lower-priority moves.",
+      "rules": [
+        {
+          "label": "OUR MOVE TOP-5 EXHAUSTED \u2014 every retained candidate from this root-side choice card failed; lower-priority moves were not searched",
+          "when": {},
+          "to": "LINE_FAILED"
+        }
+      ],
+      "on": {
+        "depth": "LINE_FAILED",
+        "missing": "LINE_FAILED"
+      },
+      "default": "LINE_FAILED"
+    },
+    {
+      "id": "OUR_MOVE_NO_MATCH",
+      "routine": "main",
+      "kind": "inspect",
+      "label": "OUR MOVE NO MATCH",
+      "terminal_checks": false,
+      "description": "No legal move matched the current root-side choice card\u2019s visible predicate list. Stop this line loudly.",
+      "rules": [
+        {
+          "label": "OUR MOVE NO MATCH \u2014 no legal move matched the current root-side choice card",
+          "when": {},
+          "to": "LINE_FAILED"
+        }
+      ],
+      "on": {
+        "depth": "LINE_FAILED",
+        "missing": "LINE_FAILED"
+      },
+      "default": "LINE_FAILED"
     },
     {
       "id": "LINE_PROVED",
@@ -759,7 +692,29 @@
     "reply_class_limit": 2,
     "objective_gain": 2,
     "max_positions": 12000,
-    "attack_min_value": 3,
-    "mate_threat_limit": 1
-  }
+    "attack_min_value": 3
+  },
+  "proof": {
+    "quiet_closure_states": [
+      "SEARCH_WHEN_UP_MATERIAL",
+      "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "SEARCH_REPLIES_TO_SKEWER",
+      "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
+    ],
+    "quiet_definition": "Only a state named in quiet_closure_states may prove a branch because no listed quiet reply matched. Candidate patterns never prove a win by themselves: an explicit leaf must be mate or up_material, a declared quiet reply boundary must close after every retained reply is discharged, or a forced closure must carry its declared complementary witness.",
+    "terminal_predicates": [
+      "mate",
+      "up_material"
+    ],
+    "forced_closure_states": [
+      {
+        "state": "SEARCH_REPLIES_TO_MATE_THREAT",
+        "retained_predicate": "no_mate_in_1_available",
+        "closed_predicate": "mate_in_1_available",
+        "witness_fact": "mate_in_1_move"
+      }
+    ],
+    "forced_definition": "A forced closure partitions every legal opponent reply: replies with no legal mate in one are retained universally; every omitted reply has mate_in_1_available and at least one explicit mate_in_1_move witness."
+  },
+  "our_move_candidate_limit": 5
 }

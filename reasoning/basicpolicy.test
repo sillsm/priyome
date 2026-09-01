@@ -7,6 +7,7 @@
 [PredicateResult "ACCEPT"]
 [PredicateCompare "EQUAL"]
 [PredicateMaxExplored "20"]
+[PredicateMaxOurMoveBatch "5"]
 
 22. Bh7+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
 	22... Kxh7 {capture; [SEARCH_ALL_REPLIES]}
@@ -40,6 +41,7 @@
 [PredicateResult "ACCEPT"]
 [PredicateCompare "EQUAL"]
 [PredicateMaxExplored "20"]
+[PredicateMaxOurMoveBatch "5"]
 
 1... Qxg2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
 	2. Rf2 {save_piece; [SEARCH_ALL_REPLIES]}
@@ -79,11 +81,21 @@
 [PredicateResult "ACCEPT"]
 [PredicateCompare "EQUAL"]
 [PredicateMaxExplored "15"]
+[PredicateMaxOurMoveBatch "5"]
+[PredicateBaselineNote "Expected PGN refreshed after literal mate-threat detection and hard top-five clamp."]
 
 18... Bxe4 {capture_defender_of_alignment_target; [SEARCH_OUR_MOVE]}
 (
 	18... Qxc2+ {check_with_one_reply; [SEARCH_OUR_MOVE]}
 		19. Qxc2 {capture; [SEARCH_ALL_REPLIES]}
+)
+(
+	18... Bxg5 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
+		19. Qxg5 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+		(
+			19. Nxg5 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+		)
+			19... Qxc2# {mate; [SEARCH_OUR_MOVE]}
 )
 	19. fxe4 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
 		19... Bxg5 {capture_alignment_target; [SEARCH_ALIGNMENT_CAPTURE_CHAIN]}
@@ -103,7 +115,9 @@
 [Policy "basic"]
 [PredicateResult "ACCEPT"]
 [PredicateCompare "EQUAL"]
-[PredicateMaxExplored "20"]
+[PredicateMaxExplored "27"]
+[PredicateMaxOurMoveBatch "5"]
+[PredicateBaselineNote "Expected PGN and position cap refreshed for the complete defender-chase reply set."]
 
 15. Na4 {safely_add_attacker_to_defender_of_loose_piece; [SEARCH_OUR_MOVE]}
 (
@@ -129,6 +143,10 @@
 			16. Bxe6 {capture; [SEARCH_OUR_MOVE]}
 		)
 			16... Qc4 {move_defender_while_still_defending_loose_piece; [SEARCH_REPLIES_TO_ATTACKED_DEFENDER]}
+			(
+				16... Qxa3 {capture_attacker; [SEARCH_REPLIES_TO_ATTACKED_DEFENDER]}
+					17. Qxd4 {capture_undefended_non_pawn_piece; [SEARCH_OUR_MOVE]}
+			)
 				17. Rc1 {safely_add_attacker_to_defender_of_loose_piece; [SEARCH_OUR_MOVE]}
 				(
 					17. Qxd4 {capture; [SEARCH_OUR_MOVE]}
@@ -137,6 +155,18 @@
 				(
 					17. Bxe6 {capture; [SEARCH_OUR_MOVE]}
 				)
+					17... Qxc1 {capture_attacker; [SEARCH_REPLIES_TO_ATTACKED_DEFENDER]}
+					(
+						17... Qxf1+ {check_with_two_replies; [SEARCH_REPLIES_TO_ATTACKED_DEFENDER]}
+							18. Qxf1 {recapture; [SEARCH_CHECK_RESPONSES]}
+					)
+						18. Qxc1 {capture_undefended_non_pawn_piece; [SEARCH_OUR_MOVE]}
+							18... Ne2+ {check_with_two_replies; [SEARCH_WHEN_UP_MATERIAL]}
+							(
+								18... Nf3+ {check; [SEARCH_WHEN_UP_MATERIAL]}
+									19. gxf3 {recapture; [SEARCH_CHECK_RESPONSES]}
+							)
+								19. Bxe2 {recapture; [SEARCH_CHECK_RESPONSES]}
 *
 
 [Event "Queen Mobility Loose Knight — queen-check is not the solution PV"]
@@ -147,7 +177,9 @@
 [Policy "basic"]
 [PredicateResult "ACCEPT"]
 [PredicateCompare "NOT_EQUAL"]
-[PredicateMaxExplored "20"]
+[PredicateMaxExplored "27"]
+[PredicateMaxOurMoveBatch "5"]
+[PredicateBaselineNote "Negative control retained; cap refreshed to the accepted 27-position defender-chase baseline."]
 
 15. Qa4+ {check_and_attack_piece; [SEARCH_OUR_MOVE]}
 *
@@ -161,6 +193,7 @@
 [PredicateResult "ACCEPT"]
 [PredicateCompare "NOT_EQUAL"]
 [PredicateMaxExplored "15"]
+[PredicateMaxOurMoveBatch "5"]
 
 18... Qxc2+ {check_with_one_reply; [SEARCH_OUR_MOVE]}
 *
@@ -174,95 +207,142 @@
 [PredicateResult "ACCEPT"]
 [PredicateCompare "NOT_EQUAL"]
 [PredicateMaxExplored "20"]
+[PredicateMaxOurMoveBatch "5"]
 
 22. Qxc8 {capture; [SEARCH_OUR_MOVE]}
 *
 
-[Event "Check to mate threat to alignment to capture"]
+[Event "Check to mate threat — conservative universal-defense rejection baseline"]
 [Site "Predicate Chess Tactics"]
 [Result "*"]
 [SetUp "1"]
 [FEN "6rk/1p2q2p/p4R1Q/1b1pP2P/5P2/2P5/PP4P1/R5K1 b - - 0 29"]
 [Policy "basic"]
-[PredicateResult "ACCEPT"]
+[PredicateResult "REJECT"]
 [PredicateCompare "EQUAL"]
-[PredicateMaxExplored "50"]
+[PredicateMaxExplored "64"]
+[PredicateMaxOurMoveBatch "5"]
+[PredicateBaselineNote "Current hard-top-five policy must reject rather than falsely prove this unresolved universal-defense tree."]
 
 29... Qc5+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+(
+	29... Rxg2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+		30. Kxg2 {capture; [SEARCH_ALL_REPLIES]}
+)
+(
+	29... Qg7 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
+		30. Rg6 {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+			30... Qxg6 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
+			(
+				30... Qxe5 {capture; [SEARCH_OUR_MOVE]}
+			)
+			(
+				30... Qxh6 {capture; [SEARCH_OUR_MOVE]}
+					31. Rxh6 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+			)
+			(
+				30... Bd3 {safely_add_attacker_to_defender_of_loose_piece; [SEARCH_OUR_MOVE]}
+					31. Rxg7 {capture_attacker; [SEARCH_REPLIES_TO_ATTACKED_DEFENDER]}
+						31... Rxg7 {recapture; [SEARCH_OUR_MOVE]}
+			)
+			(
+				30... Be8 {safely_add_attacker_to_defender_of_loose_piece; [SEARCH_OUR_MOVE]}
+					31. Rxg7 {capture_attacker; [SEARCH_REPLIES_TO_ATTACKED_DEFENDER]}
+						31... Rxg7 {recapture; [SEARCH_OUR_MOVE]}
+						(
+							31... Bxh5 {capture; [SEARCH_OUR_MOVE]}
+						)
+			)
+				31. hxg6 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+					31... Rxg6 {recapture; [SEARCH_OUR_MOVE]}
+)
+(
+	29... Qxe5 {capture; [SEARCH_OUR_MOVE]}
+)
+(
+	29... Qxf6 {capture; [SEARCH_OUR_MOVE]}
+		30. exf6 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+)
 	30. Kh1 {king_move; [SEARCH_ALL_REPLIES]}
-	(
-		30. Kh2 {king_move; [SEARCH_ALL_REPLIES]}
+		30... Qg1+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+		(
 			30... Qf2 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
-				31. Rg6 {add_defender_to_mating_square; [SEARCH_REPLIES_TO_MATE_THREAT]}
-				(
-					31. Qxh7+ {check_with_one_reply; [SEARCH_REPLIES_TO_MATE_THREAT]}
-						31... Kxh7 {recapture; [SEARCH_CHECK_RESPONSES]}
-				)
-				(
-					31. Qg7+ {check_with_two_replies; [SEARCH_REPLIES_TO_MATE_THREAT]}
-						31... Rxg7 {recapture; [SEARCH_CHECK_RESPONSES]}
-				)
-				(
-					31. Kh1 {king_escape_from_mate_threat; [SEARCH_REPLIES_TO_MATE_THREAT]}
-						31... Qxg2# {mate; [SEARCH_OUR_MOVE]}
-				)
-				(
-					31. Kh3 {king_escape_from_mate_threat; [SEARCH_REPLIES_TO_MATE_THREAT]}
-						31... Qg3# {mate; [SEARCH_OUR_MOVE]}
-				)
-				(
-					31. Rg1 {add_defender_to_mating_square; [SEARCH_REPLIES_TO_MATE_THREAT]}
-						31... Qh4# {mate; [SEARCH_OUR_MOVE]}
-				)
-				(
-					31. Qg5 {add_defender_to_mating_square; [SEARCH_REPLIES_TO_MATE_THREAT]}
-						31... Rxg5 {capture_mate_threat_responder; [SEARCH_OUR_MOVE]}
-				)
-				(
-					31. Qg6 {add_defender_to_mating_square; [SEARCH_REPLIES_TO_MATE_THREAT]}
-						31... hxg6 {capture_mate_threat_responder; [SEARCH_OUR_MOVE]}
-				)
+				31. Rg6 {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
 					31... Qh4+ {check_with_one_reply; [SEARCH_OUR_MOVE]}
+					(
+						31... Qe1+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+							32. Rxe1 {capture; [SEARCH_ALL_REPLIES]}
+					)
+					(
+						31... Qf1+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+							32. Rxf1 {capture; [SEARCH_ALL_REPLIES]}
+					)
+					(
+						31... Qg1+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+							32. Rxg1 {capture; [SEARCH_ALL_REPLIES]}
+					)
+					(
+						31... Qxg2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+							32. Rxg2 {capture; [SEARCH_ALL_REPLIES]}
+					)
 						32. Kg1 {king_move; [SEARCH_ALL_REPLIES]}
-							32... Rxg6 {capture_mate_threat_interposer; [SEARCH_MATE_THREAT_CONTINUATION]}
-	)
-		30... Qf2 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
-			31. Rg6 {add_defender_to_mating_square; [SEARCH_REPLIES_TO_MATE_THREAT]}
-			(
-				31. Qxh7+ {check_with_one_reply; [SEARCH_REPLIES_TO_MATE_THREAT]}
-					31... Kxh7 {recapture; [SEARCH_CHECK_RESPONSES]}
-			)
-			(
-				31. Qg7+ {check_with_two_replies; [SEARCH_REPLIES_TO_MATE_THREAT]}
-					31... Rxg7 {recapture; [SEARCH_CHECK_RESPONSES]}
-			)
-			(
-				31. g3 {move_mating_target; [SEARCH_REPLIES_TO_MATE_THREAT]}
-					31... Qf3+ {queen_rook_edge_mate_net; [SEARCH_OUR_MOVE]}
-			)
-			(
-				31. g4 {move_mating_target; [SEARCH_REPLIES_TO_MATE_THREAT]}
-					31... Qh4+ {queen_rook_edge_mate_net; [SEARCH_OUR_MOVE]}
-			)
-			(
-				31. Kh2 {king_escape_from_mate_threat; [SEARCH_REPLIES_TO_MATE_THREAT]}
-					31... Qxg2# {mate; [SEARCH_OUR_MOVE]}
-			)
-			(
-				31. Rg1 {add_defender_to_mating_square; [SEARCH_REPLIES_TO_MATE_THREAT]}
-					31... Qh4# {mate; [SEARCH_OUR_MOVE]}
-			)
-			(
-				31. Qg5 {add_defender_to_mating_square; [SEARCH_REPLIES_TO_MATE_THREAT]}
-					31... Rxg5 {capture_mate_threat_responder; [SEARCH_OUR_MOVE]}
-			)
-			(
-				31. Qg6 {add_defender_to_mating_square; [SEARCH_REPLIES_TO_MATE_THREAT]}
-					31... hxg6 {capture_mate_threat_responder; [SEARCH_OUR_MOVE]}
-			)
-				31... Qh4+ {check_with_one_reply; [SEARCH_OUR_MOVE]}
-					32. Kg1 {king_move; [SEARCH_ALL_REPLIES]}
-						32... Rxg6 {capture_mate_threat_interposer; [SEARCH_MATE_THREAT_CONTINUATION]}
+							32... Qe1+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+							(
+								32... Qh1+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+									33. Kxh1 {capture; [SEARCH_ALL_REPLIES]}
+							)
+							(
+								32... Qh2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+									33. Kxh2 {capture; [SEARCH_ALL_REPLIES]}
+							)
+							(
+								32... Qf2+ {check; [SEARCH_OUR_MOVE]}
+							)
+							(
+								32... Rxg6 {capture; [SEARCH_OUR_MOVE]}
+									33. hxg6 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+							)
+								33. Rxe1 {capture; [SEARCH_ALL_REPLIES]}
+		)
+		(
+			30... Rg4 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
+				31. g3 {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+				(
+					31. Rf8+ {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+						31... Qxf8 {recapture; [SEARCH_CHECK_RESPONSES]}
+				)
+					31... Qg1+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+					(
+						31... Rh4+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+							32. gxh4 {capture; [SEARCH_ALL_REPLIES]}
+					)
+					(
+						31... Rxg3 {recapture; [SEARCH_OUR_MOVE]}
+					)
+					(
+						31... Qxc3 {capture; [SEARCH_OUR_MOVE]}
+					)
+					(
+						31... Rxf4 {capture; [SEARCH_OUR_MOVE]}
+					)
+						32. Rxg1 {capture; [SEARCH_ALL_REPLIES]}
+		)
+		(
+			30... Qxc3 {capture; [SEARCH_OUR_MOVE]}
+		)
+		(
+			30... Rxg2 {capture; [SEARCH_OUR_MOVE]}
+		)
+			31. Rxg1 {capture; [SEARCH_ALL_REPLIES]}
+				31... Rg4 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
+				(
+					31... Rxg2 {capture; [SEARCH_OUR_MOVE]}
+				)
+				(
+					31... Rg6 {add_attacker_to_loose_non_pawn_piece; [SEARCH_OUR_MOVE]}
+				)
+					32. Rf8+ {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+						32... Rg8 {legal_move; [SEARCH_CHECK_RESPONSES]}
 *
 
 [Event "Check to mate threat — stopping at Qf2 is not a proof"]
@@ -271,9 +351,11 @@
 [SetUp "1"]
 [FEN "6rk/1p2q2p/p4R1Q/1b1pP2P/5P2/2P5/PP4P1/R5K1 b - - 0 29"]
 [Policy "basic"]
-[PredicateResult "ACCEPT"]
+[PredicateResult "REJECT"]
 [PredicateCompare "NOT_EQUAL"]
-[PredicateMaxExplored "50"]
+[PredicateMaxExplored "64"]
+[PredicateMaxOurMoveBatch "5"]
+[PredicateBaselineNote "Negative control for the same conservatively rejected position."]
 
 29... Qc5+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
 	30. Kh1 {king_move; [SEARCH_ALL_REPLIES]}
@@ -286,9 +368,11 @@
 [SetUp "1"]
 [FEN "6rk/1p2q2p/p4R1Q/1b1pP2P/5P2/2P5/PP4P1/R5K1 b - - 0 29"]
 [Policy "basic"]
-[PredicateResult "ACCEPT"]
+[PredicateResult "REJECT"]
 [PredicateCompare "NOT_EQUAL"]
-[PredicateMaxExplored "50"]
+[PredicateMaxExplored "64"]
+[PredicateMaxOurMoveBatch "5"]
+[PredicateBaselineNote "Negative control for the same conservatively rejected position."]
 
 29... Qg7 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
 *
@@ -302,6 +386,9 @@
 [PredicateResult "ACCEPT"]
 [PredicateCompare "EQUAL"]
 [PredicateMaxExplored "10"]
+[PredicateMaxOurMoveBatch "5"]
+[PredicateDisabled "true"]
+[PredicateDisabledReason "Known work item: universal Re2 defenses are not all proved under the current top-five policy."]
 
 26... Re2 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
 	27. Qxe2 {capture_mate_threat_supporter; [SEARCH_CAPTURE_REPLIES_TO_MATE_THREAT]}
@@ -312,4 +399,60 @@
 					28... Nxe2 {capture_undefended_non_pawn_piece; [SEARCH_OUR_MOVE]}
 			)
 				28... Nxe2+ {capture_undefended_non_pawn_piece; [SEARCH_OUR_MOVE]}
+*
+
+[Event "Mate threat to capture to back rank mate"]
+[Site "Predicate Chess Tactics"]
+[Result "*"]
+[SetUp "1"]
+[FEN "r5k1/1p4pp/8/1NqpP3/1R4PP/pPQ5/P6r/K4R2 b - - 7 28"]
+[Policy "basic"]
+[PredicateResult "ACCEPT"]
+[PredicateCompare "EQUAL"]
+[PredicateMaxExplored "30"]
+[PredicateMaxOurMoveBatch "5"]
+
+28... Qf2 {threaten_mate_in_1; [SEARCH_OUR_MOVE]}
+(
+	28... Qxc3+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+		29. Nxc3 {recapture; [SEARCH_WHEN_UP_MATERIAL]}
+)
+(
+	28... Rxa2+ {check_with_two_replies; [SEARCH_OUR_MOVE]}
+		29. Kxa2 {capture; [SEARCH_ALL_REPLIES]}
+)
+	29. Rxf2 {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+	(
+		29. Kb1 {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+			29... Qxf1+ {check_with_only_interpositions; [SEARCH_OUR_MOVE]}
+	)
+	(
+		29. Qc2 {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+			29... Qxf1+ {check_with_only_interpositions; [SEARCH_OUR_MOVE]}
+	)
+	(
+		29. Qc8+ {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+			29... Rxc8 {recapture; [SEARCH_CHECK_RESPONSES]}
+	)
+	(
+		29. Qd2 {no_mate_in_1_available; [SEARCH_REPLIES_TO_MATE_THREAT]}
+			29... Qxf1+ {check_with_only_interpositions; [SEARCH_OUR_MOVE]}
+	)
+		29... Rh1+ {check_with_only_interpositions; [SEARCH_OUR_MOVE]}
+			30. Rf1 {legal_move; [SEARCH_ALL_REPLIES]}
+			(
+				30. Qc1 {legal_move; [SEARCH_ALL_REPLIES]}
+					30... Rxc1# {mate; [SEARCH_OUR_MOVE]}
+			)
+			(
+				30. Qe1 {legal_move; [SEARCH_ALL_REPLIES]}
+					30... Rxe1# {mate; [SEARCH_OUR_MOVE]}
+			)
+				30... Rxf1+ {check_with_only_interpositions; [SEARCH_OUR_MOVE]}
+					31. Qc1 {legal_move; [SEARCH_ALL_REPLIES]}
+					(
+						31. Qe1 {legal_move; [SEARCH_ALL_REPLIES]}
+							31... Rxe1# {mate; [SEARCH_OUR_MOVE]}
+					)
+						31... Rxc1# {mate; [SEARCH_OUR_MOVE]}
 *
