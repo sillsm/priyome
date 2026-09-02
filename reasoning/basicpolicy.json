@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "6.3.4-hard-top5-all-our-choice-cards",
+  "version": "6.5.0-single-main-move-card",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -144,26 +144,6 @@
           "to": "SEARCH_CHECK_RESPONSES"
         },
         {
-          "label": "continue the visible alignment capture chain",
-          "when": {
-            "side": "my",
-            "any": [
-              "alignment_capture_chain"
-            ]
-          },
-          "to": "SEARCH_ALIGNMENT_CAPTURE_CHAIN"
-        },
-        {
-          "label": "cash an exposed back piece in the alignment",
-          "when": {
-            "side": "my",
-            "any": [
-              "alignment_back_piece_exposed"
-            ]
-          },
-          "to": "SEARCH_ALIGNMENT_CAPTURE_CHAIN"
-        },
-        {
           "label": "our move",
           "when": {
             "side": "my"
@@ -209,6 +189,16 @@
             ]
           },
           "to": "SEARCH_REPLIES_TO_MATE_THREAT"
+        },
+        {
+          "label": "answer the sole-defended loose-alignment attack",
+          "when": {
+            "side": "their",
+            "any": [
+              "attack_sole_defended_piece_of_loose_alignment"
+            ]
+          },
+          "to": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK"
         },
         {
           "label": "the defender of a loose piece is attacked",
@@ -271,55 +261,23 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "Scan the ordered ordinary move predicates and retain at most the first five distinct matching legal moves. If none proves the line, fail explicitly at the candidate-budget boundary. A proved move must end in mate, the material objective, or an explicit policy closure. This root-side choice card is hard-capped at five distinct candidates; exhausting those five fails loudly.",
+      "description": "Scan the single ordered ordinary move card and retain at most the first five distinct matching legal moves. Exact alignment cash-outs remain ordinary current-board predicates and are ordered immediately after mate; no specialized alignment continuation card exists. If none proves the line, fail explicitly at the candidate-budget boundary. A proved move must end in mate, the material objective, or an explicit policy closure.",
       "predicates": [
         "mate",
+        "capture_alignment_target",
+        "capture_back_of_alignment",
         "check_with_only_interpositions",
         "check_with_one_reply",
         "check_with_two_replies",
         "capture_undefended_non_pawn_piece",
         "threaten_mate_in_1",
+        "attack_sole_defended_piece_of_loose_alignment",
         "move_middle_with_check",
         "check_and_attack_piece",
         "skewer",
         "check",
-        "capture_back_of_alignment",
         "recapture",
         "capture_defender_of_alignment_target",
-        "capture",
-        "safely_add_attacker_to_defender_of_loose_piece",
-        "add_attacker_to_loose_non_pawn_piece",
-        "add_attacker_to_pinned_piece"
-      ],
-      "closure": {
-        "mode": "first",
-        "count": 5
-      },
-      "frame": {
-        "kind": "choice",
-        "on_empty": "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED"
-      },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "OUR_MOVE_NO_MATCH"
-      }
-    },
-    {
-      "id": "SEARCH_ALIGNMENT_CAPTURE_CHAIN",
-      "routine": "main",
-      "kind": "search",
-      "side": "my",
-      "label": "Alignment capture chain",
-      "description": "A slider, an enemy middle piece, and an enemy back piece are aligned; the middle piece also defends another piece. This temporary card cashes the already-observed relation before starting unrelated checks: capture the defended alignment target, then capture the exposed back piece if the middle piece leaves the line. This root-side choice card is hard-capped at five distinct candidates; exhausting those five fails loudly.",
-      "predicates": [
-        "mate",
-        "capture_alignment_target",
-        "capture_back_of_alignment",
-        "recapture",
-        "check_with_one_reply",
-        "check_with_two_replies",
-        "check",
-        "capture_undefended_non_pawn_piece",
         "capture",
         "safely_add_attacker_to_defender_of_loose_piece",
         "add_attacker_to_loose_non_pawn_piece",
@@ -362,6 +320,33 @@
       "forced_complement": {
         "predicate": "mate_in_1_available",
         "witness_fact": "mate_in_1_move"
+      }
+    },
+    {
+      "id": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Critical replies to the loose-alignment attack",
+      "description": "Retain every recapture and every reply after which no legal capture immediately reaches the configured material objective. Every omitted non-recapture must carry material_objective_capture_in_1_available and at least one exact capture witness. Each retained reply returns to ordinary inspection.",
+      "predicates": [
+        "recapture",
+        "no_material_objective_capture_in_1_available"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_PROVED"
+      },
+      "forced_complement": {
+        "predicate": "material_objective_capture_in_1_available",
+        "witness_fact": "material_objective_capture_in_1_move"
       }
     },
     {
@@ -712,9 +697,18 @@
         "retained_predicate": "no_mate_in_1_available",
         "closed_predicate": "mate_in_1_available",
         "witness_fact": "mate_in_1_move"
+      },
+      {
+        "state": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK",
+        "retained_predicates": [
+          "recapture",
+          "no_material_objective_capture_in_1_available"
+        ],
+        "closed_predicate": "material_objective_capture_in_1_available",
+        "witness_fact": "material_objective_capture_in_1_move"
       }
     ],
-    "forced_definition": "A forced closure partitions every legal opponent reply: replies with no legal mate in one are retained universally; every omitted reply has mate_in_1_available and at least one explicit mate_in_1_move witness."
+    "forced_definition": "Each forced closure partitions every legal opponent reply with explicit witnesses. Mate-threat replies with no legal mate in one are retained universally; every omitted reply has mate_in_1_available and an exact mate_in_1_move witness. Loose-alignment replies retain every recapture and every board with no immediate objective-winning capture; every omitted non-recapture has material_objective_capture_in_1_available and an exact material_objective_capture_in_1_move witness."
   },
   "our_move_candidate_limit": 5
 }
