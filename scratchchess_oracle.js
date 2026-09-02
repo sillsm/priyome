@@ -11,17 +11,18 @@
  *
  * Horizon contract: for current position P, the oracle may inspect P, enumerate
  * legal moves m from P, apply each m once to obtain Pm, and assign predicates
- * derived from P, m, and Pm. For the single terminal certificate
- * `threaten_mate_in_1`, `mate_in_1_available`, and `no_mate_in_1_available`,
- * it may also enumerate one hypothetical legal ply from Pm solely to determine
- * the complete set of immediate checkmates for a named side. That terminal probe
- * has no evaluation, ordering, recursion, stored refutation, or proof propagation.
+ * derived from P, m, and Pm. For two bounded terminal certificates it may also
+ * enumerate one hypothetical legal ply from Pm: (1) the complete set of
+ * immediate checkmates for a named side, and (2) legal captures that immediately
+ * reach the policy's declared material objective. These terminal probes have no
+ * evaluation, strategic ordering, recursion, stored refutation, or proof
+ * propagation.
  * All continuation reasoning belongs to the visible DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.14.2-hard-top5-all-our-choice-cards";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.15.1-loose-alignment-sole-defender";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
-export const SCRATCHCHESS_ORACLE_TERMINAL_PROBE = "mate_in_1";
+export const SCRATCHCHESS_ORACLE_TERMINAL_PROBE = "mate_in_1+material_objective_capture_in_1";
 
 const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
 
@@ -473,6 +474,148 @@ function effectiveDefendersOnBoard(board, target, side) {
 function effectiveAttackersOnBoard(board, target, side) {
   return attackersOnBoard(board, target, side)
     .filter((square) => !isAbsolutelyPinnedOnBoard(board, square, side));
+}
+
+
+/**
+ * Find a static overloaded-alignment relation:
+ *
+ *   our slider -> enemy sole defender -> enemy loose back piece
+ *                                \-> enemy target defended only by the middle piece
+ *
+ * This is only a board relation. It does not assume the defender will recapture,
+ * choose a continuation, or prove the line. The policy may use a move that
+ * captures the sole-defended target as an early candidate; ordinary universal
+ * reply search must still verify every opponent response.
+ */
+function findLooseAlignmentSoleDefenderTargets(board, attackerSide) {
+  const enemy = other(attackerSide);
+  const output = [];
+  const seen = new Set();
+
+  for (let slider = 0; slider < 64; slider += 1) {
+    const sliderPiece = board[slider];
+    if (!sliderPiece || sliderPiece.color !== attackerSide) continue;
+    const [sliderFile, sliderRank] = fr(slider);
+
+    for (const [df, dr] of RAY_DIRECTIONS) {
+      if (!sliderSupportsDirection(sliderPiece, df, dr)) continue;
+      let file = sliderFile + df;
+      let rank = sliderRank + dr;
+      let defender = -1;
+      let back = -1;
+
+      while (inBounds(file, rank)) {
+        const square = idx(file, rank);
+        const piece = board[square];
+        if (piece) {
+          if (defender < 0) {
+            if (piece.color !== enemy || piece.type === "k") break;
+            defender = square;
+          } else {
+            if (piece.color === enemy && piece.type !== "k") back = square;
+            break;
+          }
+        }
+        file += df;
+        rank += dr;
+      }
+
+      if (defender < 0 || back < 0) continue;
+      const backPiece = board[back];
+      if (effectiveDefendersOnBoard(board, back, enemy).length !== 0) continue;
+
+      for (let target = 0; target < 64; target += 1) {
+        if (target === defender || target === back) continue;
+        const targetPiece = board[target];
+        if (!targetPiece || targetPiece.color !== enemy || targetPiece.type === "k") continue;
+        const defenders = effectiveDefendersOnBoard(board, target, enemy);
+        if (defenders.length !== 1 || defenders[0] !== defender) continue;
+
+        const key = `${slider}:${defender}:${back}:${target}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        output.push({
+          kind: "loose_alignment_sole_defender",
+          side: attackerSide,
+          slider,
+          defender,
+          back,
+          target,
+          direction: [df, dr],
+          sliderPiece: clone(sliderPiece),
+          defenderPiece: clone(board[defender]),
+          backPiece: clone(backPiece),
+          targetPiece: clone(targetPiece),
+          backValue: VALUES[backPiece.type] || 0,
+          targetValue: VALUES[targetPiece.type] || 0
+        });
+      }
+    }
+  }
+
+  return output.sort((a, b) =>
+    b.backValue - a.backValue
+    || b.targetValue - a.targetValue
+    || a.slider - b.slider
+    || a.defender - b.defender
+    || a.target - b.target
+  );
+}
+
+function looseAlignmentSoleDefenderFact(relation) {
+  return `loose_alignment_sole_defender(slider=${coloredPieceLabel(relation.sliderPiece, relation.slider)},defender=${coloredPieceLabel(relation.defenderPiece, relation.defender)},back=${coloredPieceLabel(relation.backPiece, relation.back)},target=${coloredPieceLabel(relation.targetPiece, relation.target)})`;
+}
+
+function capturedSoleDefendedTargetOfLooseAlignment(beforeBoard, afterBoard, moverSide, move) {
+  const captured = beforeBoard[move.to];
+  if (!captured || captured.color === moverSide || captured.type === "k") return [];
+  const relations = findLooseAlignmentSoleDefenderTargets(beforeBoard, moverSide);
+  return relations.filter((relation) => {
+    if (relation.target !== move.to) return false;
+    if (!samePieceAt(afterBoard, relation.slider, relation.sliderPiece)) return false;
+    if (!samePieceAt(afterBoard, relation.defender, relation.defenderPiece)) return false;
+    if (!samePieceAt(afterBoard, relation.back, relation.backPiece)) return false;
+    const afterDefenders = effectiveDefendersOnBoard(afterBoard, relation.target, other(moverSide));
+    return afterDefenders.length === 1 && afterDefenders[0] === relation.defender;
+  });
+}
+
+/**
+ * Exact, bounded material certificate on one current board. This does not pick
+ * a continuation: it enumerates every legal capture by rootSide whose resulting
+ * material balance reaches the policy's objective, and emits the moves as
+ * witnesses. It never searches beyond that one capture ply.
+ */
+function materialObjectiveCaptureMoves(createGame, gameOrFen, rootSide, rootMaterial, objectiveGain) {
+  const sourceFen = typeof gameOrFen === "string" ? gameOrFen : gameOrFen?.exportFEN?.();
+  const game = createGame({ Event: "Predicate Chess material-objective probe", Site: "scratchchess_oracle.js" });
+  game.loadFEN(sourceFen);
+  if (normalizeSide(game.state?.side) !== normalizeSide(rootSide)) return [];
+  const board = boardOf(game);
+  const output = [];
+
+  for (const move of legalMoveRecords(game)) {
+    const captured = board[move.to];
+    if (!captured || captured.color === rootSide || captured.type === "k") continue;
+    const after = applyMove(createGame, game, move);
+    const materialSwing = materialBalance(after, rootSide) - Number(rootMaterial);
+    if (materialSwing < Number(objectiveGain)) continue;
+    output.push({
+      uci: move.uci,
+      san: safeSan(after, move),
+      from: move.from,
+      to: move.to,
+      captured: clone(captured),
+      materialSwing
+    });
+  }
+
+  return output.sort((a, b) =>
+    b.materialSwing - a.materialSwing
+    || (VALUES[b.captured?.type] || 0) - (VALUES[a.captured?.type] || 0)
+    || String(a.uci).localeCompare(String(b.uci))
+  );
 }
 
 function findAddedTacticalAttacks(beforeBoard, afterBoard, moverSide) {
@@ -1370,8 +1513,25 @@ export class ScratchChessOracle {
       }
     }
 
+    let looseAlignmentCaptures = [];
     let createdDefenderChases = [];
     if (moverSide === this.rootSide) {
+      looseAlignmentCaptures = capturedSoleDefendedTargetOfLooseAlignment(
+        boardBefore,
+        boardOf(after),
+        moverSide,
+        move
+      );
+      if (looseAlignmentCaptures.length) {
+        predicates.push("attack_sole_defended_piece_of_loose_alignment");
+        for (const relation of looseAlignmentCaptures) {
+          facts.push(looseAlignmentSoleDefenderFact(relation));
+          facts.push(
+            `attack_sole_defended_piece_of_loose_alignment(${san},target=${coloredPieceLabel(relation.targetPiece, relation.target)},sole_defender=${coloredPieceLabel(relation.defenderPiece, relation.defender)},loose_back=${coloredPieceLabel(relation.backPiece, relation.back)},slider=${coloredPieceLabel(relation.sliderPiece, relation.slider)})`
+          );
+        }
+      }
+
       createdDefenderChases = findSafeAttacksOnSoleDefenders(boardBefore, boardOf(after), moverSide, move.to)
         .map((chase) => ({ ...clone(chase), sourceMove: move.uci }));
       if (createdDefenderChases.length) {
@@ -1451,6 +1611,30 @@ export class ScratchChessOracle {
       : [];
     const activeAlignmentChains = [];
     const openedBindings = [];
+
+    if (moverSide === this.rootSide && looseAlignmentCaptures.length) {
+      for (const relation of looseAlignmentCaptures) {
+        activeAlignmentChains.push({
+          side: relation.side,
+          front: relation.slider,
+          middle: relation.defender,
+          back: relation.back,
+          target: relation.target,
+          direction: clone(relation.direction),
+          frontPiece: clone(relation.sliderPiece),
+          middlePiece: clone(relation.defenderPiece),
+          backPiece: clone(relation.backPiece),
+          targetPiece: clone(relation.targetPiece),
+          backValue: relation.backValue,
+          targetValue: relation.targetValue,
+          otherDefenders: [],
+          attackers: [{ square: move.to, piece: clone(boardAfter[move.to]) }],
+          phase: "target_captured",
+          sourceMove: move.uci,
+          capturingPiece: clone(boardAfter[move.to])
+        });
+      }
+    }
 
     if (moverSide === this.rootSide && capture) {
       for (const chain of availableAlignmentChains) {
@@ -1748,6 +1932,43 @@ export class ScratchChessOracle {
     return unique(predicates);
   }
 
+  _tagLooseAlignmentReply(card, child) {
+    if (!card.predicates.includes("attack_sole_defended_piece_of_loose_alignment")) return [];
+
+    const witnesses = materialObjectiveCaptureMoves(
+      this.createGame,
+      child.fen,
+      this.rootSide,
+      this.rootMaterial,
+      Number(this.options.objective_gain)
+    );
+
+    if (witnesses.length) {
+      child.predicates = unique([...child.predicates, "material_objective_capture_in_1_available"]);
+      const witnessFacts = witnesses.map((witness) =>
+        `material_objective_capture_in_1_move(${factToken(witness.san)},uci=${witness.uci},target=${coloredPieceLabel(witness.captured, witness.to)},swing=+${witness.materialSwing})`
+      );
+      child.facts = unique([
+        ...child.facts,
+        `material_objective_capture_in_1_available(count=${witnesses.length})`,
+        ...witnessFacts
+      ]);
+      if (!child.predicates.includes("recapture")) {
+        const closureFact = `closed_loose_alignment_reply(${child.move?.san || child.display},reason=material_objective_capture_in_1_available,witness=${witnesses.map((witness) => factToken(witness.san)).join("+")})`;
+        child.facts = unique([...child.facts, closureFact]);
+        card.facts = unique([...card.facts, closureFact]);
+      }
+      return ["material_objective_capture_in_1_available"];
+    }
+
+    child.predicates = unique([...child.predicates, "no_material_objective_capture_in_1_available"]);
+    child.facts = unique([
+      ...child.facts,
+      "no_material_objective_capture_in_1_available"
+    ]);
+    return ["no_material_objective_capture_in_1_available"];
+  }
+
   _tagDefenderChaseReply(child, chase) {
     if (!chase || chase.kind !== "defender_chase") return [];
     const capturedChaser = Number.isInteger(chase.chaserSquare)
@@ -1807,6 +2028,7 @@ export class ScratchChessOracle {
       ? card.meta.activeRelations
       : [];
     const hasMateThreat = card.predicates.includes("threaten_mate_in_1");
+    const hasLooseAlignmentAttack = card.predicates.includes("attack_sole_defended_piece_of_loose_alignment");
 
     if (card.predicates.includes("up_material")) {
       ["mated", "recapture", "check"].forEach((predicate) => replyPredicates.add(predicate));
@@ -1817,6 +2039,15 @@ export class ScratchChessOracle {
       if (!threatSet) throw new Error(`Position ${card.id} has threaten_mate_in_1 without mateThreat board data`);
       analyses.forEach((child) => this._tagMateThreatReply(card, child, threatSet));
       replyPredicates.add("no_mate_in_1_available");
+    }
+
+    if (hasLooseAlignmentAttack) {
+      analyses.forEach((child) => this._tagLooseAlignmentReply(card, child));
+      // Recaptures are deliberately shown. Every other reply is either closed
+      // by an exact material-objective capture witness or retained because no
+      // such one-ply certificate exists.
+      replyPredicates.add("recapture");
+      replyPredicates.add("no_material_objective_capture_in_1_available");
     }
 
     const defenderChases = activeRelations.filter((relation) => relation?.kind === "defender_chase");
@@ -1869,17 +2100,35 @@ export class ScratchChessOracle {
     if (hasMateThreat) {
       facts.push(`mate_threat_reply_partition(legal=${analyses.length},defenses=${mateDefenses.length},mate_available=${mateAllowingReplies.length},complete=${mateDefenses.length + mateAllowingReplies.length === analyses.length})`);
     }
+    if (hasLooseAlignmentAttack) {
+      const retained = analyses.filter((child) =>
+        child.predicates.includes("recapture")
+        || child.predicates.includes("no_material_objective_capture_in_1_available")
+      );
+      const certifiedClosed = analyses.filter((child) =>
+        !child.predicates.includes("recapture")
+        && child.predicates.includes("material_objective_capture_in_1_available")
+      );
+      facts.push(`loose_alignment_reply_partition(legal=${analyses.length},retained=${retained.length},objective_capture_closed=${certifiedClosed.length},complete=${retained.length + certifiedClosed.length === analyses.length})`);
+    }
     const nonMatePredicates = orderedPredicates.filter((predicate) => !["no_mate_in_1_available"].includes(predicate));
     if (nonMatePredicates.length) {
       facts.push(`relevant_replies(count=${relevant.length},limit=${limit},predicates=${nonMatePredicates.join("+")})`);
     }
     card.facts = unique(facts);
 
-    if (!hasMateThreat && relevant.length > limit) {
+    if (!hasMateThreat && !hasLooseAlignmentAttack && relevant.length > limit) {
       card.predicates = unique([...card.predicates, "more_than_two_relevant_replies"]);
       card.help = `${relevant.length} immediate replies match the visible human reply cards; the policy limit is ${limit}.`;
     } else if (hasMateThreat) {
       card.help = `${mateDefenses.length} genuine defenses remove every legal mate in one; ${mateAllowingReplies.length} other legal replies close with explicit mating witnesses.`;
+    } else if (hasLooseAlignmentAttack) {
+      const retained = analyses.filter((child) =>
+        child.predicates.includes("recapture")
+        || child.predicates.includes("no_material_objective_capture_in_1_available")
+      );
+      const certifiedClosed = analyses.length - retained.length;
+      card.help = `${retained.length} critical replies remain live; ${certifiedClosed} other legal replies close with explicit one-ply material-objective capture witnesses.`;
     }
     return true;
   }
@@ -2002,6 +2251,7 @@ export class ScratchChessOracle {
     if (card.side === "their" && (
       card.predicates.includes("up_material")
       || card.predicates.includes("threaten_mate_in_1")
+      || card.predicates.includes("attack_sole_defended_piece_of_loose_alignment")
       || hasActiveRelations
     )) {
       classified = this._classifyHumanReplies(card, analyses);
