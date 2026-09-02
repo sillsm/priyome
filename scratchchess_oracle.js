@@ -20,7 +20,7 @@
  * All continuation reasoning belongs to the visible DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.15.1-loose-alignment-sole-defender";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.15.2-material-final-shot";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 export const SCRATCHCHESS_ORACLE_TERMINAL_PROBE = "mate_in_1+material_objective_capture_in_1";
 
@@ -2194,6 +2194,7 @@ export class ScratchChessOracle {
 
     const availableMovePredicates = [
       ["mate", "mate_available"],
+      ["mated", "mate_available"],
       ["recapture", "recapture_available"],
       ["skewer", "skewer_available"],
       ["capture_back_of_alignment", "capture_back_of_alignment_available"]
