@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "6.5.0-single-main-move-card",
+  "version": "6.5.1-material-objective-final-forcing-shot",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -115,20 +115,27 @@
           "to": "LINE_FAILED"
         },
         {
-          "label": "we answered a check and remain up the material objective",
+          "label": "we answered the forcing check, remain up the material objective, and no immediate mate or recapture remains",
           "when": {
             "all": [
               "check_response",
               "up_material"
+            ],
+            "none": [
+              "mate_available",
+              "recapture_available"
             ]
           },
           "to": "LINE_PROVED"
         },
         {
-          "label": "the two-ply check extension ended without preserving the material objective",
+          "label": "the forcing check response did not preserve the material objective",
           "when": {
-            "any": [
+            "all": [
               "check_response"
+            ],
+            "none": [
+              "up_material"
             ]
           },
           "to": "LINE_FAILED"
@@ -144,6 +151,20 @@
           "to": "SEARCH_CHECK_RESPONSES"
         },
         {
+          "label": "the opponent used its final recapture without erasing the material objective or checking us",
+          "when": {
+            "side": "my",
+            "all": [
+              "recapture",
+              "up_material"
+            ],
+            "none": [
+              "in_check"
+            ]
+          },
+          "to": "LINE_PROVED"
+        },
+        {
           "label": "our move",
           "when": {
             "side": "my"
@@ -151,7 +172,7 @@
           "to": "SEARCH_OUR_MOVE"
         },
         {
-          "label": "we are up the material objective",
+          "label": "we reached the material objective; give the opponent one final mate, check, or recapture shot",
           "when": {
             "side": "their",
             "any": [
@@ -413,8 +434,8 @@
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Replies while we are up material",
-      "description": "When the opponent is down the material objective, consider only mate, recapture, and checks ordered by one reply, two replies, then other checks. A check is followed for exactly one answering move. Unmatched moves are quiet under this card\u2019s explicit reply vocabulary.",
+      "label": "Opponent final forcing shot while we are up material",
+      "description": "After the configured material objective is reached, retain every immediate mate, recapture, or check available to the opponent. If none exists, the position is quiet and the branch is proved. A nonchecking recapture that leaves the objective intact closes after it is shown; a checking continuation is answered normally.",
       "predicates": [
         "mated",
         "recapture",
