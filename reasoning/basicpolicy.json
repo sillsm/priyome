@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "6.5.1-material-objective-final-forcing-shot",
+  "version": "6.6.1-back-rank-entry-square-production",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -76,7 +76,7 @@
           "to": "LINE_FAILED"
         },
         {
-          "label": "we are up the material objective and our check permits neither recapture nor countercheck",
+          "label": "we reached the objective, are not materially behind, and our check permits neither recapture nor countercheck",
           "when": {
             "side": "their",
             "all": [
@@ -115,7 +115,7 @@
           "to": "LINE_FAILED"
         },
         {
-          "label": "we answered the forcing check, remain up the material objective, and no immediate mate or recapture remains",
+          "label": "we answered the forcing check, remain not behind after reaching the objective, and no immediate mate or recapture remains",
           "when": {
             "all": [
               "check_response",
@@ -129,7 +129,7 @@
           "to": "LINE_PROVED"
         },
         {
-          "label": "the forcing check response did not preserve the material objective",
+          "label": "the forcing check response did not preserve both the objective gain and a non-losing material balance",
           "when": {
             "all": [
               "check_response"
@@ -151,7 +151,7 @@
           "to": "SEARCH_CHECK_RESPONSES"
         },
         {
-          "label": "the opponent used its final recapture without erasing the material objective or checking us",
+          "label": "the opponent used its final recapture without erasing our objective-backed material advantage or checking us",
           "when": {
             "side": "my",
             "all": [
@@ -172,7 +172,17 @@
           "to": "SEARCH_OUR_MOVE"
         },
         {
-          "label": "we reached the material objective; give the opponent one final mate, check, or recapture shot",
+          "label": "the checking move repaired a vulnerable back-rank entry square; enumerate every reply",
+          "when": {
+            "side": "their",
+            "any": [
+              "check_adds_defender_to_back_rank_entry_square"
+            ]
+          },
+          "to": "SEARCH_ALL_REPLIES"
+        },
+        {
+          "label": "we reached the objective and are not materially behind; give the opponent one final mate, check, or recapture shot",
           "when": {
             "side": "their",
             "any": [
@@ -282,7 +292,7 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "Scan the single ordered ordinary move card and retain at most the first five distinct matching legal moves. Exact alignment cash-outs remain ordinary current-board predicates and are ordered immediately after mate; no specialized alignment continuation card exists. If none proves the line, fail explicitly at the candidate-budget boundary. A proved move must end in mate, the material objective, or an explicit policy closure.",
+      "description": "Scan the single ordered ordinary move card and retain at most the first five distinct matching legal moves. A check that newly defends a vulnerable back-rank entry square is ranked immediately before an ordinary loose-piece capture; the prepared capture itself uses the existing capture_undefended_non_pawn_piece predicate. If none proves the line, fail explicitly at the candidate-budget boundary.",
       "predicates": [
         "mate",
         "capture_alignment_target",
@@ -290,6 +300,7 @@
         "check_with_only_interpositions",
         "check_with_one_reply",
         "check_with_two_replies",
+        "check_adds_defender_to_back_rank_entry_square",
         "capture_undefended_non_pawn_piece",
         "threaten_mate_in_1",
         "attack_sole_defended_piece_of_loose_alignment",
@@ -406,7 +417,7 @@
       "kind": "search",
       "side": "their",
       "label": "All replies",
-      "description": "The opponent has at most two legal moves, so examine both. Captures and checks are ordered first; checks with fewer legal replies are preferred.",
+      "description": "Enumerate every legal opponent reply whenever the visible policy requires exhaustive coverage. Captures and checks are ordered first, but every legal reply is retained.",
       "predicates": [
         "mated",
         "capture",
@@ -434,8 +445,8 @@
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Opponent final forcing shot while we are up material",
-      "description": "After the configured material objective is reached, retain every immediate mate, recapture, or check available to the opponent. If none exists, the position is quiet and the branch is proved. A nonchecking recapture that leaves the objective intact closes after it is shown; a checking continuation is answered normally.",
+      "label": "Opponent final forcing shot after objective-backed material advantage",
+      "description": "After the configured objective is reached and our side is not materially behind, retain every immediate mate, recapture, or check available to the opponent. If none exists, the position is quiet and the branch is proved.",
       "predicates": [
         "mated",
         "recapture",
@@ -707,7 +718,7 @@
       "SEARCH_REPLIES_TO_SKEWER",
       "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
     ],
-    "quiet_definition": "Only a state named in quiet_closure_states may prove a branch because no listed quiet reply matched. Candidate patterns never prove a win by themselves: an explicit leaf must be mate or up_material, a declared quiet reply boundary must close after every retained reply is discharged, or a forced closure must carry its declared complementary witness.",
+    "quiet_definition": "Only a state named in quiet_closure_states may prove a branch because no listed quiet reply matched. Candidate patterns never prove a win by themselves: an explicit leaf must be mate or an objective-backed up_material position, a declared quiet reply boundary must close after every retained reply is discharged, or a forced closure must carry its declared complementary witness.",
     "terminal_predicates": [
       "mate",
       "up_material"
