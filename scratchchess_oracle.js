@@ -20,7 +20,7 @@
  * All continuation reasoning belongs to the visible DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.15.2-material-final-shot";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.16.0-back-rank-entry-square";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 export const SCRATCHCHESS_ORACLE_TERMINAL_PROBE = "mate_in_1+material_objective_capture_in_1";
 
@@ -582,10 +582,98 @@ function capturedSoleDefendedTargetOfLooseAlignment(beforeBoard, afterBoard, mov
 }
 
 /**
+ * Find a check that newly defends a vulnerable entry square on our own back rank.
+ *
+ * Static geometry only:
+ *   - our king and a capturer stand on our back rank;
+ *   - the capturer currently blocks an enemy rook/queen from entering on that rank;
+ *   - the capturer can take a loose enemy non-pawn along the back rank, vacating the blocker;
+ *   - the candidate move gives check and newly defends the enemy entry square.
+ *
+ * This does not play the future capture or choose a continuation. It only records
+ * that the checking move repairs the currently visible back-rank entry square.
+ */
+function findChecksAddingDefenderToBackRankEntrySquare(beforeBoard, afterBoard, attackerSide, move) {
+  const movedBefore = beforeBoard[move.from];
+  const movedAfter = afterBoard[move.to];
+  if (!movedBefore || !movedAfter || movedAfter.color !== attackerSide) return [];
+
+  const enemy = other(attackerSide);
+  const homeRank = attackerSide === "w" ? 0 : 7;
+  const kingSquare = beforeBoard.findIndex((piece) => piece?.color === attackerSide && piece.type === "k");
+  if (kingSquare < 0 || fr(kingSquare)[1] !== homeRank) return [];
+
+  const output = [];
+  const seen = new Set();
+
+  for (let capturer = 0; capturer < 64; capturer += 1) {
+    const capturerPiece = beforeBoard[capturer];
+    const capturerAfter = afterBoard[capturer];
+    if (!capturerPiece || capturerPiece.color !== attackerSide || !["r", "q"].includes(capturerPiece.type)) continue;
+    if (!capturerAfter || capturerAfter.color !== capturerPiece.color || capturerAfter.type !== capturerPiece.type) continue;
+    if (fr(capturer)[1] !== homeRank) continue;
+
+    for (let target = 0; target < 64; target += 1) {
+      const targetPiece = beforeBoard[target];
+      if (!targetPiece || targetPiece.color !== enemy || ["p", "k"].includes(targetPiece.type)) continue;
+      if (fr(target)[1] !== homeRank) continue;
+      if (!attacksSquare(beforeBoard, capturer, target)) continue;
+      if (effectiveDefendersOnBoard(beforeBoard, target, enemy).length) continue;
+
+      const route = raySquaresBetween(capturer, target);
+      for (const entry of route) {
+        if (fr(entry)[1] !== homeRank || beforeBoard[entry]) continue;
+        if (!attacksSquare(afterBoard, move.to, entry)) continue;
+        if (attacksSquare(beforeBoard, move.from, entry)) continue;
+
+        const kingRay = raySquaresBetween(entry, kingSquare);
+        if (!kingRay.includes(capturer)) continue;
+        const occupiedBetween = kingRay.filter((square) => beforeBoard[square]);
+        if (occupiedBetween.length !== 1 || occupiedBetween[0] !== capturer) continue;
+
+        for (let invader = 0; invader < 64; invader += 1) {
+          if (invader === target) continue;
+          const invaderPiece = beforeBoard[invader];
+          if (!invaderPiece || invaderPiece.color !== enemy || !["r", "q"].includes(invaderPiece.type)) continue;
+          if (!attacksSquare(beforeBoard, invader, entry)) continue;
+
+          const projected = cloneBoardPosition(beforeBoard);
+          projected[capturer] = null;
+          projected[target] = clone(capturerPiece);
+          projected[invader] = null;
+          projected[entry] = clone(invaderPiece);
+          if (!attacksSquare(projected, entry, kingSquare)) continue;
+
+          const key = [move.uci, entry, capturer, target, invader, kingSquare].join(":");
+          if (seen.has(key)) continue;
+          seen.add(key);
+          output.push({
+            kind: "back_rank_entry_repair",
+            sourceMove: move.uci,
+            entrySquare: entry,
+            kingSquare,
+            capturerSquare: capturer,
+            capturerPiece: clone(capturerPiece),
+            targetSquare: target,
+            targetPiece: clone(targetPiece),
+            invaderSquare: invader,
+            invaderPiece: clone(invaderPiece),
+            defenderSquare: move.to,
+            defenderPiece: clone(movedAfter)
+          });
+        }
+      }
+    }
+  }
+
+  return output;
+}
+
+/**
  * Exact, bounded material certificate on one current board. This does not pick
  * a continuation: it enumerates every legal capture by rootSide whose resulting
- * material balance reaches the policy's objective, and emits the moves as
- * witnesses. It never searches beyond that one capture ply.
+ * material balance reaches the policy's objective and leaves rootSide not behind,
+ * and emits the moves as witnesses. It never searches beyond that one capture ply.
  */
 function materialObjectiveCaptureMoves(createGame, gameOrFen, rootSide, rootMaterial, objectiveGain) {
   const sourceFen = typeof gameOrFen === "string" ? gameOrFen : gameOrFen?.exportFEN?.();
@@ -599,15 +687,17 @@ function materialObjectiveCaptureMoves(createGame, gameOrFen, rootSide, rootMate
     const captured = board[move.to];
     if (!captured || captured.color === rootSide || captured.type === "k") continue;
     const after = applyMove(createGame, game, move);
-    const materialSwing = materialBalance(after, rootSide) - Number(rootMaterial);
-    if (materialSwing < Number(objectiveGain)) continue;
+    const afterMaterial = materialBalance(after, rootSide);
+    const materialSwing = afterMaterial - Number(rootMaterial);
+    if (materialSwing < Number(objectiveGain) || afterMaterial < 0) continue;
     output.push({
       uci: move.uci,
       san: safeSan(after, move),
       from: move.from,
       to: move.to,
       captured: clone(captured),
-      materialSwing
+      materialSwing,
+      materialBalance: afterMaterial
     });
   }
 
@@ -1474,12 +1564,31 @@ export class ScratchChessOracle {
       predicates.push("check_response");
       facts.push(`check_response(${san})`);
     }
-    if (materialSwing >= Number(this.options.objective_gain)) {
-      predicates.push("up_material");
-      facts.push(`up_material(+${materialSwing})`);
+    const objectiveGainReached = materialSwing >= Number(this.options.objective_gain);
+    if (objectiveGainReached) {
+      predicates.push("objective_gain_reached");
+      facts.push(`objective_gain_reached(+${materialSwing})`);
     } else if (materialSwing <= -Number(this.options.objective_gain)) {
       predicates.push("down_material");
       facts.push(`down_material(${materialSwing})`);
+    }
+    if (afterMaterial < 0) {
+      predicates.push("material_deficit");
+      facts.push(`material_deficit(${afterMaterial})`);
+    } else {
+      predicates.push("material_not_behind");
+      facts.push(`material_not_behind(${afterMaterial})`);
+      if (afterMaterial > 0) {
+        predicates.push("material_advantage");
+        facts.push(`material_advantage(+${afterMaterial})`);
+      } else {
+        predicates.push("material_equal");
+        facts.push("material_equal(0)");
+      }
+    }
+    if (objectiveGainReached && afterMaterial >= 0) {
+      predicates.push("up_material");
+      facts.push(`up_material(objective=+${materialSwing},balance=${afterMaterial >= 0 ? "+" : ""}${afterMaterial})`);
     }
     if (attackTargets.length) {
       attackTargets.slice(0, 6).forEach((target) => {
@@ -1510,6 +1619,24 @@ export class ScratchChessOracle {
         ));
         visibleThreats.forEach((threat) => facts.push(mateThreatFact(threat)));
         facts.push(`mate_threat_set(moves=${createdMateThreat.mateMoves.join("+")},squares=${createdMateThreat.mateSquares.join("+")})`);
+      }
+    }
+
+    let backRankEntryRepairs = [];
+    if (moverSide === this.rootSide && check) {
+      backRankEntryRepairs = findChecksAddingDefenderToBackRankEntrySquare(
+        boardBefore,
+        boardOf(after),
+        moverSide,
+        move
+      );
+      if (backRankEntryRepairs.length) {
+        predicates.push("check_adds_defender_to_back_rank_entry_square");
+        for (const relation of backRankEntryRepairs) {
+          facts.push(
+            `check_adds_defender_to_back_rank_entry_square(${san},entry=${squareName(relation.entrySquare)},defender=${coloredPieceLabel(relation.defenderPiece, relation.defenderSquare)},capturer=${coloredPieceLabel(relation.capturerPiece, relation.capturerSquare)},loose_target=${coloredPieceLabel(relation.targetPiece, relation.targetSquare)},enemy_entry_piece=${coloredPieceLabel(relation.invaderPiece, relation.invaderSquare)},king=${coloredPieceLabel(boardBefore[relation.kingSquare], relation.kingSquare)})`
+          );
+        }
       }
     }
 
@@ -1751,6 +1878,7 @@ export class ScratchChessOracle {
       activeRelations = updated;
     }
 
+    facts.push(`material_balance(${afterMaterial >= 0 ? "+" : ""}${afterMaterial})`);
     if (materialSwing !== 0) facts.push(`material_swing(${materialSwing > 0 ? "+" : ""}${materialSwing})`);
 
     const id = `${parentCard.id}/${move.uci}`;
@@ -1802,6 +1930,7 @@ export class ScratchChessOracle {
         materialBefore: beforeMaterial,
         materialAfter: afterMaterial,
         materialSwing,
+        objectiveGainReached,
         captureValue: VALUES[capturedBefore?.type] || 0,
         legalReplyCount,
         oracleHorizon: 1,
