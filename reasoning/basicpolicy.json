@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "6.6.1-back-rank-entry-square-production",
+  "version": "6.7.0-attacker-surplus-save-piece-production",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -242,6 +242,16 @@
           "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
         },
         {
+          "label": "the opponent must try to save a non-pawn attacked by two pieces and defended once",
+          "when": {
+            "side": "their",
+            "any": [
+              "attacker_surplus_on_non_pawn_piece"
+            ]
+          },
+          "to": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS"
+        },
+        {
           "label": "more than two relevant replies remain after the current human reply card",
           "when": {
             "side": "their",
@@ -379,6 +389,34 @@
       "forced_complement": {
         "predicate": "material_objective_capture_in_1_available",
         "witness_fact": "material_objective_capture_in_1_move"
+      }
+    },
+    {
+      "id": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Try to save the piece",
+      "description": "When one enemy non-pawn has at least two effective attackers and exactly one effective defender, retain every reply that adds a defender, checks or mates us, creates a mate-in-one threat, or creates attackers greater than defenders against one of our non-pawns. Other replies are quiet under this card.",
+      "predicates": [
+        "mated",
+        "add_defender_to_attacked_piece",
+        "check_with_one_reply",
+        "check_with_two_replies",
+        "check",
+        "threaten_mate_in_1",
+        "create_attacker_surplus_on_non_pawn_piece"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies",
+        "on_empty": "LINE_PROVED"
+      },
+      "on": {
+        "pushed": "POP_POSITION",
+        "none": "LINE_PROVED"
       }
     },
     {
@@ -716,9 +754,10 @@
       "SEARCH_WHEN_UP_MATERIAL",
       "SEARCH_REPLIES_TO_ATTACKED_PIECE",
       "SEARCH_REPLIES_TO_SKEWER",
-      "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
+      "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "SEARCH_REPLIES_TO_ATTACKER_SURPLUS"
     ],
-    "quiet_definition": "Only a state named in quiet_closure_states may prove a branch because no listed quiet reply matched. Candidate patterns never prove a win by themselves: an explicit leaf must be mate or an objective-backed up_material position, a declared quiet reply boundary must close after every retained reply is discharged, or a forced closure must carry its declared complementary witness.",
+    "quiet_definition": "Only a state named in quiet_closure_states may prove a branch because no listed quiet reply matched. Candidate patterns never prove a win by themselves: an explicit leaf must be mate or an objective-backed up_material position, a declared quiet reply boundary must close after every retained reply is discharged, or a forced closure must carry its declared complementary witness. SEARCH_REPLIES_TO_ATTACKER_SURPLUS treats replies outside the explicit save-or-counterthreat vocabulary as quiet concessions of the overmatched non-pawn.",
     "terminal_predicates": [
       "mate",
       "up_material"
