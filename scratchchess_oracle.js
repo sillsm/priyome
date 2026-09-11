@@ -20,7 +20,7 @@
  * All continuation reasoning belongs to the visible DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.18.0-static-defence-and-king-pressure";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.18.1-promotion-records";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 export const SCRATCHCHESS_ORACLE_TERMINAL_PROBE = "mate_in_1+material_objective_capture_in_1";
 
@@ -250,12 +250,20 @@ function applyMove(createGame, gameOrFen, move) {
   fenFields(sourceFen);
   const game = createGame({ Event: "Predicate Chess oracle", Site: "scratchchess_oracle.js" });
   game.loadFEN(sourceFen);
-  if (!game.makeMoveUCI(move.uci)) {
+  if (move.promotion) {
+    // The engine's UCI entry point can auto-queen after its legality probe
+    // invalidates the saved pawn reference. Use its existing promotion-aware
+    // finalizer after the same engine legality check; keep move/FEN/SAN aligned.
+    if (!PROMOTIONS.includes(move.promotion) || !moveNeedsPromotion(game, move.from, move.to)
+      || !game._legalMovesFrom(move.from).includes(move.to)) {
+      throw new Error(`ScratchChess rejected oracle promotion ${move.uci}`);
+    }
+    game._finalizeMove(move.from, move.to, move.promotion.toUpperCase());
+  } else if (!game.makeMoveUCI(move.uci)) {
     throw new Error(`ScratchChess rejected oracle-generated legal move ${move.uci}`);
   }
   if (game.state?.pendingPromotion || game._pendingPromotion) {
-    if (!PROMOTIONS.includes(move.promotion)) throw new Error(`Promotion letter missing for ${move.uci}`);
-    game.resolvePendingPromotion(move.promotion.toUpperCase());
+    throw new Error(`Promotion letter missing for ${move.uci}`);
   }
   return game;
 }
