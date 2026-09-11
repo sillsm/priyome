@@ -98,6 +98,7 @@ button,input,select,textarea{font:inherit}button,select{cursor:pointer}button:di
       <button class="control" id="fenBtn" title="Load a FEN">FEN <span class="button-label">Load</span></button>
       <button class="control icon" id="editBtn" title="Edit policy">✎<span class="sr-only">Edit</span></button>
     </div>
+    <div id="savedPolicyNotice" role="status" hidden style="grid-column:1/-1;width:100%;font-size:11px;color:var(--amber)"></div>
   </header>
 
   <main class="workspace">
@@ -256,7 +257,8 @@ No policy events yet.</pre>
 <input id="policyFileInput" type="file" hidden accept=".json,application/json" />
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-<script src="/predicate.js?v=1.1.0"></script>
+<script src="/predicate.js?v=1.3.0-compact-sigil"></script>
+<script src="/reasoning/predicate-input.js?v=1.0.0"></script>
 <script type="module">
 (() => {
   "use strict";
@@ -267,17 +269,19 @@ No policy events yet.</pre>
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[ch]);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SCRATCHCHESS_URL = "/research/scratchchess.js?v=796098e1957517e";
-  const ORACLE_URL = "/scratchchess_oracle.js?v=2.17.0-attacker-surplus-save-piece";
-  const BASIC_POLICY_URL = "/reasoning/basicpolicy.json?v=6.7.0-attacker-surplus-save-piece-production";
+  const ORACLE_URL = "/scratchchess_oracle.js?v=2.17.2-safe-attacker-surplus";
+  const BASIC_POLICY_URL = "/reasoning/basicpolicy.json?v=6.9.0-compact-sigil-dfa";
+  const REASONING_POLICY_URL = "/reasoning/reasoningpolicy.json?v=11.0.0-compact-sigil";
   const PUZZLES_URL = "/tactical_positions.md";
   const STORAGE_POLICIES = "priyomes-predicate-tactics-policies-v2";
   const STORAGE_SETTINGS = "priyomes-predicate-tactics-settings-v1";
   const HIDDEN_KINDS = new Set();
-  const TACTICS_BUILD = "2026-09-07-attacker-surplus-save-piece-production";
+  const TACTICS_BUILD = "2026-09-11-compact-sigil";
   const P = window.PredicatePolicy;
+  const Inputs = window.PredicateInputs;
 
-  if (!P) {
-    document.body.innerHTML = '<div class="fatal"><strong>predicate.js could not be loaded.</strong><br>Required resource /predicate.js did not create window.PredicatePolicy.</div>';
+  if (!P || !Inputs) {
+    document.body.innerHTML = '<div class="fatal"><strong>predicate.js could not be loaded.</strong><br>Required resources /predicate.js and /reasoning/predicate-input.js must create PredicatePolicy and PredicateInputs.</div>';
     return;
   }
 
@@ -291,7 +295,9 @@ No policy events yet.</pre>
     librarySource: PUZZLES_URL,
     puzzleIndex: 0,
     basicPolicy: null,
+    reasoningPolicy: null,
     savedPolicies: {},
+    unsupportedSavedPolicies: {},
     policyId: "basic",
     policy: null,
     policyView: "cards",
@@ -391,17 +397,26 @@ No policy events yet.</pre>
       }
     }
 
+    if (policy?.control_model?.name === "compact-sigil-dfa/v1") return [...issues, ...compactSigilSiteIssues(policy)];
+
     const states = Array.isArray(policy?.states) ? policy.states : [];
     const stateById = new Map(states.map((state) => [state?.id, state]));
     const proof = policy?.proof;
+    const bounded = proof?.model === "bounded-theorems/v1";
+    if (proof?.model && !bounded) error("Unknown proof model", String(proof.model));
+    if (proof?.execution && proof.execution !== "finite-plans/v1") error("Unknown proof execution", String(proof.execution));
+    if (proof?.execution === "finite-plans/v1") {
+      if (!bounded) error("Finite plans require bounded theorems", "Declare proof.model bounded-theorems/v1.");
+      return [...issues, ...finitePlanSiteIssues(policy)];
+    }
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) {
       error("policy.proof is required", "Declare terminal_predicates, quiet_closure_states, and quiet_definition.");
     } else {
       const terminal = Array.isArray(proof.terminal_predicates)
         ? [...new Set(proof.terminal_predicates.map(String).map((value) => value.trim()).filter(Boolean))]
         : [];
-      const allowedTerminal = new Set(["mate", "up_material"]);
-      if (!terminal.length) error("Missing proof terminal predicates", "proof.terminal_predicates must contain mate and up_material.");
+      const allowedTerminal = new Set(bounded ? ["mate", "objective_gain_reached"] : ["mate", "up_material"]);
+      if (!terminal.length) error("Missing proof terminal predicates", `proof.terminal_predicates must contain ${[...allowedTerminal].join(" and ")}.`);
       const missingTerminal = [...allowedTerminal].filter((predicate) => !terminal.includes(predicate));
       const extraTerminal = terminal.filter((predicate) => !allowedTerminal.has(predicate));
       if (missingTerminal.length) error("Incomplete proof terminal predicates", `Missing: ${missingTerminal.join(", ")}.`);
@@ -414,6 +429,54 @@ No policy events yet.</pre>
         ? [...new Set(proof.quiet_closure_states.map(String).map((value) => value.trim()).filter(Boolean))]
         : [];
       const quietSet = new Set(quietIds);
+      const selectiveIds = bounded && Array.isArray(proof.selective_closure_states)
+        ? proof.selective_closure_states : [];
+      const selectiveSet = new Set(selectiveIds);
+      if (bounded && !String(proof.selective_definition || "").trim()) {
+        error("Selective closure is undefined", "Bounded theorems must explain the scope of their finite reply obligations.");
+      }
+      if (!bounded && proof.selective_closure_states?.length) {
+        error("Selective closure model is missing", "selective_closure_states requires proof.model bounded-theorems/v1.");
+      }
+      selectiveIds.forEach((id) => {
+        const state = stateById.get(id);
+        if (!state || state.kind !== "search" || state.side !== "their" || state.frame?.kind !== "replies"
+          || state.closure?.mode !== "all" || (state.on?.none !== "LINE_PROVED" && state.frame?.on_empty !== "LINE_PROVED")) {
+          error("Invalid selective closure state", `${id} must universally discharge an explicit opponent reply frame.`);
+        }
+      });
+      const certificateByState = new Map();
+      if (bounded) {
+        const certificateIds = Array.isArray(proof.certificate_states) ? proof.certificate_states : [];
+        const declarations = Array.isArray(proof.certificates) ? proof.certificates : [];
+        declarations.forEach((entry) => {
+          const id = entry?.state;
+          const state = stateById.get(id);
+          if (certificateByState.has(id)) error("Duplicate certificate", String(id));
+          certificateByState.set(id, entry);
+          if (!state || !["search", "inspect"].includes(state.kind) || !certificateIds.includes(id)
+            || !String(entry?.label || "").trim() || !String(entry?.scope || "").trim()
+            || !Number.isInteger(entry?.certified_extra_plies) || entry.certified_extra_plies < 0
+            || ![...(state?.rules || []), ...(state?.routes || [])].some((rule) => rule.to === "LINE_PROVED")) {
+            error("Invalid bounded certificate", `${id || "<missing>"} needs a named proof route, scope, and finite certified depth.`);
+          }
+        });
+        certificateIds.forEach((id) => {
+          if (!certificateByState.has(id)) error("Undeclared bounded certificate", String(id));
+        });
+        const theorems = Array.isArray(policy.theorems) ? policy.theorems : [];
+        if (!theorems.length) error("No bounded theorems", "Declare each theorem's finite proof shape.");
+        theorems.forEach((theorem) => {
+          const shape = theorem?.proof_shape;
+          if (!theorem?.id || !String(theorem?.statement || "").trim()
+            || !shape || !Number.isInteger(shape.max_plies) || shape.max_plies < 1
+            || !Number.isInteger(shape.max_searched_plies) || shape.max_searched_plies < 1
+            || shape.max_searched_plies > shape.max_plies || shape.no_recursive_continuation !== true
+            || !Array.isArray(shape.phases) || !shape.phases.length) {
+            error("Invalid theorem proof shape", `${theorem?.id || "<missing>"} must declare finite searched depth and named phases.`);
+          }
+        });
+      }
       if (!quietIds.length) error("No quiet closure states", "proof.quiet_closure_states must explicitly name every selective reply card allowed to close on no match.");
       if (!String(proof.quiet_definition || "").trim()) error("Quiet closure is undefined", "proof.quiet_definition must explain what omitted replies mean.");
       quietIds.forEach((id) => {
@@ -474,11 +537,11 @@ No policy events yet.</pre>
         error("Our-move candidate limit is not five", "policy.our_move_candidate_limit must equal 5.");
       }
       const ourMoveState = stateById.get("SEARCH_OUR_MOVE");
-      if (!ourMoveState || ourMoveState.kind !== "search" || ourMoveState.side !== "my") {
+      if (!bounded && (!ourMoveState || ourMoveState.kind !== "search" || ourMoveState.side !== "my")) {
         error("Missing ordinary our-move search", "SEARCH_OUR_MOVE must be a my-side search state.");
       }
       const mySearchStates = states.filter((state) => state?.kind === "search" && state?.side === "my");
-      if (!mySearchStates.length) error("No root-side choice searches", "At least SEARCH_OUR_MOVE must exist.");
+      if (!mySearchStates.length) error("No root-side choice searches", "At least one my-side choice search must exist.");
       mySearchStates.forEach((state) => {
         if (state.frame?.kind !== "choice") {
           error("Root-side search is not existential", `${state.id} must use a choice frame.`);
@@ -506,13 +569,20 @@ No policy events yet.</pre>
           (state.rules || []).forEach((rule, index) => {
             if (rule?.to !== "LINE_PROVED") return;
             const witnesses = conditionPredicates(rule.when).filter((predicate) => terminal.includes(predicate));
-            if (!witnesses.length) {
+            if (!witnesses.length && !(bounded && certificateByState.has(state.id))) {
               error("Pattern cannot directly prove a win", `${state.id} rule ${index + 1} reaches LINE_PROVED without mate or up_material.`);
             }
           });
           if (state.default === "LINE_PROVED") error("Inspect default cannot prove a win", state.id);
         }
         if (state.kind === "search") {
+          (state.routes || []).forEach((rule, index) => {
+            if (rule?.to !== "LINE_PROVED") return;
+            const witnesses = conditionPredicates(rule.when).filter((predicate) => terminal.includes(predicate));
+            if (!witnesses.length && !(bounded && certificateByState.has(state.id))) {
+              error("Uncertified search proof", `${state.id} route ${index + 1} needs a terminal predicate or declared bounded certificate.`);
+            }
+          });
           const provesOnNone = state.on?.none === "LINE_PROVED";
           const provesOnFrame = state.frame?.on_empty === "LINE_PROVED";
           const exhaustiveLegalReplies = state.side === "their"
@@ -521,10 +591,10 @@ No policy events yet.</pre>
             && Array.isArray(state.predicates)
             && state.predicates.includes("legal_move");
           const certifiedForced = forcedByState.has(state.id);
-          if (provesOnNone && !quietSet.has(state.id) && !certifiedForced) {
+          if (provesOnNone && !quietSet.has(state.id) && !selectiveSet.has(state.id) && !certifiedForced) {
             error("Undeclared closure proof", `${state.id}.on.none reaches LINE_PROVED without a quiet or forced closure declaration.`);
           }
-          if (provesOnFrame && !exhaustiveLegalReplies && !quietSet.has(state.id) && !certifiedForced) {
+          if (provesOnFrame && !exhaustiveLegalReplies && !quietSet.has(state.id) && !selectiveSet.has(state.id) && !certifiedForced) {
             error("Selective reply frame can falsely prove", `${state.id}.frame.on_empty reaches LINE_PROVED without exhaustive legal_move coverage, an explicit quiet declaration, or a forced complement certificate.`);
           }
           if ((provesOnNone || provesOnFrame) && state.side !== "their") {
@@ -539,8 +609,231 @@ No policy events yet.</pre>
     return issues;
   }
 
+  function finitePlanSiteIssues(policy) {
+    // Syntax, references, and finite acyclic instruction expansion are checked by
+    // predicate.js. These are the tactics page's proof and search obligations.
+    const issues = [];
+    const error = (title, detail) => issues.push({ level: "error", title, detail });
+    const proof = policy.proof || {};
+    const states = Array.isArray(policy.states) ? policy.states : [];
+    const byId = new Map(states.map((state) => [state.id, state]));
+    const plans = policy.plans || {};
+    const cards = states.filter((state) => state.kind === "search" && state.frame);
+    const terminal = new Set(proof.terminal_predicates || []);
+    if (terminal.size !== 2 || !terminal.has("mate") || !terminal.has("objective_gain_reached")) {
+      error("Invalid finite-plan terminals", "Only mate and objective_gain_reached may be declared as material/mate endpoints.");
+    }
+    if ((policy.outcomes?.winning_predicates || []).some((predicate) => !terminal.has(predicate))) {
+      error("Invalid automatic winning predicate", "A pattern or plan name cannot automatically prove a win.");
+    }
+    if (policy.our_move_candidate_limit !== 5) error("Our-move candidate limit is not five", "The shared cards retain at most five own moves.");
+    if (policy.plan_outcomes?.prove !== "LINE_PROVED" || policy.plan_outcomes?.fail !== "LINE_FAILED") {
+      error("Invalid plan outcomes", "Finite results must propagate through LINE_PROVED and LINE_FAILED.");
+    }
+    const starter = byId.get(policy.plan_start_card);
+    if (!starter || starter.side !== "my" || starter.frame?.kind !== "choice") {
+      error("Missing theorem choice card", "plan_start_card must name our root choice card.");
+    }
+    const entryNames = Object.keys(policy.plan_entries || {});
+    if (!entryNames.length || entryNames.length !== starter?.predicates?.length
+      || entryNames.some((name) => !starter?.predicates?.includes(name))) {
+      error("Theorem entries do not match the root card", "Each root selector must have exactly one declared plan entry.");
+    }
+    const rootRoutes = states.flatMap((state) => [...(state.rules || []), ...(state.routes || [])]
+      .filter((rule) => rule.to === policy.plan_start_card).map((rule) => ({ state, rule })));
+    if (rootRoutes.length !== 1 || rootRoutes[0].state.id !== "INSPECT_POSITION"
+      || rootRoutes[0].rule.when?.frame !== "root" || rootRoutes[0].rule.when?.side !== "my"
+      || states.some((state) => Object.values(state.on || {}).includes(policy.plan_start_card)
+        || state.default === policy.plan_start_card)) {
+      error("Theorems can restart below the root", "Only initial root inspection may enter the theorem choice card.");
+    }
+    const inspect = byId.get("INSPECT_POSITION");
+    const repetition = inspect?.rules?.[0];
+    const draw = byId.get("DRAW");
+    if (repetition?.to !== "DRAW" || repetition.when?.repetition?.count !== 2
+      || repetition.when.repetition.field !== "fen" || draw?.rules?.[0]?.to !== "LINE_FAILED"
+      || draw.default !== "LINE_FAILED") {
+      error("Twofold failure is missing", "The first position inspection must reject the second ancestor-line occurrence.");
+    }
+    const selective = new Set([...(proof.quiet_closure_states || []), ...(proof.selective_closure_states || [])]);
+    if (!String(proof.quiet_definition || "").trim() || !String(proof.selective_definition || "").trim()) {
+      error("Finite reply scope is undefined", "Explain omitted replies and the finite obligations in the proof contract.");
+    }
+    for (const state of cards) {
+      if (state.side === "my") {
+        if (state.frame.kind !== "choice" || state.closure?.mode !== "first" || state.closure.count !== 5
+          || state.frame.on_empty !== "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED"
+          || state.on?.none !== (state.id === policy.plan_start_card ? "OUR_MOVE_NO_MATCH" : "PLAN_NO_MATCH")) {
+          error("Invalid shared own-move card", `${state.id} must preserve the first-five existential choice and explicit failure path.`);
+        }
+        if (state.id !== policy.plan_start_card && !state.always_predicates?.includes("mate")) {
+          error("Mate is filtered from a continuation", `${state.id} must always retain its mate category.`);
+        }
+      } else if (state.side === "their") {
+        if (state.frame.kind !== "replies" || state.closure?.mode !== "all" || state.frame.on_empty !== "LINE_PROVED") {
+          error("Opponent replies are not universal", `${state.id} must discharge every retained reply.`);
+        }
+        if (!state.predicates?.includes("legal_move") && !selective.has(state.id)) {
+          error("Undeclared selective reply card", `${state.id} needs an explicit finite reply-scope declaration.`);
+        }
+      } else error("Shared card has no side", state.id);
+    }
+    for (const id of selective) {
+      const state = byId.get(id);
+      if (state?.side !== "their" || state.frame?.kind !== "replies" || state.closure?.mode !== "all") {
+        error("Invalid selective closure state", `${id} must name a universal opponent reply card.`);
+      }
+    }
+    const lastChance = byId.get("SEARCH_LAST_CHANCE");
+    if (lastChance?.max_visits_per_puzzle !== 1 || lastChance.on?.budget_exhausted !== "LINE_PROVED") {
+      error("Last-chance budget is not one", "The single puzzle-wide visit must remain explicit on the shared reply card.");
+    }
+    const proves = new Set();
+    const invocations = new Map();
+    const visit = (program, instructions) => {
+      for (const instruction of Array.isArray(instructions) ? instructions : []) {
+        if (instruction?.result === "prove") proves.add(program);
+        if (instruction?.card) invocations.set(program, [...(invocations.get(program) || []), instruction]);
+        if (instruction?.do) visit(program, instruction.do);
+        for (const branch of Array.isArray(instruction?.branch) ? instruction.branch : []) visit(program, branch.do);
+      }
+    };
+    Object.entries(plans).forEach(([program, instructions]) => visit(program, instructions));
+    const declarations = new Map();
+    for (const certificate of proof.plan_certificates || []) {
+      const program = certificate?.program;
+      if (declarations.has(program) || !proves.has(program) || !String(certificate?.label || "").trim()
+        || !String(certificate?.scope || "").trim() || !Number.isInteger(certificate?.certified_extra_plies)
+        || certificate.certified_extra_plies < 0) {
+        error("Invalid plan certificate", `${program || "<missing>"} must name a real proof instruction, its scope, and finite extra depth.`);
+      }
+      declarations.set(program, certificate);
+    }
+    for (const program of proves) if (!declarations.has(program)) {
+      error("Undeclared plan proof", `${program} contains a prove instruction without a scoped certificate.`);
+    }
+    for (const complement of proof.plan_forced_complements || []) {
+      const invocation = (invocations.get(complement?.program) || []).find((step) => step.card === complement?.card
+        && (step.select || byId.get(step.card)?.predicates || []).includes("no_mate_in_1_available"));
+      if (!invocation || complement.predicate !== "mate_in_1_available" || complement.witness_fact !== "mate_in_1_move") {
+        error("Invalid plan mate complement", "A declared mate-defense invocation must retain no_mate_in_1_available and cite its exact mate witness.");
+      }
+    }
+    for (const [program, instructions] of invocations) for (const instruction of instructions) {
+      if ((instruction.select || []).includes("no_mate_in_1_available")
+        && !(proof.plan_forced_complements || []).some((entry) => entry.program === program && entry.card === instruction.card)) {
+        error("Undeclared plan mate complement", `${program}/${instruction.card} must document the omitted immediate-mate replies.`);
+      }
+    }
+    for (const theorem of policy.theorems || []) {
+      const shape = theorem?.proof_shape;
+      if (!theorem?.id || !String(theorem.statement || "").trim() || !shape
+        || !Number.isInteger(shape.max_plies) || shape.max_plies < 1
+        || !Number.isInteger(shape.max_searched_plies) || shape.max_searched_plies < 1
+        || shape.max_searched_plies > shape.max_plies || shape.no_recursive_continuation !== true
+        || !theorem.entry_selectors?.length || theorem.entry_selectors.some((name) => !entryNames.includes(name))) {
+        error("Invalid finite theorem", `${theorem?.id || "<missing>"} must declare its entry and finite proof depth.`);
+      }
+    }
+    if (!policy.theorems?.length) error("No bounded theorems", "Declare each theorem and its finite proof shape.");
+    for (const state of states) for (const rule of [...(state.rules || []), ...(state.routes || [])]) {
+      if (rule.to !== "LINE_PROVED") continue;
+      const witnesses = [...(rule.when?.all || []), ...(rule.when?.any || [])];
+      const exactMate = state.id === "CERTIFY_MATE_IN_ONE" && rule.when?.side === "my" && witnesses.includes("mate_available");
+      if (!witnesses.some((predicate) => terminal.has(predicate)) && !exactMate) {
+        error("Uncertified direct proof", `${state.id} must use a terminal fact or the exact legal mate-in-one witness.`);
+      }
+    }
+    return issues;
+  }
+
+  function compactSigilSiteIssues(policy) {
+    const issues = [], states = policy.states || [], rows = policy.transitions || [];
+    const error = (title, detail) => issues.push({ level: "error", title, detail });
+    const byId = new Map(states.map(state => [state.id, state]));
+    const cards = states.filter(state => state.kind === "search");
+    const model = policy.control_model || {}, proof = policy.proof || {};
+    if (JSON.stringify(model.inputs) !== JSON.stringify(["current_state", "predicate", "popped_symbol"])
+      || model.sigils_are_positions !== false || model.input_adapter !== "/reasoning/predicate-input.js") error("Invalid DFA input contract", "Only state, named predicates and the popped stack symbol select the next card.");
+    for (const detail of Inputs.validate(policy.predicate_inputs)) error("Invalid predicate input", detail);
+    if (policy.our_move_candidate_limit !== 5) error("Our-move candidate limit is not five", "Every own-move card retains at most five choices.");
+    if (policy.cards) error("Separate card families are unsupported", "The search states are the actual shared cards.");
+    const terminal = new Set(proof.terminal_predicates || []), material = policy.name === "reasoning" ? "objective_gain_reached" : "up_material";
+    if (terminal.size !== 2 || !terminal.has("mate") || !terminal.has(material)
+      || (policy.outcomes?.winning_predicates || []).some(name => !terminal.has(name))) error("Invalid proof terminals", `Declare mate and ${material}.`);
+    const declared = new Set(states.filter(state => state.action === "start").map(state => state.initial_symbol));
+    for (const row of rows) {
+      if (row.event === "candidate") declared.add(typeof row.child === "string" ? row.child : row.child?.symbol);
+      if (row.push_header?.symbol && row.push_header.symbol !== "$symbol") declared.add(row.push_header.symbol);
+    }
+    const tokenMatches = (row, input) => Object.entries(row.token || {}).every(([key,value]) => Array.isArray(value) ? value.includes(input[key]) : value === input[key]);
+    for (const card of cards) {
+      if (card.frame?.kind !== (card.side === "my" ? "choice" : card.side === "their" ? "replies" : null)) error("Invalid card side", card.id);
+      if (card.side === "my" && (card.closure?.mode !== "first" || card.closure.count !== 5)) error("Invalid own-move closure", card.id);
+      if (card.side === "their" && card.closure?.mode !== "all") error("Opponent replies are not universal", card.id);
+      if (card.side === "my" && card.on?.none && !["FAIL", "OUR_MOVE_NO_MATCH"].includes(card.on.none)) error("Successful own-choice exhaustion", card.id);
+      if (rows.some(row => row.from === card.id && row.event === "none" && card.side === "my" && row.to !== "FAIL" && row.to !== "OUR_MOVE_NO_MATCH")) error("Successful own-choice exhaustion", card.id);
+      if (!rows.some(row => row.from === card.id && row.event === "candidate")) error("Card has no candidate transitions", card.id);
+    }
+    for (const row of rows) {
+      if (row.token?.card && !byId.has(row.token.card)) error("Unknown card on popped sigil", row.token.card);
+      if (row.child?.card && !byId.has(row.child.card)) error("Unknown continuation card", row.child.card);
+      if (row.push_header?.card && row.push_header.card !== "$card" && !byId.has(row.push_header.card)) error("Unknown pushed card", row.push_header.card);
+      if (row.push_header?.allowance && !["$allowance", "spent"].includes(row.push_header.allowance)) error("Last-chance allowance is refunded", row.from);
+      const from = byId.get(row.from), to = byId.get(row.to);
+      if (to?.allowance === "available" && row.token?.allowance !== "available" && from?.allowance !== "available") error("Last-chance allowance is refunded by transition", row.from);
+      if (row.push_header?.allowance === "spent") {
+        const allowed = model.last_chance?.spend_transitions?.some(spec => (!spec.from || spec.from === row.from) && spec.event === row.event && spec.to === row.to);
+        if (!allowed || row.token?.allowance !== "available" || row.event !== "none" || from?.side !== "their" || row.to !== "SEARCH_LAST_CHANCE") error("Invalid last-chance spend", row.from);
+      }
+      if (row.event === "candidate" && row.child?.card === "SEARCH_LAST_CHANCE") error("Last chance is restarted by a child", row.from);
+    }
+    const spending = rows.filter(row => row.push_header?.allowance === "spent");
+    if (spending.length !== 1) error("Last-chance allowance must be spent once", "Exactly one declared no-forcing-reply transition spends it.");
+    for (const state of states) for (const target of Object.values(state.on || {})) {
+      if (state.allowance === "spent" && byId.get(target)?.allowance === "available") error("Last chance refunded by a control default", state.id);
+      if (target === "SEARCH_LAST_CHANCE") error("Last chance bypasses its spend transition", state.id);
+    }
+    const proofRole = id => byId.get(id)?.role || id;
+    for (const state of states.filter(state => state.action === "pop_position")) {
+      for (const [frame, expected] of [["choice", "LINE_FAILED"], ["replies", "LINE_PROVED"]]) {
+        const row = rows.find(row => row.from === state.id && row.event === "delimiter" && tokenMatches(row, {frame}));
+        if (!row || proofRole(row.to) !== expected) error("Invalid candidate-frame exhaustion", `${state.id}: ${frame}`);
+      }
+    }
+    const repeated = Object.keys(policy.predicate_inputs || {}).filter(name => policy.predicate_inputs[name].repetition?.count === 2);
+    for (const state of states.filter(state => state.action === "pop_continuation")) {
+      const matching = rows.filter(row => row.from === state.id && row.event === "read");
+      const index = matching.findIndex(row => row.to === "DRAW" && row.when?.all?.some(name => repeated.includes(name)));
+      if (index < 0 || matching.slice(0,index).some(row => !(row.when?.all || []).some(name => policy.predicate_inputs[name]?.path_depth))) error("Twofold failure is missing or too late", state.id);
+    }
+    for (const obligation of policy.obligations || []) {
+      if (!byId.has(obligation.card) || !declared.has(obligation.symbol) || !String(obligation.label || "").trim()) error("Unknown named obligation", `${obligation.card}/${obligation.symbol}`);
+      const state = byId.get(obligation.card);
+      if (state?.kind === "search" && state.side === "my" && state.id !== "SEARCH_THEOREM_START"
+        && rows.some(row => row.from === state.id && row.event === "candidate" && tokenMatches(row, obligation))
+        && !rows.some(row => row.from === state.id && row.event === "candidate" && row.predicate === "mate" && tokenMatches(row, obligation))) error("Mate is excluded from an obligation", `${obligation.card}/${obligation.symbol}`);
+    }
+    if (policy.name === "reasoning") {
+      if (cards.length !== 9) error("Reasoning must have nine actual cards", "Count kind:search states, not explanatory families.");
+      if (proof.model !== "bounded-theorems/v1" || proof.execution !== model.name || !proof.scope?.length || !policy.theorems?.length) error("Missing bounded proof scope", "Declare each theorem and endpoint scope.");
+      for (const scope of proof.scope || []) if (!scope.label || !scope.scope || !Number.isInteger(scope.certified_extra_plies) || scope.certified_extra_plies < 0) error("Invalid finite certificate scope", scope.label);
+      for (const theorem of policy.theorems || []) {
+        const shape = theorem.proof_shape;
+        if (!Number.isInteger(shape?.max_plies) || shape.max_plies < 1 || !Number.isInteger(shape.max_searched_plies)
+          || shape.max_searched_plies < 1 || shape.max_searched_plies > shape.max_plies || shape.no_recursive_continuation !== true) error("Invalid finite theorem", theorem.id);
+      }
+    } else if (!String(proof.quiet_definition || "").trim()) error("Missing reply scope", "Explain selective reply obligations.");
+    return issues;
+  }
+
   function validateSitePolicy(policy) {
-    return [...P.validatePolicy(policy), ...sitePolicyIssues(policy)];
+    const issues = [...P.validatePolicy(policy), ...sitePolicyIssues(policy)];
+    if (policy?.plans || policy?.plan_entries || (policy?.states || []).some(state =>
+      ["plan", "routes", "selectors", "always_predicates", "max_visits_per_puzzle", "priority", "ranking"].some(key => state[key] !== undefined))) {
+      issues.push({ level: "error", title: "Policy uses unsupported legacy control machinery", detail: "Load the current Basic or Reasoning policy, which uses explicit DFA transitions and stack symbols." });
+    }
+    return issues;
   }
 
   async function loadRuntimeModules() {
@@ -566,14 +859,14 @@ No policy events yet.</pre>
     app.oracleSource = ORACLE_URL;
   }
 
-  async function loadBasicPolicy() {
-    const text = await fetchExactText(BASIC_POLICY_URL, "Basic policy");
+  async function loadBuiltInPolicy(url, label) {
+    const text = await fetchExactText(url, label);
     let parsed;
     try { parsed = JSON.parse(text); }
-    catch (error) { throw new Error(`Basic policy at ${BASIC_POLICY_URL} is invalid JSON: ${error.message}`); }
+    catch (error) { throw new Error(`${label} at ${url} is invalid JSON: ${error.message}`); }
     const errors = validateSitePolicy(parsed).filter((issue) => issue.level === "error");
-    if (errors.length) throw new Error(`Basic policy at ${BASIC_POLICY_URL} is invalid: ${errors.map((issue) => `${issue.title}: ${issue.detail}`).join(" | ")}`);
-    app.basicPolicy = parsed;
+    if (errors.length) throw new Error(`${label} at ${url} is invalid: ${errors.map((issue) => `${issue.title}: ${issue.detail}`).join(" | ")}`);
+    return parsed;
   }
 
   function parsePositions(markdown) {
@@ -620,10 +913,32 @@ No policy events yet.</pre>
   function currentSnapshot() { return app.runner?.snapshot?.() || null; }
   function policyLabel() { return app.policy?.name || app.policyId.replace(/^saved:/, ""); }
 
+  function auditSavedPolicies() {
+    app.unsupportedSavedPolicies = {};
+    for (const [name, policy] of Object.entries(app.savedPolicies || {})) {
+      const errors = validateSitePolicy(policy).filter(issue => issue.level === "error");
+      if (errors.length) app.unsupportedSavedPolicies[name] = `${errors[0].title}: ${errors[0].detail}`;
+    }
+    const blocked = Object.entries(app.unsupportedSavedPolicies);
+    const notice = $("#savedPolicyNotice");
+    notice.hidden = !blocked.length;
+    notice.textContent = blocked.length ? `Saved policies unavailable in this version: ${blocked.map(([name, reason]) => `${name} — ${reason}`).join("; ")}. Their stored copies are preserved. Basic and Reasoning remain available.` : "";
+    return app.unsupportedSavedPolicies;
+  }
+
+  function loadSavedPolicies() {
+    app.savedPolicies = readOptionalStorage(STORAGE_POLICIES, {});
+    auditSavedPolicies();
+  }
+
   function policyOptions() {
     if (!app.basicPolicy) throw new Error(`Required policy ${BASIC_POLICY_URL} has not loaded`);
-    const options = [{ id: "basic", label: app.basicPolicy.name || "basic", policy: app.basicPolicy }];
-    Object.entries(app.savedPolicies || {}).sort(([a], [b]) => a.localeCompare(b)).forEach(([name, policy]) => options.push({ id: `saved:${name}`, label: name, policy }));
+    if (!app.reasoningPolicy) throw new Error(`Required policy ${REASONING_POLICY_URL} has not loaded`);
+    const options = [
+      { id: "basic", label: app.basicPolicy.name || "basic", policy: app.basicPolicy },
+      { id: "reasoning", label: app.reasoningPolicy.name || "reasoning", policy: app.reasoningPolicy }
+    ];
+    Object.entries(app.savedPolicies || {}).filter(([name]) => !app.unsupportedSavedPolicies[name]).sort(([a], [b]) => a.localeCompare(b)).forEach(([name, policy]) => options.push({ id: `saved:${name}`, label: `${name} · saved`, policy }));
     return options;
   }
 
@@ -633,7 +948,7 @@ No policy events yet.</pre>
   }
 
   function policyTestIdentity(id) {
-    if (id === "basic") return "basic";
+    if (id === "basic" || id === "reasoning") return id;
     if (id.startsWith("saved:")) return id.slice(6);
     throw new Error(`Unknown policy ${id}`);
   }
@@ -677,6 +992,7 @@ No policy events yet.</pre>
 
   function policyById(id) {
     if (id === "basic") return clone(app.basicPolicy);
+    if (id === "reasoning") return clone(app.reasoningPolicy);
     if (id.startsWith("saved:")) {
       const name = id.slice(6);
       if (!app.savedPolicies[name]) throw new Error(`Saved policy ${name} does not exist`);
@@ -721,7 +1037,7 @@ No policy events yet.</pre>
   }
 
   function latestMeaningfulEvent(events) {
-    const priority = ["terminal", "failure-predicate", "winning-predicate", "budget-exhausted", "delimiter-popped", "positions-pushed", "delimiter-pushed", "predicate-checked", "search-complete", "inspect-routed", "line-selected", "frontier-empty", "depth-closed", "transition"];
+    const priority = ["terminal", "failure-predicate", "winning-predicate", "budget-exhausted", "sigil-transition", "delimiter-popped", "positions-pushed", "delimiter-pushed", "predicate-checked", "search-complete", "inspect-routed", "line-selected", "frontier-empty", "depth-closed", "transition"];
     for (const type of priority) {
       const event = [...(events || [])].reverse().find((item) => item.type === type);
       if (event) return event;
@@ -732,6 +1048,7 @@ No policy events yet.</pre>
   function engineStep() {
     if (!app.runner || app.runner.snapshot().result) return { events: [], snapshot: app.runner?.snapshot?.() };
     app.oracle.hydrateRunner(app.runner);
+    Inputs.hydrate(app.runner);
     const result = app.runner.step();
     assertOurMoveBatchClamp(result.events, app.policy);
     const meaningful = latestMeaningfulEvent(result.events);
@@ -823,7 +1140,7 @@ No policy events yet.</pre>
   }
 
   function stateIcon(state) {
-    return ({ push_initial:"▶", pop:"↓", inspect:"◎", search:"⌕", accept:"✓", reject:"×", call:"↳", return:"↰" })[state?.kind] || "·";
+    return ({ push_initial:"▶", pop:"↓", inspect:"◎", control:"◎", search:"⌕", accept:"✓", reject:"×", call:"↳", return:"↰" })[state?.kind] || "·";
   }
 
   function stateTransitions(state) {
@@ -856,14 +1173,44 @@ No policy events yet.</pre>
     } else if (state.kind === "return") {
       add("no caller frame", state.on?.no_frame, "return");
     } else {
-      Object.entries(state.on || {}).forEach(([label, target]) => add(label, target));
+      Object.entries(state.on || {}).forEach(([label, target]) => { if (typeof target === "string") add(label, target); });
     }
+    (app.policy?.transitions || []).filter(row => row.from === state.id).forEach(row => {
+      const token = Object.entries(row.token || {}).map(([key,value]) => `${key}=${Array.isArray(value) ? value.join("/") : value}`).join(" · ");
+      const condition = P.conditionLabel(row.when) || "always";
+      if (row.event === "candidate") {
+        const child = typeof row.child === "string" ? {symbol:row.child} : row.child;
+        add(`${row.predicate} · ${token || "any sigil"} → push board + ${child?.symbol}${child?.card ? ` / ${child.card}` : ""}`, child?.card || "POP_HEADER", "candidate");
+      } else add(`${row.event} · ${token || "any sigil"} · ${condition}${row.label ? ` · ${row.label}` : ""}`, row.to, "rule");
+    });
     return rows;
   }
 
   function predicateChecksForState(state, snapshot) {
     if (snapshot.state === state.id && snapshot.search) return snapshot.search.checks || [];
+    if (snapshot.state === state.id && snapshot.current?.plan?.card === state.id) {
+      const enabled = new Set([...(state.always_predicates || []), ...(snapshot.current.plan.select || state.predicates || [])]);
+      return (state.predicates || []).filter((predicate) => enabled.has(predicate))
+        .map((predicate) => ({ predicate, status: "waiting", selected: [] }));
+    }
     return (state.predicates || []).map((predicate) => ({ predicate, status: "waiting", selected: [] }));
+  }
+
+  function planContextText(item) {
+    const plan = item?.plan;
+    if (!plan?.name) return "";
+    const name = app.policy?.plan_labels?.[plan.name] || String(plan.name).replace(/_/g, " ");
+    const next = plan.tasks?.[0];
+    const nextLabel = next?.label || (next?.card ? stateDef(next.card)?.label || next.card : next?.run?.replace(/_/g, " "));
+    return `Theme: ${name}${nextLabel ? ` · next: ${nextLabel}` : ""} · ${plan.tasks?.length || 0} remaining plan steps`;
+  }
+
+  function sigilContextText(snapshot) {
+    const token = snapshot.activeSigil || app.lastEvent?.token;
+    if (!token) return "Between stack inputs";
+    const label = app.policy?.sigils?.[token.symbol]?.label || token.symbol || "unnamed";
+    const obligation = (app.policy?.obligations || []).find(item => item.card === (token.card || snapshot.state) && item.symbol === token.symbol);
+    return `Sigil: ${label}${token.card ? ` · card: ${token.card}` : ""} · last chance: ${token.allowance || stateDef(snapshot.state)?.allowance || "between inputs"}${obligation ? ` · ${obligation.label}` : ""}`;
   }
 
   function selectedCardNames(values) {
@@ -876,16 +1223,24 @@ No policy events yet.</pre>
   }
 
   function searchDetailHtml(state, snapshot) {
+    if (state.plan) {
+      return `<div class="detail-section"><div class="detail-label">Follow the chosen theme</div><div class="empty-detail">${esc(planContextText(snapshot.current) || "A theme is selected at the root. Its finite remaining steps travel with each explored branch.")}</div></div>`;
+    }
     const checks = predicateChecksForState(state, snapshot);
     const rows = checks.map((check, index) => {
       const names = selectedCardNames(check.selected);
       const statusText = names.length ? names.join(" · ") : check.status === "matched" ? "retained" : check.status === "missed" ? "none" : check.status === "checking" || check.status === "next" ? "checking" : "";
       return `<div class="predicate-row ${esc(check.status || "waiting")}"><span class="order">${index + 1}</span><strong>${esc(check.predicate)}</strong><span class="matches" title="${esc(statusText)}">${esc(statusText)}</span></div>`;
     }).join("");
-    const frame = state.frame
+    const frame = state.frame && app.policy?.control_model?.name === "compact-sigil-dfa/v1"
+      ? `<div class="closure-line">Stack frame: <strong>${esc(state.frame.kind)}</strong> · delimiter and continuation sigils are handled by the global transition table.</div>`
+      : state.frame?.symbol
+      ? `<div class="closure-line">Push delimiter: <strong>${esc(state.frame.symbol)}</strong> · ${esc(state.frame.kind)} frame</div><div class="closure-line">Each selected board is paired with its named continuation sigil.</div>`
+      : state.frame
       ? `<div class="closure-line">Stack frame: <strong>${esc(state.frame.kind)}</strong> · delimiter empty → <strong>${esc(state.frame.on_empty)}</strong></div>`
       : "";
-    return `<div class="detail-section"><div class="detail-label">Predicate priority <span>checked top to bottom</span></div><div class="predicate-list">${rows}</div><div class="closure-line">Closure: <strong>${esc(P.closureLabel(state))}</strong></div>${frame}</div>`;
+    const context = snapshot.state === state.id ? (app.policy?.control_model?.name === "compact-sigil-dfa/v1" ? sigilContextText(snapshot) : planContextText(snapshot.current)) : "";
+    return `<div class="detail-section">${context ? `<div class="closure-line">${esc(context)}</div>` : ""}<div class="detail-label">Predicate priority <span>checked top to bottom${context ? " · active theme selection" : ""}</span></div><div class="predicate-list">${rows}</div><div class="closure-line">Closure: <strong>${esc(P.closureLabel(state))}</strong></div>${frame}</div>`;
   }
 
   function inspectDetailHtml(state, snapshot) {
@@ -938,6 +1293,7 @@ No policy events yet.</pre>
     const badges = [
       executing ? '<span class="state-badge now">● NOW</span>' : "",
       state.side ? `<span class="state-badge side">${esc(state.side)}</span>` : "",
+      state.card ? `<span class="state-badge">${esc(state.card)}</span>` : "",
       (app.policy?.routines?.length || 0) > 1 ? `<span class="state-badge routine">${esc(state.routine)}</span>` : ""
     ].filter(Boolean).join("");
     return `<article class="state-card ${esc(state.kind)} ${focused ? "focused" : ""} ${executing ? "executing" : ""}" data-state-id="${esc(state.id)}" tabindex="0" aria-label="${esc(stateTitle(state))}">
@@ -962,7 +1318,7 @@ No policy events yet.</pre>
       app.dfaFocusStateId = null;
       focusedId = snapshot.state;
     }
-    const states = app.policy?.states || [];
+    let states = app.policy?.states || [];
     $("#dfaFlow").innerHTML = states.map((state) => renderStateCard(state, snapshot, focusedId)).join("");
     $("#followDfaBtn").textContent = app.followDfa ? "following DFA" : "follow executing";
     $("#followDfaBtn").classList.toggle("off", !app.followDfa);
@@ -989,17 +1345,22 @@ No policy events yet.</pre>
 
   function eventMessage(event, snapshot) {
     if (!event) return { title: stateTitle(stateDef(snapshot.state)), detail: snapshot.stateKind === "search" ? `Next predicate: ${stateDef(snapshot.state)?.predicates?.[0] || "—"}` : "Press Step to continue." };
+    if (event.type === "search-routed" && event.operation) return {
+      title: event.label || "Follow the chosen theme",
+      detail: `${planContextText(event.item) || `Theme: ${String(event.plan || "").replace(/_/g, " ")}`} · ${stateTitle(stateDef(event.to))}`
+    };
     if (event.type === "predicate-checked") return event.selected?.length
       ? { title: `Checked “${event.predicate}”`, detail: `Retained ${event.selected.map((item) => cardDisplay(item.id)).join(", ")}.` }
       : { title: `Checked “${event.predicate}”`, detail: "No unused legal child matched." };
-    if (event.type === "line-selected") return { title: `Popped ${cardDisplay(event.item.id)}`, detail: "This is the highest-priority retained position." };
+    if (event.type === "sigil-transition") return { title: `Stack ${event.event}: ${event.token?.symbol || event.token?.frame || "header"}`, detail: `${event.label} · ${event.state} → ${event.to}. Last chance: ${event.token?.allowance || "unchanged"}.` };
+    if (event.type === "line-selected") return { title: `Popped ${event.item?.id ? cardDisplay(event.item.id) : "stack header"}`, detail: "This is the highest-priority retained position." };
     if (event.type === "delimiter-pushed") return { title: `Pushed ${event.delimiter?.frameKind || "search"} delimiter`, detail: `Ancestor: ${cardDisplay(event.delimiter?.ancestor?.id)}.` };
     if (event.type === "positions-pushed") return { title: `Pushed ${event.items?.length || 0} position${event.items?.length === 1 ? "" : "s"}`, detail: (event.items || []).map((item) => cardDisplay(item.id)).join(" · ") };
     if (event.type === "delimiter-popped") return { title: `Popped back to ${cardDisplay(event.ancestor?.id)}`, detail: `${event.delimiter?.frameKind || "search"} frame complete${event.discarded?.length ? `; ${event.discarded.length} unused position${event.discarded.length === 1 ? "" : "s"} discarded silently` : ""}.` };
     if (event.type === "transition") return { title: `${stateTitle(stateDef(event.from))} → ${stateTitle(stateDef(event.to))}`, detail: event.label || "The DFA followed a transition." };
     if (event.type === "initial-retained") return { title: "Root position pushed", detail: `${event.items?.length || 0} initial position${event.items?.length === 1 ? "" : "s"} retained.` };
-    if (event.type === "depth-closed") return { title: "Depth budget reached", detail: `${cardDisplay(event.item.id)} closed at depth ${event.depth}.` };
-    if (event.type === "inspect-routed") return { title: event.label || "Inspect routed", detail: `${cardDisplay(event.item.id)} → ${event.to}.` };
+    if (event.type === "depth-closed") return { title: "Depth budget reached", detail: `${event.item?.id ? cardDisplay(event.item.id) : "stack header"} closed at depth ${event.depth}.` };
+    if (event.type === "inspect-routed") return { title: event.label || "Inspect routed", detail: `${event.item?.id ? cardDisplay(event.item.id) : "stack header"} → ${event.to}.` };
     if (event.type === "search-complete") {
       const state = policyStateDef(app.policy, event.state);
       if (isOurMoveChoiceState(state)) {
@@ -1008,8 +1369,8 @@ No policy events yet.</pre>
       }
       return { title: event.selectedCount ? `${event.selectedCount} card${event.selectedCount === 1 ? "" : "s"} retained` : "Search closed", detail: event.selectedCount ? `Closure: ${event.closureLabel}.` : "No child matched this ordered predicate list." };
     }
-    if (event.type === "winning-predicate") return { title: `Winning predicate: ${event.predicate}`, detail: `${cardDisplay(event.item.id)} entered the configured accept state.` };
-    if (event.type === "failure-predicate") return { title: `Failure predicate: ${event.predicate}`, detail: `${cardDisplay(event.item.id)} entered the configured reject state.` };
+    if (event.type === "winning-predicate") return { title: `Winning predicate: ${event.predicate}`, detail: `${event.item?.id ? cardDisplay(event.item.id) : "stack header"} entered the configured accept state.` };
+    if (event.type === "failure-predicate") return { title: `Failure predicate: ${event.predicate}`, detail: `${event.item?.id ? cardDisplay(event.item.id) : "stack header"} entered the configured reject state.` };
     if (event.type === "budget-exhausted") return { title: "Thought budget exhausted", detail: `Budget: ${event.budget}.` };
     if (event.type === "frontier-empty") return { title: "No retained card remains", detail: event.reason || "The stack is empty." };
     if (event.type === "terminal") return { title: String(event.result || snapshot.result || "terminal").toUpperCase(), detail: event.reason || snapshot.reason || "" };
@@ -1033,7 +1394,12 @@ No policy events yet.</pre>
       ? `${proofTerminals.join(" or ")} within ${app.policy?.budgets?.depth ?? "—"} plies · ${quietCount} declared quiet card${quietCount === 1 ? "" : "s"}`
       : "proof contract missing";
     const current = snapshot.current?.id ? cardDisplay(snapshot.current.id) : "between positions";
-    $("#objectiveRule").innerHTML = `<strong>DFA:</strong> ${app.policy?.states?.length || 0} states · <strong>goal:</strong> ${esc(goal)}${Number.isFinite(threshold) ? ` · <strong>material threshold:</strong> +${threshold}` : ""} · <strong>proof:</strong> ${esc(proofText)} · <strong>run mode:</strong> ${app.fastMode ? "fast" : "microstep"} · <strong>retained positions:</strong> ${snapshot.pendingCount} · <strong>executing:</strong> ${esc(snapshot.state)} · ${esc(current)}`;
+    const finitePlan = app.policy?.proof?.execution === "finite-plans/v1";
+    const moveCardCount = (app.policy?.states || []).filter((state) => state.kind === "search" && state.frame).length;
+    const sigilDfa = app.policy?.control_model?.name === "compact-sigil-dfa/v1";
+    const deckText = sigilDfa ? `${moveCardCount} move/reply cards · ${app.policy.states.length} total DFA states · ${Object.keys(app.policy.sigils || {}).length || 1} sigil names` : finitePlan ? `${moveCardCount} move/reply cards · ${(app.policy?.states?.length || 0) - moveCardCount} routing/control states` : `${app.policy?.states?.length || 0} states`;
+    const context = sigilDfa ? sigilContextText(snapshot) : planContextText(snapshot.current);
+    $("#objectiveRule").innerHTML = `<strong>DFA:</strong> ${esc(deckText)} · <strong>goal:</strong> ${esc(goal)}${Number.isFinite(threshold) ? ` · <strong>material threshold:</strong> +${threshold}` : ""} · <strong>proof:</strong> ${esc(proofText)} · <strong>run mode:</strong> ${app.fastMode ? "fast" : "microstep"} · <strong>retained positions:</strong> ${snapshot.pendingCount} · <strong>executing:</strong> ${esc(snapshot.state)} · ${esc(current)}${context ? ` · ${esc(context)}` : ""}`;
     const message = eventMessage(app.lastEvent, snapshot);
     $("#policyMessage").innerHTML = `<div class="message-dot"></div><div><strong>${esc(message.title)}</strong><span>${esc(message.detail)}</span></div>`;
     $("#policyNameChip").textContent = policyLabel();
@@ -1121,7 +1487,8 @@ No policy events yet.</pre>
       const card = policyStateDef(policy, event.state);
       const source = {
         predicate: event.predicate,
-        cardId: event.state,
+        cardId: event.card || event.state,
+        controlState: event.state,
         cardLabel: card?.label || card?.id || event.state,
         cardSide: card?.side || null
       };
@@ -1142,7 +1509,8 @@ No policy events yet.</pre>
         if (!item?.occurrence) return;
         const prior = generated.get(item.occurrence) || {
           predicate: item.matchedBy || "matched",
-          cardId: event.state,
+          cardId: event.card || event.state,
+          controlState: event.state,
           cardLabel: state?.label || state?.id || event.state,
           cardSide: state?.side || null
         };
@@ -1181,7 +1549,7 @@ No policy events yet.</pre>
 
     const committedChoiceByParent = new Map();
     for (const event of snapshot?.trace || []) {
-      if (event.type !== "inspect-routed" || event.to !== "DISCARD_CHOICE_FRAME") continue;
+      if (event.type !== "inspect-routed" || (event.toRole || event.to) !== "DISCARD_CHOICE_FRAME") continue;
       const node = event.item?.occurrence ? nodeMap.get(event.item.occurrence) : null;
       if (node?.parent) committedChoiceByParent.set(node.parent, node.occurrence);
     }
@@ -1364,12 +1732,13 @@ No policy events yet.</pre>
     if (event.type === "initial-retained") return `PUSH_INITIAL ${(event.items || []).map((item) => cardDisplay(item.id)).join(" · ")}`;
     if (event.type === "delimiter-pushed") return `PUSH_DELIMITER ${cardDisplay(event.delimiter?.ancestor?.id)} | ${event.delimiter?.frameKind || "search"}`;
     if (event.type === "positions-pushed") return `PUSH ${(event.items || []).map((item) => cardDisplay(item.id)).join(" · ")}`;
-    if (event.type === "line-selected") return `POP ${cardDisplay(event.item.id)}`;
+    if (event.type === "sigil-transition") return `STACK_${event.event.toUpperCase()} ${event.token?.symbol || event.token?.frame || "header"} | ${event.state} -> ${event.to}`;
+    if (event.type === "line-selected") return `POP ${event.item?.id ? cardDisplay(event.item.id) : "stack header"}`;
     if (event.type === "delimiter-popped") return `POP ${cardDisplay(event.ancestor?.id)}`;
     if (event.type === "inspect-routed") {
-      if (event.state === "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED") return `OUR_MOVE_TOP5_EXHAUSTED ${cardDisplay(event.item.id)} | ${event.label}`;
-      if (event.state === "OUR_MOVE_NO_MATCH") return `OUR_MOVE_NO_MATCH ${cardDisplay(event.item.id)} | ${event.label}`;
-      return `INSPECT ${cardDisplay(event.item.id)} | ${event.label} -> ${event.to}`;
+      if ((event.role || event.state) === "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED") return `OUR_MOVE_TOP5_EXHAUSTED ${event.item?.id ? cardDisplay(event.item.id) : "stack header"} | ${event.label}`;
+      if ((event.role || event.state) === "OUR_MOVE_NO_MATCH") return `OUR_MOVE_NO_MATCH ${event.item?.id ? cardDisplay(event.item.id) : "stack header"} | ${event.label}`;
+      return `INSPECT ${event.item?.id ? cardDisplay(event.item.id) : "stack header"} | ${event.label} -> ${event.to}`;
     }
     if (event.type === "predicate-checked") return `SEARCH ${event.predicate} | ${event.selected?.length ? `retain ${event.selected.map((item) => cardDisplay(item.id)).join(" · ")}` : "no match"}`;
     if (event.type === "search-complete") {
@@ -1380,10 +1749,10 @@ No policy events yet.</pre>
       }
       return null;
     }
-    if (event.type === "winning-predicate") return `WINNING_PREDICATE ${event.predicate} @ ${cardDisplay(event.item.id)}`;
-    if (event.type === "failure-predicate") return `FAILURE_PREDICATE ${event.predicate} @ ${cardDisplay(event.item.id)}`;
+    if (event.type === "winning-predicate") return `WINNING_PREDICATE ${event.predicate} @ ${event.item?.id ? cardDisplay(event.item.id) : "stack header"}`;
+    if (event.type === "failure-predicate") return `FAILURE_PREDICATE ${event.predicate} @ ${event.item?.id ? cardDisplay(event.item.id) : "stack header"}`;
     if (event.type === "budget-exhausted") return `BUDGET_EXHAUSTED thoughts=${event.budget}`;
-    if (event.type === "depth-closed") return `DEPTH_CLOSED ${cardDisplay(event.item.id)} depth=${event.depth}`;
+    if (event.type === "depth-closed") return `DEPTH_CLOSED ${event.item?.id ? cardDisplay(event.item.id) : "stack header"} depth=${event.depth}`;
     if (event.type === "frontier-empty") return `STACK_EMPTY ${event.reason || ""}`.trim();
     if (event.type === "terminal") return `RESULT ${String(event.result || "").toUpperCase()} | ${event.reason || ""}`;
     return null;
@@ -1421,11 +1790,11 @@ No policy events yet.</pre>
     };
     for (const event of snapshot?.trace || []) {
       if (event.type === "inspect-routed" && event.item?.occurrence) {
-        if (event.state === "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED") {
+        if ((event.role || event.state) === "OUR_MOVE_CANDIDATE_LIMIT_EXHAUSTED") {
           add(event.item.occurrence, "FAIL: OUR MOVE TOP-5 EXHAUSTED; lower-priority moves not searched");
-        } else if (event.state === "OUR_MOVE_NO_MATCH") {
+        } else if ((event.role || event.state) === "OUR_MOVE_NO_MATCH") {
           add(event.item.occurrence, "FAIL: OUR MOVE NO MATCH");
-        } else if (event.to === "LINE_FAILED") {
+        } else if ((event.toRole || event.to) === "LINE_FAILED") {
           add(event.item.occurrence, `FAIL: ${event.label || "policy line failed"}`);
         }
       } else if (event.type === "depth-closed" && event.item?.occurrence) {
@@ -1461,7 +1830,7 @@ No policy events yet.</pre>
     // variations under that principal variation.
     const committedChoiceByParent = new Map();
     for (const event of snapshot?.trace || []) {
-      if (event.type !== "inspect-routed" || event.to !== "DISCARD_CHOICE_FRAME") continue;
+      if (event.type !== "inspect-routed" || (event.toRole || event.to) !== "DISCARD_CHOICE_FRAME") continue;
       const occurrence = event.item?.occurrence;
       const node = occurrence ? nodeMap.get(occurrence) : null;
       if (node?.parent) committedChoiceByParent.set(node.parent, node.occurrence);
@@ -1600,12 +1969,13 @@ No policy events yet.</pre>
     delete grammar.stateKinds.return;
     grammar.policy.budgets.call_depth = "must equal 0";
     grammar.site = {
-      dfa_cards: "every policy state is rendered; any number of inspect and search states is allowed",
+      dfa_cards: "Every actual move/reply card and every control state is shown. A popped named sigil identifies the current obligation; the global transition table determines the next card.",
       transitions: "direct state-to-state transitions only",
-      stack_frames: "each search pushes one invisible delimiter beneath its retained board positions",
+      stack_frames: "Each search pushes a named delimiter beneath its retained boards. Every board is paired with an inert continuation sigil; popping a sigil follows its explicit DFA transition. Sigils do not count as explored positions.",
       allowed_state_kinds: ["push_initial", "pop", "inspect", "search", "accept", "reject"],
       oracle: "required inside the policy object; unknown and missing options fail loudly",
-      proof: "terminal_predicates are exactly mate and up_material; up_material means the objective gain was reached and the root side is not materially behind; selective no-match proof is allowed only in explicitly declared quiet_closure_states",
+      proof: "Basic declares mate and up_material. The explicit bounded-theorems/v1 model declares mate and objective_gain_reached, finite theorem phases, named certificates, and selective reply closures. Its compact-sigil-dfa/v1 execution uses fixed shared cards, named continuation symbols on the position stack, and explicit global transitions. Only current state, declared predicates and a popped symbol select a continuation. Every opponent reply search remains universal over its declared candidates.",
+      finite_plans: "plan_entries selects a named plan only from the root theorem card. card invokes a shared card; select filters that card's existing ordered predicates while retaining always_predicates. run, branch, and bounded repeat carry finite remaining steps with each occurrence. Every prove instruction has a declared program certificate; plan state is not a board predicate.",
       our_move_candidate_limit: "must equal 5; every my-side choice search is hard-capped and audited at runtime",
       test_file: "optional absolute /path/name.test; PolicyTest fails loudly when absent"
     };
@@ -1644,6 +2014,7 @@ No policy events yet.</pre>
       policy.name = name;
       app.savedPolicies[name] = clone(policy);
       saveJsonStorage(STORAGE_POLICIES, app.savedPolicies);
+      auditSavedPolicies();
       app.policyId = `saved:${name}`;
       app.policy = clone(policy);
       renderPolicySelect();
@@ -1683,6 +2054,7 @@ No policy events yet.</pre>
     const name = app.policyId.slice(6);
     delete app.savedPolicies[name];
     saveJsonStorage(STORAGE_POLICIES, app.savedPolicies);
+    auditSavedPolicies();
     app.policyId = "basic"; app.policy = clone(app.basicPolicy);
     renderPolicySelect();
     await startPuzzle(app.puzzleIndex);
@@ -1706,6 +2078,7 @@ No policy events yet.</pre>
     let guard = 0;
     while (!runner.snapshot().result && guard < 10000) {
       oracle.hydrateRunner(runner);
+      Inputs.hydrate(runner);
       const step = runner.step();
       assertOurMoveBatchClamp(step.events, policy);
       events.push(...step.events);
@@ -2223,12 +2596,13 @@ No policy events yet.</pre>
     try {
       loadRunSettings();
       bindEvents();
-      app.savedPolicies = readOptionalStorage(STORAGE_POLICIES, {});
-      await Promise.all([loadRuntimeModules(), loadBasicPolicy(), loadPuzzles()]);
-      for (const [name, savedPolicy] of Object.entries(app.savedPolicies)) {
-        const savedErrors = validateSitePolicy(savedPolicy).filter((issue) => issue.level === "error");
-        if (savedErrors.length) throw new Error(`Saved policy ${name} is invalid: ${savedErrors.map((issue) => `${issue.title}: ${issue.detail}`).join(" | ")}`);
-      }
+      await Promise.all([
+        loadRuntimeModules(),
+        loadBuiltInPolicy(BASIC_POLICY_URL, "Basic policy").then((policy) => { app.basicPolicy = policy; }),
+        loadBuiltInPolicy(REASONING_POLICY_URL, "Reasoning policy").then((policy) => { app.reasoningPolicy = policy; }),
+        loadPuzzles()
+      ]);
+      loadSavedPolicies();
       validatePuzzleLibrary();
       app.policy = policyById(app.policyId);
       const errors = validateSitePolicy(app.policy).filter((issue) => issue.level === "error");
@@ -2240,7 +2614,7 @@ No policy events yet.</pre>
       $("#engineChip").title = `ScratchChess: ${app.scratch.source}\nOracle: ${app.oracleSource}`;
     } catch (error) {
       console.error(error);
-      document.body.innerHTML = `<div class="fatal"><strong>Predicate Chess could not start.</strong><br>${esc(error?.message || error)}<br><br>Required deployment paths: /predicate.js, /research/scratchchess.js, /scratchchess_oracle.js, /reasoning/basicpolicy.json, and /tactical_positions.md.</div>`;
+      document.body.innerHTML = `<div class="fatal"><strong>Predicate Chess could not start.</strong><br>${esc(error?.message || error)}<br><br>Required deployment paths: /predicate.js, /reasoning/predicate-input.js, /research/scratchchess.js, /scratchchess_oracle.js, /reasoning/basicpolicy.json, /reasoning/reasoningpolicy.json, and /tactical_positions.md.</div>`;
     }
   }
 
