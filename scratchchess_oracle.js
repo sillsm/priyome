@@ -20,7 +20,7 @@
  * All continuation reasoning belongs to the visible DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.17.0-attacker-surplus-save-piece";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.17.2-safe-attacker-surplus";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 export const SCRATCHCHESS_ORACLE_TERMINAL_PROBE = "mate_in_1+material_objective_capture_in_1";
 
@@ -1651,6 +1651,26 @@ export class ScratchChessOracle {
       });
     }
 
+    // Symmetric, one-ply defender-count fact for an attacked non-pawn.
+    for (const relation of findAttackerSurplusOnNonPawnPieces(boardBefore, other(moverSide), { minAttackers: 1 })) {
+      if (move.from === relation.targetSquare) predicates.push("move_hanging_piece");
+      if (capture && relation.attackers.some(attacker => attacker.square === move.to)) predicates.push("capture_hanging_piece_attacker");
+      if (!samePieceAt(boardOf(after), relation.targetSquare, relation.targetPiece)) continue;
+      const defenders = effectiveDefendersOnBoard(boardOf(after), relation.targetSquare, moverSide);
+      if (defenders.length > relation.defenders.length) {
+        predicates.push("add_defender_to_attacked_piece");
+        facts.push(`add_defender_to_attacked_piece(${san},target=${coloredPieceLabel(relation.targetPiece, relation.targetSquare)},before=${relation.defenders.length},after=${defenders.length},defenders=${defenders.map(squareName).join("+")})`);
+      }
+    }
+
+    const otherLoosePieces = boardOf(after).flatMap((piece, square) =>
+      piece?.color === moverSide && !["p", "k"].includes(piece.type) && square !== move.to
+      && effectiveDefendersOnBoard(boardOf(after), square, moverSide).length === 0 ? [square] : []);
+    if (otherLoosePieces.length) {
+      predicates.push("leaves_other_non_pawn_undefended");
+      facts.push(`leaves_other_non_pawn_undefended(${otherLoosePieces.map(squareName).join(",")})`);
+    }
+
     let createdMateThreat = null;
     if (!mate) {
       const exactMateMoves = legalMateThreatMoves(this.createGame, afterFen, moverSide);
@@ -1693,6 +1713,21 @@ export class ScratchChessOracle {
         facts.push(attackerSurplusFact(relation));
         facts.push(
           `create_attacker_surplus_on_non_pawn_piece(${san},target=${coloredPieceLabel(relation.targetPiece, relation.targetSquare)},attackers=${relation.attackers.map((item) => squareName(item.square)).join("+")},defenders=${relation.defenders.map((item) => squareName(item.square)).join("+") || "none"})`
+        );
+      }
+    }
+
+    // Reuse the existing static safe-attacker test for either color. A protected
+    // cheaper attacker may be taken only by the more valuable target itself.
+    const safeCounterPressure = findNewAttackerSurplusOnNonPawnPieces(
+      boardBefore, boardOf(after), moverSide, { minAttackers: 1 }
+    ).filter((relation) => relation.attackers.every((attacker) =>
+      addedAttackerIsSafe(boardOf(after), attacker.square, relation.targetSquare, moverSide)));
+    if (safeCounterPressure.length) {
+      predicates.push("create_safe_attacker_surplus_on_non_pawn_piece");
+      for (const relation of safeCounterPressure.slice(0, 6)) {
+        facts.push(
+          `create_safe_attacker_surplus_on_non_pawn_piece(${san},target=${coloredPieceLabel(relation.targetPiece, relation.targetSquare)},attackers=${relation.attackers.map((item) => squareName(item.square)).join("+")},defenders=${relation.defenders.map((item) => squareName(item.square)).join("+") || "none"})`
         );
       }
     }
@@ -2437,6 +2472,9 @@ export class ScratchChessOracle {
     card.facts = unique([...card.facts, `legal_moves(${legal.length})`, ...(inCheck ? ["in_check"] : []), "oracle_horizon(1)"]);
     card.meta.legalReplyCount = legal.length;
 
+    const pressure = findAttackerSurplusOnNonPawnPieces(boardOf(game), other(sideToMove), { minAttackers: 1 });
+    if (pressure.some(r => r.attackers.some(a => a.value < r.targetValue))) card.predicates = unique([...card.predicates, "hanging_piece_attacked_by_lower_value_piece"]);
+
     const terminal = terminalInfo(game);
     if (terminal?.kind === "mate") {
       card.predicates = unique([...card.predicates, terminal.winner === this.rootSide ? "mate" : "mated"]);
@@ -2483,6 +2521,7 @@ export class ScratchChessOracle {
       .sort((a, b) => String(a.move?.uci || "").localeCompare(String(b.move?.uci || "")));
 
     const availableMovePredicates = [
+      ["check", "check_available"],
       ["mate", "mate_available"],
       ["mated", "mate_available"],
       ["recapture", "recapture_available"],
