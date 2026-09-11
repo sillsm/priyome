@@ -2,7 +2,7 @@
   "schema": "predicate-policy/v2",
   "name": "reasoning",
   "label": "Reasoning \u2014 chess theorem cards",
-  "version": "14.0.0-check-fork",
+  "version": "14.1.0-stockfish-suite",
   "test_file": "/reasoning/reasoningpolicy.test",
   "entry": "FIND_IDEA",
   "oracle": {
@@ -1182,7 +1182,7 @@
       "id": "MATE_AND_MATERIAL",
       "label": "Threaten mate and win material",
       "kind": "card",
-      "description": "Combine a mate threat with an attack on a piece. Check every real mate defense; use the remaining check or capture to collect.",
+      "description": "Combine a mate threat with an attack on a piece. Check every real mate defense; use the remaining check or capture to collect. Against a checking mate threat, use a loose-piece capture as the selected material-recovering evasion when available; otherwise retain the full evasion menu. This is selective inspection, not equivalence of all evasions.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -1306,6 +1306,9 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "loose_capture_answers_mating_check"
               ]
             }
           },
@@ -1314,6 +1317,9 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "loose_capture_answers_mating_check"
               ]
             }
           },
@@ -2331,7 +2337,7 @@
               ]
             }
           },
-          "move_hanging_piece",
+          "safe_hanging_piece_move",
           "check_response"
         ],
         "limit": 5
@@ -2495,7 +2501,8 @@
     "escape_and_attack_pinned_piece": {
       "all": [
         "move_hanging_piece",
-        "add_attacker_to_pinned_piece"
+        "add_attacker_to_pinned_piece",
+        "moved_piece_safe"
       ]
     },
     "checking_mate_defense": {
@@ -3206,6 +3213,19 @@
     "safe_countercheck": {
       "all": [
         "check",
+        "moved_piece_safe"
+      ]
+    },
+    "loose_capture_answers_mating_check": {
+      "all": [
+        "in_check",
+        "threaten_mate_in_1",
+        "loose_piece_capture_available"
+      ]
+    },
+    "safe_hanging_piece_move": {
+      "all": [
+        "move_hanging_piece",
         "moved_piece_safe"
       ]
     }
