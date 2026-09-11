@@ -20,7 +20,7 @@
  * All continuation reasoning belongs to the visible DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.17.2-safe-attacker-surplus";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.18.0-static-defence-and-king-pressure";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 export const SCRATCHCHESS_ORACLE_TERMINAL_PROBE = "mate_in_1+material_objective_capture_in_1";
 
@@ -1506,6 +1506,9 @@ export class ScratchChessOracle {
       child.meta?.materialSwing,
       movedTargetSquare
     );
+    if (tactic.kind === "attacked_piece" && status.live) {
+      add("loose_target_still_attacked", `loose_target_still_attacked(target=${coloredPieceLabel(board[status.targetSquare], status.targetSquare)},attacker=${squareName(tactic.attackerSquare)})`);
+    }
 
     const capturedAttacker = Number.isInteger(tactic.attackerSquare)
       && child.move?.toIndex === tactic.attackerSquare
@@ -1570,7 +1573,8 @@ export class ScratchChessOracle {
     const afterFen = after.exportFEN();
     const mate = /#$/.test(san);
     const check = mate || safeInCheck(after, other(moverSide));
-    const legalReplyCount = legalMoveRecords(after).length;
+    const legalReplies = legalMoveRecords(after);
+    const legalReplyCount = legalReplies.length;
     const capture = Boolean(capturedBefore) || /x/.test(san);
     const recapture = Boolean(capture && parentCard.meta?.lastMove && move.to === parentCard.meta.lastMove.to);
     const directTargets = movedTargets(after, move.to, moverSide);
@@ -1649,6 +1653,60 @@ export class ScratchChessOracle {
       attackTargets.slice(0, 6).forEach((target) => {
         facts.push(`${target.discovered ? "discovered_" : ""}attack(${pieceLongLabel(target.piece, target.target)})`);
       });
+    }
+
+    // A loose piece need not already be attacked for defending it to matter.
+    // Compare the same unmoved non-pawn on these two boards, for either side.
+    const boardAfter = boardOf(after);
+    for (let target = 0; target < 64; target += 1) {
+      const piece = boardBefore[target];
+      if (!piece || piece.color !== moverSide || ["p", "k"].includes(piece.type)
+        || target === move.from || !samePieceAt(boardAfter, target, piece)) continue;
+      if (effectiveDefendersOnBoard(boardBefore, target, moverSide).length) continue;
+      const defenders = effectiveDefendersOnBoard(boardAfter, target, moverSide);
+      if (!defenders.length) continue;
+      predicates.push("adds_defender_to_loose_non_pawn_piece");
+      facts.push(`adds_defender_to_loose_non_pawn_piece(${san},target=${coloredPieceLabel(piece, target)},before=0,after=${defenders.length},defenders=${defenders.map(squareName).join("+")})`);
+    }
+
+    // Direct or discovered new pressure on a pawn in the opposing king's ring.
+    // This is a geometric attack fact, not a claim that the attack is mate.
+    const enemyKing = boardAfter.findIndex((piece) => piece?.color === other(moverSide) && piece.type === "k");
+    if (enemyKing >= 0) {
+      const [kingFile, kingRank] = fr(enemyKing);
+      for (const target of newTargets) {
+        if (target.piece.type !== "p") continue;
+        const [pawnFile, pawnRank] = fr(target.target);
+        if (Math.max(Math.abs(kingFile - pawnFile), Math.abs(kingRank - pawnRank)) !== 1) continue;
+        predicates.push("attacks_king_adjacent_pawn");
+        facts.push(`attacks_king_adjacent_pawn(${san},target=${coloredPieceLabel(target.piece, target.target)},king=${squareName(enemyKing)},attackers=${target.sources.map(squareName).join("+")})`);
+      }
+    }
+
+    // Immediate exchange screen, using the reply list already enumerated above.
+    // A legal capture puts the moved piece en prise when its capturer is cheaper,
+    // is the king, or the moved piece has no effective defender. Equal or dearer
+    // non-king capturers of a protected piece do not pass this screen. This does
+    // not certify a whole exchange sequence or make a continuation proof.
+    const movedPiece = boardAfter[move.to];
+    if (movedPiece && movedPiece.type !== "k") {
+      const defenders = effectiveDefendersOnBoard(boardAfter, move.to, moverSide);
+      const losingCaptures = legalReplies.filter((reply) => {
+        if (reply.to !== move.to) return false;
+        const capturer = boardAfter[reply.from];
+        return capturer && (capturer.type === "k" || !defenders.length
+          || (VALUES[capturer.type] || 0) < (VALUES[movedPiece.type] || 0));
+      });
+      if (losingCaptures.length) {
+        predicates.push("moved_piece_en_prise");
+        facts.push(`moved_piece_en_prise(${san},piece=${coloredPieceLabel(movedPiece, move.to)},capturers=${losingCaptures.map(reply => squareName(reply.from)).join("+")},defenders=${defenders.map(squareName).join("+") || "none"})`);
+      } else {
+        predicates.push("moved_piece_safe");
+        facts.push(`moved_piece_safe(${san},scope=immediate_exchange_screen,piece=${coloredPieceLabel(movedPiece, move.to)})`);
+      }
+    } else if (movedPiece?.type === "k") {
+      predicates.push("moved_piece_safe");
+      facts.push(`moved_piece_safe(${san},scope=legal_king_move,piece=${coloredPieceLabel(movedPiece, move.to)})`);
     }
 
     // Symmetric, one-ply defender-count fact for an attacked non-pawn.
@@ -1837,7 +1895,6 @@ export class ScratchChessOracle {
       break;
     }
 
-    const boardAfter = boardOf(after);
     const availableAlignmentChains = moverSide === this.rootSide
       ? (parentCard.meta?.alignmentDefenderChains?.length
           ? parentCard.meta.alignmentDefenderChains.map(clone)
