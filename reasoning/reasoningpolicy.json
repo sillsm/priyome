@@ -2,7 +2,7 @@
   "schema": "predicate-policy/v2",
   "name": "reasoning",
   "label": "Reasoning \u2014 chess theorem cards",
-  "version": "14.1.0-stockfish-suite",
+  "version": "15.0.0-woodpecker50",
   "test_file": "/reasoning/reasoningpolicy.test",
   "entry": "FIND_IDEA",
   "oracle": {
@@ -22,7 +22,7 @@
       "id": "FIND_IDEA",
       "label": "Find the tactical idea",
       "kind": "card",
-      "description": "Choose the first theorem supported by a legal move. If none applies, try a check or capture, then read the resulting board once. A failed theorem does not silently switch themes.",
+      "description": "Read the board and choose the first theorem with a concrete chess cue. If none fits, try a forcing check or capture and read the resulting board. A failed theorem does not silently switch to a different plan.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -54,6 +54,29 @@
           "result": "fail"
         },
         {
+          "label": "Remove the defender of a knight royal fork",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture_royal_fork_defender_available"
+            ],
+            "none": [
+              "queen_king_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "Draw away the blockader of an advanced pawn",
+          "when": {
+            "all": [
+              "our_turn",
+              "blockader_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
           "label": "Every legal check evasion retains the material gain",
           "when": {
             "all": [
@@ -70,6 +93,152 @@
           "result": "prove"
         },
         {
+          "label": "A defended knight offer can attack a king pawn",
+          "when": {
+            "all": [
+              "our_turn",
+              "supported_check_on_king_pawns_available"
+            ],
+            "none": [
+              "more_valuable_defender_lure_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "A defended pawn capture gains a tempo against the queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "pawn_capture_with_queen_tempo_available"
+            ],
+            "none": [
+              "sole_defender_deflection_available"
+            ]
+          },
+          "to": "TAKE_TACTICALLY_PROTECTED_PAWN"
+        },
+        {
+          "label": "Capture a pawn attacking another piece, and test whether the gain is safe",
+          "when": {
+            "all": [
+              "our_turn",
+              "take_pawn_attacking_other_piece_available"
+            ]
+          },
+          "to": "TAKE_TACTICALLY_PROTECTED_PAWN"
+        },
+        {
+          "label": "A safe pawn capture also attacks the pinned king shelter; test the tactical capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "safe_pawn_capture_attacking_pinned_king_shelter_available"
+            ],
+            "none": [
+              "safe_cheaper_queen_attack_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture attacks the queen and leaves another piece safely attacked",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture_and_double_queen_threat_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "Draw the king into a knight royal fork with a checking queen capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "queen_king_lure_available"
+            ],
+            "none": [
+              "queen_checking_king_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A checking offer can draw the king into a knight royal fork",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_royal_fork_offer_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A defended checking capture can force a fork or a defender capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "supported_checking_sacrifice_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "A queen sacrifice checks a king-guarded pawn and threatens mate",
+          "when": {
+            "all": [
+              "our_turn",
+              "queen_checking_king_lure_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "Save an attacked piece by capturing safely with an attack on the queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "save_with_capture_and_queen_attack_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "A knight can take a king-guarded piece while attacking the queen and a loose piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "king_guarded_knight_fork_available"
+            ],
+            "none": [
+              "shelter_breaking_mate_threat_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "A king check attacks a defended piece; try a capture that draws its defender into reach",
+          "when": {
+            "all": [
+              "our_turn",
+              "king_check_adds_piece_attacker_available",
+              "sacrificial_capture_attacks_loose_piece_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A checking rook capture frees a knight square that forks king and queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_capture_clears_royal_fork_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
           "label": "A check can clear a line to an enemy piece",
           "when": {
             "all": [
@@ -78,6 +247,26 @@
             ]
           },
           "to": "CLEAR_LINE"
+        },
+        {
+          "label": "A checking fork forces the sole defender to choose between the checker and its target",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_fork_overloads_defender_available"
+            ]
+          },
+          "to": "CHASE_DEFENDER"
+        },
+        {
+          "label": "A capture can draw a sole defender while threatening mate",
+          "when": {
+            "all": [
+              "our_turn",
+              "mating_deflection_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
         },
         {
           "label": "A check can skewer the king to a piece",
@@ -90,11 +279,41 @@
           "to": "SKEWER"
         },
         {
+          "label": "The only recapturer must abandon another attacked piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "overloaded_defender_capture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture draws its sole recapturer into a knight fork of valuable pieces",
+          "when": {
+            "all": [
+              "our_turn",
+              "knight_fork_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
           "label": "An aligned target has an extra defender we can capture",
           "when": {
             "all": [
               "our_turn",
               "extra_defender_capture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A bishop capture can draw the sole-defending king out while overloading a piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "quiet_bishop_king_lure_available"
             ]
           },
           "to": "DEFLECT_DEFENDER"
@@ -110,6 +329,26 @@
           "to": "DEFLECT_DEFENDER"
         },
         {
+          "label": "A mating attack can break the king\u2019s pawn shelter from equal material",
+          "when": {
+            "all": [
+              "our_turn",
+              "shelter_breaking_mate_threat_available"
+            ]
+          },
+          "to": "BREAK_KING_SHELTER"
+        },
+        {
+          "label": "The pawn has a pinned defender; take it and test the other defender",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture_with_pinned_defender_pressure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
           "label": "One move threatens mate and attacks a loose piece",
           "when": {
             "all": [
@@ -118,6 +357,26 @@
             ]
           },
           "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "Exchange away the cheaper attacker of our valuable piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "exchange_attacker_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "A supported rook can take a pawn while adding a second attack to a piece; test the deflection",
+          "when": {
+            "all": [
+              "our_turn",
+              "supported_rook_pawn_capture_overload_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
         },
         {
           "label": "We can safely attack the sole defender of a loose piece",
@@ -160,6 +419,79 @@
           "to": "CHECK_LOOSE_PIECE"
         },
         {
+          "label": "A checking capture can draw the sole-defending king into a fork",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_king_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A one-reply check can force a mate defense",
+          "when": {
+            "all": [
+              "our_turn",
+              "forcing_mating_check_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "A cheaper sacrifice can lure a more valuable sole defender",
+          "when": {
+            "all": [
+              "our_turn",
+              "more_valuable_defender_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "Check while attacking the sole defender of a more valuable piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_deflection_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture can draw the queen onto a safe knight fork with her king",
+          "when": {
+            "all": [
+              "our_turn",
+              "queen_fork_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A quiet minor-piece or rook sacrifice can draw its equally valuable sole defender",
+          "when": {
+            "all": [
+              "our_turn",
+              "equal_defender_lure_available"
+            ],
+            "none": [
+              "alignment"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "An offered pinning piece can draw the defender away from its protected piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "pin_defender_sacrifice_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
           "label": "An undefended non-pawn can be captured; test taking it",
           "when": {
             "all": [
@@ -168,6 +500,16 @@
             ]
           },
           "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "Capture with a safe attack on the queen; examine the forced exchange",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture_with_safe_queen_attack_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
         },
         {
           "label": "After our forcing move, read the resulting board",
@@ -185,6 +527,7 @@
       ],
       "my": {
         "predicates": [
+          "safe_countercheck",
           "check",
           "capture"
         ],
@@ -239,7 +582,7 @@
       "id": "REASSESS_FORCING_MOVE",
       "label": "Read the board after a forcing move",
       "kind": "card",
-      "description": "Look for a concrete theorem after the forcing move. If the opponent is checked, inspect every legal evasion and read the board again when we can move. Otherwise inspect checks and recaptures. If no theorem is visible on our turn, abandon this candidate; do not start another generic forcing search.",
+      "description": "After a forcing move, look again for a clear tactical idea. Examine every legal check evasion; otherwise examine the listed checks and recaptures, including a safe capture of our queen. If no theorem is visible when we can move, abandon this candidate.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -287,6 +630,108 @@
           "result": "prove"
         },
         {
+          "label": "A defended knight offer can attack a king pawn",
+          "when": {
+            "all": [
+              "our_turn",
+              "supported_check_on_king_pawns_available"
+            ],
+            "none": [
+              "more_valuable_defender_lure_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "A defended pawn capture gains a tempo against the queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "pawn_capture_with_queen_tempo_available"
+            ],
+            "none": [
+              "sole_defender_deflection_available"
+            ]
+          },
+          "to": "TAKE_TACTICALLY_PROTECTED_PAWN"
+        },
+        {
+          "label": "Capture a pawn attacking another piece, and test whether the gain is safe",
+          "when": {
+            "all": [
+              "our_turn",
+              "take_pawn_attacking_other_piece_available"
+            ]
+          },
+          "to": "TAKE_TACTICALLY_PROTECTED_PAWN"
+        },
+        {
+          "label": "A safe pawn capture also attacks the pinned king shelter; test the tactical capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "safe_pawn_capture_attacking_pinned_king_shelter_available"
+            ],
+            "none": [
+              "safe_cheaper_queen_attack_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture attacks the queen and leaves another piece safely attacked",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture_and_double_queen_threat_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "Draw the king into a knight royal fork with a checking queen capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "queen_king_lure_available"
+            ],
+            "none": [
+              "queen_checking_king_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A checking offer can draw the king into a knight royal fork",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_royal_fork_offer_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A defended checking capture can force a fork or a defender capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "supported_checking_sacrifice_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "Save an attacked piece by capturing safely with an attack on the queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "save_with_capture_and_queen_attack_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
           "label": "Our check also safely attacks a loose piece; test collecting it",
           "when": {
             "all": [
@@ -320,6 +765,26 @@
           "to": "CLEAR_LINE"
         },
         {
+          "label": "A checking fork forces the sole defender to choose between the checker and its target",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_fork_overloads_defender_available"
+            ]
+          },
+          "to": "CHASE_DEFENDER"
+        },
+        {
+          "label": "A capture can draw a sole defender while threatening mate",
+          "when": {
+            "all": [
+              "our_turn",
+              "mating_deflection_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
           "label": "A check can skewer the king to a piece",
           "when": {
             "all": [
@@ -330,11 +795,41 @@
           "to": "SKEWER"
         },
         {
+          "label": "The only recapturer must abandon another attacked piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "overloaded_defender_capture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture draws its sole recapturer into a knight fork of valuable pieces",
+          "when": {
+            "all": [
+              "our_turn",
+              "knight_fork_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
           "label": "An aligned target has an extra defender we can capture",
           "when": {
             "all": [
               "our_turn",
               "extra_defender_capture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A bishop capture can draw the sole-defending king out while overloading a piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "quiet_bishop_king_lure_available"
             ]
           },
           "to": "DEFLECT_DEFENDER"
@@ -350,6 +845,26 @@
           "to": "DEFLECT_DEFENDER"
         },
         {
+          "label": "A mating attack can break the king\u2019s pawn shelter from equal material",
+          "when": {
+            "all": [
+              "our_turn",
+              "shelter_breaking_mate_threat_available"
+            ]
+          },
+          "to": "BREAK_KING_SHELTER"
+        },
+        {
+          "label": "The pawn has a pinned defender; take it and test the other defender",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture_with_pinned_defender_pressure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
           "label": "One move threatens mate and attacks a loose piece",
           "when": {
             "all": [
@@ -358,6 +873,26 @@
             ]
           },
           "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "Exchange away the cheaper attacker of our valuable piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "exchange_attacker_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "A supported rook can take a pawn while adding a second attack to a piece; test the deflection",
+          "when": {
+            "all": [
+              "our_turn",
+              "supported_rook_pawn_capture_overload_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
         },
         {
           "label": "We can safely attack the sole defender of a loose piece",
@@ -400,6 +935,79 @@
           "to": "CHECK_LOOSE_PIECE"
         },
         {
+          "label": "A checking capture can draw the sole-defending king into a fork",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_king_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A one-reply check can force a mate defense",
+          "when": {
+            "all": [
+              "our_turn",
+              "forcing_mating_check_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "A cheaper sacrifice can lure a more valuable sole defender",
+          "when": {
+            "all": [
+              "our_turn",
+              "more_valuable_defender_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "Check while attacking the sole defender of a more valuable piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_deflection_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture can draw the queen onto a safe knight fork with her king",
+          "when": {
+            "all": [
+              "our_turn",
+              "queen_fork_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A quiet minor-piece or rook sacrifice can draw its equally valuable sole defender",
+          "when": {
+            "all": [
+              "our_turn",
+              "equal_defender_lure_available"
+            ],
+            "none": [
+              "alignment"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "An offered pinning piece can draw the defender away from its protected piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "pin_defender_sacrifice_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
           "label": "An undefended non-pawn can be captured; test taking it",
           "when": {
             "all": [
@@ -408,6 +1016,16 @@
             ]
           },
           "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "A cheaper piece can now safely attack the queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "safe_cheaper_queen_attack_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
         }
       ],
       "my": {
@@ -416,6 +1034,14 @@
       },
       "their": {
         "predicates": [
+          {
+            "predicate": "safe_queen_capture",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
           {
             "predicate": "mated",
             "when": {
@@ -487,7 +1113,7 @@
       "id": "CLEAR_LINE",
       "label": "Clear the line with check",
       "kind": "card",
-      "description": "Use check to move the obstruction. Take the exposed piece and finish the concrete exchange.",
+      "description": "Move the obstruction with check, take the piece exposed behind it, and finish the exchange. The check must give the opponent no time to rescue the target.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -654,7 +1280,7 @@
       "id": "SKEWER",
       "label": "Skewer the king and piece",
       "kind": "card",
-      "description": "Check along a line through the king to a valuable piece. Take the target, or capture an interposer with check and renew the skewer.",
+      "description": "Check through the king toward a valuable piece behind it. After the king moves, take that piece. If a piece blocks the check, capture it with check and renew the skewer.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -824,7 +1450,7 @@
       "id": "DEFLECT_DEFENDER",
       "label": "Deflect the defender",
       "kind": "card",
-      "description": "Capture the extra defender or a solely defended target. If the defender moves, collect the exposed piece; if it countercaptures elsewhere, look for forcing mate compensation.",
+      "description": "Draw a defender away by exchanging or offering a piece, then exploit the duty it abandons: a loose target, a fork square, a mating square, or a pawn blockade. Continue only when the resulting board supports the capture, checking fork, mate attack or promotion. Examine the listed recaptures and forcing counters, and settle the exchange before claiming its material goal. King acceptance and direct attacks on a passed pawn are explicit selective reply priorities.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -866,10 +1492,63 @@
             ],
             "none": [
               "immediate_mate_against_us",
-              "gain_erasing_reply_available"
+              "gain_erasing_reply_available",
+              "promotion"
             ]
           },
           "result": "prove"
+        },
+        {
+          "label": "The queen was recaptured but our material gain remains",
+          "when": {
+            "all": [
+              "our_turn",
+              "queen_recapture",
+              "objective_gain_reached"
+            ],
+            "none": [
+              "in_check"
+            ]
+          },
+          "to": "SECURE_GAIN"
+        },
+        {
+          "label": "A capture after the defender recaptures creates a mating threat",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "capture_mate_threat_available"
+            ],
+            "none": [
+              "capture_back_of_alignment_available",
+              "alignment_capture_chain"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "The king accepted and a safe check can attack the queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "king_move",
+              "recapture",
+              "check_and_attack_queen_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "The defender recaptured onto a supported queen pin",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "supported_queen_pin_available"
+            ]
+          },
+          "to": "OVERLOAD_PIN"
         },
         {
           "label": "The defender declined and a forcing mate threat is available",
@@ -881,10 +1560,262 @@
             ],
             "none": [
               "capture_back_of_alignment_available",
-              "alignment_capture_chain"
+              "alignment_capture_chain",
+              "recapture"
             ]
           },
           "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "The defense exposes a safe loose-piece capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "loose_piece_capture_available"
+            ],
+            "none": [
+              "capture_back_of_alignment_available",
+              "alignment_capture_chain",
+              "cheaper_improving_recapture_available",
+              "checking_collection_for_pawn_gain_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "The defender recaptured; the king can uncover check and attack the now-loose piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "king_check_attacks_loose_piece_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "The deflection wins a pawn with a safe attack on a more valuable piece",
+          "when": {
+            "all": [
+              "their_turn",
+              "capture_back_of_alignment",
+              "material_improved",
+              "moved_piece_safe",
+              "attack_more_valuable_piece"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "check_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The defender recaptured: take the available safe checking fork",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "safe_checking_loose_attack_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "The recapture allows a safe check against the queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "check_and_attack_queen_available"
+            ],
+            "none": [
+              "capture_back_of_alignment_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "The defender moved and a safe checking mate threat is available",
+          "when": {
+            "all": [
+              "our_turn",
+              "safe_checking_mate_threat_available"
+            ],
+            "any": [
+              "rook_recaptures_rook",
+              "pawn_attacks_king_shelter"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "Collecting the abandoned piece retains a material improvement against every check evasion",
+          "when": {
+            "all": [
+              "their_turn",
+              "in_check",
+              "capture_undefended_non_pawn_piece",
+              "material_improved",
+              "legal_move_available"
+            ],
+            "none": [
+              "immediate_mate_against_us",
+              "material_improvement_erasing_reply_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The defender accepted: a safe knight fork is available",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "safe_knight_fork_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "The sole defender recaptured; the exposed king can now be checked with only interpositions",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "back_rank_interposition_check_available"
+            ],
+            "none": [
+              "alignment_capture_chain",
+              "capture_back_of_alignment_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "The king declines and leaves a loose non-pawn piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "king_move",
+              "loose_piece_capture_available"
+            ],
+            "none": [
+              "recapture"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "The king moved: collect a loose piece or check and fork one",
+          "when": {
+            "all": [
+              "our_turn",
+              "king_move",
+              "recapture"
+            ],
+            "any": [
+              "safe_checking_loose_attack_available",
+              "loose_piece_capture_available",
+              "supported_rook_check_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "The deflection recovers material from a deficit, with no immediate check or gain-erasing capture",
+          "when": {
+            "all": [
+              "their_turn",
+              "capture_back_of_alignment",
+              "material_deficit",
+              "material_improved",
+              "moved_piece_safe"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "check_available",
+              "material_recovery_counter_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "A safe recapture retains a pawn gain without an immediate safe check or material-recovering capture",
+          "when": {
+            "all": [
+              "their_turn",
+              "recapture",
+              "material_improved",
+              "material_not_behind",
+              "moved_piece_safe"
+            ],
+            "none": [
+              "objective_gain_reached",
+              "in_check",
+              "immediate_mate_against_us",
+              "safe_countercheck_available",
+              "material_recovery_counter_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The pawn gain remains after defending the mating square; no immediate mate or material-recovery capture remains",
+          "when": {
+            "all": [
+              "their_turn",
+              "material_improved",
+              "moved_piece_safe",
+              "safe_mate_threat_defense"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "material_recovery_counter_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The heavy-piece exchange leaves the pawn gain and no immediate king or cheaper-piece threat",
+          "when": {
+            "all": [
+              "our_turn",
+              "material_improved",
+              "material_advantage"
+            ],
+            "none": [
+              "in_check",
+              "threaten_mate_in_1",
+              "hanging_piece_attacked_by_lower_value_piece"
+            ],
+            "any": [
+              "queen_recapture",
+              "pawn_recaptures_rook"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The queen exchange retains a pawn and restores a defender to our cheaper attacker, with pressure on the king shelter",
+          "when": {
+            "all": [
+              "their_turn",
+              "safe_queen_recapture",
+              "material_improved",
+              "add_attacker_to_pinned_piece",
+              "adds_defender_to_loose_non_pawn_piece",
+              "hanging_piece_attacked_by_lower_value_piece"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us"
+            ]
+          },
+          "result": "prove"
         },
         {
           "label": "The exposed piece has been collected; protect the gain",
@@ -897,7 +1828,15 @@
               "in_check",
               "capture_defender_of_alignment_target",
               "capture_alignment_target",
-              "attack_sole_defended_piece_of_loose_alignment"
+              "attack_sole_defended_piece_of_loose_alignment",
+              "capture_with_cheaper_piece_against_more_valuable_sole_defender",
+              "sacrificial_capture_attacks_loose_piece",
+              "capture_lures_queen_to_knight_fork",
+              "trade_recapture_priority",
+              "capture_lures_knight_fork_of_valuable_pieces",
+              "capture_with_equal_piece_against_sole_defender",
+              "queen_promotion",
+              "capture_defender_of_knight_royal_fork_square"
             ]
           },
           "to": "SECURE_GAIN"
@@ -906,11 +1845,97 @@
       "my": {
         "predicates": [
           "mate",
+          "queen_promotion_capture",
+          "checking_attack_on_sole_defender",
+          {
+            "predicate": "sacrificial_capture_attacks_loose_piece",
+            "when": {
+              "all": [
+                "king_check_adds_piece_attacker_available"
+              ]
+            }
+          },
+          "quiet_bishop_king_lure",
+          "capture_lures_queen_to_knight_fork",
+          {
+            "predicate": "safe_mate_threat_defense",
+            "when": {
+              "all": [
+                "threaten_mate_in_1",
+                "material_improved"
+              ]
+            }
+          },
+          "supported_rook_pawn_capture_overloads_piece",
+          "capture_lures_knight_fork_of_valuable_pieces",
+          "queen_promotion",
+          "supported_passed_pawn_advance",
+          "checking_king_lure",
+          "capture_defender_of_knight_royal_fork_square",
+          {
+            "predicate": "capture_draws_blockader_from_advanced_pawn",
+            "when": {
+              "none": [
+                "pin_defender_sacrifice_available"
+              ]
+            }
+          },
+          "checking_pawn_advance",
+          "safe_pawn_capture_attacking_pinned_king_shelter",
+          "king_can_capture_checking_offer_on_knight_royal_fork",
           "capture_back_of_alignment",
           "capture_alignment_target",
           "capture_defender_of_alignment_target",
           "attack_sole_defended_piece_of_loose_alignment",
           "objective_recapture",
+          "safe_queen_recapture",
+          "non_pawn_defender_lure",
+          "capture_with_cheaper_piece_against_more_valuable_sole_defender",
+          "capture_with_pinned_defender_pressure",
+          "cheaper_improving_recapture",
+          "safe_improving_recapture",
+          {
+            "predicate": "objective_capture",
+            "when": {
+              "all": [
+                "recapture"
+              ],
+              "none": [
+                "capture_back_of_alignment_available",
+                "alignment_capture_chain"
+              ]
+            }
+          },
+          {
+            "predicate": "trade_attacked_piece",
+            "when": {
+              "all": [
+                "add_defender_to_attacked_piece"
+              ],
+              "none": [
+                "threaten_mate_in_1"
+              ]
+            }
+          },
+          "capture_with_overloaded_sole_defender",
+          "capture_undefended_non_pawn_piece",
+          {
+            "predicate": "pin_defender_with_a_sacrifice",
+            "when": {
+              "none": [
+                "recapture"
+              ]
+            }
+          },
+          "quiet_equal_defender_lure",
+          {
+            "predicate": "objective_capture",
+            "when": {
+              "all": [
+                "recapture"
+              ]
+            }
+          },
           "check_response"
         ],
         "limit": 5
@@ -918,10 +1943,84 @@
       "their": {
         "predicates": [
           {
+            "predicate": "safe_countercheck",
+            "when": {
+              "all": [
+                "capture_with_pinned_defender_pressure"
+              ],
+              "none": [
+                "in_check",
+                "trade_recapture_priority"
+              ]
+            }
+          },
+          {
+            "predicate": "king_recapture",
+            "when": {
+              "any": [
+                "king_lure_acceptance_available",
+                "quiet_king_lure_acceptance_available"
+              ]
+            }
+          },
+          {
+            "predicate": "recapture",
+            "when": {
+              "all": [
+                "checking_alignment_lure_acceptance_available"
+              ]
+            }
+          },
+          {
+            "predicate": "rook_on_enemy_passed_pawn_file",
+            "when": {
+              "all": [
+                "supported_passed_pawn_advance",
+                "passed_pawn_one_step_from_promotion"
+              ]
+            }
+          },
+          {
+            "predicate": "rook_attacks_passed_pawn",
+            "when": {
+              "all": [
+                "supported_passed_pawn_advance"
+              ],
+              "none": [
+                "passed_pawn_one_step_from_promotion"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_countercheck",
+            "when": {
+              "all": [
+                "capture_with_equal_piece_against_sole_defender"
+              ],
+              "none": [
+                "in_check",
+                "recapture_available"
+              ]
+            }
+          },
+          {
+            "predicate": "recapture",
+            "when": {
+              "all": [
+                "checking_promotion_with_takeback"
+              ]
+            }
+          },
+          {
             "predicate": "mated",
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available",
+                "checking_alignment_lure_acceptance_available",
+                "checking_promotion_with_takeback"
               ]
             }
           },
@@ -930,6 +2029,11 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available",
+                "checking_alignment_lure_acceptance_available",
+                "checking_promotion_with_takeback"
               ]
             }
           },
@@ -938,6 +2042,11 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available",
+                "checking_alignment_lure_acceptance_available",
+                "checking_promotion_with_takeback"
               ]
             }
           },
@@ -946,6 +2055,11 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available",
+                "checking_alignment_lure_acceptance_available",
+                "checking_promotion_with_takeback"
               ]
             }
           },
@@ -954,6 +2068,11 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available",
+                "checking_alignment_lure_acceptance_available",
+                "checking_promotion_with_takeback"
               ]
             }
           },
@@ -966,10 +2085,12 @@
             }
           },
           {
-            "predicate": "check",
+            "predicate": "pawn_recapture",
             "when": {
+              "all": [
+                "pawn_takes_traded_piece_first"
+              ],
               "none": [
-                "attack_sole_defended_piece_of_loose_alignment",
                 "in_check"
               ]
             }
@@ -978,7 +2099,39 @@
             "predicate": "recapture",
             "when": {
               "none": [
+                "in_check",
+                "quiet_king_lure_acceptance_available",
+                "pawn_takes_traded_piece_first"
+              ]
+            }
+          },
+          {
+            "predicate": "capture_erases_gain",
+            "when": {
+              "all": [
+                "capture_with_pinned_defender_pressure"
+              ],
+              "none": [
                 "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "check",
+            "when": {
+              "none": [
+                "attack_sole_defended_piece_of_loose_alignment",
+                "in_check",
+                "capture_with_cheaper_piece_against_more_valuable_sole_defender",
+                "capture_with_pinned_defender_pressure",
+                "sacrificial_capture_attacks_loose_piece",
+                "quiet_king_lure_acceptance_available",
+                "supported_rook_pawn_capture_overloads_piece",
+                "trade_recapture_priority",
+                "overloaded_defender_recapture_available",
+                "capture_with_equal_piece_against_sole_defender",
+                "supported_passed_pawn_advance",
+                "queen_promotion"
               ]
             }
           },
@@ -987,7 +2140,17 @@
             "when": {
               "none": [
                 "attack_sole_defended_piece_of_loose_alignment",
-                "in_check"
+                "in_check",
+                "defender_lure_recapture_available",
+                "quiet_king_lure_acceptance_available",
+                "queen_fork_lure_recapture_available",
+                "supported_rook_pawn_capture_overloads_piece",
+                "trade_recapture_priority",
+                "overloaded_defender_recapture_available",
+                "equal_defender_lure_recapture_available",
+                "supported_passed_pawn_advance",
+                "queen_promotion",
+                "pin_defender_with_a_sacrifice"
               ]
             }
           },
@@ -1001,6 +2164,86 @@
                 "in_check"
               ]
             }
+          },
+          {
+            "predicate": "safe_countercheck",
+            "when": {
+              "all": [
+                "capture_with_cheaper_piece_against_more_valuable_sole_defender"
+              ],
+              "none": [
+                "in_check",
+                "trade_recapture_priority"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_countercheck",
+            "when": {
+              "all": [
+                "sacrificial_capture_attacks_loose_piece"
+              ],
+              "none": [
+                "in_check",
+                "trade_recapture_priority"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_countercheck",
+            "when": {
+              "all": [
+                "supported_rook_pawn_capture_overloads_piece"
+              ],
+              "none": [
+                "in_check",
+                "trade_recapture_priority"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_reinforce_attacked_piece",
+            "when": {
+              "all": [
+                "supported_rook_pawn_capture_overloads_piece"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_escape_attacked_piece",
+            "when": {
+              "all": [
+                "supported_rook_pawn_capture_overloads_piece"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "pawn_attacks_king_shelter",
+            "when": {
+              "all": [
+                "supported_rook_pawn_capture_overloads_piece"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "capture_queen",
+            "when": {
+              "all": [
+                "safe_pawn_capture_attacking_pinned_king_shelter"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
           }
         ]
       }
@@ -1009,7 +2252,7 @@
       "id": "CHASE_DEFENDER",
       "label": "Chase the sole defender",
       "kind": "card",
-      "description": "Safely attack the piece that alone defends a loose piece. If it stays tied, attack it again; if it abandons the target, collect.",
+      "description": "Attack the piece that alone protects an attacked target. If it moves away, collect the target. If it stays, a cheaper sacrifice or checking fork may force it to abandon its other duty; verify that exchange before collecting.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -1068,6 +2311,23 @@
           "result": "prove"
         },
         {
+          "label": "Capturing the piece lures its more valuable sole defender; look for a checking fork",
+          "when": {
+            "all": [
+              "their_turn",
+              "capture_with_cheaper_piece_against_more_valuable_sole_defender",
+              "objective_gain_reached"
+            ],
+            "none": [
+              "in_check",
+              "check_response",
+              "recapture",
+              "capture_with_cheaper_piece"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
           "label": "The gain is made; inspect its concrete counters",
           "when": {
             "all": [
@@ -1084,9 +2344,18 @@
       "my": {
         "predicates": [
           "mate",
+          "checking_fork_overloads_defender",
           "safe_objective_recapture",
           "objective_recapture",
           "capture_undefended_non_pawn_piece",
+          {
+            "predicate": "objective_defender_lure",
+            "when": {
+              "all": [
+                "move_defender_while_still_defending_loose_piece"
+              ]
+            }
+          },
           "safely_add_attacker_to_defender_of_loose_piece",
           "objective_capture",
           "check_response"
@@ -1144,7 +2413,7 @@
             }
           },
           {
-            "predicate": "capture_attacker",
+            "predicate": "safe_capture_attacker",
             "when": {
               "none": [
                 "in_check"
@@ -1182,7 +2451,7 @@
       "id": "MATE_AND_MATERIAL",
       "label": "Threaten mate and win material",
       "kind": "card",
-      "description": "Combine a mate threat with an attack on a piece. Check every real mate defense; use the remaining check or capture to collect. Against a checking mate threat, use a loose-piece capture as the selected material-recovering evasion when available; otherwise retain the full evasion menu. This is selective inspection, not equivalence of all evasions.",
+      "description": "Use a mate threat to force a concession or win material. Prefer an available profitable queen capture and established forcing checks; keep the mating attack when a safe forcing continuation exists. Answer counterchecks, captures of the attacking piece, and the listed concrete mate defenses. After the threat wins material, settle the counters and protect any endangered collecting piece.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -1230,6 +2499,17 @@
           "result": "prove"
         },
         {
+          "label": "The king moved and a safe check can attack the queen",
+          "when": {
+            "all": [
+              "our_turn",
+              "king_move",
+              "check_and_attack_queen_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
           "label": "Every reply permits our immediate mate",
           "when": {
             "all": [
@@ -1245,6 +2525,51 @@
           "result": "prove"
         },
         {
+          "label": "Our mate threat also safely attacks the queen; test saving the queen",
+          "when": {
+            "all": [
+              "their_turn",
+              "threaten_mate_in_1",
+              "safe_cheaper_queen_attack"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "The mate defense leaves our gain intact but our piece attacked by a cheaper piece; protect it",
+          "when": {
+            "all": [
+              "our_turn",
+              "objective_gain_reached",
+              "no_mate_in_1_available",
+              "hanging_piece_attacked_by_lower_value_piece"
+            ],
+            "none": [
+              "in_check",
+              "capture",
+              "safe_forcing_mating_capture_available"
+            ]
+          },
+          "to": "PROTECT_PIECES"
+        },
+        {
+          "label": "The checking exchange won a pawn; the attacked piece is now safe and no immediate mate or material-recovery capture remains",
+          "when": {
+            "all": [
+              "their_turn",
+              "material_improved",
+              "safe_fork_retreat",
+              "material_not_behind"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "safe_material_recovery_counter_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
           "label": "The gain is made; inspect its concrete counters",
           "when": {
             "all": [
@@ -1252,7 +2577,10 @@
               "objective_gain_reached"
             ],
             "none": [
-              "in_check"
+              "in_check",
+              "sacrificial_capture_mate_threat",
+              "queen_capture_preserves_mate_threat",
+              "king_escape_with_mate_threat"
             ]
           },
           "to": "SECURE_GAIN"
@@ -1261,16 +2589,128 @@
       "my": {
         "predicates": [
           "mate",
+          {
+            "predicate": "safe_checking_mate_threat",
+            "when": {
+              "any": [
+                "rook_recaptures_rook",
+                "pawn_attacks_king_shelter"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_noncapturing_forcing_mating_check",
+            "when": {
+              "all": [
+                "no_mate_in_1_available",
+                "queen_move"
+              ]
+            }
+          },
+          "pawn_capture_mate_and_loose_attack",
+          "mating_deflection",
+          {
+            "predicate": "safe_forcing_mating_capture",
+            "when": {
+              "all": [
+                "objective_gain_reached"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_cheaper_queen_attack",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          "king_escape_with_mate_threat",
+          {
+            "predicate": "profitable_queen_capture",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_objective_pawn_capture",
+            "when": {
+              "all": [
+                "queen_move",
+                "no_mate_in_1_available"
+              ],
+              "none": [
+                "in_check",
+                "capture"
+              ]
+            }
+          },
+          {
+            "predicate": "capture_piece_with_mate_threat",
+            "when": {
+              "none": [
+                "forcing_mating_check_available"
+              ]
+            }
+          },
+          {
+            "predicate": "capture_mate_threat",
+            "when": {
+              "all": [
+                "recapture"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_queen_contact_mate_threat",
+            "when": {
+              "all": [
+                "recapture"
+              ]
+            }
+          },
+          "cheaper_queen_capture",
+          "safe_check_evasion_capture",
+          "supported_check_on_king_pawns",
+          "queen_checking_king_lure",
+          {
+            "predicate": "safe_fork_retreat",
+            "when": {
+              "all": [
+                "material_improved",
+                "hanging_piece_attacked_by_lower_value_piece",
+                "material_not_behind",
+                "king_move"
+              ]
+            }
+          },
           "quiet_mate_and_loose_piece_threat",
           "check_with_only_interpositions",
           "checking_loose_capture",
           "forced_checking_capture",
           "checking_recapture",
+          "safe_capture_to_save_piece",
           "checking_mate_attack",
+          "capture_mate_threat",
+          "safe_forcing_mating_check",
+          "forcing_mating_check",
           "mate_and_loose_piece_threat",
           "checking_capture",
           "trade_attacked_piece",
           "capture_undefended_non_pawn_piece",
+          {
+            "predicate": "check_with_one_reply",
+            "when": {
+              "all": [
+                "recapture"
+              ],
+              "none": [
+                "objective_gain_reached"
+              ]
+            }
+          },
           "check_response"
         ],
         "limit": 5
@@ -1340,10 +2780,295 @@
             }
           },
           {
-            "predicate": "no_mate_in_1_available",
+            "predicate": "check",
+            "when": {
+              "none": [
+                "in_check",
+                "threaten_mate_in_1",
+                "checking_capture_available"
+              ]
+            }
+          },
+          {
+            "predicate": "recapture",
+            "when": {
+              "none": [
+                "in_check",
+                "threaten_mate_in_1",
+                "check_available"
+              ]
+            }
+          },
+          {
+            "predicate": "create_safe_attacker_surplus_on_non_pawn_piece",
+            "when": {
+              "none": [
+                "in_check",
+                "threaten_mate_in_1",
+                "check_available",
+                "recapture_available",
+                "king_hole_controller_attack_available"
+              ]
+            }
+          },
+          {
+            "predicate": "checking_capture",
+            "when": {
+              "none": [
+                "in_check",
+                "threaten_mate_in_1"
+              ]
+            }
+          },
+          {
+            "predicate": "attack_bishop_controlling_king_hole",
+            "when": {
+              "none": [
+                "in_check",
+                "threaten_mate_in_1",
+                "check_available",
+                "recapture_available"
+              ]
+            }
+          },
+          {
+            "predicate": "legal_move",
+            "when": {
+              "all": [
+                "in_check",
+                "queen_checking_king_lure"
+              ]
+            }
+          },
+          {
+            "predicate": "quiet_mate_defense",
+            "when": {
+              "none": [
+                "in_check",
+                "capture_mate_defense_priority",
+                "pawn_capture_mate_and_loose_attack"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_queen_mate_defense",
+            "when": {
+              "all": [
+                "pawn_capture_mate_and_loose_attack"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "BREAK_KING_SHELTER",
+      "label": "Break the king\u2019s pawn shelter",
+      "kind": "card",
+      "description": "Threaten mate against a pinned pawn beside the king and continue the attack against the listed safe checks, captures and mate defenses. The positional goal is a king forced away from its adjacent pawn shelter while we are not behind in material. This card certifies that exposed position, not a completed mate.",
+      "rules": [
+        {
+          "label": "Checkmate wins",
+          "when": {
+            "all": [
+              "mate"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Our legal mate-in-one wins",
+          "when": {
+            "all": [
+              "our_turn",
+              "mate_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Mate against us or stalemate fails",
+          "when": {
+            "any": [
+              "mated",
+              "stalemate"
+            ]
+          },
+          "result": "fail"
+        },
+        {
+          "label": "Every legal check evasion retains the material gain",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_gain_reached",
+              "in_check",
+              "legal_move_available"
+            ],
+            "none": [
+              "immediate_mate_against_us",
+              "gain_erasing_reply_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The opposing king has lost its pawn shelter without a material deficit",
+          "when": {
+            "all": [
+              "our_turn",
+              "king_move",
+              "opponent_king_has_no_adjacent_pawns",
+              "material_not_behind"
+            ],
+            "none": [
+              "in_check"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Answering check won material; inspect its concrete counters",
+          "when": {
+            "all": [
+              "their_turn",
+              "check_response",
+              "objective_gain_reached"
+            ],
+            "none": [
+              "in_check"
+            ]
+          },
+          "to": "SECURE_GAIN"
+        },
+        {
+          "label": "A material gain remains without an immediate mate, safe check or material-recovering capture",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_gain_reached"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "safe_countercheck_available",
+              "capture_counter_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Every reply permits our immediate mate",
+          "when": {
+            "all": [
+              "their_turn",
+              "threaten_mate_in_1",
+              "legal_move_available"
+            ],
+            "none": [
+              "in_check",
+              "mate_defense_available"
+            ]
+          },
+          "result": "prove"
+        }
+      ],
+      "my": {
+        "predicates": [
+          "mate",
+          "safe_checking_capture",
+          "cheaper_queen_capture",
+          "safe_check_evasion_capture",
+          "shelter_breaking_mate_threat",
+          "quiet_mate_and_loose_piece_threat",
+          "threaten_mate_in_1",
+          "checking_capture",
+          "capture_undefended_non_pawn_piece",
+          "check_response"
+        ],
+        "limit": 5
+      },
+      "their": {
+        "predicates": [
+          {
+            "predicate": "mated",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "capture",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "check",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "king_move",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "legal_move",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "checking_mate_defense",
             "when": {
               "none": [
                 "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "capturing_mate_defense",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "constructive_mate_defense",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "check",
+            "when": {
+              "none": [
+                "in_check",
+                "threaten_mate_in_1"
+              ]
+            }
+          },
+          {
+            "predicate": "capture_erases_gain",
+            "when": {
+              "none": [
+                "in_check",
+                "threaten_mate_in_1"
               ]
             }
           }
@@ -1354,7 +3079,7 @@
       "id": "REPAIR_BACK_RANK",
       "label": "Repair the back rank with check",
       "kind": "card",
-      "description": "Before taking the loose prize, play a check that defends the enemy entry square. Then collect the piece without allowing immediate mate.",
+      "description": "Before taking a loose prize, check in a way that also defends the enemy entry square. Then collect the prize without allowing mate in one.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -1520,7 +3245,7 @@
       "id": "OVERLOAD_PIN",
       "label": "Overload a pinned piece",
       "kind": "card",
-      "description": "Add a safe attacker to the pinned piece. If it is reinforced, attack both it and a second loose piece; otherwise collect.",
+      "description": "Attack a pinned piece safely. If it receives another defender, threaten both it and a second loose target; otherwise collect it. A supported pin of the queen can serve the same purpose.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -1568,6 +3293,22 @@
           "result": "prove"
         },
         {
+          "label": "The exchange reaches a pawn ending with an extra pawn",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "pawn_endgame",
+              "material_improved",
+              "material_advantage"
+            ],
+            "none": [
+              "in_check"
+            ]
+          },
+          "result": "prove"
+        },
+        {
           "label": "The gain is made; inspect its concrete counters",
           "when": {
             "all": [
@@ -1585,6 +3326,8 @@
         "predicates": [
           "mate",
           "safe_pinned_piece_attack",
+          "supported_queen_pin",
+          "safe_attack_on_pinned_piece",
           {
             "predicate": "attack_pinned_and_loose",
             "when": {
@@ -1603,10 +3346,43 @@
       "their": {
         "predicates": [
           {
+            "predicate": "queen_move",
+            "when": {
+              "all": [
+                "supported_queen_pin"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "recapture",
+            "when": {
+              "all": [
+                "supported_queen_pin"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "king_recapture",
+            "when": {
+              "all": [
+                "king_lure_acceptance_available"
+              ]
+            }
+          },
+          {
             "predicate": "mated",
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available"
               ]
             }
           },
@@ -1615,6 +3391,9 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available"
               ]
             }
           },
@@ -1623,6 +3402,9 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available"
               ]
             }
           },
@@ -1631,6 +3413,9 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available"
               ]
             }
           },
@@ -1639,6 +3424,9 @@
             "when": {
               "all": [
                 "in_check"
+              ],
+              "none": [
+                "king_lure_acceptance_available"
               ]
             }
           },
@@ -1686,10 +3474,320 @@
       }
     },
     {
+      "id": "HARASS_QUEEN",
+      "label": "Save with a threat; harass the queen",
+      "kind": "card",
+      "description": "Save an attacked piece, exchange its attacker, or create a double attack with a threat against the queen. Prefer a safe material gain before preparing another threat; consider a checking fork before a quiet double attack. Examine the listed captures of the attacker, safe queen escapes and forcing material counters; an attacked piece may also capture with check before it is lost. Collect the forked target and verify that the gain survives the immediate counterplay.",
+      "rules": [
+        {
+          "label": "Checkmate wins",
+          "when": {
+            "all": [
+              "mate"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Our legal mate-in-one wins",
+          "when": {
+            "all": [
+              "our_turn",
+              "mate_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Mate against us or stalemate fails",
+          "when": {
+            "any": [
+              "mated",
+              "stalemate"
+            ]
+          },
+          "result": "fail"
+        },
+        {
+          "label": "Every legal check evasion retains the material gain",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_gain_reached",
+              "in_check",
+              "legal_move_available"
+            ],
+            "none": [
+              "immediate_mate_against_us",
+              "gain_erasing_reply_available",
+              "checking_queen_capture_with_takeback"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The king took our attacker; a one-reply check can continue with mate",
+          "when": {
+            "all": [
+              "our_turn",
+              "king_move",
+              "recapture",
+              "forcing_mating_check_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "The recapture completes a pawn ending with an extra pawn",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "pawn_endgame",
+              "material_improved",
+              "material_advantage"
+            ],
+            "none": [
+              "in_check"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The recapture leaves a one-reply check to test",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "one_reply_check_available"
+            ],
+            "none": [
+              "objective_gain_reached",
+              "objective_recapture_available"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
+        },
+        {
+          "label": "Our gain remains after the recapture and no cheaper attacker threatens our piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "objective_gain_reached",
+              "recapture"
+            ],
+            "none": [
+              "in_check",
+              "hanging_piece_attacked_by_lower_value_piece"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The queen gain is secure against immediate checks, recaptures and material recovery",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_gain_reached"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "safe_countercheck_available",
+              "safe_nonpawn_recovery_available",
+              "gain_erasing_recapture_available"
+            ]
+          },
+          "result": "prove"
+        }
+      ],
+      "my": {
+        "predicates": [
+          "mate",
+          "capture_and_double_queen_threat",
+          "exchange_attacker_of_more_valuable_piece",
+          {
+            "predicate": "safe_loose_capture",
+            "when": {
+              "all": [
+                "safe_queen_retreat"
+              ]
+            }
+          },
+          {
+            "predicate": "checking_objective_piece_capture",
+            "when": {
+              "all": [
+                "objective_gain_reached"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_capturing_fork_retreat",
+            "when": {
+              "all": [
+                "objective_gain_reached"
+              ]
+            }
+          },
+          "safe_objective_capture",
+          "check_and_attack_queen",
+          "queen_attack_and_loose_piece_attack",
+          "king_guarded_knight_fork",
+          "save_with_capture_and_queen_attack",
+          "cheaper_queen_capture",
+          "safe_cheaper_queen_attack",
+          "objective_recapture",
+          "check_response"
+        ],
+        "limit": 5
+      },
+      "their": {
+        "predicates": [
+          {
+            "predicate": "recapture",
+            "when": {
+              "all": [
+                "checking_queen_capture_with_takeback"
+              ]
+            }
+          },
+          {
+            "predicate": "mated",
+            "when": {
+              "all": [
+                "in_check"
+              ],
+              "none": [
+                "checking_queen_capture_with_takeback"
+              ]
+            }
+          },
+          {
+            "predicate": "capture",
+            "when": {
+              "all": [
+                "in_check"
+              ],
+              "none": [
+                "checking_queen_capture_with_takeback"
+              ]
+            }
+          },
+          {
+            "predicate": "check",
+            "when": {
+              "all": [
+                "in_check"
+              ],
+              "none": [
+                "checking_queen_capture_with_takeback"
+              ]
+            }
+          },
+          {
+            "predicate": "king_move",
+            "when": {
+              "all": [
+                "in_check"
+              ],
+              "none": [
+                "checking_queen_capture_with_takeback"
+              ]
+            }
+          },
+          {
+            "predicate": "legal_move",
+            "when": {
+              "all": [
+                "in_check"
+              ],
+              "none": [
+                "checking_queen_capture_with_takeback"
+              ]
+            }
+          },
+          {
+            "predicate": "mated",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_countercheck",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "checking_desperado",
+            "when": {
+              "none": [
+                "in_check"
+              ],
+              "any": [
+                "capture_and_double_queen_threat",
+                "queen_attack_and_loose_piece_attack"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_fork_attacker_capture",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_queen_escape",
+            "when": {
+              "none": [
+                "in_check",
+                "objective_gain_reached",
+                "safe_attacker_capture_available"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_nonpawn_capture_erases_gain",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "recapture",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_queen_retreat",
+            "when": {
+              "all": [
+                "king_guarded_knight_fork"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "CHECK_LOOSE_PIECE",
       "label": "Check fork, collect, and protect",
       "kind": "card",
-      "description": "Check while attacking a loose piece. If every evasion preserves the fork, study a king escape that also defends another loose piece; otherwise inspect every evasion. Collect safely, taking a loose interposer with check first. Challenge the gain with safe checks, material-recovering captures, pawn or rook attacks, and queen attacks with additional king pressure; repair the threatened piece safely. This is selective continuation inspection, not a claim that all later replies are equivalent.",
+      "description": "Check while attacking a second target, clearing a knight-fork square first if necessary. Examine the relevant legal evasions and collect the exposed piece safely. Challenge the gain with the listed checks, material-recovering captures and safe attacks, then protect the threatened collecting piece. A takeback that leaves the stated material goal intact need not extend the line.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -1737,6 +3835,39 @@
           "result": "prove"
         },
         {
+          "label": "The checking collection wins a pawn and every legal evasion keeps that material improvement",
+          "when": {
+            "all": [
+              "their_turn",
+              "capture_undefended_non_pawn_piece",
+              "material_improved",
+              "in_check",
+              "legal_move_available"
+            ],
+            "none": [
+              "immediate_mate_against_us",
+              "pawn_gain_erasing_reply_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The queen is captured and no immediate mate, safe check, or material-recovering capture remains",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_queen_capture"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "capture_counter_available",
+              "safe_countercheck_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
           "label": "An immediate mating reply refutes the defense",
           "when": {
             "all": [
@@ -1759,12 +3890,76 @@
           "result": "fail"
         },
         {
+          "label": "The opponent completed the fork exchange but a material gain remains",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture",
+              "material_improved",
+              "material_not_behind"
+            ],
+            "none": [
+              "in_check",
+              "objective_gain_reached",
+              "hanging_piece_attacked_by_lower_value_piece"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Recovering the queen leaves a pawn gain and no safe immediate material counter",
+          "when": {
+            "all": [
+              "their_turn",
+              "capture_undefended_non_pawn_piece",
+              "material_improved",
+              "moved_piece_safe",
+              "queen_capture"
+            ],
+            "none": [
+              "in_check",
+              "objective_gain_reached",
+              "immediate_mate_against_us",
+              "check_available",
+              "safe_material_recovery_counter_available",
+              "recapture_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The pawn gain remains after collection or answering a check, with no safe forcing recovery",
+          "when": {
+            "all": [
+              "their_turn",
+              "material_improved",
+              "moved_piece_safe"
+            ],
+            "none": [
+              "in_check",
+              "objective_gain_reached",
+              "immediate_mate_against_us",
+              "safe_countercheck_available",
+              "safe_material_recovery_counter_available",
+              "safe_recapture_available"
+            ],
+            "any": [
+              "capture_undefended_non_pawn_piece",
+              "check_response"
+            ]
+          },
+          "result": "prove"
+        },
+        {
           "label": "The defense must retain the material gain",
           "when": {
             "all": [
               "their_turn",
               "objective_not_reached",
               "repair_attacked_piece"
+            ],
+            "none": [
+              "check_and_attack_queen"
             ]
           },
           "result": "fail"
@@ -1802,14 +3997,97 @@
             ]
           },
           "result": "prove"
+        },
+        {
+          "label": "A material countercapture permits a cheaper lure of its more valuable defender",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture",
+              "objective_not_reached",
+              "more_valuable_defender_lure_available"
+            ],
+            "none": [
+              "in_check",
+              "loose_piece_capture_available",
+              "winning_recapture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A material countercapture permits a capture that threatens mate",
+          "when": {
+            "all": [
+              "our_turn",
+              "capture",
+              "objective_not_reached",
+              "capture_mate_threat_available"
+            ],
+            "none": [
+              "in_check"
+            ]
+          },
+          "to": "MATE_AND_MATERIAL"
         }
       ],
       "my": {
         "predicates": [
           "mate",
+          "king_check_attacks_loose_piece",
+          "safe_knight_fork",
+          "checking_capture_clears_royal_fork",
+          {
+            "predicate": "knight_takes_more_valuable_piece",
+            "when": {
+              "any": [
+                "safe_fork_defense",
+                "safe_fork_counterattack"
+              ]
+            }
+          },
+          "cheaper_queen_capture",
+          {
+            "predicate": "safe_loose_capture",
+            "when": {
+              "all": [
+                "material_deficit",
+                "safe_undefended_queen_capture_available"
+              ]
+            }
+          },
+          {
+            "predicate": "check_and_attack_queen",
+            "when": {
+              "all": [
+                "king_move"
+              ]
+            }
+          },
           "safe_checking_capture",
+          {
+            "predicate": "safe_checking_loose_attack",
+            "when": {
+              "all": [
+                "hanging_piece_attacked_by_lower_value_piece"
+              ]
+            }
+          },
           "safe_loose_capture",
           "safe_checking_loose_attack",
+          {
+            "predicate": "supported_rook_check",
+            "when": {
+              "all": [
+                "king_move",
+                "recapture"
+              ]
+            }
+          },
+          "supported_checking_fork_retreat",
+          "safe_capturing_fork_retreat",
+          "objective_queen_capture",
+          "supported_checking_sacrifice",
           {
             "predicate": "safe_useful_fork_retreat",
             "when": {
@@ -1875,6 +4153,18 @@
             }
           },
           {
+            "predicate": "nonking_check_evasion",
+            "when": {
+              "all": [
+                "in_check",
+                "fork_survives_every_evasion"
+              ],
+              "none": [
+                "constructive_king_escape_available"
+              ]
+            }
+          },
+          {
             "predicate": "legal_move",
             "when": {
               "all": [
@@ -1923,10 +4213,11 @@
             }
           },
           {
-            "predicate": "capture_erases_gain",
+            "predicate": "save_with_safe_counterattack",
             "when": {
               "none": [
-                "in_check"
+                "in_check",
+                "safe_knight_fork"
               ]
             }
           },
@@ -1934,7 +4225,8 @@
             "predicate": "pawn_counterattack",
             "when": {
               "none": [
-                "in_check"
+                "in_check",
+                "safe_knight_fork"
               ]
             }
           },
@@ -1942,7 +4234,18 @@
             "predicate": "rook_counterattack",
             "when": {
               "none": [
-                "in_check"
+                "in_check",
+                "safe_knight_fork",
+                "knight_collection_recapture_available"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_knight_counterattack",
+            "when": {
+              "none": [
+                "in_check",
+                "safe_knight_fork"
               ]
             }
           },
@@ -1950,7 +4253,52 @@
             "predicate": "queen_counterattack_with_king_pressure",
             "when": {
               "none": [
+                "in_check",
+                "safe_knight_fork"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_fork_defense",
+            "when": {
+              "all": [
+                "safe_knight_fork"
+              ],
+              "none": [
                 "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_fork_counterattack",
+            "when": {
+              "all": [
+                "safe_knight_fork"
+              ],
+              "none": [
+                "in_check",
+                "safe_fork_defense_available"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_pawn_recovery_capture",
+            "when": {
+              "all": [
+                "only_pawn_gain"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "capture_erases_gain",
+            "when": {
+              "none": [
+                "in_check",
+                "safe_knight_fork",
+                "only_pawn_gain"
               ]
             }
           }
@@ -1961,7 +4309,7 @@
       "id": "SECURE_GAIN",
       "label": "Check the material gain",
       "kind": "card",
-      "description": "Can the opponent check or win the material back? Examine checks, recaptures and captures erasing our gain. Answer the concrete exchange; when no forcing counter remains, inspect our loose pieces.",
+      "description": "Check whether the opponent can check or recover the material. Examine the listed forcing counters and finish the exchange, including available takebacks after a capturing promotion. When no relevant counter remains, inspect our loose pieces.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -2007,6 +4355,20 @@
             ]
           },
           "result": "prove"
+        },
+        {
+          "label": "After the forced exchanges, attack the pinned piece safely",
+          "when": {
+            "all": [
+              "our_turn",
+              "recapture",
+              "safe_attack_on_pinned_piece_available"
+            ],
+            "none": [
+              "winning_recapture_available"
+            ]
+          },
+          "to": "OVERLOAD_PIN"
         },
         {
           "label": "An immediate mating reply refutes this gain",
@@ -2173,10 +4535,24 @@
             }
           },
           {
+            "predicate": "safe_countercheck",
+            "when": {
+              "all": [
+                "queen_promotion_capture"
+              ],
+              "none": [
+                "in_check",
+                "recapture_available"
+              ]
+            }
+          },
+          {
             "predicate": "check",
             "when": {
               "none": [
-                "in_check"
+                "in_check",
+                "offered_rook_capture",
+                "queen_promotion_capture"
               ]
             }
           },
@@ -2192,6 +4568,29 @@
             "predicate": "capture_erases_gain",
             "when": {
               "none": [
+                "in_check",
+                "offered_rook_capture"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_countercheck",
+            "when": {
+              "all": [
+                "offered_rook_capture"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_gain_erasing_capture",
+            "when": {
+              "all": [
+                "offered_rook_capture"
+              ],
+              "none": [
                 "in_check"
               ]
             }
@@ -2203,7 +4602,7 @@
       "id": "PROTECT_PIECES",
       "label": "Protect our loose pieces",
       "kind": "card",
-      "description": "Can they safely attack a loose piece? For each such attack, capture the attacker, add a defender, or move the piece. Against a cheaper attacker, prioritize escaping with a useful attack. Conclude only the stated immediate safety test.",
+      "description": "Test safe attacks on our loose pieces. Capture the attacker, add a defender, or move the attacked piece; prefer a useful counterthreat when escaping a cheaper attacker. Finish only when the stated immediate safety conditions hold.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -2394,6 +4793,262 @@
           }
         ]
       }
+    },
+    {
+      "id": "TAKE_TACTICALLY_PROTECTED_PAWN",
+      "label": "Take a pawn with tactical protection",
+      "kind": "card",
+      "description": "Take a pawn whose apparent defender is constrained by a tactical threat. Examine recaptures, checks, attacks on loose pieces and relevant developing attacks; use a checking skewer if the recapture opens one. Rescue endangered pieces while preserving the pawn gain. A queen exchange may instead leave a smaller but real material advantage: settle the captures and protect the surviving pieces before accepting that queenless ending.",
+      "rules": [
+        {
+          "label": "Checkmate wins",
+          "when": {
+            "all": [
+              "mate"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Our legal mate-in-one wins",
+          "when": {
+            "all": [
+              "our_turn",
+              "mate_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Mate against us or stalemate fails",
+          "when": {
+            "any": [
+              "mated",
+              "stalemate"
+            ]
+          },
+          "result": "fail"
+        },
+        {
+          "label": "The queens are exchanged and we retain a material advantage without an attacked loose piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "queens_absent",
+              "material_advantage",
+              "down_material"
+            ],
+            "none": [
+              "in_check",
+              "hanging_piece_attacked_by_lower_value_piece",
+              "side_to_move_has_attacked_loose_piece",
+              "threaten_mate_in_1"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The queenless material advantage is retained and our attacked piece is safe",
+          "when": {
+            "all": [
+              "their_turn",
+              "queens_absent",
+              "material_advantage",
+              "safe_hanging_piece_move",
+              "moved_piece_safe",
+              "down_material"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "check_available",
+              "leaves_other_non_pawn_undefended"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The recapture opened a checking skewer",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_skewer_available"
+            ]
+          },
+          "to": "SKEWER"
+        },
+        {
+          "label": "The pawn gain survives checks and immediate material-recovering captures",
+          "when": {
+            "all": [
+              "their_turn",
+              "material_improved",
+              "moved_piece_safe"
+            ],
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "check_available",
+              "material_recovery_counter_available"
+            ]
+          },
+          "result": "prove"
+        }
+      ],
+      "my": {
+        "predicates": [
+          "mate",
+          "safe_gain_recapture",
+          "pawn_capture_with_queen_tempo",
+          {
+            "predicate": "safe_hanging_piece_move",
+            "when": {
+              "all": [
+                "queens_absent",
+                "material_advantage",
+                "side_to_move_has_attacked_loose_piece",
+                "down_material"
+              ],
+              "none": [
+                "hanging_piece_attacked_by_lower_value_piece"
+              ]
+            }
+          },
+          "safe_checking_retreat_cheaper_attacker",
+          {
+            "predicate": "safe_gain_capture",
+            "when": {
+              "all": [
+                "capture"
+              ]
+            }
+          },
+          "capture_undefended_non_pawn_piece",
+          "safe_capture_hanging_attacker",
+          {
+            "predicate": "safe_hanging_piece_move",
+            "when": {
+              "all": [
+                "pawn_counterattack"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_retreat_blocks_pawn_attack",
+            "when": {
+              "all": [
+                "material_improved"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_retreat_defends_loose_piece",
+            "when": {
+              "all": [
+                "material_improved"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_hanging_piece_move",
+            "when": {
+              "all": [
+                "material_improved"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_retreat_cheaper_attacker",
+            "when": {
+              "all": [
+                "material_improved"
+              ]
+            }
+          },
+          "take_pawn_attacking_other_piece",
+          "check_response"
+        ],
+        "limit": 5
+      },
+      "their": {
+        "predicates": [
+          {
+            "predicate": "legal_move",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "mated",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "check",
+            "when": {
+              "none": [
+                "in_check",
+                "pawn_queen_attack_recapture_available"
+              ]
+            }
+          },
+          {
+            "predicate": "recapture",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_or_nonpawn_capture",
+            "when": {
+              "none": [
+                "in_check",
+                "pawn_queen_attack_recapture_available"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_develop_with_loose_target_attack",
+            "when": {
+              "all": [
+                "take_pawn_attacking_other_piece"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "create_safe_attacker_surplus_on_non_pawn_piece",
+            "when": {
+              "all": [
+                "take_pawn_attacking_other_piece"
+              ],
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "safe_queen_escape",
+            "when": {
+              "all": [
+                "pawn_capture_with_queen_tempo"
+              ],
+              "none": [
+                "recapture_available"
+              ]
+            }
+          }
+        ]
+      }
     }
   ],
   "predicate_inputs": {
@@ -2432,7 +5087,7 @@
     },
     "safe_checking_loose_attack": {
       "all": [
-        "check_and_attack_piece",
+        "check",
         "create_safe_attacker_surplus_on_non_pawn_piece"
       ]
     },
@@ -2508,7 +5163,8 @@
     "checking_mate_defense": {
       "all": [
         "check",
-        "no_mate_in_1_available"
+        "no_mate_in_1_available",
+        "moved_piece_safe"
       ]
     },
     "capturing_mate_defense": {
@@ -2953,7 +5609,8 @@
       "children": {
         "where": {
           "all": [
-            "create_safe_attacker_surplus_on_non_pawn_piece"
+            "create_safe_attacker_surplus_on_non_pawn_piece",
+            "moved_piece_safe"
           ]
         },
         "count": {
@@ -3202,7 +5859,8 @@
     "queen_counterattack_with_king_pressure": {
       "all": [
         "create_safe_attacker_surplus_on_non_pawn_piece",
-        "attacks_king_adjacent_pawn"
+        "attacks_king_adjacent_pawn",
+        "moved_piece_safe"
       ],
       "fields": {
         "move.mover.type": {
@@ -3228,6 +5886,1854 @@
         "move_hanging_piece",
         "moved_piece_safe"
       ]
+    },
+    "objective_queen_capture": {
+      "all": [
+        "capture",
+        "objective_gain_reached"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "safe_countercheck_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_countercheck"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_capture_attacker": {
+      "all": [
+        "capture_attacker",
+        "moved_piece_safe"
+      ]
+    },
+    "save_with_capture_and_queen_attack": {
+      "all": [
+        "capture",
+        "move_hanging_piece",
+        "moved_piece_safe",
+        "attack_queen_with_cheaper_piece"
+      ]
+    },
+    "save_with_capture_and_queen_attack_available": {
+      "children": {
+        "where": {
+          "all": [
+            "save_with_capture_and_queen_attack"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_cheaper_queen_attack": {
+      "all": [
+        "attack_queen_with_cheaper_piece",
+        "moved_piece_safe"
+      ]
+    },
+    "check_and_attack_queen": {
+      "all": [
+        "check",
+        "safe_cheaper_queen_attack"
+      ]
+    },
+    "safe_objective_capture": {
+      "all": [
+        "objective_capture",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_piece_escape": {
+      "all": [
+        "move_hanging_piece",
+        "moved_piece_safe"
+      ]
+    },
+    "cheaper_queen_capture": {
+      "all": [
+        "objective_queen_capture"
+      ],
+      "none": [
+        "queen_move"
+      ]
+    },
+    "queen_move": {
+      "fields": {
+        "move.mover.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "safe_nonpawn_capture_erases_gain": {
+      "all": [
+        "capture_erases_gain",
+        "moved_piece_safe"
+      ],
+      "none": [
+        "pawn_capture"
+      ]
+    },
+    "pawn_capture": {
+      "fields": {
+        "move.captured.type": {
+          "eq": "p"
+        }
+      }
+    },
+    "safe_queen_escape": {
+      "all": [
+        "safe_piece_escape",
+        "queen_move"
+      ]
+    },
+    "safe_attacker_capture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_fork_attacker_capture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "forcing_mating_check": {
+      "all": [
+        "check_with_one_reply",
+        "threaten_mate_in_1"
+      ]
+    },
+    "forcing_mating_check_available": {
+      "children": {
+        "where": {
+          "all": [
+            "forcing_mating_check"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "checking_king_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "checking_king_lure"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "king_lure_acceptance_available": {
+      "all": [
+        "checking_king_lure",
+        "in_check"
+      ],
+      "children": {
+        "where": {
+          "all": [
+            "king_recapture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "king_recapture": {
+      "all": [
+        "king_move",
+        "recapture"
+      ]
+    },
+    "checking_king_lure": {
+      "any": [
+        "checking_bishop_king_lure",
+        "checking_queen_royal_fork_lure"
+      ]
+    },
+    "nonking_check_evasion": {
+      "all": [
+        "legal_move"
+      ],
+      "none": [
+        "king_move"
+      ]
+    },
+    "material_recovery_counter_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture"
+          ],
+          "none": [
+            "material_improved"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_capturing_fork_retreat": {
+      "all": [
+        "safe_fork_retreat",
+        "capture"
+      ]
+    },
+    "checking_capture_clears_royal_fork": {
+      "all": [
+        "check",
+        "capture",
+        "vacates_knight_royal_fork_square"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "r"
+        }
+      }
+    },
+    "checking_capture_clears_royal_fork_available": {
+      "children": {
+        "where": {
+          "all": [
+            "checking_capture_clears_royal_fork"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "exchange_attacker_available": {
+      "children": {
+        "where": {
+          "all": [
+            "exchange_attacker_of_more_valuable_piece"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "queen_attack_and_loose_piece_attack": {
+      "all": [
+        "attack_queen_with_cheaper_piece",
+        "create_safe_attacker_surplus_on_non_pawn_piece",
+        "add_attacker_to_loose_non_pawn_piece"
+      ]
+    },
+    "safe_nonpawn_recovery_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_nonpawn_capture_erases_gain"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "supported_checking_sacrifice": {
+      "all": [
+        "check_and_attack_piece",
+        "capture",
+        "moved_piece_en_prise",
+        "moved_piece_defended"
+      ]
+    },
+    "supported_checking_sacrifice_available": {
+      "children": {
+        "where": {
+          "all": [
+            "supported_checking_sacrifice"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_cheaper_queen_attack_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_cheaper_queen_attack"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "more_valuable_defender_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_with_cheaper_piece_against_more_valuable_sole_defender"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "defender_lure_recapture_available": {
+      "all": [
+        "capture_with_cheaper_piece_against_more_valuable_sole_defender",
+        "recapture_available"
+      ]
+    },
+    "objective_defender_lure": {
+      "all": [
+        "capture_with_cheaper_piece_against_more_valuable_sole_defender",
+        "objective_gain_reached"
+      ]
+    },
+    "capture_piece_with_mate_threat": {
+      "all": [
+        "capture",
+        "threaten_mate_in_1"
+      ],
+      "none": [
+        "check",
+        "pawn_capture"
+      ]
+    },
+    "sacrificial_capture_mate_threat": {
+      "all": [
+        "capture_piece_with_mate_threat",
+        "moved_piece_en_prise"
+      ]
+    },
+    "quiet_mate_defense": {
+      "all": [
+        "no_mate_in_1_available"
+      ],
+      "none": [
+        "check",
+        "capture"
+      ]
+    },
+    "capture_mate_defense_priority": {
+      "all": [
+        "capture_piece_with_mate_threat"
+      ],
+      "children": {
+        "where": {
+          "all": [
+            "capturing_mate_defense"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_queen_contact_mate_threat": {
+      "all": [
+        "threaten_contact_mate_in_1",
+        "queen_move",
+        "moved_piece_safe"
+      ],
+      "none": [
+        "check"
+      ]
+    },
+    "shelter_breaking_mate_threat": {
+      "all": [
+        "material_equal",
+        "threaten_mate_in_1",
+        "add_attacker_to_pinned_piece",
+        "attacks_king_adjacent_pawn"
+      ],
+      "none": [
+        "check",
+        "capture"
+      ]
+    },
+    "shelter_breaking_mate_threat_available": {
+      "children": {
+        "where": {
+          "all": [
+            "shelter_breaking_mate_threat"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "constructive_mate_defense": {
+      "all": [
+        "no_mate_in_1_available",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_check_evasion_capture": {
+      "all": [
+        "check_response",
+        "capture",
+        "moved_piece_safe"
+      ]
+    },
+    "queen_capture_preserves_mate_threat": {
+      "all": [
+        "profitable_queen_capture",
+        "threaten_mate_in_1",
+        "moved_piece_en_prise"
+      ]
+    },
+    "profitable_queen_capture": {
+      "all": [
+        "objective_queen_capture"
+      ],
+      "none": [
+        "exchange_q"
+      ]
+    },
+    "checking_deflection_available": {
+      "children": {
+        "where": {
+          "all": [
+            "checking_attack_on_sole_defender"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_queen_capture": {
+      "all": [
+        "capture",
+        "moved_piece_safe"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "capture_mate_threat": {
+      "all": [
+        "capture",
+        "threaten_mate_in_1",
+        "moved_piece_safe"
+      ]
+    },
+    "capture_mate_threat_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_mate_threat"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "non_pawn_defender_lure": {
+      "all": [
+        "capture_with_cheaper_piece_against_more_valuable_sole_defender"
+      ],
+      "none": [
+        "pawn_capture"
+      ]
+    },
+    "king_guarded_knight_fork": {
+      "all": [
+        "capture_piece_defended_only_by_king",
+        "attack_queen_with_cheaper_piece",
+        "add_attacker_to_loose_non_pawn_piece"
+      ],
+      "none": [
+        "check"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "n"
+        }
+      }
+    },
+    "king_guarded_knight_fork_available": {
+      "children": {
+        "where": {
+          "all": [
+            "king_guarded_knight_fork"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_queen_retreat": {
+      "all": [
+        "queen_move",
+        "save_piece",
+        "moved_piece_safe"
+      ]
+    },
+    "capture_with_pinned_defender_pressure": {
+      "all": [
+        "capture",
+        "pawn_capture",
+        "add_attacker_to_pinned_piece",
+        "capture_piece_with_pinned_defender"
+      ]
+    },
+    "capture_with_pinned_defender_pressure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_with_pinned_defender_pressure"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_improving_recapture": {
+      "all": [
+        "recapture",
+        "material_improved",
+        "moved_piece_safe"
+      ]
+    },
+    "cheaper_improving_recapture": {
+      "all": [
+        "safe_improving_recapture",
+        "capture_with_cheaper_piece"
+      ]
+    },
+    "cheaper_improving_recapture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "cheaper_improving_recapture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "king_check_adds_piece_attacker": {
+      "all": [
+        "check",
+        "king_move",
+        "create_safe_attacker_surplus_on_non_pawn_piece",
+        "attacker_surplus_on_non_pawn_piece"
+      ]
+    },
+    "king_check_adds_piece_attacker_available": {
+      "children": {
+        "where": {
+          "all": [
+            "king_check_adds_piece_attacker"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "sacrificial_capture_attacks_loose_piece": {
+      "all": [
+        "capture",
+        "objective_gain_reached",
+        "moved_piece_en_prise",
+        "add_attacker_to_loose_non_pawn_piece"
+      ]
+    },
+    "sacrificial_capture_attacks_loose_piece_available": {
+      "children": {
+        "where": {
+          "all": [
+            "sacrificial_capture_attacks_loose_piece"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "king_check_attacks_loose_piece": {
+      "all": [
+        "check",
+        "king_move",
+        "add_attacker_to_loose_non_pawn_piece"
+      ]
+    },
+    "king_check_attacks_loose_piece_available": {
+      "children": {
+        "where": {
+          "all": [
+            "king_check_attacks_loose_piece"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "checking_alignment_lure_acceptance_available": {
+      "all": [
+        "in_check",
+        "attack_sole_defended_piece_of_loose_alignment"
+      ],
+      "children": {
+        "where": {
+          "all": [
+            "recapture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "supported_check_on_king_pawns": {
+      "all": [
+        "check",
+        "moved_piece_defended",
+        "moved_piece_en_prise",
+        "attacks_king_adjacent_pawn"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "n"
+        }
+      }
+    },
+    "supported_check_on_king_pawns_available": {
+      "children": {
+        "where": {
+          "all": [
+            "supported_check_on_king_pawns"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_capture_to_save_piece": {
+      "all": [
+        "capture",
+        "save_piece",
+        "moved_piece_safe"
+      ]
+    },
+    "checking_capture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "checking_capture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "king_hole_controller_attack_available": {
+      "children": {
+        "where": {
+          "all": [
+            "attack_bishop_controlling_king_hole"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "queen_checking_king_lure": {
+      "all": [
+        "check",
+        "capture_piece_defended_only_by_king",
+        "threaten_mate_in_1",
+        "moved_piece_en_prise"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "q"
+        },
+        "move.captured.type": {
+          "eq": "p"
+        }
+      }
+    },
+    "queen_checking_king_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "queen_checking_king_lure"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "check_and_attack_queen_available": {
+      "children": {
+        "where": {
+          "all": [
+            "check_and_attack_queen"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_material_recovery_counter_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture",
+            "moved_piece_safe"
+          ],
+          "none": [
+            "material_improved"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "queen_capture": {
+      "all": [
+        "capture"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "safe_undefended_queen_capture": {
+      "all": [
+        "queen_capture",
+        "moved_piece_safe",
+        "capture_undefended_non_pawn_piece"
+      ]
+    },
+    "safe_undefended_queen_capture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_undefended_queen_capture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "quiet_bishop_king_lure": {
+      "all": [
+        "capture_piece_defended_only_by_king",
+        "create_attacker_surplus_on_non_pawn_piece"
+      ],
+      "none": [
+        "check"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "b"
+        }
+      }
+    },
+    "quiet_bishop_king_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "quiet_bishop_king_lure"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "quiet_king_lure_acceptance_available": {
+      "all": [
+        "quiet_bishop_king_lure"
+      ],
+      "children": {
+        "where": {
+          "all": [
+            "king_recapture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "supported_rook_check": {
+      "all": [
+        "check",
+        "moved_piece_safe",
+        "moved_piece_defended"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "r"
+        }
+      }
+    },
+    "supported_rook_check_available": {
+      "children": {
+        "where": {
+          "all": [
+            "supported_rook_check"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "save_with_safe_counterattack": {
+      "all": [
+        "save_piece",
+        "create_safe_attacker_surplus_on_non_pawn_piece"
+      ]
+    },
+    "supported_checking_fork_retreat": {
+      "all": [
+        "safe_fork_retreat",
+        "check",
+        "moved_piece_defended"
+      ]
+    },
+    "queen_fork_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_lures_queen_to_knight_fork"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "queen_fork_lure_recapture_available": {
+      "all": [
+        "capture_lures_queen_to_knight_fork",
+        "recapture_available"
+      ]
+    },
+    "checking_bishop_king_lure": {
+      "all": [
+        "check",
+        "capture_piece_defended_only_by_king"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "b"
+        }
+      }
+    },
+    "checking_queen_royal_fork_lure": {
+      "all": [
+        "check",
+        "capture_piece_defended_only_by_king",
+        "king_recapture_square_on_knight_royal_fork"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "checking_queen_capture_with_takeback": {
+      "all": [
+        "in_check",
+        "objective_queen_capture",
+        "recapture_available"
+      ]
+    },
+    "supported_queen_pin": {
+      "all": [
+        "pin_queen_to_king",
+        "moved_piece_defended",
+        "moved_piece_safe"
+      ]
+    },
+    "supported_queen_pin_available": {
+      "children": {
+        "where": {
+          "all": [
+            "supported_queen_pin"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_attack_on_pinned_piece": {
+      "all": [
+        "add_attacker_to_pinned_piece",
+        "create_safe_attacker_surplus_on_non_pawn_piece",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_attack_on_pinned_piece_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_attack_on_pinned_piece"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "offered_rook_capture": {
+      "all": [
+        "capture",
+        "objective_gain_reached",
+        "recapture_available"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "r"
+        }
+      },
+      "any": [
+        "bishop_capture",
+        "recapture"
+      ]
+    },
+    "safe_gain_erasing_capture": {
+      "all": [
+        "capture_erases_gain",
+        "moved_piece_safe"
+      ]
+    },
+    "bishop_capture": {
+      "all": [
+        "capture"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "b"
+        }
+      }
+    },
+    "supported_rook_pawn_capture_overloads_piece": {
+      "all": [
+        "capture",
+        "moved_piece_defended",
+        "moved_piece_safe",
+        "attacker_surplus_on_non_pawn_piece"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "r"
+        },
+        "move.captured.type": {
+          "eq": "p"
+        }
+      }
+    },
+    "supported_rook_pawn_capture_overload_available": {
+      "children": {
+        "where": {
+          "all": [
+            "supported_rook_pawn_capture_overloads_piece"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_checking_mate_threat": {
+      "all": [
+        "check",
+        "threaten_mate_in_1",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_checking_mate_threat_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_checking_mate_threat"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_reinforce_attacked_piece": {
+      "all": [
+        "add_defender_to_attacked_piece",
+        "moved_piece_safe",
+        "moved_piece_defended"
+      ]
+    },
+    "safe_escape_attacked_piece": {
+      "all": [
+        "move_hanging_piece",
+        "moved_piece_safe"
+      ]
+    },
+    "pawn_attacks_king_shelter": {
+      "all": [
+        "attacks_king_shelter_pawn",
+        "moved_piece_safe"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "p"
+        }
+      }
+    },
+    "safe_mate_threat_defense": {
+      "all": [
+        "moved_piece_safe",
+        "adds_defender_to_threatened_mating_square",
+        "supports_multiple_king_adjacent_squares"
+      ],
+      "none": [
+        "check",
+        "capture"
+      ]
+    },
+    "trade_recapture_priority": {
+      "all": [
+        "recapture_available"
+      ],
+      "any": [
+        "rook_trade",
+        "queen_promotion_capture"
+      ]
+    },
+    "queen_recapture": {
+      "all": [
+        "recapture"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "pawn_recaptures_rook": {
+      "all": [
+        "recapture"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "p"
+        },
+        "move.captured.type": {
+          "eq": "r"
+        }
+      }
+    },
+    "rook_recaptures_rook": {
+      "all": [
+        "recapture"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "r"
+        },
+        "move.captured.type": {
+          "eq": "r"
+        }
+      }
+    },
+    "pawn_recapture": {
+      "all": [
+        "recapture"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "p"
+        }
+      }
+    },
+    "pawn_recapture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "pawn_recapture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "pawn_takes_traded_piece_first": {
+      "all": [
+        "rook_trade",
+        "pawn_recapture_available"
+      ]
+    },
+    "rook_trade": {
+      "all": [
+        "trade_attacked_piece"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "r"
+        },
+        "move.captured.type": {
+          "eq": "r"
+        }
+      }
+    },
+    "overloaded_defender_capture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_with_overloaded_sole_defender"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "overloaded_defender_recapture_available": {
+      "all": [
+        "capture_with_overloaded_sole_defender",
+        "recapture_available"
+      ]
+    },
+    "material_improvement_erasing_reply_available": {
+      "children": {
+        "where": {
+          "none": [
+            "material_improved"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "checking_collection_for_pawn_gain_available": {
+      "children": {
+        "where": {
+          "all": [
+            "check",
+            "capture_undefended_non_pawn_piece",
+            "material_improved"
+          ],
+          "none": [
+            "objective_gain_reached"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "knight_fork_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_lures_knight_fork_of_valuable_pieces"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_knight_fork": {
+      "all": [
+        "knight_forks_two_valuable_pieces",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_knight_fork_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_knight_fork"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_fork_counterattack": {
+      "all": [
+        "move_hanging_piece",
+        "moved_piece_safe",
+        "create_safe_attacker_surplus_on_non_pawn_piece"
+      ]
+    },
+    "safe_fork_defense": {
+      "all": [
+        "move_hanging_piece",
+        "moved_piece_safe",
+        "add_defender_to_attacked_piece"
+      ]
+    },
+    "safe_fork_defense_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_fork_defense"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "knight_takes_more_valuable_piece": {
+      "any": [
+        "knight_takes_rook",
+        "knight_takes_queen"
+      ]
+    },
+    "knight_takes_rook": {
+      "all": [
+        "capture"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "n"
+        },
+        "move.captured.type": {
+          "eq": "r"
+        }
+      }
+    },
+    "knight_collection_recapture_available": {
+      "all": [
+        "knight_takes_rook",
+        "recapture_available"
+      ]
+    },
+    "knight_takes_queen": {
+      "all": [
+        "capture"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "n"
+        },
+        "move.captured.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "capture_with_safe_queen_attack": {
+      "all": [
+        "capture",
+        "safe_cheaper_queen_attack"
+      ]
+    },
+    "capture_with_safe_queen_attack_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_with_safe_queen_attack"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "one_reply_check_available": {
+      "children": {
+        "where": {
+          "all": [
+            "check_with_one_reply"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "objective_recapture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "objective_recapture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "take_pawn_attacking_other_piece": {
+      "all": [
+        "pawn_capture",
+        "capture_hanging_piece_attacker",
+        "moved_piece_defended",
+        "moved_piece_en_prise"
+      ],
+      "none": [
+        "move_hanging_piece"
+      ]
+    },
+    "take_pawn_attacking_other_piece_available": {
+      "children": {
+        "where": {
+          "all": [
+            "take_pawn_attacking_other_piece"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_capture_hanging_attacker": {
+      "all": [
+        "capture_hanging_piece_attacker",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_checking_retreat_cheaper_attacker": {
+      "all": [
+        "move_piece_attacked_by_cheaper_piece",
+        "moved_piece_safe",
+        "check"
+      ]
+    },
+    "safe_retreat_blocks_pawn_attack": {
+      "all": [
+        "move_piece_attacked_by_cheaper_piece",
+        "blocks_attack_on_own_pawn",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_retreat_defends_loose_piece": {
+      "all": [
+        "move_piece_attacked_by_cheaper_piece",
+        "adds_defender_to_loose_non_pawn_piece",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_develop_with_loose_target_attack": {
+      "all": [
+        "develop_minor_with_attack_on_undefended_target",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_retreat_cheaper_attacker": {
+      "all": [
+        "move_piece_attacked_by_cheaper_piece",
+        "moved_piece_safe"
+      ]
+    },
+    "checking_fork_overloads_defender_available": {
+      "children": {
+        "where": {
+          "all": [
+            "checking_fork_overloads_defender"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "equal_defender_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "quiet_equal_defender_lure"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "equal_defender_lure_recapture_available": {
+      "all": [
+        "capture_with_equal_piece_against_sole_defender",
+        "recapture_available"
+      ]
+    },
+    "safe_recapture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "recapture",
+            "moved_piece_safe"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "pawn_gain_erasing_reply_available": {
+      "children": {
+        "where": {
+          "none": [
+            "material_improved"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_pawn_recovery_capture": {
+      "all": [
+        "capture",
+        "moved_piece_safe"
+      ],
+      "none": [
+        "material_improved"
+      ]
+    },
+    "only_pawn_gain": {
+      "all": [
+        "material_improved"
+      ],
+      "none": [
+        "objective_gain_reached"
+      ]
+    },
+    "quiet_equal_defender_lure": {
+      "all": [
+        "capture_with_equal_piece_against_sole_defender"
+      ],
+      "none": [
+        "check",
+        "queen_move"
+      ]
+    },
+    "supported_passed_pawn_advance": {
+      "all": [
+        "advances_passed_pawn",
+        "promotion_square_defended_by_bishop",
+        "moved_piece_safe"
+      ]
+    },
+    "rook_attacks_passed_pawn": {
+      "all": [
+        "move_attacks_enemy_passed_pawn",
+        "moved_piece_safe"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "r"
+        }
+      }
+    },
+    "safe_knight_counterattack": {
+      "all": [
+        "create_safe_attacker_surplus_on_non_pawn_piece",
+        "moved_piece_safe"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "n"
+        }
+      }
+    },
+    "capture_royal_fork_defender_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_defender_of_knight_royal_fork_square"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "blockader_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_draws_blockader_from_advanced_pawn"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "checking_pawn_advance": {
+      "all": [
+        "check",
+        "passed_pawn_one_step_from_promotion"
+      ],
+      "none": [
+        "capture"
+      ],
+      "fields": {
+        "move.mover.type": {
+          "eq": "p"
+        }
+      }
+    },
+    "queen_promotion_capture": {
+      "all": [
+        "capture",
+        "queen_promotion"
+      ]
+    },
+    "checking_promotion_with_takeback": {
+      "all": [
+        "in_check",
+        "promotion",
+        "recapture_available"
+      ]
+    },
+    "back_rank_interposition_check_available": {
+      "children": {
+        "where": {
+          "all": [
+            "check_with_only_interpositions",
+            "moved_piece_safe"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_pawn_capture_attacking_pinned_king_shelter": {
+      "all": [
+        "capture",
+        "moved_piece_safe",
+        "attacks_king_adjacent_pawn",
+        "add_attacker_to_pinned_piece"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "p"
+        }
+      }
+    },
+    "safe_pawn_capture_attacking_pinned_king_shelter_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_pawn_capture_attacking_pinned_king_shelter"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_queen_recapture": {
+      "all": [
+        "recapture",
+        "moved_piece_safe"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "capture_queen": {
+      "all": [
+        "capture"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "q"
+        }
+      }
+    },
+    "capture_and_double_queen_threat": {
+      "all": [
+        "capture",
+        "attack_queen_with_cheaper_piece",
+        "create_safe_attacker_surplus_on_non_pawn_piece"
+      ],
+      "none": [
+        "moved_piece_safe"
+      ]
+    },
+    "capture_and_double_queen_threat_available": {
+      "children": {
+        "where": {
+          "all": [
+            "capture_and_double_queen_threat"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "checking_desperado": {
+      "all": [
+        "check",
+        "capture",
+        "move_hanging_piece"
+      ]
+    },
+    "checking_objective_piece_capture": {
+      "all": [
+        "checking_objective_capture"
+      ],
+      "none": [
+        "capture_of_pawn"
+      ]
+    },
+    "capture_of_pawn": {
+      "all": [
+        "capture"
+      ],
+      "fields": {
+        "move.captured.type": {
+          "eq": "p"
+        }
+      }
+    },
+    "gain_erasing_recapture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "recapture"
+          ],
+          "none": [
+            "objective_gain_reached"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "pin_defender_with_a_sacrifice": {
+      "all": [
+        "add_attacker_to_pinned_piece",
+        "create_safe_attacker_surplus_on_non_pawn_piece",
+        "moved_piece_en_prise"
+      ]
+    },
+    "pin_defender_sacrifice_available": {
+      "children": {
+        "where": {
+          "all": [
+            "pin_defender_with_a_sacrifice"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "pawn_capture_mate_and_loose_attack": {
+      "all": [
+        "pawn_capture",
+        "mate_and_loose_piece_threat",
+        "attack_queen",
+        "moved_piece_en_prise"
+      ],
+      "none": [
+        "check"
+      ]
+    },
+    "safe_queen_mate_defense": {
+      "all": [
+        "quiet_mate_defense",
+        "queen_move",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_noncapturing_forcing_mating_check": {
+      "all": [
+        "forcing_mating_check",
+        "moved_piece_safe"
+      ],
+      "none": [
+        "capture"
+      ]
+    },
+    "safe_objective_pawn_capture": {
+      "all": [
+        "pawn_capture",
+        "safe_objective_capture"
+      ],
+      "none": [
+        "check"
+      ]
+    },
+    "pawn_capture_with_queen_tempo": {
+      "all": [
+        "pawn_capture",
+        "attack_queen_with_cheaper_piece",
+        "add_attacker_to_loose_non_pawn_piece",
+        "moved_piece_defended",
+        "moved_piece_en_prise"
+      ]
+    },
+    "pawn_capture_with_queen_tempo_available": {
+      "children": {
+        "where": {
+          "all": [
+            "pawn_capture_with_queen_tempo"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "safe_gain_capture": {
+      "all": [
+        "capture",
+        "material_improved",
+        "moved_piece_safe"
+      ]
+    },
+    "pawn_queen_attack_recapture_available": {
+      "all": [
+        "pawn_capture_with_queen_tempo",
+        "recapture_available"
+      ]
+    },
+    "safe_gain_recapture": {
+      "all": [
+        "recapture",
+        "capture",
+        "material_improved",
+        "moved_piece_safe"
+      ]
+    },
+    "nonpawn_capture": {
+      "all": [
+        "capture"
+      ],
+      "none": [
+        "pawn_capture"
+      ]
+    },
+    "safe_or_nonpawn_capture": {
+      "all": [
+        "capture"
+      ],
+      "any": [
+        "moved_piece_safe",
+        "nonpawn_capture"
+      ]
+    },
+    "queen_king_lure_available": {
+      "children": {
+        "where": {
+          "all": [
+            "checking_queen_royal_fork_lure"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "mating_deflection": {
+      "all": [
+        "sacrificial_capture_mate_threat",
+        "attack_sole_defended_piece_of_loose_alignment"
+      ]
+    },
+    "mating_deflection_available": {
+      "children": {
+        "where": {
+          "all": [
+            "mating_deflection"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "king_escape_with_mate_threat": {
+      "all": [
+        "check_response",
+        "king_move",
+        "threaten_mate_in_1"
+      ],
+      "none": [
+        "capture"
+      ]
+    },
+    "safe_forcing_mating_check": {
+      "all": [
+        "forcing_mating_check",
+        "moved_piece_safe"
+      ]
+    },
+    "safe_forcing_mating_capture": {
+      "all": [
+        "safe_forcing_mating_check",
+        "capture"
+      ]
+    },
+    "safe_forcing_mating_capture_available": {
+      "children": {
+        "where": {
+          "all": [
+            "safe_forcing_mating_capture"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
+    },
+    "checking_royal_fork_offer_available": {
+      "children": {
+        "where": {
+          "all": [
+            "king_can_capture_checking_offer_on_knight_royal_fork"
+          ]
+        },
+        "count": {
+          "min": 1
+        }
+      }
     }
   },
   "predicate_labels": {
@@ -3248,7 +7754,7 @@
     "trade_attacked_piece": "Trade our attacked piece",
     "attack_pinned_and_loose": "Attack the pinned piece and another loose piece",
     "escape_and_attack_pinned_piece": "Move the hanging piece with an attack on a pinned piece",
-    "checking_mate_defense": "Answer the mate threat with check",
+    "checking_mate_defense": "Answer the mate threat with a safe check",
     "capturing_mate_defense": "Answer the mate threat with a capture",
     "exchange_n": "Exchange equal pieces while keeping the material gain",
     "exchange_b": "Exchange equal pieces while keeping the material gain",
@@ -3355,11 +7861,187 @@
     "moved_piece_safe": "The moved piece is not immediately lost to a capture",
     "adds_defender_to_loose_non_pawn_piece": "Add a defender to an undefended non-pawn",
     "attacks_king_adjacent_pawn": "Add an attack on a pawn beside the enemy king",
-    "loose_target_still_attacked": "The forked loose piece is still attacked"
+    "loose_target_still_attacked": "The forked loose piece is still attacked",
+    "capture_with_cheaper_piece_against_more_valuable_sole_defender": "Capture to draw the more valuable sole defender",
+    "safe_capture_attacker": "Safely capture an attacker",
+    "save_with_capture_and_queen_attack": "Save an attacked piece by capturing safely and attacking the queen",
+    "save_with_capture_and_queen_attack_available": "An attacked piece can capture safely while attacking the queen",
+    "safe_cheaper_queen_attack": "Safely attack the queen with a cheaper piece",
+    "check_and_attack_queen": "Give check while safely attacking the queen",
+    "safe_objective_capture": "Safely capture to reach the material goal",
+    "safe_piece_escape": "Move the attacked piece safely",
+    "cheaper_queen_capture": "Capture the queen with a cheaper piece for the material goal",
+    "queen_move": "Move a queen",
+    "safe_nonpawn_capture_erases_gain": "Safely capture a non-pawn to recover material",
+    "pawn_capture": "Capture a pawn",
+    "safe_queen_escape": "Move the attacked queen safely",
+    "safe_attacker_capture_available": "The attacked side can safely capture its attacker",
+    "attack_queen_with_cheaper_piece": "The moved piece adds a direct attack on a more valuable enemy queen",
+    "forcing_mating_check": "A one-reply check with a mate threat",
+    "forcing_mating_check_available": "A one-reply check can force the defense of a mate threat",
+    "king_recapture": "The king accepts the checking sacrifice",
+    "checking_king_lure_available": "A checking capture can draw the king into a fork",
+    "capture_piece_defended_only_by_king": "Capture a piece defended only by its king",
+    "king_lure_acceptance_available": "A legal king capture accepts the checking sacrifice",
+    "checking_king_lure": "A checking capture draws the sole-defending king",
+    "nonking_check_evasion": "Answer check without moving the king",
+    "material_recovery_counter_available": "An immediate capture erases our material improvement",
+    "material_improved": "Our material balance has improved from the starting position",
+    "safe_capturing_fork_retreat": "Move the attacked piece safely with a capture",
+    "checking_capture_clears_royal_fork": "Take a rook with check to clear a knight royal fork",
+    "objective_queen_capture": "Capture the queen and inspect its takeback",
+    "exchange_attacker_of_more_valuable_piece": "Exchange away a cheaper attacker of our valuable piece",
+    "exchange_attacker_available": "We can exchange away a cheaper attacker of our valuable piece",
+    "queen_attack_and_loose_piece_attack": "Attack the queen while safely adding an attack on a loose piece",
+    "safe_nonpawn_recovery_available": "A safe non-pawn capture can recover material",
+    "moved_piece_defended": "The moved piece has a defender",
+    "supported_checking_sacrifice": "A defended checking capture forks another piece, even if the checker can be taken",
+    "supported_checking_sacrifice_available": "A defended checking capture can force a fork or a defender capture",
+    "safe_cheaper_queen_attack_available": "A cheaper piece can safely attack the queen",
+    "more_valuable_defender_lure_available": "A cheaper capture can lure a more valuable sole defender",
+    "defender_lure_recapture_available": "The more valuable sole defender can accept the sacrifice",
+    "objective_defender_lure": "Capture to draw the more valuable defender and reach the material goal",
+    "capture_piece_with_mate_threat": "Capture a non-pawn piece and threaten mate",
+    "threaten_contact_mate_in_1": "Threaten mate by landing beside the king",
+    "sacrificial_capture_mate_threat": "The capture threatens mate but can be recaptured",
+    "quiet_mate_defense": "A quiet move prevents mate",
+    "capture_mate_defense_priority": "A capture can answer the capturing mate threat",
+    "safe_queen_contact_mate_threat": "Safely move the queen to threaten mate beside the king",
+    "shelter_breaking_mate_threat": "With equal material, threaten mate by attacking a pinned king pawn",
+    "shelter_breaking_mate_threat_available": "A mate threat can break the king\u2019s pawn shelter without an initial material deficit",
+    "constructive_mate_defense": "Answer mate with a safe move",
+    "safe_check_evasion_capture": "Answer check with a safe capture",
+    "our_king_has_no_adjacent_pawns": "Our king has no adjacent friendly pawns",
+    "opponent_king_has_no_adjacent_pawns": "The opposing king has no adjacent friendly pawns",
+    "profitable_queen_capture": "Capture the queen with a cheaper piece",
+    "checking_attack_on_sole_defender": "Check while attacking the sole defender of a more valuable piece",
+    "checking_deflection_available": "A check can force the sole defender of a more valuable piece away",
+    "safe_queen_capture": "Safely capture the hanging queen",
+    "capture_mate_threat": "Capture safely to threaten mate in one",
+    "capture_mate_threat_available": "A safe capture can create mate in one",
+    "non_pawn_defender_lure": "Take a non-pawn piece to draw its more valuable sole defender",
+    "king_guarded_knight_fork": "Capture a king-guarded piece and fork queen and loose piece",
+    "safe_queen_retreat": "Move the attacked queen to safety",
+    "capture_with_pinned_defender_pressure": "Take a pawn and attack its pinned defender",
+    "capture_with_pinned_defender_pressure_available": "We can take a pawn and increase pressure on its pinned defender",
+    "safe_improving_recapture": "Recapture safely and retain a material improvement",
+    "cheaper_improving_recapture": "Recapture safely with a cheaper piece and retain the gain",
+    "capture_with_cheaper_piece": "Capture a more valuable piece",
+    "capture_piece_with_pinned_defender": "Capture a target whose defender is pinned to its king",
+    "cheaper_improving_recapture_available": "A cheaper piece can recapture safely and retain material",
+    "sacrificial_capture_attacks_loose_piece": "Capture and offer an exchange against the loose defender",
+    "king_check_attacks_loose_piece": "Uncover check with the king while attacking a loose piece",
+    "attack_more_valuable_piece": "The moved piece attacks a more valuable piece",
+    "checking_alignment_lure_acceptance_available": "The checked sole defender can accept the sacrifice",
+    "supported_check_on_king_pawns": "A defended sacrifice checks and attacks a king pawn",
+    "supported_check_on_king_pawns_available": "A defended checking sacrifice can attack a king pawn",
+    "safe_capture_to_save_piece": "Save the attacked piece with a safe capture",
+    "checking_capture_available": "A checking capture is available",
+    "attack_bishop_controlling_king_hole": "Attack the bishop controlling an empty square beside our king",
+    "king_hole_controller_attack_available": "We can attack the bishop controlling a hole beside our king",
+    "queen_checking_king_lure": "Offer the queen with check against a king-guarded pawn and threaten mate",
+    "quiet_bishop_king_lure": "Capture a king-defended piece and overload another",
+    "quiet_bishop_king_lure_available": "A bishop can lure the king while overloading a piece",
+    "quiet_king_lure_acceptance_available": "The king can accept the quiet bishop sacrifice",
+    "supported_rook_check": "Give a safe rook check with support",
+    "supported_rook_check_available": "A defended rook can give check safely",
+    "save_with_safe_counterattack": "Save an attacked piece with a safe counterattack",
+    "supported_checking_fork_retreat": "Save our attacked piece with a defended check",
+    "capture_lures_queen_to_knight_fork": "A queen recapture lands on a safe knight fork of queen and king",
+    "queen_fork_lure_available": "A queen can be drawn onto a knight fork with her king",
+    "queen_fork_lure_recapture_available": "The queen can accept the fork sacrifice",
+    "checking_bishop_king_lure": "A checking bishop capture draws the sole-defending king",
+    "checking_queen_royal_fork_lure": "A checking queen capture draws the king onto a knight-fork target",
+    "king_recapture_square_on_knight_royal_fork": "The king-capture square and enemy queen share a reachable knight fork",
+    "pawn_endgame": "Only kings and pawns remain",
+    "checking_queen_capture_with_takeback": "The queen was captured with check and can be recaptured",
+    "supported_queen_pin": "Safely pin the queen with a defended cheaper piece",
+    "supported_queen_pin_available": "A defended cheaper piece can safely pin the queen",
+    "pin_queen_to_king": "The moved cheaper piece pins the queen to its king",
+    "safe_attack_on_pinned_piece": "Safely attack a pinned piece",
+    "safe_gain_erasing_capture": "Safely capture to erase the material gain",
+    "capture_with_overloaded_sole_defender": "Capture a target whose sole defender must abandon another attacked piece",
+    "checking_collection_for_pawn_gain_available": "A checking collection completes a smaller material gain",
+    "capture_lures_knight_fork_of_valuable_pieces": "Capture to draw a defender onto a knight fork of two valuable pieces",
+    "safe_knight_fork": "Safely fork two more valuable pieces with a knight",
+    "safe_fork_counterattack": "Save a forked piece while safely counterattacking",
+    "safe_fork_defense": "Save one forked piece and defend the other",
+    "knight_takes_more_valuable_piece": "Take a rook or queen with the forking knight",
+    "capture_with_safe_queen_attack": "Capture and safely attack the queen",
+    "capture_with_safe_queen_attack_available": "A capture can safely attack the queen",
+    "one_reply_check_available": "A check has only one legal reply",
+    "objective_recapture_available": "A recapture can reach the material goal",
+    "take_pawn_attacking_other_piece": "Capture the pawn attacking another loose piece",
+    "take_pawn_attacking_other_piece_available": "Capture the pawn attacking another loose piece is available",
+    "safe_capture_hanging_attacker": "Capture an attacker of a loose piece safely",
+    "safe_checking_retreat_cheaper_attacker": "Escape a cheaper attacker with a safe check",
+    "safe_retreat_blocks_pawn_attack": "Retreat from a cheaper attacker and block an attack on a pawn",
+    "safe_retreat_defends_loose_piece": "Retreat from a cheaper attacker and defend a loose piece",
+    "safe_develop_with_loose_target_attack": "Develop a minor piece and attack an undefended target",
+    "safe_retreat_cheaper_attacker": "Retreat safely from a cheaper attacker",
+    "move_piece_attacked_by_cheaper_piece": "Move a piece attacked by a cheaper piece",
+    "develop_minor_with_attack_on_undefended_target": "Develop a minor piece with an attack on an undefended target",
+    "blocks_attack_on_own_pawn": "Interpose against an attack on our pawn",
+    "checking_fork_overloads_defender": "Check and fork a piece whose sole defender must abandon it to take the checker",
+    "checking_fork_overloads_defender_available": "A checking fork can overload the sole defender",
+    "quiet_equal_defender_lure": "Use a minor piece or rook to draw an equally valuable sole defender",
+    "capture_with_equal_piece_against_sole_defender": "Capture a target defended only by a piece worth as much as the capturer",
+    "equal_defender_lure_available": "An equal-value defender lure is available",
+    "safe_pawn_recovery_capture": "Capture safely to erase the pawn gain",
+    "only_pawn_gain": "Material has improved by less than the usual two-pawn objective",
+    "queen_promotion": "Promote to a queen",
+    "promotion": "Promote a pawn",
+    "pawn_advance": "Advance a pawn",
+    "advances_passed_pawn": "Advance a passed pawn",
+    "supported_passed_pawn_advance": "Advance a safe passer whose promotion square is bishop-defended",
+    "rook_attacks_passed_pawn": "Safely attack the passed pawn with the rook",
+    "rook_on_enemy_passed_pawn_file": "Put the rook on the passed pawn\u2019s file",
+    "promotion_square_defended_by_bishop": "A bishop controls the promotion square",
+    "passed_pawn_one_step_from_promotion": "The passer is one move from promotion",
+    "move_attacks_enemy_passed_pawn": "Attack an enemy passed pawn",
+    "capture_defender_of_knight_royal_fork_square": "Capture the defender of a knight royal-fork square",
+    "capture_royal_fork_defender_available": "A capture can remove the defender of a knight royal-fork square",
+    "capture_draws_blockader_from_advanced_pawn": "Capture to draw away the blockader of an advanced pawn",
+    "blockader_lure_available": "A capture can draw away an advanced pawn\u2019s blockader",
+    "checking_pawn_advance": "Advance a passed pawn with check to one step from promotion",
+    "queen_promotion_capture": "Capture and promote to a queen",
+    "checking_promotion_with_takeback": "A checking promotion can be recaptured",
+    "queen_recapture": "Recapture the queen",
+    "trade_recapture_priority": "Study the recapture of a rook exchange or capturing promotion first",
+    "capture_and_double_queen_threat": "Capture with a queen attack and a second safe threat",
+    "checking_desperado": "An attacked piece captures with check before it is lost",
+    "checking_objective_piece_capture": "Capture a non-pawn with check for the material goal",
+    "pin_defender_with_a_sacrifice": "Offer a pinning piece to deflect the defender",
+    "pawn_capture_mate_and_loose_attack": "Take a pawn with a mate threat and an attack on a loose piece",
+    "safe_queen_mate_defense": "Save the queen safely while answering mate",
+    "attack_queen": "Attack the enemy queen",
+    "safe_noncapturing_forcing_mating_check": "A safe forcing check retains a mate threat",
+    "safe_objective_pawn_capture": "Take a pawn safely to meet the material objective",
+    "pawn_capture_with_queen_tempo": "Capture a pawn with a defended piece and attack the queen",
+    "pawn_capture_with_queen_tempo_available": "A defended pawn capture attacks the queen",
+    "safe_gain_capture": "Capture safely while retaining a material gain",
+    "pawn_queen_attack_recapture_available": "The pawn-taking queen attacker can be recaptured",
+    "queens_absent": "Neither side has a queen",
+    "safe_gain_recapture": "Recapture safely while retaining a material gain",
+    "side_to_move_has_attacked_loose_piece": "The side to move has an attacked loose non-pawn piece",
+    "nonpawn_capture": "Capture a non-pawn piece",
+    "safe_or_nonpawn_capture": "Capture safely or take a non-pawn piece",
+    "queen_king_lure_available": "A checking queen capture can draw the king into a knight royal fork",
+    "mating_deflection": "Capture to draw a sole defender while threatening mate",
+    "mating_deflection_available": "A mating capture can draw a sole defender",
+    "king_escape_with_mate_threat": "Escape check while keeping the mate threat",
+    "safe_forcing_mating_check": "A safe one-reply check keeps a mate threat",
+    "safe_forcing_mating_capture": "A safe capturing check has one reply and keeps a mate threat",
+    "safe_forcing_mating_capture_available": "A safe capturing check can force a mate defense",
+    "king_can_capture_checking_offer_on_knight_royal_fork": "Check by offering a piece on a knight royal-fork target",
+    "checking_royal_fork_offer_available": "A checking offer can draw the king into a knight royal fork"
   },
   "proof": {
     "model": "chess-theorem-cards/v1",
-    "scope": "Selective human tactical policy. The check-fork card statically checks every immediate evasion for preservation of the attacked loose target, then examines constructive king escapes and declared counterattack classes. It does not assert dominance of that king escape or equivalence of all later counterplay. All other cards retain their prior complete check-evasion lists explicitly on the card.",
-    "quiet_definition": "No check, objective-erasing capture, immediate recapture, or safe nonpawn counterattack remains. Repaired-piece conclusions are stated separately on Secure the material gain."
+    "scope": "Selective human tactical investigation. Each current card chooses moves, replies and continuations from chess predicates. Some cards examine every legal check evasion; others explicitly prioritize a king capture, safe forcing counters, queen escapes or concrete mate defenses. Claims cover those generated replies and the stated material or positional goal.",
+    "quiet_definition": "Completion uses the current card's explicit board conditions. A material goal may survive an available takeback; pawn-gain, queenless-advantage, exposed-king and repaired-piece goals have their own conditions. The absence of a generated reply does not assert that all legal moves are equivalent.",
+    "positional_objectives": {
+      "BREAK_KING_SHELTER": "From equal material, expose the opposing king without falling behind in material. This proves the declared board transformation only; it does not by itself prove forced mate or an eventual material win."
+    }
   }
 }
