@@ -20,7 +20,7 @@
  * All continuation reasoning belongs to the visible DFA.
  */
 
-export const SCRATCHCHESS_ORACLE_VERSION = "2.18.1-promotion-records";
+export const SCRATCHCHESS_ORACLE_VERSION = "2.19.0-static-board-facts";
 export const SCRATCHCHESS_ORACLE_HORIZON = 1;
 export const SCRATCHCHESS_ORACLE_TERMINAL_PROBE = "mate_in_1+material_objective_capture_in_1";
 
@@ -537,7 +537,10 @@ function findLooseAlignmentSoleDefenderTargets(board, attackerSide) {
         if (target === defender || target === back) continue;
         const targetPiece = board[target];
         if (!targetPiece || targetPiece.color !== enemy || targetPiece.type === "k") continue;
-        const defenders = effectiveDefendersOnBoard(board, target, enemy);
+        // An adjacent king counts only if it can legally recapture the chosen
+        // capturing piece. The caller checks the already enumerated replies.
+        const defenders = effectiveDefendersOnBoard(board, target, enemy)
+          .filter((square) => board[square]?.type !== "k");
         if (defenders.length !== 1 || defenders[0] !== defender) continue;
 
         const key = `${slider}:${defender}:${back}:${target}`;
@@ -575,7 +578,7 @@ function looseAlignmentSoleDefenderFact(relation) {
   return `loose_alignment_sole_defender(slider=${coloredPieceLabel(relation.sliderPiece, relation.slider)},defender=${coloredPieceLabel(relation.defenderPiece, relation.defender)},back=${coloredPieceLabel(relation.backPiece, relation.back)},target=${coloredPieceLabel(relation.targetPiece, relation.target)})`;
 }
 
-function capturedSoleDefendedTargetOfLooseAlignment(beforeBoard, afterBoard, moverSide, move) {
+function capturedSoleDefendedTargetOfLooseAlignment(beforeBoard, afterBoard, moverSide, move, legalReplies) {
   const captured = beforeBoard[move.to];
   if (!captured || captured.color === moverSide || captured.type === "k") return [];
   const relations = findLooseAlignmentSoleDefenderTargets(beforeBoard, moverSide);
@@ -584,7 +587,8 @@ function capturedSoleDefendedTargetOfLooseAlignment(beforeBoard, afterBoard, mov
     if (!samePieceAt(afterBoard, relation.slider, relation.sliderPiece)) return false;
     if (!samePieceAt(afterBoard, relation.defender, relation.defenderPiece)) return false;
     if (!samePieceAt(afterBoard, relation.back, relation.backPiece)) return false;
-    const afterDefenders = effectiveDefendersOnBoard(afterBoard, relation.target, other(moverSide));
+    // Reuse legal replies: a king that would step into check is not a defender.
+    const afterDefenders = legalReplies.filter((reply) => reply.to === relation.target).map((reply) => reply.from);
     return afterDefenders.length === 1 && afterDefenders[0] === relation.defender;
   });
 }
@@ -846,7 +850,7 @@ function addedAttackerIsSafe(board, attackerSquare, defenderSquare, side) {
   return recapturers.length > 0 && (VALUES[defender.type] || 0) > (VALUES[attacker.type] || 0);
 }
 
-function findSafeAttacksOnSoleDefenders(beforeBoard, afterBoard, moverSide, movedTo) {
+function findSafeAttacksOnSoleDefenders(beforeBoard, afterBoard, moverSide, movedTo, requireSafe = true) {
   const output = [];
   for (const relation of findSoleDefendedAttackedPieces(beforeBoard, moverSide)) {
     if (!samePieceAt(afterBoard, relation.targetSquare, relation.targetPiece)) continue;
@@ -860,7 +864,7 @@ function findSafeAttacksOnSoleDefenders(beforeBoard, afterBoard, moverSide, move
     const afterDefenderAttackers = effectiveAttackersOnBoard(afterBoard, relation.defenderSquare, moverSide);
     const addedAttackers = afterDefenderAttackers.filter((square) => !beforeDefenderAttackers.has(square));
     if (!addedAttackers.includes(movedTo)) continue;
-    if (!addedAttackerIsSafe(afterBoard, movedTo, relation.defenderSquare, moverSide)) continue;
+    if (requireSafe && !addedAttackerIsSafe(afterBoard, movedTo, relation.defenderSquare, moverSide)) continue;
 
     output.push({
       kind: "defender_chase",
@@ -1350,7 +1354,7 @@ export class ScratchChessOracle {
     if (!check) return [];
     const board = boardOf(afterGame);
     const attacker = board[move.to];
-    if (!attacker || attacker.color !== this.rootSide || !["b", "r", "q"].includes(attacker.type)) return [];
+    if (!attacker || attacker.color !== this.rootSide || !["n", "b", "r", "q"].includes(attacker.type)) return [];
 
     // A king-adjacent attacker is not promoted to a target objective. That is a
     // static board predicate, not a legal-response probe; the move remains an
@@ -1453,7 +1457,12 @@ export class ScratchChessOracle {
     if (!attacksSquare(board, target.attackerSquare, targetSquare)) {
       return { live: false, targetSquare, reason: "line_or_attack_broken", defenders: [] };
     }
-    const defenders = effectiveDefendersOnBoard(board, targetSquare, targetPiece.color);
+    // A defender pinned only by the checking attacker becomes free when that
+    // attacker leaves its checking line to capture the fork target.
+    const afterTargetCapture = cloneBoardPosition(board);
+    afterTargetCapture[target.attackerSquare] = null;
+    afterTargetCapture[targetSquare] = clone(attackerPiece);
+    const defenders = effectiveDefendersOnBoard(afterTargetCapture, targetSquare, targetPiece.color);
     if (defenders.length) {
       return { live: false, targetSquare, reason: "defended", defenders };
     }
@@ -1593,6 +1602,139 @@ export class ScratchChessOracle {
     const materialSwing = afterMaterial - this.rootMaterial;
     const predicates = ["legal_move"];
     const facts = [`legal_move(${san})`];
+    // Static blockader relation, using already enumerated legal recaptures.
+    // The advanced pawn's move and promotion are still explored by the card.
+    if (capturedBefore) {
+      const recapturers = legalReplies.filter(reply => reply.to === move.to);
+      for (let square = 0; square < 64; square += 1) {
+        const pawn = boardBefore[square];
+        if (pawn?.color !== moverSide || pawn.type !== "p") continue;
+        const [file, rank] = fr(square), step = moverSide === "w" ? 1 : -1;
+        if (rank !== (moverSide === "w" ? 5 : 2)) continue;
+        const blocker = idx(file, rank + step), piece = boardBefore[blocker];
+        if (!piece || piece.color === moverSide || piece.type === "k"
+          || !recapturers.length || recapturers.some(reply => reply.from !== blocker)) continue;
+        predicates.push("capture_draws_blockader_from_advanced_pawn");
+        facts.push(`capture_draws_blockader_from_advanced_pawn(${san},pawn=${coloredPieceLabel(pawn, square)},blockader=${coloredPieceLabel(piece, blocker)},scope=static_geometry_and_legal_recapture)`);
+      }
+    }
+
+    // Exchange away a cheaper attacker of one of our more valuable pieces.
+    // This is current-board geometry and piece value, not a continuation plan.
+    if (capturedBefore && VALUES[mover.type] <= VALUES[capturedBefore.type]) {
+      const threatened = boardBefore.flatMap((piece, square) =>
+        piece?.color === moverSide && piece.type !== "k"
+        && VALUES[piece.type] > VALUES[capturedBefore.type]
+        && attacksSquare(boardBefore, move.to, square) ? [square] : []);
+      if (threatened.length) {
+        predicates.push("exchange_attacker_of_more_valuable_piece");
+        threatened.forEach((square) => facts.push(`exchange_attacker_of_more_valuable_piece(${san},attacker=${coloredPieceLabel(capturedBefore, move.to)},threatened=${coloredPieceLabel(boardBefore[square], square)})`));
+      }
+    }
+    // A capture can draw its sole recapturer onto one arm of a knight fork.
+    // The card must play the recapture and the fork; this is board geometry only.
+    if (capturedBefore && !["p", "k"].includes(capturedBefore.type)) {
+      const takers = legalReplies.filter(reply => reply.to === move.to);
+      if (takers.length === 1) {
+        const taker = takers[0];
+        const geometry = boardOf(after).slice();
+        geometry[taker.from] = null;
+        geometry[move.to] = boardBefore[taker.from];
+        for (let knight = 0; knight < 64; knight += 1) {
+          if (geometry[knight]?.color !== moverSide || geometry[knight].type !== "n") continue;
+          for (let square = 0; square < 64; square += 1) {
+            if (geometry[square]?.color === moverSide || !attacksSquare(geometry, knight, square)) continue;
+            const fork = geometry.slice(); fork[square] = fork[knight]; fork[knight] = null;
+            if (!attacksSquare(fork, square, move.to)) continue;
+            const targets = fork.flatMap((piece, target) => piece?.color === other(moverSide)
+              && !["p", "k"].includes(piece.type) && VALUES[piece.type] > VALUES.n
+              && attacksSquare(fork, square, target) ? [target] : []);
+            if (targets.length < 2 || !targets.includes(move.to)) continue;
+            if (VALUES[capturedBefore.type] + Math.min(...targets.map(target => VALUES[fork[target].type])) <= VALUES[mover.type]) continue;
+            predicates.push("capture_lures_knight_fork_of_valuable_pieces");
+            facts.push(`capture_lures_knight_fork_of_valuable_pieces(${san},recapturer=${coloredPieceLabel(boardBefore[taker.from], taker.from)},knight=${coloredPieceLabel(geometry[knight], knight)},fork_square=${squareName(square)},targets=${targets.map(squareName).join("+")},scope=static_geometry)`);
+          }
+        }
+      }
+    }
+    if (mover.type === "n") {
+      const targets = directTargets.filter(target => target.value > VALUES.n && target.piece.type !== "k");
+      if (targets.length >= 2) {
+        predicates.push("knight_forks_two_valuable_pieces");
+        facts.push(`knight_forks_two_valuable_pieces(${san},targets=${targets.map(target => coloredPieceLabel(target.piece, target.target)).join("+")})`);
+      }
+    }
+    // Static safety facts: retreat from a cheaper attacker; develop with tempo;
+    // or interpose against an attack on a pawn. No additional position is played.
+    const cheaperAttackers = effectiveDefendersOnBoard(boardBefore, move.from, other(moverSide))
+      .filter(square => VALUES[boardBefore[square].type] < VALUES[mover.type]);
+    if (cheaperAttackers.length) {
+      predicates.push("move_piece_attacked_by_cheaper_piece");
+      facts.push(`move_piece_attacked_by_cheaper_piece(${san},piece=${coloredPieceLabel(mover, move.from)},attackers=${cheaperAttackers.map(squareName).join("+")})`);
+    }
+    if (["b", "n"].includes(mover.type) && fr(move.from)[1] === (moverSide === "w" ? 0 : 7)) {
+      for (const target of newTargets) {
+        if (target.piece.type === "k" || effectiveDefendersOnBoard(boardOf(after), target.target, other(moverSide)).length) continue;
+        predicates.push("develop_minor_with_attack_on_undefended_target");
+        facts.push(`develop_minor_with_attack_on_undefended_target(${san},target=${coloredPieceLabel(target.piece, target.target)})`);
+      }
+    }
+    for (let square = 0; square < 64; square++) {
+      const pawn = boardBefore[square];
+      if (pawn?.color !== moverSide || pawn.type !== "p" || square === move.from || !samePieceAt(boardOf(after), square, pawn)) continue;
+      const attackers = effectiveDefendersOnBoard(boardBefore, square, other(moverSide));
+      for (const attacker of attackers) {
+        if (attacker === move.to || !samePieceAt(boardOf(after), attacker, boardBefore[attacker])) continue;
+        if (!attacksSquare(boardOf(after), attacker, square) && raySquaresBetween(attacker, square).includes(move.to)) {
+          predicates.push("blocks_attack_on_own_pawn");
+          facts.push(`blocks_attack_on_own_pawn(${san},pawn=${coloredPieceLabel(pawn, square)},attacker=${coloredPieceLabel(boardBefore[attacker], attacker)})`);
+        }
+      }
+    }
+    if (!boardOf(after).some(piece => piece?.type === "q")) {
+      predicates.push("queens_absent");
+      facts.push("queens_absent");
+    }
+    const movedDefenders = effectiveDefendersOnBoard(boardOf(after), move.to, moverSide);
+    if (movedDefenders.length) {
+      predicates.push("moved_piece_defended");
+      facts.push(`moved_piece_defended(piece=${coloredPieceLabel(boardOf(after)[move.to], move.to)},defenders=${movedDefenders.map(squareName).join("+")})`);
+    }
+
+    if (directTargets.some(target => target.piece.type === "q")) {
+      predicates.push("attack_queen");
+      facts.push(`attack_queen(${san})`);
+    }
+    const queenTargets = directTargets.filter((target) => target.piece.type === "q"
+      && target.value > VALUES[mover.type]
+      && !attacksSquare(boardBefore, move.from, target.target));
+    if (queenTargets.length) {
+      predicates.push("attack_queen_with_cheaper_piece");
+      const pinBoard = boardOf(after);
+      const king = pinBoard.findIndex(piece => piece?.color === other(moverSide) && piece.type === "k");
+      for (const target of queenTargets) {
+        const ray = directionBetween(move.to, target.target);
+        const behind = king >= 0 ? directionBetween(target.target, king) : null;
+        if (!ray || !behind || !sliderSupportsDirection(mover, ...ray)
+          || ray.some((step, axis) => step !== behind[axis])
+          || !clearLine(pinBoard, target.target, king, ...ray)) continue;
+        predicates.push("pin_queen_to_king");
+        facts.push(`pin_queen_to_king(${san},attacker=${coloredPieceLabel(mover, move.to)},queen=${coloredPieceLabel(target.piece, target.target)},king=${squareName(king)})`);
+      }
+
+      queenTargets.forEach((target) => facts.push(`attack_queen_with_cheaper_piece(attacker=${coloredPieceLabel(boardOf(after)[move.to], move.to)},target=${coloredPieceLabel(target.piece, target.target)})`));
+    }
+
+
+    // Direct geometric pressure by the moved piece, for either side.
+    // This states the material value of the attacked target, not a search result.
+    const moreValuableTargets = directTargets.filter((target) => mover.type !== "k" && target.piece.type !== "k"
+      && target.value > VALUES[mover.type]);
+    if (moreValuableTargets.length) {
+      predicates.push("attack_more_valuable_piece");
+      moreValuableTargets.forEach((target) => facts.push(`attack_more_valuable_piece(attacker=${coloredPieceLabel(boardOf(after)[move.to], move.to)},target=${coloredPieceLabel(target.piece, target.target)})`));
+    }
+
 
     if (mate) {
       predicates.push(moverSide === this.rootSide ? "mate" : "mated");
@@ -1617,10 +1759,61 @@ export class ScratchChessOracle {
       const capturedLabel = capturedBefore ? coloredPieceLabel(capturedBefore, move.to) : `piece@${squareName(move.to)}`;
       facts.push(`capture(${san},${capturedLabel})`);
       facts.push(`capture_value(${VALUES[capturedBefore?.type] || 0})`);
-      if (capturedBefore && !["p", "k"].includes(capturedBefore.type)
-        && effectiveDefendersOnBoard(boardBefore, move.to, capturedBefore.color).length === 0) {
-        predicates.push("capture_undefended_non_pawn_piece");
-        facts.push(`capture_undefended_non_pawn_piece(${san},${capturedLabel})`);
+      const pinnedDefenders = attackersOnBoard(boardBefore, move.to, other(moverSide))
+        .filter(square => isAbsolutelyPinnedOnBoard(boardBefore, square, other(moverSide)));
+      if (capturedBefore && pinnedDefenders.length) {
+        predicates.push("capture_piece_with_pinned_defender");
+        facts.push(`capture_piece_with_pinned_defender(${san},target=${coloredPieceLabel(capturedBefore, move.to)},defenders=${pinnedDefenders.map(squareName).join("+")})`);
+      }
+      if (move.mover?.type !== "k" && (VALUES[move.mover?.type] || 0) < (VALUES[capturedBefore?.type] || 0)) {
+        predicates.push("capture_with_cheaper_piece");
+        facts.push(`capture_with_cheaper_piece(${san},mover=${move.mover.type},target=${capturedBefore.type})`);
+      }
+      if (capturedBefore) {
+        const defenders = effectiveDefendersOnBoard(boardBefore, move.to, capturedBefore.color);
+        if (defenders.length === 1 && boardBefore[defenders[0]].type === "k") {
+          predicates.push("capture_piece_defended_only_by_king");
+          facts.push(`capture_piece_defended_only_by_king(${san},target=${capturedLabel},defender=${coloredPieceLabel(boardBefore[defenders[0]], defenders[0])})`);
+        }
+      }
+      if (capturedBefore && capturedBefore.type !== "k") {
+        const defenders = effectiveDefendersOnBoard(boardBefore, move.to, capturedBefore.color);
+        if (defenders.length === 0 && capturedBefore.type !== "p") {
+          predicates.push("capture_undefended_non_pawn_piece");
+          facts.push(`capture_undefended_non_pawn_piece(${san},${capturedLabel})`);
+        }
+        const recapturers = legalReplies.filter((reply) => reply.to === move.to).map((reply) => reply.from);
+        // A sole recapturer also solely guards another attacked piece.
+        // This tests one reply's board geometry, not a continuation search.
+        if (recapturers.length === 1) {
+          const defender = recapturers[0];
+          const geometry = boardOf(after).slice();
+          geometry[defender] = null;
+          geometry[move.to] = boardBefore[defender];
+          for (let target = 0; target < 64; target += 1) {
+            const piece = boardBefore[target];
+            if (!piece || piece.color === moverSide || ["p", "k"].includes(piece.type) || target === move.to || target === defender) continue;
+            const guards = effectiveDefendersOnBoard(boardBefore, target, piece.color);
+            if (guards.length !== 1 || guards[0] !== defender) continue;
+            if (!effectiveAttackersOnBoard(geometry, target, moverSide).length) continue;
+            if (effectiveDefendersOnBoard(geometry, target, piece.color).length) continue;
+            if (VALUES[capturedBefore.type] + VALUES[piece.type] <= VALUES[mover.type]) continue;
+            predicates.push("capture_with_overloaded_sole_defender");
+            facts.push(`capture_with_overloaded_sole_defender(${san},defender=${coloredPieceLabel(boardBefore[defender], defender)},second_target=${coloredPieceLabel(piece, target)},scope=recapture_geometry)`);
+          }
+        }
+        if (recapturers.length === 1
+          && VALUES[boardBefore[recapturers[0]].type] > VALUES[capturedBefore.type]
+          && VALUES[boardBefore[recapturers[0]].type] === VALUES[mover.type]) {
+          predicates.push("capture_with_equal_piece_against_sole_defender");
+          facts.push(`capture_with_equal_piece_against_sole_defender(${san},target=${capturedLabel},defender=${coloredPieceLabel(boardBefore[recapturers[0]], recapturers[0])})`);
+        }
+        if (recapturers.length === 1
+          && VALUES[boardBefore[recapturers[0]].type] > VALUES[capturedBefore.type]
+          && VALUES[boardBefore[recapturers[0]].type] > VALUES[mover.type]) {
+          predicates.push("capture_with_cheaper_piece_against_more_valuable_sole_defender");
+          facts.push(`capture_with_cheaper_piece_against_more_valuable_sole_defender(${san},target=${capturedLabel},defender=${coloredPieceLabel(boardBefore[recapturers[0]], recapturers[0])})`);
+        }
       }
     }
     if (recapture) {
@@ -1630,6 +1823,10 @@ export class ScratchChessOracle {
     if (parentCard.side === "my" && parentCard.predicates.includes("in_check")) {
       predicates.push("check_response");
       facts.push(`check_response(${san})`);
+    }
+    if (materialSwing > 0) {
+      predicates.push("material_improved");
+      facts.push(`material_improved(+${materialSwing})`);
     }
     const objectiveGainReached = materialSwing >= Number(this.options.objective_gain);
     if (objectiveGainReached) {
@@ -1663,9 +1860,191 @@ export class ScratchChessOracle {
       });
     }
 
+    const boardAfter = boardOf(after);
+    // Static attraction geometry: a legal queen recapture lands on a square
+    // that shares a safe knight-fork square with her king. No continuation is applied.
+    if (capture) {
+      const enemy = other(moverSide);
+      const enemyKing = boardAfter.findIndex(piece => piece?.color === enemy && piece.type === "k");
+      const ourKing = boardAfter.findIndex(piece => piece?.color === moverSide && piece.type === "k");
+      const queenRecaptures = legalReplies.filter(reply => reply.to === move.to && boardAfter[reply.from]?.type === "q");
+      for (const reply of queenRecaptures) {
+        const recaptureBoard = boardAfter.slice();
+        recaptureBoard[move.to] = boardAfter[reply.from];
+        recaptureBoard[reply.from] = null;
+        for (let knight = 0; knight < 64; knight += 1) {
+          const piece = recaptureBoard[knight];
+          if (piece?.color !== moverSide || piece.type !== "n") continue;
+          for (let square = 0; square < 64; square += 1) {
+            if (recaptureBoard[square] || !attacksSquare(recaptureBoard, knight, square)) continue;
+            const geometry = recaptureBoard.slice();
+            geometry[knight] = null;
+            geometry[square] = piece;
+            if (!attacksSquare(geometry, square, enemyKing) || !attacksSquare(geometry, square, move.to)) continue;
+            if (attackersOnBoard(geometry, ourKing, enemy).length || effectiveAttackersOnBoard(geometry, square, enemy).length) continue;
+            predicates.push("capture_lures_queen_to_knight_fork");
+            facts.push(`capture_lures_queen_to_knight_fork(${san},queen=${coloredPieceLabel(boardAfter[reply.from], reply.from)},recaptureSquare=${squareName(move.to)},knight=${coloredPieceLabel(piece, knight)},forkSquare=${squareName(square)},king=${squareName(enemyKing)},scope=static_geometry)`);
+          }
+        }
+      }
+    }
+
+    // Board geometry only: an available king recapture lands on one arm of
+    // a knight fork with its queen. The card must still play and check the fork.
+    if (check && capture && legalReplies.some(reply => reply.to === move.to && reply.mover?.type === "k")) {
+      const queens = boardAfter.flatMap((piece, square) => piece?.color === other(moverSide) && piece.type === "q" ? [square] : []);
+      for (let knight = 0; knight < 64 && queens.length; knight += 1) {
+        const piece = boardAfter[knight];
+        if (piece?.color !== moverSide || piece.type !== "n") continue;
+        for (let square = 0; square < 64; square += 1) {
+          if (boardAfter[square]?.color === moverSide || !attacksSquare(boardAfter, knight, square)) continue;
+          const geometry = boardAfter.slice();
+          geometry[knight] = null;
+          geometry[square] = piece;
+          if (!attacksSquare(geometry, square, move.to)) continue;
+          const queen = queens.find(target => attacksSquare(geometry, square, target));
+          if (queen == null) continue;
+          predicates.push("king_recapture_square_on_knight_royal_fork");
+          facts.push(`king_recapture_square_on_knight_royal_fork(${san},knight=${coloredPieceLabel(piece, knight)},fork=${squareName(square)},king_capture=${squareName(move.to)},queen=${squareName(queen)},scope=static_geometry)`);
+        }
+      }
+    }
+
+    const ownKingForSupport = boardAfter.findIndex(piece => piece?.color === moverSide && piece.type === "k");
+    if (ownKingForSupport >= 0 && mover.type !== "k") {
+      const ring = Array.from({ length: 64 }, (_, square) => square).filter(square => {
+        const [file, rank] = fr(square), [kingFile, kingRank] = fr(ownKingForSupport);
+        return Math.max(Math.abs(file - kingFile), Math.abs(rank - kingRank)) === 1
+          && attacksSquare(boardAfter, move.to, square);
+      });
+      if (ring.length >= 2) {
+        predicates.push("supports_multiple_king_adjacent_squares");
+        facts.push(`supports_multiple_king_adjacent_squares(${san},king=${squareName(ownKingForSupport)},squares=${ring.map(squareName).join("+")},scope=static_attack)`);
+      }
+    }
+    const opposingMateThreat = parentCard.meta?.mateThreat;
+    if (opposingMateThreat?.attackerSide === other(moverSide)) {
+      for (const threat of opposingMateThreat.exactMateMoves || []) {
+        const target = threat.mateSquare;
+        if (Number.isInteger(target) && attacksSquare(boardAfter, move.to, target)
+          && !attacksSquare(boardBefore, move.from, target)) {
+          predicates.push("adds_defender_to_threatened_mating_square");
+          facts.push(`adds_defender_to_threatened_mating_square(${san},square=${squareName(target)},scope=static_attack)`);
+        }
+      }
+    }
+
+    // Pawn geometry only: inspect the resulting board without playing a reply.
+    const isPassedPawn = (board, square, piece) => {
+      if (piece?.type !== "p") return false;
+      const [file, rank] = fr(square);
+      const forward = piece.color === "w" ? 1 : -1;
+      return !board.some((enemy, target) => {
+        if (enemy?.color !== other(piece.color) || enemy.type !== "p") return false;
+        const [targetFile, targetRank] = fr(target);
+        return Math.abs(targetFile - file) <= 1 && (targetRank - rank) * forward > 0;
+      });
+    };
+    if (move.promotion) {
+      predicates.push("promotion");
+      facts.push(`promotion(${san},piece=${move.promotion})`);
+      if (move.promotion === "q") predicates.push("queen_promotion");
+    }
+    if (mover.type === "p" && !capture) {
+      predicates.push("pawn_advance");
+      facts.push(`pawn_advance(${san})`);
+      if (isPassedPawn(boardAfter, move.to, boardAfter[move.to])) {
+        predicates.push("advances_passed_pawn");
+        facts.push(`advances_passed_pawn(${san})`);
+        const [file, rank] = fr(move.to);
+        const promotionSquare = (moverSide === "w" ? 0 : 56) + file;
+        const bishopDefenders = attackersOnBoard(boardAfter, promotionSquare, moverSide).filter(square => boardAfter[square]?.type === "b");
+        if (bishopDefenders.length) {
+          predicates.push("promotion_square_defended_by_bishop");
+          facts.push(`promotion_square_defended_by_bishop(${san},square=${squareName(promotionSquare)},bishops=${bishopDefenders.map(squareName).join("+")})`);
+        }
+        if (Math.abs(rank - (moverSide === "w" ? 7 : 0)) === 1) {
+          predicates.push("passed_pawn_one_step_from_promotion");
+          facts.push(`passed_pawn_one_step_from_promotion(${san})`);
+        }
+      }
+    }
+    for (let square = 0; square < 64; square += 1) {
+      const pawn = boardAfter[square];
+      if (pawn?.color === other(moverSide) && isPassedPawn(boardAfter, square, pawn)
+        && attacksSquare(boardAfter, move.to, square)) {
+        predicates.push("move_attacks_enemy_passed_pawn");
+        facts.push(`move_attacks_enemy_passed_pawn(${san},pawn=${coloredPieceLabel(pawn, square)})`);
+        if (mover.type === "r" && fr(move.to)[0] === fr(square)[0]) {
+          predicates.push("rook_on_enemy_passed_pawn_file");
+          facts.push(`rook_on_enemy_passed_pawn_file(${san},pawn=${coloredPieceLabel(pawn, square)})`);
+        }
+      }
+    }
+    // Static geometry: capture a defender of a reachable knight square that
+    // attacks the opposing king and queen. The card still examines the reply.
+    if (capturedBefore && capturedBefore.type !== "k") {
+      const king = boardBefore.findIndex(piece => piece?.color === other(moverSide) && piece.type === "k");
+      const queens = boardBefore.flatMap((piece, square) => piece?.color === other(moverSide) && piece.type === "q" ? [square] : []);
+      for (let knight = 0; knight < 64 && king >= 0 && queens.length; knight += 1) {
+        const piece = boardBefore[knight];
+        if (piece?.color !== moverSide || piece.type !== "n") continue;
+        for (let square = 0; square < 64; square += 1) {
+          if (boardBefore[square]?.color === moverSide || !attacksSquare(boardBefore, knight, square)
+            || !attacksSquare(boardBefore, move.to, square)) continue;
+          const geometry = boardBefore.slice(); geometry[knight] = null; geometry[square] = piece;
+          if (!attacksSquare(geometry, square, king)) continue;
+          const queen = queens.find(target => attacksSquare(geometry, square, target));
+          if (queen == null) continue;
+          predicates.push("capture_defender_of_knight_royal_fork_square");
+          facts.push(`capture_defender_of_knight_royal_fork_square(${san},defender=${coloredPieceLabel(capturedBefore, move.to)},knight=${coloredPieceLabel(piece, knight)},fork=${squareName(square)},queen=${squareName(queen)},scope=static_geometry)`);
+        }
+      }
+    }
+
+    // Board geometry only: a legal king capture of a checking offer lands on one arm of
+    // a knight fork with its queen. The card must still play and check the fork.
+    if (check && !capture && legalReplies.some(reply => reply.to === move.to && reply.mover?.type === "k")) {
+      const queens = boardAfter.flatMap((piece, square) => piece?.color === other(moverSide) && piece.type === "q" ? [square] : []);
+      for (let knight = 0; knight < 64 && queens.length; knight += 1) {
+        const piece = boardAfter[knight];
+        if (piece?.color !== moverSide || piece.type !== "n") continue;
+        for (let square = 0; square < 64; square += 1) {
+          if (boardAfter[square]?.color === moverSide || !attacksSquare(boardAfter, knight, square)) continue;
+          const geometry = boardAfter.slice();
+          geometry[knight] = null;
+          geometry[square] = piece;
+          if (!attacksSquare(geometry, square, move.to)) continue;
+          const queen = queens.find(target => attacksSquare(geometry, square, target));
+          if (queen == null) continue;
+          predicates.push("king_can_capture_checking_offer_on_knight_royal_fork");
+          facts.push(`king_can_capture_checking_offer_on_knight_royal_fork(${san},knight=${coloredPieceLabel(piece, knight)},fork=${squareName(square)},king_capture=${squareName(move.to)},queen=${squareName(queen)},scope=static_geometry)`);
+        }
+      }
+    }
+
+    // Static clearance geometry on the board after this one legal ply.
+    // Vacating a square can let a knight fork the enemy king and queen.
+    // This does not apply a knight move or assert that any reply permits it.
+    if (capture && !boardAfter[move.from]) {
+      const king = boardAfter.findIndex(piece => piece?.color === other(moverSide) && piece.type === "k");
+      const queens = boardAfter.map((piece, square) => piece?.color === other(moverSide) && piece.type === "q" ? square : -1).filter(square => square >= 0);
+      for (let knight = 0; knight < 64 && king >= 0 && queens.length; knight += 1) {
+        const piece = boardAfter[knight];
+        if (piece?.color !== moverSide || piece.type !== "n" || !attacksSquare(boardAfter, knight, move.from)) continue;
+        const geometry = boardAfter.slice();
+        geometry[knight] = null;
+        geometry[move.from] = piece;
+        if (!attacksSquare(geometry, move.from, king)) continue;
+        const queen = queens.find(square => attacksSquare(geometry, move.from, square));
+        if (queen == null) continue;
+        predicates.push("vacates_knight_royal_fork_square");
+        facts.push(`vacates_knight_royal_fork_square(${san},knight=${coloredPieceLabel(piece, knight)},square=${squareName(move.from)},king=${squareName(king)},queen=${squareName(queen)},scope=static_geometry)`);
+      }
+    }
+
     // A loose piece need not already be attacked for defending it to matter.
     // Compare the same unmoved non-pawn on these two boards, for either side.
-    const boardAfter = boardOf(after);
     for (let target = 0; target < 64; target += 1) {
       const piece = boardBefore[target];
       if (!piece || piece.color !== moverSide || ["p", "k"].includes(piece.type)
@@ -1682,12 +2061,37 @@ export class ScratchChessOracle {
     const enemyKing = boardAfter.findIndex((piece) => piece?.color === other(moverSide) && piece.type === "k");
     if (enemyKing >= 0) {
       const [kingFile, kingRank] = fr(enemyKing);
+      for (let target = 0; target < 64; target += 1) {
+        const piece = boardAfter[target];
+        if (piece?.color !== other(moverSide) || piece.type !== "p"
+          || !attacksSquare(boardAfter, move.to, target) || attacksSquare(boardBefore, move.from, target)) continue;
+        const [pawnFile, pawnRank] = fr(target);
+        const distance = piece.color === "b" ? kingRank - pawnRank : pawnRank - kingRank;
+        if (Math.abs(kingFile - pawnFile) <= 1 && distance >= 1 && distance <= 2) {
+          predicates.push("attacks_king_shelter_pawn");
+          facts.push(`attacks_king_shelter_pawn(${san},target=${coloredPieceLabel(piece, target)},king=${squareName(enemyKing)},scope=static_attack)`);
+        }
+      }
       for (const target of newTargets) {
         if (target.piece.type !== "p") continue;
         const [pawnFile, pawnRank] = fr(target.target);
         if (Math.max(Math.abs(kingFile - pawnFile), Math.abs(kingRank - pawnRank)) !== 1) continue;
         predicates.push("attacks_king_adjacent_pawn");
         facts.push(`attacks_king_adjacent_pawn(${san},target=${coloredPieceLabel(target.piece, target.target)},king=${squareName(enemyKing)},attackers=${target.sources.map(squareName).join("+")})`);
+      }
+    }
+
+    // A bishop controlling an empty square beside our king can support a mating
+    // queen. Report a new attack on that bishop as geometry, not a mate proof.
+    const ownKingForHole = boardAfter.findIndex(piece => piece?.color === moverSide && piece.type === "k");
+    if (ownKingForHole >= 0) {
+      const kingHoles = adjacentSquares(ownKingForHole).filter(square => !boardAfter[square]);
+      for (const target of newTargets) {
+        if (target.piece.type !== "b") continue;
+        const controlledHoles = kingHoles.filter(square => attacksSquare(boardAfter, target.target, square));
+        if (!controlledHoles.length) continue;
+        predicates.push("attack_bishop_controlling_king_hole");
+        facts.push(`attack_bishop_controlling_king_hole(${san},bishop=${coloredPieceLabel(target.piece, target.target)},king=${squareName(ownKingForHole)},empty_controlled_squares=${controlledHoles.map(squareName).join("+")})`);
       }
     }
 
@@ -1757,6 +2161,15 @@ export class ScratchChessOracle {
           mateSquares: unique(exactMateMoves.map((candidate) => squareName(candidate.mateSquare)))
         };
         predicates.push("threaten_mate_in_1");
+        // Classify the existing exact mate threats; no additional move is searched.
+        const opposingKingSquare = boardAfter.findIndex((piece) => piece?.color === other(moverSide) && piece.type === "k");
+        const contactMateMoves = exactMateMoves.filter((candidate) => adjacentSquares(opposingKingSquare).includes(candidate.mateSquare));
+        if (contactMateMoves.length) {
+          predicates.push("threaten_contact_mate_in_1");
+          contactMateMoves.forEach((candidate) => facts.push(
+            `threaten_contact_mate_in_1(${san},mate=${factToken(candidate.san)},landing=${squareName(candidate.mateSquare)},king=${squareName(opposingKingSquare)})`
+          ));
+        }
         exactMateMoves.forEach((candidate) => facts.push(
           `mate_in_1_threat_move(${factToken(candidate.san)},uci=${candidate.uci},square=${squareName(candidate.mateSquare)})`
         ));
@@ -1816,14 +2229,42 @@ export class ScratchChessOracle {
       }
     }
 
+    // A checking fork overloads a sole defender when the only captures of the
+    // checker come from that defender, while another friendly piece attacks the
+    // fork target. Read the board and the existing legal-reply list only.
+    if (check) {
+      const capturesOfChecker = legalReplies.filter(reply => reply.to === move.to);
+      for (const target of newTargets) {
+        if (target.piece.type === "k" || VALUES[target.piece.type] <= VALUES[mover.type]) continue;
+        const defenders = effectiveDefendersOnBoard(boardOf(after), target.target, other(moverSide));
+        if (defenders.length !== 1 || !capturesOfChecker.length || !capturesOfChecker.every(reply => reply.from === defenders[0])) continue;
+        const otherAttackers = effectiveDefendersOnBoard(boardOf(after), target.target, moverSide).filter(square => square !== move.to);
+        if (!otherAttackers.length) continue;
+        predicates.push("checking_fork_overloads_defender");
+        facts.push(`checking_fork_overloads_defender(${san},target=${coloredPieceLabel(target.piece, target.target)},defender=${coloredPieceLabel(boardOf(after)[defenders[0]], defenders[0])})`);
+      }
+    }
     let looseAlignmentCaptures = [];
+    // A checking sacrifice can displace the sole defender of a more valuable target.
+    // Read the same before/after boards; no extra move is applied.
+    if (check) {
+      const checkingDeflections = findSafeAttacksOnSoleDefenders(boardBefore, boardOf(after), moverSide, move.to, false)
+        .filter((relation) => relation.targetValue > VALUES[mover.type]);
+      if (checkingDeflections.length) {
+        predicates.push("checking_attack_on_sole_defender");
+        for (const relation of checkingDeflections) {
+          facts.push(`checking_attack_on_sole_defender(${san},defender=${coloredPieceLabel(relation.defenderPiece, relation.defenderSquare)},target=${coloredPieceLabel(relation.targetPiece, relation.targetSquare)})`);
+        }
+      }
+    }
     let createdDefenderChases = [];
     if (moverSide === this.rootSide) {
       looseAlignmentCaptures = capturedSoleDefendedTargetOfLooseAlignment(
         boardBefore,
         boardOf(after),
         moverSide,
-        move
+        move,
+        legalReplies
       );
       if (looseAlignmentCaptures.length) {
         predicates.push("attack_sole_defended_piece_of_loose_alignment");
@@ -2534,10 +2975,32 @@ export class ScratchChessOracle {
     const legal = legalMoveRecords(game);
     const inCheck = safeInCheck(game, sideToMove);
     if (inCheck) card.predicates = unique([...card.predicates, "in_check"]);
+    if (boardOf(game).every(piece => !piece || ["p", "k"].includes(piece.type))) {
+      card.predicates = unique([...card.predicates, "pawn_endgame"]);
+      card.facts.push("pawn_endgame(only_kings_and_pawns)");
+    }
+
     card.facts = unique([...card.facts, `legal_moves(${legal.length})`, ...(inCheck ? ["in_check"] : []), "oracle_horizon(1)"]);
     card.meta.legalReplyCount = legal.length;
 
+    // Pawn shelter is a current-board fact for both kings, independent of policy.
+    const shelterBoard = boardOf(game);
+    for (const kingSide of ["w", "b"]) {
+      const kingSquare = shelterBoard.findIndex(piece => piece?.color === kingSide && piece.type === "k");
+      if (kingSquare < 0) continue;
+      const [kingFile, kingRank] = fr(kingSquare);
+      const shelterPawns = shelterBoard.flatMap((piece, square) => {
+        if (piece?.color !== kingSide || piece.type !== "p") return [];
+        const [file, rank] = fr(square);
+        return Math.max(Math.abs(file - kingFile), Math.abs(rank - kingRank)) === 1 ? [square] : [];
+      });
+      card.facts = unique([...card.facts, `king_pawn_shelter(king=${coloredPieceLabel(shelterBoard[kingSquare], kingSquare)},adjacent_pawns=${shelterPawns.map(squareName).join("+") || "none"})`]);
+      if (!shelterPawns.length) card.predicates = unique([...card.predicates,
+        kingSide === this.rootSide ? "our_king_has_no_adjacent_pawns" : "opponent_king_has_no_adjacent_pawns"]);
+    }
+
     const pressure = findAttackerSurplusOnNonPawnPieces(boardOf(game), other(sideToMove), { minAttackers: 1 });
+    if (pressure.length) card.predicates = unique([...card.predicates, "side_to_move_has_attacked_loose_piece"]);
     if (pressure.some(r => r.attackers.some(a => a.value < r.targetValue))) card.predicates = unique([...card.predicates, "hanging_piece_attacked_by_lower_value_piece"]);
 
     const terminal = terminalInfo(game);
