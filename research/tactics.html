@@ -272,6 +272,7 @@ No policy events yet.</pre>
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SCRATCHCHESS_URL = "/research/scratchchess.js?v=796098e1957517e";
   const ORACLE_URL = "/scratchchess_oracle.js?v=2.19.0-static-board-facts";
+  const RADICAL_POLICY_URL = "/reasoning/radicalpolicy.json?v=0.200.0-sequential-checkpoint200";
   const BASIC_POLICY_URL = "/reasoning/basicpolicy.json?v=7.1.0-stockfish-suite";
   const REASONING_POLICY_URL = "/reasoning/reasoningpolicy.json?v=15.0.0-woodpecker50";
   const PUZZLES_URL = "/tactical_positions.md";
@@ -298,6 +299,8 @@ No policy events yet.</pre>
     puzzleIndex: 0,
     basicPolicy: null,
     reasoningPolicy: null,
+    radicalPolicy: null,
+    RadicalOracle: null,
     savedPolicies: {},
     unsupportedSavedPolicies: {},
     policyId: "basic",
@@ -410,6 +413,8 @@ No policy events yet.</pre>
       typeof module.ScratchChessOracle === "function"
     );
     app.Oracle = oracle.ScratchChessOracle;
+    const radical = await importExact("/radical_oracle.js?v=0.200.0-sequential-checkpoint200", "Radical Oracle extension", module => typeof module.ScratchChessOracle === "function");
+    app.RadicalOracle = radical.ScratchChessOracle;
     app.oracleVersion = oracle.SCRATCHCHESS_ORACLE_VERSION;
     if (!app.oracleVersion) throw new Error(`${ORACLE_URL} did not export SCRATCHCHESS_ORACLE_VERSION`);
     app.oracleHorizon = oracle.SCRATCHCHESS_ORACLE_HORIZON;
@@ -496,7 +501,8 @@ No policy events yet.</pre>
     if (!app.reasoningPolicy) throw new Error(`Required policy ${REASONING_POLICY_URL} has not loaded`);
     const options = [
       { id: "basic", label: app.basicPolicy.name || "basic", policy: app.basicPolicy },
-      { id: "reasoning", label: app.reasoningPolicy.name || "reasoning", policy: app.reasoningPolicy }
+      { id: "reasoning", label: app.reasoningPolicy.name || "reasoning", policy: app.reasoningPolicy },
+      { id: "radical", label: app.radicalPolicy.name || "radical", policy: app.radicalPolicy }
     ];
     Object.entries(app.savedPolicies || {}).filter(([name]) => !app.unsupportedSavedPolicies[name]).sort(([a], [b]) => a.localeCompare(b)).forEach(([name, policy]) => options.push({ id: `saved:${name}`, label: `${name} · saved`, policy }));
     return options;
@@ -508,7 +514,7 @@ No policy events yet.</pre>
   }
 
   function policyTestIdentity(id) {
-    if (id === "basic" || id === "reasoning") return id;
+    if (id === "basic" || id === "reasoning" || id === "radical") return id;
     if (id.startsWith("saved:")) return id.slice(6);
     throw new Error(`Unknown policy ${id}`);
   }
@@ -553,6 +559,7 @@ No policy events yet.</pre>
   function policyById(id) {
     if (id === "basic") return clone(app.basicPolicy);
     if (id === "reasoning") return clone(app.reasoningPolicy);
+    if (id === "radical") return clone(app.radicalPolicy);
     if (id.startsWith("saved:")) {
       const name = id.slice(6);
       if (!app.savedPolicies[name]) throw new Error(`Saved policy ${name} does not exist`);
@@ -568,7 +575,8 @@ No policy events yet.</pre>
   }
 
   function createOracleForPuzzle(puzzle, policy = app.policy) {
-    const oracle = new app.Oracle({ createGame: app.scratch.createGame, ...effectiveOracleConfig(policy) });
+    const Oracle = policy.name === "radical" ? app.RadicalOracle : app.Oracle;
+    const oracle = new Oracle({ createGame: app.scratch.createGame, ...effectiveOracleConfig(policy) });
     oracle.reset({ fen: puzzle.fen, title: puzzle.title, theme: puzzle.theme || "", solution: puzzle.solution || "", where: puzzle.where || "", policyDepth: Number(policy?.budgets?.depth || 0) });
     return oracle;
   }
@@ -2108,6 +2116,7 @@ No policy events yet.</pre>
         loadRuntimeModules(),
         loadBuiltInPolicy(BASIC_POLICY_URL, "Basic policy").then((policy) => { app.basicPolicy = policy; }),
         loadBuiltInPolicy(REASONING_POLICY_URL, "Reasoning policy").then((policy) => { app.reasoningPolicy = policy; }),
+        loadBuiltInPolicy(RADICAL_POLICY_URL, "Radical policy").then((policy) => { app.radicalPolicy = policy; }),
         loadPuzzles()
       ]);
       loadSavedPolicies();
