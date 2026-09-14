@@ -1,10 +1,10 @@
 {
   "schema": "predicate-policy/v2",
   "name": "radical",
-  "label": "Radical — read the weakness and test the reply",
-  "version": "0.200.12-shared-plans",
+  "label": "Radical \u2014 sequential theorem covering",
+  "version": "0.200.0-sequential-checkpoint200",
   "test_file": "/reasoning/radicalpolicy.test",
-  "entry": "ENDGAME",
+  "entry": "READ_PHASE",
   "oracle": {
     "reply_limit": 2,
     "reply_class_limit": 2,
@@ -82,35 +82,54 @@
           "to": "MATE_AND_MATERIAL"
         },
         {
-          "label": "A safe knight check also attacks a rook or queen; finish the fork; or A safe bishop check also attacks a rook or queen; finish the fork",
+          "label": "A safe knight check also attacks a rook or queen; finish the fork",
           "when": {
             "all": [
-              "our_turn"
-            ],
-            "any": [
-              "safe_knight_check_attacks_more_valuable_piece_available",
+              "our_turn",
+              "safe_knight_check_attacks_more_valuable_piece_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "A safe bishop check also attacks a rook or queen; finish the fork",
+          "when": {
+            "all": [
+              "our_turn",
               "safe_bishop_check_attacks_more_valuable_piece_available"
             ]
           },
           "to": "CHECK_LOOSE_PIECE"
         },
         {
-          "label": "Connected rooks can exchange a rook with check against the back-rank king; or Our connected rooks can give a supported check against a king on its back rank",
+          "label": "Connected rooks can exchange a rook with check against the back-rank king",
           "when": {
             "all": [
               "our_turn",
               "our_rooks_defend_each_other",
-              "enemy_king_on_back_rank"
+              "enemy_king_on_back_rank",
+              "defended_rook_checking_exchange_available"
             ],
-            "any": [
-              "defended_rook_checking_exchange_available",
+            "none": [
+              "in_check"
+            ]
+          },
+          "to": "ROOK_BATTERY_MATE"
+        },
+        {
+          "label": "Our connected rooks can give a supported check against a king on its back rank",
+          "when": {
+            "all": [
+              "our_turn",
+              "our_rooks_defend_each_other",
+              "enemy_king_on_back_rank",
               "supported_rook_check_available"
             ],
             "none": [
               "in_check"
             ]
           },
-          "to": "CAPTURE_INTERPOSITIONS"
+          "to": "ROOK_BATTERY_MATE"
         },
         {
           "label": "Our bishop restricts a king at the edge; use a rook check to place the king",
@@ -336,7 +355,7 @@
               "checking_clearance_available"
             ]
           },
-          "to": "FORCE_ALIGNMENT"
+          "to": "CLEAR_LINE"
         },
         {
           "label": "A checking fork forces the sole defender to choose between the checker and its target",
@@ -376,26 +395,60 @@
               "checking_skewer_available"
             ]
           },
-          "to": "FORCE_ALIGNMENT"
+          "to": "SKEWER"
         },
         {
-          "label": "The only recapturer must abandon another attacked piece; or A capture draws its sole recapturer into a knight fork of valuable pieces; or An aligned target has an extra defender we can capture; or A bishop capture can draw the sole-defending king out while overloading a piece; or Capturing a solely defended piece can deflect the front of a loose alignment",
+          "label": "The only recapturer must abandon another attacked piece",
           "when": {
             "all": [
-              "our_turn"
-            ],
-            "any": [
-              "overloaded_defender_capture_available",
-              "knight_fork_lure_available",
-              "extra_defender_capture_available",
-              "quiet_bishop_king_lure_available",
+              "our_turn",
+              "overloaded_defender_capture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture draws its sole recapturer into a knight fork of valuable pieces",
+          "when": {
+            "all": [
+              "our_turn",
+              "knight_fork_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "An aligned target has an extra defender we can capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "extra_defender_capture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A bishop capture can draw the sole-defending king out while overloading a piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "quiet_bishop_king_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "Capturing a solely defended piece can deflect the front of a loose alignment",
+          "when": {
+            "all": [
+              "our_turn",
               "sole_defender_deflection_available"
             ]
           },
           "to": "DEFLECT_DEFENDER"
         },
         {
-          "label": "A mating attack can break the king’s pawn shelter from equal material",
+          "label": "A mating attack can break the king\u2019s pawn shelter from equal material",
           "when": {
             "all": [
               "our_turn",
@@ -515,14 +568,30 @@
           "to": "MATE_AND_MATERIAL"
         },
         {
-          "label": "A cheaper sacrifice can lure a more valuable sole defender; or Check while attacking the sole defender of a more valuable piece; or A capture can draw the queen onto a safe knight fork with her king",
+          "label": "A cheaper sacrifice can lure a more valuable sole defender",
           "when": {
             "all": [
-              "our_turn"
-            ],
-            "any": [
-              "more_valuable_defender_lure_available",
-              "checking_deflection_available",
+              "our_turn",
+              "more_valuable_defender_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "Check while attacking the sole defender of a more valuable piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_deflection_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture can draw the queen onto a safe knight fork with her king",
+          "when": {
+            "all": [
+              "our_turn",
               "queen_fork_lure_available"
             ]
           },
@@ -562,13 +631,20 @@
           "to": "CHECK_LOOSE_PIECE"
         },
         {
-          "label": "Capture with a safe attack on the queen; examine the forced exchange; or A quiet safe knight move attacks the queen and adds an attack on another loose piece",
+          "label": "Capture with a safe attack on the queen; examine the forced exchange",
           "when": {
             "all": [
-              "our_turn"
-            ],
-            "any": [
-              "capture_with_safe_queen_attack_available",
+              "our_turn",
+              "capture_with_safe_queen_attack_available"
+            ]
+          },
+          "to": "HARASS_QUEEN"
+        },
+        {
+          "label": "A quiet safe knight move attacks the queen and adds an attack on another loose piece",
+          "when": {
+            "all": [
+              "our_turn",
               "safe_queen_attack_adds_loose_piece_attacker_available"
             ]
           },
@@ -689,7 +765,7 @@
               "in_check"
             ]
           },
-          "to": "CAPTURE_INTERPOSITIONS"
+          "to": "ROOK_BATTERY_MATE"
         },
         {
           "label": "Read the low-material board after the forcing reply",
@@ -702,13 +778,20 @@
           "to": "ENDGAME"
         },
         {
-          "label": "After the forcing reply, a safe pawn check forks a more valuable piece; or The forcing reply leaves a queen we can capture with check",
+          "label": "After the forcing reply, a safe pawn check forks a more valuable piece",
           "when": {
             "all": [
-              "our_turn"
-            ],
-            "any": [
-              "safe_pawn_check_attacks_more_valuable_piece_available",
+              "our_turn",
+              "safe_pawn_check_attacks_more_valuable_piece_available"
+            ]
+          },
+          "to": "CHECK_LOOSE_PIECE"
+        },
+        {
+          "label": "The forcing reply leaves a queen we can capture with check",
+          "when": {
+            "all": [
+              "our_turn",
               "checking_queen_collection_available"
             ]
           },
@@ -863,7 +946,7 @@
               "checking_clearance_available"
             ]
           },
-          "to": "FORCE_ALIGNMENT"
+          "to": "CLEAR_LINE"
         },
         {
           "label": "A checking fork forces the sole defender to choose between the checker and its target",
@@ -893,26 +976,60 @@
               "checking_skewer_available"
             ]
           },
-          "to": "FORCE_ALIGNMENT"
+          "to": "SKEWER"
         },
         {
-          "label": "The only recapturer must abandon another attacked piece; or A capture draws its sole recapturer into a knight fork of valuable pieces; or An aligned target has an extra defender we can capture; or A bishop capture can draw the sole-defending king out while overloading a piece; or Capturing a solely defended piece can deflect the front of a loose alignment",
+          "label": "The only recapturer must abandon another attacked piece",
           "when": {
             "all": [
-              "our_turn"
-            ],
-            "any": [
-              "overloaded_defender_capture_available",
-              "knight_fork_lure_available",
-              "extra_defender_capture_available",
-              "quiet_bishop_king_lure_available",
+              "our_turn",
+              "overloaded_defender_capture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture draws its sole recapturer into a knight fork of valuable pieces",
+          "when": {
+            "all": [
+              "our_turn",
+              "knight_fork_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "An aligned target has an extra defender we can capture",
+          "when": {
+            "all": [
+              "our_turn",
+              "extra_defender_capture_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A bishop capture can draw the sole-defending king out while overloading a piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "quiet_bishop_king_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "Capturing a solely defended piece can deflect the front of a loose alignment",
+          "when": {
+            "all": [
+              "our_turn",
               "sole_defender_deflection_available"
             ]
           },
           "to": "DEFLECT_DEFENDER"
         },
         {
-          "label": "A mating attack can break the king’s pawn shelter from equal material",
+          "label": "A mating attack can break the king\u2019s pawn shelter from equal material",
           "when": {
             "all": [
               "our_turn",
@@ -1022,14 +1139,30 @@
           "to": "MATE_AND_MATERIAL"
         },
         {
-          "label": "A cheaper sacrifice can lure a more valuable sole defender; or Check while attacking the sole defender of a more valuable piece; or A capture can draw the queen onto a safe knight fork with her king",
+          "label": "A cheaper sacrifice can lure a more valuable sole defender",
           "when": {
             "all": [
-              "our_turn"
-            ],
-            "any": [
-              "more_valuable_defender_lure_available",
-              "checking_deflection_available",
+              "our_turn",
+              "more_valuable_defender_lure_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "Check while attacking the sole defender of a more valuable piece",
+          "when": {
+            "all": [
+              "our_turn",
+              "checking_deflection_available"
+            ]
+          },
+          "to": "DEFLECT_DEFENDER"
+        },
+        {
+          "label": "A capture can draw the queen onto a safe knight fork with her king",
+          "when": {
+            "all": [
+              "our_turn",
               "queen_fork_lure_available"
             ]
           },
@@ -1161,10 +1294,10 @@
       }
     },
     {
-      "id": "FORCE_ALIGNMENT",
-      "label": "Force the alignment",
+      "id": "CLEAR_LINE",
+      "label": "Clear the line with check",
       "kind": "card",
-      "description": "Clear an aligned obstruction with check or check through the king to a piece behind it, then collect the aligned or loose target, renewing forcing exchanges when needed.",
+      "description": "Use the visible alignment: take with check when possible, or move the obstruction with check, then finish the forced exchange and verify the material gain. If the clearing check also attacked a loose piece and that target is still attacked after the reply, safely collect that second target.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -1227,6 +1360,167 @@
           "result": "prove"
         },
         {
+          "label": "The gain is made; inspect its concrete counters",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_gain_reached"
+            ],
+            "none": [
+              "in_check"
+            ]
+          },
+          "to": "SECURE_GAIN"
+        }
+      ],
+      "my": {
+        "predicates": [
+          "mate",
+          "capture_back_of_alignment",
+          {
+            "predicate": "safe_loose_capture",
+            "when": {
+              "all": [
+                "loose_target_still_attacked"
+              ]
+            }
+          },
+          "objective_recapture",
+          "checking_capture",
+          "move_middle_with_check",
+          "check_response"
+        ],
+        "limit": 5
+      },
+      "their": {
+        "predicates": [
+          {
+            "predicate": "mated",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "capture",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "check",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "king_move",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "legal_move",
+            "when": {
+              "all": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "mated",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "check",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "recapture",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          },
+          {
+            "predicate": "capture_erases_gain",
+            "when": {
+              "none": [
+                "in_check"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "SKEWER",
+      "label": "Skewer the king and piece",
+      "kind": "card",
+      "description": "Check through the king toward a valuable piece behind it. After the king moves, take that piece. If a piece blocks the check, capture it with check and renew the skewer.",
+      "rules": [
+        {
+          "label": "Checkmate wins",
+          "when": {
+            "all": [
+              "mate"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Our legal mate-in-one wins",
+          "when": {
+            "all": [
+              "our_turn",
+              "mate_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Mate against us or stalemate fails",
+          "when": {
+            "any": [
+              "mated",
+              "stalemate"
+            ]
+          },
+          "result": "fail"
+        },
+        {
+          "label": "Every legal check evasion retains the material gain",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_gain_reached",
+              "in_check",
+              "legal_move_available"
+            ],
+            "none": [
+              "immediate_mate_against_us",
+              "gain_erasing_reply_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
           "label": "The king must move and every legal reply leaves the skewered target",
           "when": {
             "all": [
@@ -1259,22 +1553,11 @@
       "my": {
         "predicates": [
           "mate",
-          "capture_back_of_alignment",
-          {
-            "predicate": "safe_loose_capture",
-            "when": {
-              "all": [
-                "loose_target_still_attacked"
-              ]
-            }
-          },
           "capture_undefended_non_pawn_piece",
           "checking_recapture",
           "checking_skewer",
-          "objective_recapture",
-          "checking_capture",
-          "move_middle_with_check",
           "equal_piece_exchange",
+          "objective_recapture",
           "check_response"
         ],
         "limit": 5
@@ -2797,7 +3080,7 @@
     },
     {
       "id": "BREAK_KING_SHELTER",
-      "label": "Break the king’s pawn shelter",
+      "label": "Break the king\u2019s pawn shelter",
       "kind": "card",
       "description": "Threaten mate against a pinned pawn beside the king and continue the attack against the listed safe checks, captures and mate defenses. The positional goal is a king forced away from its adjacent pawn shelter while we are not behind in material. This card certifies that exposed position, not a completed mate.",
       "rules": [
@@ -4481,14 +4764,28 @@
           "result": "prove"
         },
         {
-          "label": "The answered check keeps the gain without a losing capture or recapture with a new threat; or The exchange keeps the gain without mate, a losing capture, or recapture with a new threat",
+          "label": "The answered check keeps the gain without a losing capture or recapture with a new threat",
           "when": {
             "all": [
               "their_turn",
-              "objective_gain_reached"
+              "objective_gain_reached",
+              "check_response"
             ],
-            "any": [
-              "check_response",
+            "none": [
+              "in_check",
+              "immediate_mate_against_us",
+              "capture_counter_available",
+              "recapture_with_new_attack_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "The exchange keeps the gain without mate, a losing capture, or recapture with a new threat",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_gain_reached",
               "recapture"
             ],
             "none": [
@@ -4974,7 +5271,7 @@
               "checking_skewer_available"
             ]
           },
-          "to": "FORCE_ALIGNMENT"
+          "to": "SKEWER"
         },
         {
           "label": "The pawn gain survives checks and immediate material-recovering captures",
@@ -5150,20 +5447,44 @@
       }
     },
     {
-      "id": "ENDGAME",
-      "label": "Find an endgame idea",
+      "id": "READ_PHASE",
+      "label": "Read the material on the board",
       "kind": "card",
-      "description": "A knight against a bishop and a king-defended enemy pawn suggests checking away the defender and collecting the pawn. Other positions use the original ideas.",
+      "description": "Enter endgame ideas when both sides together have at most 20 points of material. Otherwise read the original tactical ideas.",
       "rules": [
         {
-          "label": "Read tactical ideas above the endgame material threshold",
+          "label": "At most 20 points enters the endgame card",
+          "when": {
+            "all": [
+              "total_material_at_most_20"
+            ]
+          },
+          "to": "ENDGAME"
+        },
+        {
+          "label": "Read the original ideas",
           "when": {
             "none": [
               "total_material_at_most_20"
             ]
           },
           "to": "FIND_IDEA"
-        },
+        }
+      ],
+      "my": {
+        "predicates": [],
+        "limit": 5
+      },
+      "their": {
+        "predicates": []
+      }
+    },
+    {
+      "id": "ENDGAME",
+      "label": "Find an endgame idea",
+      "kind": "card",
+      "description": "A knight against a bishop and a king-defended enemy pawn suggests checking away the defender and collecting the pawn. Other positions use the original ideas.",
+      "rules": [
         {
           "label": "Checkmate wins",
           "when": {
@@ -5287,24 +5608,35 @@
               "in_check"
             ]
           },
-          "to": "ENDGAME_TARGET_PAWN"
+          "to": "ENDGAME_PAWN_BREAKTHROUGH"
         },
         {
-          "label": "Our king can approach a blocked undefended pawn before the enemy king; or In a pawn ending, take direct opposition and invade toward an undefended pawn",
+          "label": "Our king can approach a blocked undefended pawn before the enemy king",
           "when": {
             "all": [
               "our_turn",
-              "pawn_endgame"
+              "pawn_endgame",
+              "king_approaches_blocked_undefended_pawn_first_available"
             ],
-            "any": [
-              "king_approaches_blocked_undefended_pawn_first_available",
+            "none": [
+              "in_check"
+            ]
+          },
+          "to": "ENDGAME_KING_OPPOSITION"
+        },
+        {
+          "label": "In a pawn ending, take direct opposition and invade toward an undefended pawn",
+          "when": {
+            "all": [
+              "our_turn",
+              "pawn_endgame",
               "king_takes_direct_opposition_available"
             ],
             "none": [
               "in_check"
             ]
           },
-          "to": "ENDGAME_TARGET_PAWN"
+          "to": "ENDGAME_KING_OPPOSITION"
         },
         {
           "label": "An attacked knight can check while adding a safe attack to a piece",
@@ -5503,10 +5835,71 @@
       }
     },
     {
-      "id": "CAPTURE_INTERPOSITIONS",
-      "label": "Force the king and remove its blocks",
+      "id": "ROOK_BATTERY_MATE",
+      "label": "Use the rook battery against the back rank",
       "kind": "card",
-      "description": "Continue forcing checks and checking captures. Examine every legal evasion. When a block stops the check, take it with check or renew the check. When the material objective is reached, test that the gain survives.",
+      "description": "Two rooks defend one another and the enemy king stands on its back rank. Check with a supported rook; examine every legal evasion. Continue with a checking recapture or another supported rook check. Accept checkmate or an available legal mate in one; when a material gain is made, enter the existing gain-check card to examine exchanges and forcing counters.",
+      "rules": [
+        {
+          "label": "Checkmate wins",
+          "when": {
+            "all": [
+              "mate"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Our legal mate-in-one wins",
+          "when": {
+            "all": [
+              "our_turn",
+              "mate_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Mate against us or stalemate fails",
+          "when": {
+            "any": [
+              "mated",
+              "stalemate"
+            ]
+          },
+          "result": "fail"
+        },
+        {
+          "label": "The rook battery has made a material gain; check the exchanges and forcing counters",
+          "when": {
+            "all": [
+              "their_turn",
+              "objective_gain_reached"
+            ]
+          },
+          "to": "SECURE_GAIN"
+        }
+      ],
+      "my": {
+        "predicates": [
+          "mate",
+          "checking_recapture",
+          "defended_rook_checking_exchange",
+          "supported_rook_check"
+        ],
+        "limit": 5
+      },
+      "their": {
+        "predicates": [
+          "legal_move"
+        ]
+      }
+    },
+    {
+      "id": "CAPTURE_INTERPOSITIONS",
+      "label": "Capture the pieces blocking the check",
+      "kind": "card",
+      "description": "Our bishop, knight or rook closes the back-rank king exits and a safe check allows only interpositions. Give that check, examine every legal reply, and capture an interposer with check. Continue until mate, an available mate in one, or a checking queen collection whose material gain survives every legal evasion.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -5553,26 +5946,13 @@
             ]
           },
           "result": "prove"
-        },
-        {
-          "label": "The material gain is made; test its counters",
-          "when": {
-            "all": [
-              "their_turn",
-              "objective_gain_reached"
-            ]
-          },
-          "to": "SECURE_GAIN"
         }
       ],
       "my": {
         "predicates": [
           "mate",
-          "checking_recapture",
           "checking_capture",
-          "check_with_only_interpositions",
-          "defended_rook_checking_exchange",
-          "supported_rook_check"
+          "check_with_only_interpositions"
         ],
         "limit": 5
       },
@@ -5794,7 +6174,7 @@
       "id": "ENDGAME_CAPTURE_AND_STOP_PASSER",
       "label": "Take the piece and stop the passer",
       "kind": "card",
-      "description": "Below the material threshold, safely capture the last enemy piece with a knight. Examine every legal reply, then place the safe knight to control the sole passed pawn’s promotion. The provisional positional certificate also requires a material advantage, our nearer king, and no immediate enemy check or capture.",
+      "description": "Below the material threshold, safely capture the last enemy piece with a knight. Examine every legal reply, then place the safe knight to control the sole passed pawn\u2019s promotion. The provisional positional certificate also requires a material advantage, our nearer king, and no immediate enemy check or capture.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -5826,7 +6206,7 @@
           "result": "fail"
         },
         {
-          "label": "The piece gain remains; a safe knight controls the only passed pawn’s promotion and our king is nearer",
+          "label": "The piece gain remains; a safe knight controls the only passed pawn\u2019s promotion and our king is nearer",
           "when": {
             "all": [
               "their_turn",
@@ -5862,10 +6242,117 @@
       }
     },
     {
-      "id": "ENDGAME_TARGET_PAWN",
-      "label": "Attack a pawn or create a runner",
+      "id": "ENDGAME_KING_OPPOSITION",
+      "label": "Take opposition and invade toward a pawn",
       "kind": "card",
-      "description": "In a pawn ending, collect a pawn or advance a clear runner; otherwise attack a pawn with the king, a passed-pawn advance, or a supported pawn break. Take opposition or approach an undefended pawn when no collection is ready. Test every legal repair or counter and continue using the same board facts. Accept only the explicit pawn-gain and race certificates below; these retain the prior provisional endgame hypotheses.",
+      "description": "In a pawn ending below the material threshold, take direct opposition. Prefer a pawn capture or a king attack on an undefended pawn; otherwise approach such a pawn with a two-king-step distance lead. Examine every legal opponent reply. A one-ply certificate establishes an available safe king pawn capture after every reply with nonnegative material balance and no advanced enemy passer. An actual pawn gain with no immediate pawn take or check is the alternate covering certificate; neither claims every resulting pawn ending is a forced game win.",
+      "rules": [
+        {
+          "label": "Checkmate wins",
+          "when": {
+            "all": [
+              "mate"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Our legal mate-in-one wins",
+          "when": {
+            "all": [
+              "our_turn",
+              "mate_available"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "Mate against us or stalemate fails",
+          "when": {
+            "any": [
+              "mated",
+              "stalemate"
+            ]
+          },
+          "result": "fail"
+        },
+        {
+          "label": "The pawn capture has created a clear runner beyond the enemy king; use the pawn-race card",
+          "when": {
+            "all": [
+              "their_turn",
+              "pawn_endgame",
+              "clear_nonrook_passer_outside_enemy_king_square",
+              "our_king_controls_enemy_passer_promotion"
+            ],
+            "none": [
+              "in_check",
+              "enemy_check_available"
+            ]
+          },
+          "to": "ENDGAME_PAWN_BREAKTHROUGH"
+        },
+        {
+          "label": "Every legal reply keeps a nonnegative material balance and leaves our king a safe pawn capture",
+          "when": {
+            "all": [
+              "their_turn",
+              "pawn_endgame",
+              "our_king_attacks_undefended_enemy_pawn",
+              "material_not_behind",
+              "legal_move_available",
+              "every_reply_leaves_safe_king_pawn_take"
+            ],
+            "none": [
+              "enemy_advanced_passed_pawn_present"
+            ]
+          },
+          "result": "prove"
+        },
+        {
+          "label": "A pawn has been won in the pawn ending, with no immediate pawn take, check or advanced enemy passer",
+          "when": {
+            "all": [
+              "their_turn",
+              "pawn_endgame",
+              "capture",
+              "material_improved",
+              "material_advantage"
+            ],
+            "none": [
+              "enemy_capture_available",
+              "enemy_check_available",
+              "enemy_advanced_passed_pawn_present",
+              "in_check"
+            ]
+          },
+          "result": "prove"
+        }
+      ],
+      "my": {
+        "predicates": [
+          "mate",
+          "pawn_capture_creates_clear_runner",
+          "capture",
+          "king_attacks_undefended_pawn_move",
+          "supported_pawn_advance_attacks_pawn",
+          "king_takes_direct_opposition",
+          "king_approaches_blocked_undefended_pawn_first",
+          "king_approaches_undefended_pawn_with_two_step_lead"
+        ],
+        "limit": 5
+      },
+      "their": {
+        "predicates": [
+          "legal_move"
+        ]
+      }
+    },
+    {
+      "id": "ENDGAME_PAWN_BREAKTHROUGH",
+      "label": "Break through with a supported pawn",
+      "kind": "card",
+      "description": "Below the material threshold, push a supported pawn to attack an enemy pawn. Examine every legal reply, then recapture or advance a passer. The provisional race certificate requires a non-rook passed pawn with a clear file to promotion, enemy king outside its square including a tempo when that king moves next, and at most one enemy passer whose promotion square our king controls. This is a visible geometric covering hypothesis, not a universal pawn-ending proof.",
       "rules": [
         {
           "label": "Checkmate wins",
@@ -5972,56 +6459,15 @@
             ]
           },
           "result": "prove"
-        },
-        {
-          "label": "Every legal reply keeps a nonnegative material balance and leaves our king a safe pawn capture",
-          "when": {
-            "all": [
-              "their_turn",
-              "pawn_endgame",
-              "our_king_attacks_undefended_enemy_pawn",
-              "material_not_behind",
-              "legal_move_available",
-              "every_reply_leaves_safe_king_pawn_take"
-            ],
-            "none": [
-              "enemy_advanced_passed_pawn_present"
-            ]
-          },
-          "result": "prove"
-        },
-        {
-          "label": "A pawn has been won in the pawn ending, with no immediate pawn take, check or advanced enemy passer",
-          "when": {
-            "all": [
-              "their_turn",
-              "pawn_endgame",
-              "capture",
-              "material_improved",
-              "material_advantage"
-            ],
-            "none": [
-              "enemy_capture_available",
-              "enemy_check_available",
-              "enemy_advanced_passed_pawn_present",
-              "in_check"
-            ]
-          },
-          "result": "prove"
         }
       ],
       "my": {
         "predicates": [
           "mate",
           "safe_clear_nonrook_passer_advance",
-          "pawn_capture_creates_clear_runner",
-          "capture",
-          "king_attacks_undefended_pawn_move",
+          "pawn_capture",
           "advances_passed_pawn",
-          "supported_pawn_advance_attacks_pawn",
-          "king_takes_direct_opposition",
-          "king_approaches_blocked_undefended_pawn_first",
-          "king_approaches_undefended_pawn_with_two_step_lead"
+          "supported_pawn_advance_attacks_pawn"
         ],
         "limit": 5
       },
@@ -6162,7 +6608,7 @@
               "enemy_check_available"
             ]
           },
-          "to": "ENDGAME_TARGET_PAWN"
+          "to": "ENDGAME_PAWN_BREAKTHROUGH"
         }
       ],
       "my": {
@@ -9707,7 +10153,7 @@
     "capture_mate_defense_priority": "A capture can answer the capturing mate threat",
     "safe_queen_contact_mate_threat": "Safely move the queen to threaten mate beside the king",
     "shelter_breaking_mate_threat": "With equal material, threaten mate by attacking a pinned king pawn",
-    "shelter_breaking_mate_threat_available": "A mate threat can break the king’s pawn shelter without an initial material deficit",
+    "shelter_breaking_mate_threat_available": "A mate threat can break the king\u2019s pawn shelter without an initial material deficit",
     "constructive_mate_defense": "Answer mate with a safe move",
     "safe_check_evasion_capture": "Answer check with a safe capture",
     "our_king_has_no_adjacent_pawns": "Our king has no adjacent friendly pawns",
@@ -9794,14 +10240,14 @@
     "advances_passed_pawn": "Advance a passed pawn",
     "supported_passed_pawn_advance": "Advance a safe passer whose promotion square is bishop-defended",
     "rook_attacks_passed_pawn": "Safely attack the passed pawn with the rook",
-    "rook_on_enemy_passed_pawn_file": "Put the rook on the passed pawn’s file",
+    "rook_on_enemy_passed_pawn_file": "Put the rook on the passed pawn\u2019s file",
     "promotion_square_defended_by_bishop": "A bishop controls the promotion square",
     "passed_pawn_one_step_from_promotion": "The passer is one move from promotion",
     "move_attacks_enemy_passed_pawn": "Attack an enemy passed pawn",
     "capture_defender_of_knight_royal_fork_square": "Capture the defender of a knight royal-fork square",
     "capture_royal_fork_defender_available": "A capture can remove the defender of a knight royal-fork square",
     "capture_draws_blockader_from_advanced_pawn": "Capture to draw away the blockader of an advanced pawn",
-    "blockader_lure_available": "A capture can draw away an advanced pawn’s blockader",
+    "blockader_lure_available": "A capture can draw away an advanced pawn\u2019s blockader",
     "checking_pawn_advance": "Advance a passed pawn with check to one step from promotion",
     "queen_promotion_capture": "Capture and promote to a queen",
     "checking_promotion_with_takeback": "A checking promotion can be recaptured",
