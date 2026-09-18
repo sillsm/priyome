@@ -31,20 +31,39 @@
   const field = (position, path) => path.split(".").reduce((value, part) =>
     object(value) && has(value, part) ? value[part] : undefined, position);
 
-  function validate(declarations) {
+  function validate(declarations, selectors = {}) {
     const errors = [];
     if (!object(declarations)) return ["predicate_inputs must be an object"];
+    const selectorDependencies = new Map(), activeSelectors = new Set();
     const visit = (expression, label, dependencies) => {
       if (!object(expression)) { errors.push(`${label}: expected an expression`); return; }
       for (const key of Object.keys(expression)) {
-        if (!["any", "all", "none", "fields", "children"].includes(key)) errors.push(`${label}: unknown input ${key}`);
+        if (!["any", "all", "none", "fields", "children", "select"].includes(key)) errors.push(`${label}: unknown input ${key}`);
+      }
+      if (expression.select !== undefined) {
+        const target = selectors[expression.select];
+        if (!target?.match) errors.push(`${label}: unknown selector ${expression.select}`);
+        if (!target?.match) return;
+        if (activeSelectors.has(expression.select)) { errors.push(`${label}: cyclic selector ${expression.select}`); return; }
+        if (!selectorDependencies.has(expression.select)) {
+          const refs = new Set();
+          activeSelectors.add(expression.select);
+          visit(target.match, expression.select, refs);
+          activeSelectors.delete(expression.select);
+          selectorDependencies.set(expression.select, refs);
+        }
+        for (const name of selectorDependencies.get(expression.select)) dependencies.add(name);
+        return;
       }
       for (const key of ["any", "all", "none"]) {
         if (!has(expression, key)) continue;
         const names = expression[key];
-        if (!Array.isArray(names) || names.some(name => typeof name !== "string" || !name)) {
+        if (!Array.isArray(names) || names.some(name => (typeof name !== "string" || !name) && !object(name))) {
           errors.push(`${label}.${key}: expected predicate names`);
-        } else names.filter(name => has(declarations, name)).forEach(name => dependencies.add(name));
+        } else names.forEach(name => {
+          if (typeof name === "string" && has(declarations, name)) dependencies.add(name);
+          else if (object(name)) visit(name, label, dependencies);
+        });
       }
       if (has(expression, "fields")) {
         if (!object(expression.fields) || !Object.keys(expression.fields).length) errors.push(`${label}.fields: expected field comparisons`);
@@ -92,11 +111,11 @@
 
   function hydrate(runner, options = {}) {
     const declarations = runner?.policy?.predicate_inputs || {};
-    const errors = validate(declarations);
+    const errors = validate(declarations, runner?.policy?.move_selectors || {});
     if (errors.length) throw new Error(errors.join("; "));
     const positions = runner?.positions;
     if (!(positions instanceof Map)) throw new Error("predicate input requires a position Map");
-    const names = Object.keys(declarations), raw = new Map(), memo = new Map();
+    const names = Object.keys(declarations), raw = new Map(), memo = new Map(), selectorMemo = new Map();
     const read = id => {
       if (raw.has(id)) return raw.get(id);
       const position = positions.get(id);
@@ -125,9 +144,19 @@
       if (!cache.has(name)) cache.set(name, matches(id, declarations[name]));
       return cache.get(name);
     };
-    const matchesName = (id, name) => has(declarations, name)
+    const matchesName = (id, name) => object(name) ? matches(id, name) : has(declarations, name)
       ? matchesAlias(id, name) : Boolean(read(id)?.set.has(name));
     const matches = (id, expression) => {
+      if (expression.select) {
+        let cache = selectorMemo.get(id);
+        if (!cache) { cache = new Map(); selectorMemo.set(id, cache); }
+        if (!cache.has(expression.select)) {
+          cache.set(expression.select, null);
+          const target = runner?.policy?.move_selectors?.[expression.select]?.match;
+          cache.set(expression.select, target ? matches(id, target) : null);
+        }
+        return cache.get(expression.select);
+      }
       const entry = read(id);
       if (!entry) return null;
       let unknown = false;
@@ -160,7 +189,7 @@
           && Number.isInteger(entry.position.meta?.legalReplyCount)
           && entry.position.meta.legalReplyCount === ids.length
           && !entry.set.has("unexplorable") && !entry.set.has("oracle_limit")
-          && ids.every(child => read(child)?.set.has("legal_move"));
+          && ids.every(child => matchesName(child, "legal_move") === true);
         if (!complete) return null;
         observedChildren += ids.length;
         const results = ids.map(child => matches(child, expression.children.where));
@@ -194,5 +223,5 @@
     return { changed, emitted, observedChildren, observedPositions: raw.size };
   }
 
-  return Object.freeze({ VERSION: "2.0.1-board-facts", hydrate, validate });
+  return Object.freeze({ VERSION: "2.1.0-explicit-selectors", hydrate, validate });
 });
