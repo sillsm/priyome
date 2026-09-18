@@ -11,7 +11,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const VERSION = "2.1.0-card-replies";
+  const VERSION = "2.3.0-bounded-board-reads";
   const POLICY_SCHEMA = "predicate-policy/v2";
   const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
   const STATE_KINDS = Object.freeze(["card"]);
@@ -22,11 +22,38 @@
   const normalizeInitial = value => Array.isArray(value) ? value.map(String) : String(value || "").split(/[\s,]+/).filter(Boolean);
   const stateDefFromPolicy = (policy, id) => policy?.states?.find(card => card.id === id);
 
-  function conditionMatches(position, when = {}) {
-    const facts = position?.predicates || [];
-    return (!when.any?.length || when.any.some(fact => facts.includes(fact)))
-      && (!when.all?.length || when.all.every(fact => facts.includes(fact)))
-      && (!when.none?.length || !when.none.some(fact => facts.includes(fact)));
+  function conditionMatches(position, when = {}, policy = {}) {
+    const facts = new Set(position?.predicates || []), memo = new Map();
+    const matches = expr => {
+      if (typeof expr === "string") return facts.has(expr);
+      if (!expr || typeof expr !== "object") return false;
+      if (expr.select) {
+        if (!memo.has(expr.select)) {
+          const target = policy.move_selectors?.[expr.select]?.match;
+          memo.set(expr.select, false); // Invalid cycles fail closed.
+          memo.set(expr.select, Boolean(target) && matches(target));
+        }
+        return memo.get(expr.select);
+      }
+      return (!expr.any?.length || expr.any.some(matches))
+        && (!expr.all?.length || expr.all.every(matches))
+        && (!expr.none?.length || !expr.none.some(matches));
+    };
+    return matches(when);
+  }
+
+  function selectionWitness(position, expression, policy) {
+    if (typeof expression === "string") return expression;
+    if (expression.select) return selectionWitness(position, policy.move_selectors[expression.select].match, policy);
+    const all = (expression.all || []).map(item => selectionWitness(position, item, policy));
+    if (expression.any?.length) {
+      const matched = expression.any.find(item => typeof item === "string" ? position.predicates.includes(item) : conditionMatches(position, item, policy));
+      if (matched) all.push(selectionWitness(position, matched, policy));
+    }
+    // Record positive selecting reasons. Full negative guards remain in the
+    // checked selector, and rejected candidates retain their actual board facts.
+    const none = (expression.none || []).filter(item => typeof item === "string");
+    return all.length === 1 && !none.length ? all[0] : { ...(all.length ? {all} : {}), ...(none.length ? {none} : {}) };
   }
 
   function conditionLabel(when = {}) {
@@ -65,6 +92,47 @@
     if (policy.budgets && Object.keys(policy.budgets).some(key => !["thoughts", "depth"].includes(key))) error("Unsupported execution budget", "Only thoughts and depth are execution safety limits.");
     if (policy.our_move_candidate_limit !== undefined && (!Number.isInteger(policy.our_move_candidate_limit) || policy.our_move_candidate_limit < 1 || policy.our_move_candidate_limit > 5)) error("Invalid own-move limit", "Choose an integer from 1 through 5.");
     if (policy.check_evasions !== undefined) error("Replies belong on each card", "Use each card's their.predicates, with board conditions for check.");
+    const validateMatch = (expr, ref, active = new Set()) => {
+      if (typeof expr === "string" && expr.trim()) return;
+      if (!object(expr) || !Object.keys(expr).length) { error("Invalid selection expression", ref); return; }
+      if (expr.select !== undefined) {
+        if (Object.keys(expr).length !== 1 || typeof expr.select !== "string" || !object(policy.move_selectors?.[expr.select]?.match)) { error("Unknown selector", ref); return; }
+        if (active.has(expr.select)) { error("Cyclic selector", ref); return; }
+        validateMatch(policy.move_selectors[expr.select].match, ref, new Set([...active, expr.select])); return;
+      }
+      for (const [key, list] of Object.entries(expr)) {
+        if (!["any", "all", "none"].includes(key) || !Array.isArray(list) || !list.length) { error("Invalid selection condition", ref); continue; }
+        list.forEach(item => validateMatch(item, ref, active));
+      }
+    };
+    for (const [name, selector] of Object.entries(policy.move_selectors || {})) validateMatch(selector.match, name, new Set([name]));
+    if (policy.board_reads !== undefined) {
+      const reads = policy.board_reads;
+      if (!object(reads)) error("Invalid board reads", "board_reads must be an object.");
+      else {
+        for (const key of Object.keys(reads)) if (!["entry", "limit", "side", "after_move", "on_exhaustion"].includes(key)) error("Unsupported board-read setting", key);
+        if (!idSet.has(reads.entry)) error("Invalid board-read entry", String(reads.entry));
+        if (reads.entry !== policy.entry) error("Board-read entry must be the policy entry", String(reads.entry));
+        if (!Number.isInteger(reads.limit) || reads.limit < 1 || reads.limit > 3) error("Invalid board-read limit", "Choose 1 through 3, including the initial read.");
+        if (!["my", "their"].includes(reads.side)) error("Invalid board-read side", "Choose my or their.");
+        if (typeof reads.on_exhaustion !== "boolean") error("Invalid exhaustion setting", "board_reads.on_exhaustion must be boolean.");
+        validateMatch(reads.after_move, "board_reads.after_move");
+      }
+    }
+    if (policy.terminal_rules !== undefined) {
+      if (!Array.isArray(policy.terminal_rules)) error("Invalid terminal rules", "terminal_rules must be an ordered array.");
+      else for (const [index, rule] of policy.terminal_rules.entries()) {
+        const ref = `terminal_rules[${index}]`;
+        if (!object(rule)) { error("Invalid terminal rule", ref); continue; }
+        if (Object.keys(rule).some(key => !["label", "when", "result"].includes(key))) error("Unsupported terminal rule input", ref);
+        if (!object(rule.when) || !Object.keys(rule.when).length) error("Missing terminal board condition", ref);
+        else {
+          for (const [key, values] of Object.entries(rule.when)) if (!["any", "all", "none"].includes(key) || !strings(values)) error("Invalid terminal board condition", ref);
+          if (!["any", "all", "none"].some(key => rule.when[key]?.length)) error("Empty terminal board condition", ref);
+        }
+        if (!["prove", "fail"].includes(rule.result)) error("Invalid terminal conclusion", ref);
+      }
+    }
     for (const card of cards) {
       const name = card?.id || "unnamed card";
       if (!card?.id || typeof card.id !== "string") error("Missing card name", name);
@@ -93,6 +161,17 @@
         if (!object(choices) || !Array.isArray(choices.predicates)) { error("Invalid move predicates", `${name}.${side}.predicates must be an ordered list.`); continue; }
         for (const choice of choices.predicates) {
           if (typeof choice === "string" && choice.trim()) continue;
+          if (object(choice) && (choice.select !== undefined || choice.match !== undefined)) {
+            const ref = `${name}.${side}: selector`;
+            const selection = choice.select !== undefined ? {select: choice.select} : choice.match;
+            validateMatch(selection, ref);
+            if (Object.keys(choice).some(key => !["select", "match", "when"].includes(key)) || (choice.select !== undefined && choice.match !== undefined)) error("Invalid selector choice", ref);
+            if (choice.when !== undefined) {
+              if (!object(choice.when) || !Object.keys(choice.when).length) error("Invalid selector guard", ref);
+              else for (const [key, values] of Object.entries(choice.when)) if (!["all", "any", "none"].includes(key) || !strings(values)) error("Invalid selector guard", ref);
+            }
+            continue;
+          }
           const ref = `${name}.${side}: ${choice?.predicate || "unnamed move predicate"}`;
           if (!object(choice) || typeof choice.predicate !== "string" || !choice.predicate.trim()) { error("Invalid move predicate", ref); continue; }
           for (const key of Object.keys(choice)) if (!["predicate", "when"].includes(key)) error("Unsupported move predicate input", `${ref}: ${key}`);
@@ -103,8 +182,8 @@
             if (!["any", "all", "none"].some(key => choice.when[key]?.length)) error("Empty move eligibility condition", ref);
           }
         }
-        for (const key of Object.keys(choices)) if (!["predicates", ...(side === "my" ? ["limit"] : [])].includes(key)) error("Unsupported move selection", `${name}.${side}.${key}`);
-        if (side === "my" && choices.limit !== undefined && (!Number.isInteger(choices.limit) || choices.limit < 1 || choices.limit > 5)) error("Invalid card move limit", `${name}.my.limit must be from 1 through 5.`);
+        for (const key of Object.keys(choices)) if (!["predicates", "limit"].includes(key)) error("Unsupported move selection", `${name}.${side}.${key}`);
+        if (choices.limit !== undefined && (!Number.isInteger(choices.limit) || choices.limit < 1 || choices.limit > 5)) error("Invalid card move limit", `${name}.${side}.limit must be from 1 through 5.`);
       }
     }
     return issues;
@@ -186,9 +265,15 @@
       return this.snapshot();
     }
 
-    _newOccurrence(id, depth, parent, matchedBy, cardId) {
+    _newOccurrence(id, depth, parent, matchedBy, cardId, inherited) {
       const occurrence = `n${++this._occurrenceCounter}`;
       const item = { id, depth, parent, matchedBy, cardId, occurrence };
+      if (this.policy.board_reads) {
+        item.readCount = inherited?.readCount || 0;
+        item.pendingRead = Boolean(inherited?.pendingRead);
+        item.triedAtBoard = clone(inherited?.triedAtBoard || {});
+        if (parent && conditionMatches(this.positions.get(id), this.policy.board_reads.after_move, this.policy)) item.pendingRead = true;
+      }
       this.runtime.nodes[occurrence] = { ...item, status: "queued", note: "", order: this.runtime.nodeOrder.length };
       this.runtime.nodeOrder.push(occurrence);
       if (!parent) this.runtime.roots.push(occurrence);
@@ -234,6 +319,47 @@
       this._setNode(item, { status: "active" });
       this.runtime.timeline.push({ state: item.cardId, label: this.stateDef()?.label || item.cardId, occurrence: item.occurrence });
       this._emit("line-selected", { item });
+      if (this.policy.board_reads && !item.parent && item.readCount === 0) this._readBoard("initial");
+    }
+
+    _boardKey(item = this.runtime.current) {
+      const position = this.positions.get(item?.id);
+      return position?.fen ? position.fen.trim().split(/\s+/).slice(0, 4).join(" ") : item?.id;
+    }
+
+    _readBoard(cause) {
+      const config = this.policy.board_reads, item = this.runtime.current;
+      if (!config || !item) return false;
+      item.pendingRead = false;
+      const board = this._boardKey(item);
+      if (item.readCount >= config.limit) {
+        this._setNode(item, { pendingRead: false });
+        this._emit("board-read-denied", { item, board, cause, count: item.readCount, limit: config.limit, reason: "Line board-read budget exhausted" });
+        return false;
+      }
+      const from = this.runtime.state;
+      item.readCount += 1;
+      item.cardId = config.entry;
+      this.runtime.state = config.entry;
+      this.runtime.search = null;
+      this.runtime.frontier = [];
+      this.runtime.selectedFrontier = [];
+      this._routesAtBoard = new Set([config.entry]);
+      this._setNode(item, { cardId: item.cardId, readCount: item.readCount, pendingRead: false, triedAtBoard: clone(item.triedAtBoard), status: "active" });
+      this.runtime.action = "read board for a plan";
+      this.runtime.reason = `Board read ${item.readCount} of ${config.limit}: ${cause}`;
+      this.runtime.timeline.push({ state: config.entry, label: this.stateDef()?.label || config.entry, occurrence: item.occurrence });
+      this._emit("board-read", { item, board, from, to: config.entry, cause, count: item.readCount, limit: config.limit });
+      return true;
+    }
+
+    _rereadAfterExhaustion() {
+      const config = this.policy.board_reads, item = this.runtime.current;
+      if (!config?.on_exhaustion || !item || this.positions.get(item.id)?.side !== config.side || this.runtime.state === config.entry) return false;
+      const board = this._boardKey(item);
+      item.triedAtBoard[board] = unique([...(item.triedAtBoard[board] || []), this.runtime.state]);
+      this._setNode(item, { triedAtBoard: clone(item.triedAtBoard) });
+      return this._readBoard("exhaustion");
     }
 
     _transition(rule) {
@@ -294,6 +420,7 @@
         reason = parent.side === "my"
           ? proved ? "A candidate move proves the objective" : "Every selected move failed"
           : proved ? "Every selected opponent reply is answered" : "An opponent reply refutes the line";
+        if (!proved && parent.side === "my" && this._rereadAfterExhaustion()) return;
       }
     }
 
@@ -302,9 +429,9 @@
       // All moves, including replies to check, come from the current card.
       const mandatoryEvasions = false;
       const choices = card[side].predicates;
-      const predicates = choices.map(choice => typeof choice === "string" ? choice : choice.predicate);
+      const predicates = choices.map(choice => typeof choice === "string" ? choice : choice.select ? {select: choice.select} : choice.match || choice.predicate);
       const conditions = choices.map(choice => typeof choice === "string" ? null : choice.when);
-      const limit = side === "my" ? Math.min(card.my.limit || 5, this.policy.our_move_candidate_limit || 5) : Infinity;
+      const limit = side === "my" ? Math.min(card.my.limit || 5, this.policy.our_move_candidate_limit || 5) : (Number.isInteger(card.their.limit) && card.their.limit > 0 ? card.their.limit : Infinity);
       const frontier = (position.children || []).map(id => ({ id, parent: this.runtime.current.occurrence, depth: this.runtime.current.depth + 1 }));
       this.runtime.search = { side, parent: clone(this.runtime.current), cardId: card.id, predicates, conditions,
         predicateIndex: 0, limit: Number.isFinite(limit) ? limit : null, selected: [], used: [],
@@ -329,10 +456,10 @@
         const conditionMatched = !when || conditionMatches(this.positions.get(search.parent.id), when);
         for (const child of search.frontier) {
           if (!conditionMatched) break;
-          if (used.has(child.id) || !this.positions.get(child.id)?.predicates?.includes(predicate)) continue;
+          if (used.has(child.id) || !conditionMatches(this.positions.get(child.id), predicate, this.policy)) continue;
           matchingIds.push(child.id);
           if (search.selected.length >= limit) continue;
-          const item = this._newOccurrence(child.id, child.depth, child.parent, predicate, search.cardId);
+          const item = this._newOccurrence(child.id, child.depth, child.parent, selectionWitness(this.positions.get(child.id), predicate, this.policy), search.cardId, search.parent);
           search.selected.push(item); selected.push(item); search.used.push(child.id); used.add(child.id);
         }
         const check = search.checks[search.predicateIndex];
@@ -354,6 +481,7 @@
         closure: search.side === "my" ? { mode: "first", count: search.limit } : { mode: "all" } });
       if (!search.selected.length) {
         this._emit("inspect-routed", { item: search.parent, result: "fail", to: "fail", label: "No move matches this card" });
+        if (this._rereadAfterExhaustion()) return;
         this._finish(false, "No move matches this card");
         return;
       }
@@ -400,12 +528,25 @@
         else if (position.predicates.some(fact => ["oracle_limit", "unexplorable"].includes(fact))) {
           this._emit("oracle-incomplete", { item: this.runtime.current, reason: "The Oracle could not supply a complete board" });
           this._finish(false, "Unresolved: incomplete Oracle board");
-        } else if (position.fen && this._stack.some(frame => frame.cardId === card.id
-          && this.positions.get(frame.item.id)?.fen?.split(/\s+/).slice(0, 4).join(" ") === position.fen.split(/\s+/).slice(0, 4).join(" "))) {
-          this._emit("search-cycle", { item: this.runtime.current, reason: "This card revisited the same board on this line" });
-          this._finish(false, "Unresolved: repeating board and card");
+        } else if (position.fen && this._stack.some(frame => (this.policy.board_reads || frame.cardId === card.id)
+          && this._boardKey(frame.item) === this._boardKey())) {
+          const reason = this.policy.board_reads ? "Unresolved: repeating board on this line" : "Unresolved: repeating board and card";
+          this._emit("search-cycle", { item: this.runtime.current, reason: this.policy.board_reads ? reason : "This card revisited the same board on this line" });
+          this._finish(false, reason);
         } else {
-          const rule = card.rules.find(rule => conditionMatches(position, rule.when));
+          const terminal = (this.policy.terminal_rules || []).find(rule => conditionMatches(position, rule.when));
+          if (terminal) {
+            const label = terminal.label || conditionLabel(terminal.when);
+            this._emit("inspect-routed", { item: this.runtime.current, result: terminal.result, to: terminal.result, label, when: terminal.when, shared: true });
+            this._finish(terminal.result === "prove", label);
+            return { events: clone(this._stepEvents), snapshot: this.snapshot() };
+          }
+          if (this.policy.board_reads && position.side === this.policy.board_reads.side && this.runtime.current.pendingRead && this._readBoard("forcing move")) {
+            return { events: clone(this._stepEvents), snapshot: this.snapshot() };
+          }
+          const exhausted = this.policy.board_reads && card.id === this.policy.board_reads.entry
+            ? new Set(this.runtime.current.triedAtBoard[this._boardKey()] || []) : new Set();
+          const rule = card.rules.find(rule => !exhausted.has(rule.to) && conditionMatches(position, rule.when));
           if (rule?.to === card.id) {
             this._emit("inspect-routed", { item: this.runtime.current, from: card.id, to: card.id,
               label: rule.label || conditionLabel(rule.when), when: rule.when });
@@ -469,11 +610,13 @@
 
   const GRAMMAR = Object.freeze({
     policy: { schema: POLICY_SCHEMA, entry: "named chess card", budgets: { thoughts: "execution safety limit", depth: "execution safety limit" },
+      board_reads: { entry: "same as policy entry", limit: "1 through 3, including initial read", side: "my or their", after_move: { any: ["incoming move fact"] }, on_exhaustion: true },
+      terminal_rules: [{ when: { any: ["board fact"] }, result: "prove or fail", label: "shared board conclusion" }],
       states: [{ id: "card name", label: "human chess idea", kind: "card",
         rules: [{ label: "chess reason", when: { any: ["board predicate"], all: ["board predicate"], none: ["board predicate"] }, to: "next named chess card OR use result: prove/fail" }],
         my: { predicates: ["ordered move predicate OR {predicate, when: current board condition}"], limit: 5 }, their: { predicates: ["ordered reply predicate OR {predicate, when: current board condition}"] } }] },
     search: "Try our selected moves until one proves the objective; answer every opponent reply selected by this card. A self transition selects this card's moves immediately.",
-    memory: "The search stack remembers only boards, the chess card chosen at each board, and untried sibling moves.",
+    memory: "The search stack remembers boards, cards, and untried sibling moves. Opt-in board_reads adds a per-line read count, a pending reread after a selected forcing move, and exhausted plans by board. Each sibling inherits an independent copy. The initial read counts; exhausted plans are skipped on same-board rereads. Any second occurrence of the same FEN's first four fields fails regardless of card when board_reads is enabled.",
     project: { schema: PROJECT_SCHEMA, name: "study name", initial: ["board ID"], policy: "chess-card policy", positions: [{ id: "board ID", side: "my or their", predicates: ["chess fact"], children: ["child board ID"] }] }
   });
 
