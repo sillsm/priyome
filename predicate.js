@@ -1,382 +1,135 @@
 /*
  * Priyomes Predicate Policy Engine
- * predicate.js v1.3.0-compact-sigil
- *
- * A DOM-free, deterministic engine for coordinate-free predicate policies over
- * finite game trees. The browser UI, storage, animation, examples, and editors
- * belong outside this file. This file owns only:
- *   - policy/project validation
- *   - DFA + bounded LIFO search execution
- *   - ordered predicate filtering and closure
- *   - invisible delimiter-scoped position frames on the same pending stack
- *   - routine CALL / RETURN semantics
- *   - test-case interpretation
- *   - an inspectable event stream and explored-tree snapshot
- *
- * Public global: window.PredicatePolicy
- * CommonJS:      const PredicatePolicy = require('./predicate.js')
+ * A card is a chess strategy. Its rules read only this board's predicates.
+ * Ordinary depth-first search remembers boards, their cards, and untried moves.
+ * Our alternatives are OR; the opponent's selected replies are AND.
  */
-(function predicatePolicyUMD(root, factory) {
+(function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) root.PredicatePolicy = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function predicatePolicyFactory() {
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const VERSION = "1.3.0-compact-sigil";
+  const VERSION = "2.1.0-card-replies";
   const POLICY_SCHEMA = "predicate-policy/v2";
   const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
-  const STATE_KINDS = Object.freeze([
-    "push_initial", "pop", "inspect", "search", "control", "call", "return", "accept", "reject"
-  ]);
-
+  const STATE_KINDS = Object.freeze(["card"]);
   const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  const object = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  const strings = value => Array.isArray(value) && value.every(item => typeof item === "string" && item.trim());
   const unique = values => [...new Set(values)];
-  const isObject = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-  const compact = policy => policy?.control_model?.name === "compact-sigil-dfa/v1";
-  const isStringArray = (value, allowEmpty = false) => Array.isArray(value)
-    && (allowEmpty || value.length > 0)
-    && value.every(item => typeof item === "string" && item.trim());
-  const normalizeInitial = value => {
-    if (Array.isArray(value)) return value.map(String).map(item => item.trim()).filter(Boolean);
-    return String(value || "").split(/[\s,]+/).map(item => item.trim()).filter(Boolean);
-  };
+  const normalizeInitial = value => Array.isArray(value) ? value.map(String) : String(value || "").split(/[\s,]+/).filter(Boolean);
+  const stateDefFromPolicy = (policy, id) => policy?.states?.find(card => card.id === id);
 
-  function stateDefFromPolicy(policy, id) {
-    return policy?.states?.find(state => state.id === id);
-  }
-
-  function closureLabel(stateOrClosure) {
-    const closure = stateOrClosure?.closure || stateOrClosure;
-    if (!closure) return "—";
-    if (closure.mode === "all") return "all matching children";
-    if (closure.mode === "one_each") {
-      return `first match for each predicate${closure.count ? `, at most ${closure.count}` : ""}`;
-    }
-    const count = Number(closure.count || 1);
-    return `first ${count} match${count === 1 ? "" : "es"}`;
+  function conditionMatches(position, when = {}) {
+    const facts = position?.predicates || [];
+    return (!when.any?.length || when.any.some(fact => facts.includes(fact)))
+      && (!when.all?.length || when.all.every(fact => facts.includes(fact)))
+      && (!when.none?.length || !when.none.some(fact => facts.includes(fact)));
   }
 
   function conditionLabel(when = {}) {
-    const parts = [];
-    if (when.side) parts.push(`side = ${when.side}`);
-    if (when.frame) parts.push(`frame = ${when.frame}`);
-    if (Array.isArray(when.any) && when.any.length) parts.push(`any(${when.any.join(" · ")})`);
-    if (Array.isArray(when.all) && when.all.length) parts.push(`all(${when.all.join(" · ")})`);
-    if (Array.isArray(when.none) && when.none.length) parts.push(`none(${when.none.join(" · ")})`);
-    return parts.join(" + ") || "always";
+    return [when.all?.length && when.all.join(" and "),
+      when.any?.length && `one of: ${when.any.join(", ")}`,
+      when.none?.length && `without: ${when.none.join(", ")}`].filter(Boolean).join("; ") || "no board condition";
   }
 
-  function conditionMatches(position, item, when = {}) {
-    const predicates = position?.predicates || [];
-    if (when.side && position?.side !== when.side) return false;
-    if (when.frame && item?.frameKind !== when.frame) return false;
-    if (Array.isArray(when.any) && when.any.length && !when.any.some(predicate => predicates.includes(predicate))) return false;
-    if (Array.isArray(when.all) && when.all.length && !when.all.every(predicate => predicates.includes(predicate))) return false;
-    if (Array.isArray(when.none) && when.none.some(predicate => predicates.includes(predicate))) return false;
-    return true;
+  function closureLabel(choice) {
+    if (choice?.mode === "all" || choice?.side === "their") return "every matching reply";
+    const limit = choice?.limit ?? choice?.my?.limit ?? choice?.count;
+    return limit ? `first ${limit} matching moves` : "moves in predicate order";
   }
 
-  function policyGraphTargets(state, policy) {
-    const targets = [];
-    if (!state) return targets;
-    if (compact(policy)) return unique([...Object.values(state.on || {}),
-      ...(policy.transitions || []).filter(row => row.from === state.id).map(row => row.to)]).filter(Boolean);
-    if (state.kind === "inspect") {
-      (state.rules || []).forEach(rule => rule?.to && targets.push(rule.to));
-      if (state.default) targets.push(state.default);
-      Object.values(state.on || {}).forEach(value => value && targets.push(value));
-      if (state.terminal_checks !== false) {
-        targets.push(policy.outcomes?.accept_state, policy.outcomes?.reject_state);
-      }
-    } else if (state.kind === "call") {
-      const routine = policy.routines?.find(item => item.id === state.call?.routine);
-      if (routine?.entry) targets.push(routine.entry);
-      if (state.call?.return_to) targets.push(state.call.return_to);
-    } else {
-      Object.values(state.on || {}).forEach(value => value && targets.push(value));
-      if (state.kind === "search" && state.frame?.on_empty) targets.push(state.frame.on_empty);
-    }
-    return targets.filter(Boolean);
+  function policyGraphTargets(card) {
+    return unique((card?.rules || []).map(rule => rule.to).filter(Boolean));
   }
 
-  function validatePolicy(candidate) {
-    if (compact(candidate)) return validateCompactPolicy(candidate);
+  function validatePolicy(policy) {
     const issues = [];
     const error = (title, detail) => issues.push({ level: "error", scope: "policy", title, detail });
-    const warn = (title, detail) => issues.push({ level: "warn", scope: "policy", title, detail });
-
-    if (!isObject(candidate)) {
-      error("Policy must be an object", "The JSON root must be a policy object.");
-      return issues;
-    }
-    if (candidate.schema !== POLICY_SCHEMA) error("Unknown policy schema", `Expected \"${POLICY_SCHEMA}\".`);
-    if (!Array.isArray(candidate.states) || !candidate.states.length) error("No DFA states", "policy.states must be a non-empty array.");
-    if (!Array.isArray(candidate.routines) || !candidate.routines.length) error("No routines", "policy.routines must be a non-empty array.");
-
-    const states = Array.isArray(candidate.states) ? candidate.states : [];
-    const routines = Array.isArray(candidate.routines) ? candidate.routines : [];
-    const stateIds = states.map(state => state?.id).filter(Boolean);
-    const routineIds = routines.map(routine => routine?.id).filter(Boolean);
-    const stateSet = new Set(stateIds);
-    const routineSet = new Set(routineIds);
-    ["plans", "plan_start_card", "plan_entries", "plan_outcomes", "proof_preference", "transitions"].forEach(key => {
-      if (candidate[key] !== undefined) error("Unsupported control machinery", key);
-    });
-
-    unique(stateIds.filter((id, index) => stateIds.indexOf(id) !== index)).forEach(id => error("Duplicate state ID", id));
-    unique(routineIds.filter((id, index) => routineIds.indexOf(id) !== index)).forEach(id => error("Duplicate routine ID", id));
-
-    if (!candidate.entry || !stateSet.has(candidate.entry)) {
-      error("Invalid policy entry", `entry must name an existing state; received ${candidate.entry || "nothing"}.`);
-    }
-
-    const outcomes = candidate.outcomes;
-    if (!isObject(outcomes)) {
-      error("Missing outcomes", "Define accept_state, reject_state, winning_predicates, and failure_predicates.");
-    } else {
-      if (!stateSet.has(outcomes.accept_state)) error("Invalid accept state", outcomes.accept_state || "missing");
-      if (!stateSet.has(outcomes.reject_state)) error("Invalid reject state", outcomes.reject_state || "missing");
-      if (!isStringArray(outcomes.winning_predicates)) error("Winning predicates are invalid", "Use a non-empty array of strings.");
-      if (!isStringArray(outcomes.failure_predicates, true)) error("Failure predicates are invalid", "Use an array of strings.");
-    }
-
-    const budgets = candidate.budgets;
-    if (!budgets || !Number.isInteger(Number(budgets.thoughts)) || Number(budgets.thoughts) < 1) {
-      error("Invalid thought budget", "budgets.thoughts must be a positive integer.");
-    }
-    if (!budgets || !Number.isInteger(Number(budgets.depth)) || Number(budgets.depth) < 0) {
-      error("Invalid depth budget", "budgets.depth must be zero or a positive integer.");
-    }
-    if (!budgets || !Number.isInteger(Number(budgets.call_depth)) || Number(budgets.call_depth) < 0) {
-      error("Invalid call-depth budget", "budgets.call_depth must be zero or a positive integer.");
-    }
-
-    routines.forEach((routine, index) => {
-      const name = routine?.id || `routine ${index + 1}`;
-      if (!routine?.id || typeof routine.id !== "string") error("Routine has no ID", name);
-      if (!routine?.entry || !stateSet.has(routine.entry)) {
-        error(`Routine ${name} has invalid entry`, routine?.entry || "missing");
-      } else if (stateDefFromPolicy(candidate, routine.entry)?.routine !== routine.id) {
-        error(`Routine ${name} entry belongs elsewhere`, `${routine.entry} is assigned to ${stateDefFromPolicy(candidate, routine.entry)?.routine || "no routine"}.`);
-      }
-    });
-
-    const allowedClosure = new Set(["first", "all", "one_each"]);
-    states.forEach((state, index) => {
-      const name = state?.id || `state ${index + 1}`;
-      if (!state?.id || typeof state.id !== "string") error("State has no ID", name);
-      if (!STATE_KINDS.includes(state?.kind)) error(`${name} has invalid kind`, String(state?.kind));
-      if (state?.kind === "control") error(`${name} requires the compact control model`, "Declare compact-sigil-dfa/v1.");
-      if (!routineSet.has(state?.routine)) error(`${name} has invalid routine`, state?.routine || "missing");
-      ["routes", "plan", "selectors", "always_predicates", "max_visits_per_puzzle", "tie_break"].forEach(key => {
-        if (state[key] !== undefined) error(`${name} has unsupported control machinery`, key);
-      });
-
-      const requireTarget = (target, label) => {
-        if (!target || !stateSet.has(target)) error(`${name} has invalid ${label} target`, target || "missing");
-      };
-
-      if (state?.kind === "push_initial") {
-        requireTarget(state.on?.pushed, "pushed");
-        requireTarget(state.on?.invalid, "invalid");
-      } else if (state?.kind === "pop") {
-        if (state.until !== undefined && state.until !== "current_frame") {
-          error(`${name} has invalid pop target`, 'pop.until may only be "current_frame".');
-        }
-        if (state.until === "current_frame") {
-          requireTarget(state.on?.delimiter, "delimiter");
-          requireTarget(state.on?.empty, "empty");
-        } else {
-          requireTarget(state.on?.thought, "thought");
-          requireTarget(state.on?.empty, "empty");
-        }
-      } else if (state?.kind === "search") {
-        if (!isStringArray(state.predicates)) error(`${name} has no predicate order`, "search.predicates must be a non-empty array of strings.");
-        if (!allowedClosure.has(state.closure?.mode)) error(`${name} has invalid closure mode`, state.closure?.mode || "missing");
-        if (state.closure?.mode === "first" && (!Number.isInteger(Number(state.closure?.count)) || Number(state.closure.count) < 1)) {
-          error(`${name} has invalid closure count`, "first mode requires count >= 1.");
-        }
-        if (state.closure?.mode === "one_each" && state.closure?.count !== undefined
-          && (!Number.isInteger(Number(state.closure.count)) || Number(state.closure.count) < 1)) {
-          error(`${name} has invalid closure count`, "one_each count, when supplied, must be >= 1.");
-        }
-        if (state.side && !["my", "their"].includes(state.side)) error(`${name} has invalid side`, state.side);
-        if (state.frame !== undefined) {
-          if (!isObject(state.frame)) {
-            error(`${name} has an invalid stack-frame declaration`, "search.frame must be an object when supplied.");
-          } else {
-            if (!["choice", "replies"].includes(state.frame.kind)) error(`${name} has invalid frame kind`, state.frame.kind || "missing");
-            requireTarget(state.frame.on_empty, "frame.on_empty");
-          }
-        }
-        requireTarget(state.on?.pushed, "pushed");
-        requireTarget(state.on?.none, "none");
-        const duplicates = state.predicates?.filter((item, itemIndex) => state.predicates.indexOf(item) !== itemIndex) || [];
-        if (duplicates.length) warn(`${name} repeats search predicates`, unique(duplicates).join(", "));
-      } else if (state?.kind === "inspect") {
-        if (!Array.isArray(state.rules)) error(`${name} rules are invalid`, "inspect.rules must be an ordered array.");
-        (state.rules || []).forEach((rule, ruleIndex) => {
-          requireTarget(rule?.to, `rule ${ruleIndex + 1}`);
-          const when = rule?.when || {};
-          if (!isObject(when) || Object.keys(when).some(key => !["side", "frame", "any", "all", "none"].includes(key))) error(`${name} has unsupported inspection input`, "Only side/frame/any/all/none are supported.");
-          if (when.side && !["my", "their"].includes(when.side)) error(`${name} rule ${ruleIndex + 1} has invalid side`, when.side);
-          if (when.frame && !["root", "choice", "replies"].includes(when.frame)) error(`${name} rule ${ruleIndex + 1} has invalid frame`, when.frame);
-          ["any", "all", "none"].forEach(key => {
-            if (when[key] !== undefined && !isStringArray(when[key], true)) {
-              error(`${name} rule ${ruleIndex + 1} has invalid ${key}`, "Use an array of predicate strings.");
-            }
-          });
-          if (!Object.keys(when).length && ruleIndex !== state.rules.length - 1) {
-            warn(`${name} has an early always-rule`, `Rule ${ruleIndex + 1} shadows every rule below it.`);
-          }
-        });
-        if (state.default) requireTarget(state.default, "default");
-        if (state.on?.depth) requireTarget(state.on.depth, "depth");
-        if (state.on?.missing) requireTarget(state.on.missing, "missing");
-      } else if (state?.kind === "call") {
-        if (!routineSet.has(state.call?.routine)) error(`${name} calls an unknown routine`, state.call?.routine || "missing");
-        requireTarget(state.call?.return_to, "return_to");
-      } else if (state?.kind === "return") {
-        if (state.on?.no_frame) requireTarget(state.on.no_frame, "no_frame");
-      }
-    });
-
-    if (outcomes && stateSet.has(outcomes.accept_state) && stateDefFromPolicy(candidate, outcomes.accept_state)?.kind !== "accept") {
-      error("accept_state is not an accept state", outcomes.accept_state);
-    }
-    if (outcomes && stateSet.has(outcomes.reject_state) && stateDefFromPolicy(candidate, outcomes.reject_state)?.kind !== "reject") {
-      error("reject_state is not a reject state", outcomes.reject_state);
-    }
-
-    if (stateSet.has(candidate.entry)) {
-      const visited = new Set();
-      const queue = [candidate.entry];
-      while (queue.length) {
-        const id = queue.shift();
-        if (visited.has(id)) continue;
-        visited.add(id);
-        const state = stateDefFromPolicy(candidate, id);
-        if (!state) continue;
-        policyGraphTargets(state, candidate).forEach(target => {
-          if (stateSet.has(target) && !visited.has(target)) queue.push(target);
-        });
-      }
-      const unreachable = stateIds.filter(id => !visited.has(id));
-      if (unreachable.length) warn("Unreachable states", unreachable.join(", "));
-    }
-
-    return issues;
-  }
-
-  function validateCompactPolicy(policy) {
-    const issues = [];
-    const error = (title, detail) => issues.push({ level: "error", scope: "policy", title, detail });
-    const states = Array.isArray(policy.states) ? policy.states : [];
-    const ids = new Set(states.map(state => state.id));
-    const target = (id, context) => { if (!ids.has(id)) error("Unknown state", `${context}: ${id}`); };
-    if (policy.schema !== POLICY_SCHEMA || !states.length || ids.size !== states.length) error("Invalid compact policy", "Use the policy schema and unique state IDs.");
-    target(policy.entry, "entry");
-    for (const key of ["accept_state", "reject_state"]) target(policy.outcomes?.[key], key);
-    if (!isStringArray(policy.outcomes?.winning_predicates) || !isStringArray(policy.outcomes?.failure_predicates, true)) error("Invalid outcome predicates", "Use named predicate arrays.");
-    if (!Array.isArray(policy.routines) || !policy.routines.length) error("Missing routines", "Declare the main routine.");
-    (policy.routines || []).forEach(routine => target(routine.entry, routine.id));
-    for (const key of ["thoughts", "depth", "call_depth"]) if (!Number.isInteger(policy.budgets?.[key]) || policy.budgets[key] < (key === "thoughts" ? 1 : 0)) error("Invalid safety budget", key);
-    const forbidden = ["plans", "plan_start_card", "plan_entries", "plan_outcomes", "proof_preference"];
-    forbidden.forEach(key => { if (policy[key] !== undefined) error("Unsupported control machinery", key); });
-    const declared = new Set(), used = new Set();
-    const declare = value => { if (typeof value !== "string" || !value) error("Invalid sigil", String(value)); else declared.add(value); };
-    states.forEach(state => {
-      if (!["search", "control", "accept", "reject"].includes(state.kind)) error("Invalid compact state kind", state.id);
-      if (state.kind === "control" && !["start", "pop_header", "pop_position", "pop_continuation", "propagate", "discard"].includes(state.action)) error("Invalid fixed action", state.id);
-      if (state.prepare !== undefined && !["inspect", "search"].includes(state.prepare)) error("Invalid preparation", state.id);
-      if (state.allowance !== undefined && !["available", "spent"].includes(state.allowance)) error("Invalid control allowance", state.id);
-      if (state.action === "start") declare(state.initial_symbol || "ROOT");
-      Object.values(state.on || {}).forEach(id => target(id, state.id));
-      ["routes", "rules", "plan", "selectors", "always_predicates", "max_visits_per_puzzle", "tie_break"].forEach(key => { if (state[key] !== undefined) error("Card-internal control is unsupported", `${state.id}: ${key}`); });
-      if (state.kind === "search") {
-        if (!isStringArray(state.predicates)) error("Invalid fixed predicate order", state.id);
-        if (!["first", "all", "one_each"].includes(state.closure?.mode)) error("Invalid closure", state.id);
-        if (state.closure?.mode === "first" && (!Number.isInteger(state.closure.count) || state.closure.count < 1)) error("Invalid closure count", state.id);
-        if (!["choice", "replies"].includes(state.frame?.kind)) error("Invalid frame", state.id);
-        if (state.frame?.on_empty !== undefined) error("Executable frame continuation is unsupported", state.id);
-      }
-    });
-    if (!Array.isArray(policy.transitions)) error("Missing transition table", "Declare an ordered global transition table.");
-    (Array.isArray(policy.transitions) ? policy.transitions : []).forEach((row, index) => {
-      const context = `transition ${index + 1}`;
-      target(row.from, context);
-      if (!["read", "candidate", "pushed", "none", "position", "delimiter", "empty"].includes(row.event)) error("Invalid action event", context);
-      const when = row.when || {};
-      if (!isObject(when) || Object.keys(when).some(key => !["any", "all", "none"].includes(key)) || Object.values(when).some(value => !isStringArray(value, true))) error("Invalid predicate input", context);
-      const token = row.token || {};
-      if (!isObject(token) || Object.keys(token).some(key => !["symbol", "card", "context", "allowance", "frame"].includes(key))) error("Invalid popped input", context);
-      if (token.card !== undefined) (Array.isArray(token.card) ? token.card : [token.card]).forEach(card => target(card, context));
-      if (token.symbol !== undefined) (Array.isArray(token.symbol) ? token.symbol : [token.symbol]).forEach(symbol => used.add(symbol));
-      if (row.event === "candidate") {
-        const state = stateDefFromPolicy(policy, row.from);
-        if (state?.kind !== "search" || !state.predicates.includes(row.predicate)) error("Invalid candidate category", context);
-        declare(typeof row.child === "string" ? row.child : row.child?.symbol);
-        if (row.child?.card) target(row.child.card, context);
-      } else target(row.to, context);
-      if (row.push_header !== undefined && row.push_header !== null) {
-        if (!isObject(row.push_header) || Object.keys(row.push_header).some(key => !["symbol", "card", "context", "allowance"].includes(key))) error("Invalid pushed sigil", context);
-        const symbol = row.push_header?.symbol;
-        if (symbol !== undefined && symbol !== "$symbol") declare(symbol);
-      }
-    });
-    used.forEach(symbol => { if (!declared.has(symbol)) error("Unknown sigil input", symbol); });
-    if (!issues.length) issues.push({ level: "ok", scope: "policy", title: "Compact sigil policy is valid", detail: "Fixed cards and global transitions consume named predicates and inert stack inputs." });
-    return issues;
-  }
-
-  function validateProject(candidate) {
-    const issues = [...validatePolicy(candidate?.policy)];
-    const error = (title, detail) => issues.push({ level: "error", scope: "project", title, detail });
-    const warn = (title, detail) => issues.push({ level: "warn", scope: "project", title, detail });
-
-    if (!candidate || candidate.schema !== PROJECT_SCHEMA) error("Unknown project schema", `Expected \"${PROJECT_SCHEMA}\".`);
-    if (!candidate?.name?.trim()) error("Project name is empty", "Give the workbench a readable name.");
-    const positions = Array.isArray(candidate?.positions) ? candidate.positions : [];
-    const ids = positions.map(position => position?.id).filter(Boolean);
+    if (!object(policy)) return [{ level: "error", scope: "policy", title: "Policy must be an object", detail: "Supply a chess-card policy." }];
+    if (policy.schema !== POLICY_SCHEMA) error("Unknown policy schema", `Expected ${POLICY_SCHEMA}.`);
+    if (!Array.isArray(policy.states) || !policy.states.length) error("No chess cards", "states must contain the actual named chess cards.");
+    const cards = Array.isArray(policy.states) ? policy.states : [];
+    const ids = cards.map(card => card?.id);
     const idSet = new Set(ids);
-    unique(ids.filter((id, index) => ids.indexOf(id) !== index)).forEach(id => error("Duplicate position ID", id));
-    if (!positions.length) error("No oracle position cards", "At least one position card is required.");
-
-    positions.forEach((position, index) => {
-      const name = position?.id || `position ${index + 1}`;
-      if (!position?.id || typeof position.id !== "string") error("Position has no ID", name);
-      if (!["my", "their"].includes(position?.side)) error(`${name} has invalid side`, "Use \"my\" or \"their\".");
-      if (!isStringArray(position?.predicates, true)) error(`${name} predicates are invalid`, "Use an array of strings.");
-      if (position.children !== undefined && !Array.isArray(position.children)) error(`${name} children are invalid`, "Use an array of position IDs.");
-      (position.children || []).forEach(child => {
-        if (!idSet.has(child)) error(`${name} points to a missing child`, child);
-      });
-    });
-
-    if (!Array.isArray(candidate?.initial) || !candidate.initial.length) {
-      warn("No saved initial thoughts", "The runner may still supply them explicitly.");
+    for (const id of unique(ids.filter((id, index) => ids.indexOf(id) !== index))) error("Duplicate card", String(id));
+    if (!idSet.has(policy.entry)) error("Invalid entry card", String(policy.entry));
+    for (const key of ["control_model", "sigils", "plans", "transitions", "routines", "outcomes", "plan_entries", "plan_outcomes", "plan_start_card", "proof_preference"]) {
+      if (policy[key] !== undefined) error("Unsupported policy machinery", key);
     }
-    (candidate?.initial || []).forEach(id => {
-      if (!idSet.has(id)) error("Missing initial position", id);
-    });
-
-    (candidate?.tests || []).forEach((test, index) => {
-      if (!isObject(test)) {
-        error(`Test ${index + 1} is invalid`, "Each test must be an object.");
-        return;
+    for (const key of ["thoughts", "depth"]) {
+      if (!Number.isInteger(policy.budgets?.[key]) || policy.budgets[key] < (key === "depth" ? 0 : 1)) error("Invalid execution safety limit", `budgets.${key}`);
+    }
+    if (policy.budgets && Object.keys(policy.budgets).some(key => !["thoughts", "depth"].includes(key))) error("Unsupported execution budget", "Only thoughts and depth are execution safety limits.");
+    if (policy.our_move_candidate_limit !== undefined && (!Number.isInteger(policy.our_move_candidate_limit) || policy.our_move_candidate_limit < 1 || policy.our_move_candidate_limit > 5)) error("Invalid own-move limit", "Choose an integer from 1 through 5.");
+    if (policy.check_evasions !== undefined) error("Replies belong on each card", "Use each card's their.predicates, with board conditions for check.");
+    for (const card of cards) {
+      const name = card?.id || "unnamed card";
+      if (!card?.id || typeof card.id !== "string") error("Missing card name", name);
+      if (!card?.label || typeof card.label !== "string") error("Missing readable card label", name);
+      if (card?.kind !== "card") error("Only chess cards are states", name);
+      for (const key of ["on", "default", "action", "prepare", "routine", "frame", "routes", "selectors", "closure", "plan", "return_to", "max_visits_per_puzzle", "side", "predicates"]) {
+        if (card?.[key] !== undefined) error("Unsupported card machinery", `${name}.${key}`);
       }
-      if (!Array.isArray(test.initial)) error(`Test ${index + 1} has invalid initial list`, test.name || "unnamed");
-      else test.initial.forEach(id => { if (!idSet.has(id)) error(`Test ${index + 1} names a missing position`, id); });
-      if (!["accept", "reject"].includes(test.expected)) error(`Test ${index + 1} has invalid expected result`, String(test.expected));
-    });
-
-    if (!issues.some(issue => issue.level === "error") && !issues.some(issue => issue.level === "warn")) {
-      issues.push({
-        level: "ok", scope: "project", title: "Project is structurally valid",
-        detail: "Policy grammar, routines, transitions, oracle references, budgets, and outcomes are coherent."
-      });
+      if (!Array.isArray(card?.rules)) error("Invalid board rules", `${name}.rules must be an ordered array.`);
+      for (const [index, rule] of (Array.isArray(card?.rules) ? card.rules : []).entries()) {
+        const ref = `${name}, rule ${index + 1}`;
+        if (!object(rule)) { error("Invalid card rule", ref); continue; }
+        for (const key of Object.keys(rule)) if (!["label", "when", "to", "result"].includes(key)) error("Unsupported rule input", `${ref}: ${key}`);
+        if (!object(rule.when)) error("Missing board condition", ref);
+        else {
+          for (const key of Object.keys(rule.when)) if (!["any", "all", "none"].includes(key)) error("Only board predicates may select a rule", `${ref}: ${key}`);
+          for (const key of ["any", "all", "none"]) if (rule.when[key] !== undefined && !strings(rule.when[key])) error("Invalid board predicate list", `${ref}: ${key}`);
+          if (!["any", "all", "none"].some(key => rule.when[key]?.length)) error("Unconditional card transition", ref);
+        }
+        if (Number(rule.to !== undefined) + Number(rule.result !== undefined) !== 1) error("Rule needs one continuation", `${ref}: name another card or prove/fail.`);
+        if (rule.to !== undefined && !idSet.has(rule.to)) error("Invalid next card", `${ref}: ${rule.to}`);
+        if (rule.result !== undefined && !["prove", "fail"].includes(rule.result)) error("Invalid board conclusion", ref);
+      }
+      for (const side of ["my", "their"]) {
+        const choices = card?.[side];
+        if (!object(choices) || !Array.isArray(choices.predicates)) { error("Invalid move predicates", `${name}.${side}.predicates must be an ordered list.`); continue; }
+        for (const choice of choices.predicates) {
+          if (typeof choice === "string" && choice.trim()) continue;
+          const ref = `${name}.${side}: ${choice?.predicate || "unnamed move predicate"}`;
+          if (!object(choice) || typeof choice.predicate !== "string" || !choice.predicate.trim()) { error("Invalid move predicate", ref); continue; }
+          for (const key of Object.keys(choice)) if (!["predicate", "when"].includes(key)) error("Unsupported move predicate input", `${ref}: ${key}`);
+          if (!object(choice.when)) error("Missing move eligibility condition", ref);
+          else {
+            for (const key of Object.keys(choice.when)) if (!["any", "all", "none"].includes(key)) error("Move eligibility may read only board predicates", `${ref}: ${key}`);
+            for (const key of ["any", "all", "none"]) if (choice.when[key] !== undefined && !strings(choice.when[key])) error("Invalid move eligibility predicates", `${ref}: ${key}`);
+            if (!["any", "all", "none"].some(key => choice.when[key]?.length)) error("Empty move eligibility condition", ref);
+          }
+        }
+        for (const key of Object.keys(choices)) if (!["predicates", ...(side === "my" ? ["limit"] : [])].includes(key)) error("Unsupported move selection", `${name}.${side}.${key}`);
+        if (side === "my" && choices.limit !== undefined && (!Number.isInteger(choices.limit) || choices.limit < 1 || choices.limit > 5)) error("Invalid card move limit", `${name}.my.limit must be from 1 through 5.`);
+      }
     }
+    return issues;
+  }
+
+  function validateProject(project) {
+    const issues = validatePolicy(project?.policy);
+    const error = (title, detail) => issues.push({ level: "error", scope: "project", title, detail });
+    if (project?.schema !== PROJECT_SCHEMA) error("Unknown project schema", `Expected ${PROJECT_SCHEMA}.`);
+    if (typeof project?.name !== "string" || !project.name.trim()) error("Missing project name", "Give this chess study a name.");
+    const positions = Array.isArray(project?.positions) ? project.positions : [];
+    const ids = positions.map(position => position?.id);
+    if (!positions.length) error("No board positions", "Supply at least one position.");
+    if (unique(ids).length !== ids.length) error("Duplicate position ID", "Board IDs must be unique.");
+    for (const position of positions) {
+      if (!object(position)) { error("Invalid board position", "Each board must be an object."); continue; }
+      if (!position?.id || typeof position.id !== "string") error("Missing position ID", "Each board needs an ID.");
+      if (!["my", "their"].includes(position?.side)) error("Invalid side to move", String(position?.id));
+      if (!strings(position?.predicates)) error("Invalid board predicates", String(position?.id));
+      if (position.children !== undefined && !strings(position.children)) error("Invalid child positions", String(position?.id));
+      for (const id of Array.isArray(position.children) ? position.children : []) if (!ids.includes(id)) error("Missing child board", id);
+    }
+    if (project?.initial !== undefined && !strings(project.initial)) error("Invalid initial boards", "Use an array of board IDs.");
+    for (const id of Array.isArray(project?.initial) ? project.initial : []) if (!ids.includes(id)) error("Missing initial board", id);
+    if (!issues.length) issues.push({ level: "ok", scope: "project", title: "Chess cards are structurally valid", detail: "Every card route reads board predicates only." });
     return issues;
   }
 
@@ -390,960 +143,341 @@
     load(project, options = {}) {
       this.project = clone(project);
       this.policy = this.project?.policy || {};
-      this.positions = new Map((this.project?.positions || []).map(position => [position.id, position]));
+      this.positions = new Map((Array.isArray(this.project?.positions) ? this.project.positions : []).filter(object).map(position => [position.id, position]));
       this.validation = validateProject(this.project);
       this.reset(options.initial ?? this.project?.initial ?? []);
       return this;
     }
 
+    stateDef(id = this.runtime?.state) { return stateDefFromPolicy(this.policy, id); }
+    getPosition(id) { return this.positions.get(id); }
     subscribe(listener) {
       if (typeof listener !== "function") throw new TypeError("listener must be a function");
       this._listeners.add(listener);
       return () => this._listeners.delete(listener);
     }
-
-    stateDef(id = this.runtime?.state) {
-      return stateDefFromPolicy(this.policy, id);
-    }
-
-    routineDef(id) {
-      return this.policy?.routines?.find(routine => routine.id === id);
-    }
-
-    getPosition(id) {
-      return this.positions.get(id);
-    }
-
-    _newOccurrence(id, depth, parentOccurrence, matchedBy, status = "queued", frame = null) {
-      const occurrence = `n${++this._occurrenceCounter}`;
-      const node = {
-        occurrence,
-        id,
-        parent: parentOccurrence || null,
-        depth: Number(depth || 0),
-        matchedBy: matchedBy || null,
-        status,
-        note: "",
-        order: this.runtime.nodeOrder.length
-      };
-      this.runtime.nodes[occurrence] = node;
-      this.runtime.nodeOrder.push(occurrence);
-      if (!node.parent) this.runtime.roots.push(occurrence);
-      return {
-        stackKind: "position",
-        id,
-        depth: node.depth,
-        parent: node.parent,
-        matchedBy: node.matchedBy,
-        occurrence,
-        frameId: frame?.id || null,
-        frameKind: frame?.kind || null,
-        frameSourceState: frame?.sourceState || null,
-        frameAncestorId: frame?.ancestor?.id || null,
-        frameAncestorOccurrence: frame?.ancestor?.occurrence || null
-      };
-    }
-
-    _node(itemOrOccurrence) {
-      const occurrence = typeof itemOrOccurrence === "string" ? itemOrOccurrence : itemOrOccurrence?.occurrence;
-      return occurrence ? this.runtime.nodes[occurrence] : null;
-    }
-
-    _setNode(itemOrOccurrence, patch) {
-      const node = this._node(itemOrOccurrence);
-      if (node) Object.assign(node, patch);
+    upsertPositions(positions) {
+      for (const position of positions || []) {
+        const copy = clone(position);
+        this.positions.set(copy.id, copy);
+        const index = this.project.positions.findIndex(item => item.id === copy.id);
+        if (index === -1) this.project.positions.push(copy);
+        else this.project.positions[index] = copy;
+      }
+      return this;
     }
 
     reset(initial = this.project?.initial || []) {
       this._occurrenceCounter = 0;
-      this._frameCounter = 0;
-      const entry = this.policy?.entry;
-      const entryState = stateDefFromPolicy(this.policy, entry);
-      const initialIds = normalizeInitial(initial);
-      this.runtime = {
-        state: entry,
-        routine: entryState?.routine || this.policy?.routines?.[0]?.id || "main",
-        pending: [],
-        current: null,
-        callStack: [],
-        frontier: [],
-        selectedFrontier: [],
-        search: null,
-        initialIds,
-        initialItems: [],
-        thoughtCount: 0,
-        microStepCount: 0,
-        result: null,
-        reason: "",
-        lastMatch: null,
-        action: "ready",
-        timeline: entry ? [{ state: entry, routine: entryState?.routine || "main", label: "entry" }] : [],
-        trace: [],
-        roots: [],
-        nodes: {},
-        nodeOrder: [],
-        stateVisit: 0,
-        countedVisit: -1,
-        bootstrapError: ""
-      };
+      this._stack = [];
+      this._routesAtBoard = new Set();
+      this._started = false;
       this._stepEvents = [];
-
-      const missing = initialIds.filter(id => !this.positions.has(id));
-      if (!initialIds.length) this.runtime.bootstrapError = "no initial position supplied";
-      else if (missing.length) this.runtime.bootstrapError = `unknown initial position: ${missing.join(", ")}`;
-
-      this.runtime.initialItems = initialIds.map(id => this._newOccurrence(id, 0, null, "initial", "queued", {
-        id: null,
-        kind: "root",
-        sourceState: null,
-        ancestor: null
-      }));
-
-      if (!this.runtime.bootstrapError && entryState && entryState.kind !== "push_initial" && !(compact(this.policy) && entryState.action === "start")) {
-        if (entryState.kind === "pop") {
-          [...this.runtime.initialItems].reverse().forEach(item => this.runtime.pending.push(item));
-        } else {
-          const [first, ...rest] = this.runtime.initialItems;
-          if (first) {
-            this.runtime.current = first;
-            this._setNode(first, { status: "active" });
-          }
-          [...rest].reverse().forEach(item => this.runtime.pending.push(item));
-        }
-      }
-
-      if (entryState?.kind === "accept") {
-        this.runtime.result = "accept";
-        this.runtime.reason = `entered ${entryState.id}`;
-      } else if (entryState?.kind === "reject") {
-        this.runtime.result = "reject";
-        this.runtime.reason = `entered ${entryState.id}`;
-      }
-
-      this._emit("reset", { initial: initialIds });
+      this.runtime = {
+        state: this.policy.entry, current: null, initialIds: normalizeInitial(initial),
+        thoughtCount: 0, microStepCount: 0, result: null, reason: "Ready", action: "ready",
+        frontier: [], selectedFrontier: [], search: null, lastMatch: null,
+        timeline: [], trace: [], roots: [], nodes: {}, nodeOrder: []
+      };
+      this._initialItems = this.runtime.initialIds.map(id => this._newOccurrence(id, 0, null, "initial", this.policy.entry));
+      this.runtime.current = this._initialItems[0] || null;
+      this._remainingInitial = this._initialItems.slice(1);
+      this._emit("reset", { initial: this.runtime.initialIds });
       return this.snapshot();
     }
 
+    _newOccurrence(id, depth, parent, matchedBy, cardId) {
+      const occurrence = `n${++this._occurrenceCounter}`;
+      const item = { id, depth, parent, matchedBy, cardId, occurrence };
+      this.runtime.nodes[occurrence] = { ...item, status: "queued", note: "", order: this.runtime.nodeOrder.length };
+      this.runtime.nodeOrder.push(occurrence);
+      if (!parent) this.runtime.roots.push(occurrence);
+      return item;
+    }
+
+    _setNode(item, changes) {
+      const node = this.runtime.nodes[item?.occurrence];
+      if (node) Object.assign(node, changes);
+    }
+
     _emit(type, data = {}) {
-      const state = this.stateDef();
-      const event = {
-        index: this.runtime.trace.length,
-        type,
-        state: this.runtime.state,
-        routine: this.runtime.routine,
-        thoughtCount: this.runtime.thoughtCount,
-        microStepCount: this.runtime.microStepCount,
-        ...(state?.card ? { card: state.card } : {}),
-        ...(state?.role ? { role: state.role } : {}),
-        ...(data.to ? { toRole: this.stateDef(data.to)?.role || data.to } : {}),
-        ...clone(data)
-      };
+      const event = { index: this.runtime.trace.length, type,
+        state: this.runtime.state, card: this.runtime.state,
+        side: this.positions.get(this.runtime.current?.id)?.side || null,
+        thoughtCount: this.runtime.thoughtCount, microStepCount: this.runtime.microStepCount,
+        ...clone(data) };
       this.runtime.trace.push(event);
       this._stepEvents.push(event);
-      this._listeners.forEach(listener => {
-        try { listener(clone(event), this.snapshot()); } catch (_) { /* listeners do not control the engine */ }
-      });
+      for (const listener of this._listeners) {
+        try { listener(clone(event), this.snapshot()); } catch (_) { /* Observers cannot affect the search. */ }
+      }
       return event;
     }
 
-    _transition(to, label, reason = "") {
-      const from = this.runtime.state;
-      const target = stateDefFromPolicy(this.policy, to);
-      if (!target) {
-        const reject = this.policy?.outcomes?.reject_state;
-        const rejectState = stateDefFromPolicy(this.policy, reject);
-        this.runtime.state = reject;
-        this.runtime.routine = rejectState?.routine || "main";
-        this.runtime.stateVisit += 1;
-        this.runtime.search = null;
+    _select(item) {
+      if (this.runtime.thoughtCount >= this.policy.budgets.thoughts) {
         this.runtime.result = "reject";
-        this.runtime.reason = `transition target ${to} does not exist`;
-        this.runtime.timeline.push({ state: reject, routine: this.runtime.routine, label: "invalid transition" });
-        this._emit("transition", { from, to: reject, label: "invalid transition" });
+        this.runtime.reason = `Execution safety limit: ${this.policy.budgets.thoughts} explored positions`;
+        this._emit("budget-exhausted", { budget: this.policy.budgets.thoughts, reason: this.runtime.reason });
         this._emit("terminal", { result: "reject", reason: this.runtime.reason });
         return;
       }
-
-      this.runtime.state = to;
-      this.runtime.routine = target.routine;
-      this.runtime.stateVisit += 1;
+      this.runtime.current = item;
+      this.runtime.state = item.cardId;
       this.runtime.search = null;
-      this.runtime.timeline.push({ state: to, routine: target.routine, label });
-      this._emit("transition", { from, to, label, reason });
-
-      if (target.kind === "accept" || target.kind === "reject") {
-        this.runtime.result = target.kind === "accept" ? "accept" : "reject";
-        this.runtime.reason = reason || this.runtime.reason || `entered ${target.id}`;
-        if (this.runtime.current) {
-          this._setNode(this.runtime.current, {
-            status: target.kind === "accept" ? "accepted" : "rejected",
-            note: this.runtime.reason
-          });
-        }
-        this._emit("terminal", { result: this.runtime.result, reason: this.runtime.reason, state: target.id });
-      }
-    }
-
-    _countStateVisit() {
-      if (this.runtime.countedVisit === this.runtime.stateVisit) return true;
-      const budget = Number(this.policy?.budgets?.thoughts || 0);
-      if (this.runtime.thoughtCount >= budget) {
-        this.runtime.action = "thought budget exhausted";
-        this._emit("budget-exhausted", { budget });
-        this._transition(this.policy.outcomes.reject_state, "budget exhausted", `thought budget ${budget} exhausted`);
-        return false;
-      }
-      this.runtime.thoughtCount += 1;
-      this.runtime.countedVisit = this.runtime.stateVisit;
-      const state = this.stateDef();
-      this.runtime.action = state?.description || state?.kind || "state";
-      this._emit("state-enter", { state: state?.id, kind: state?.kind, description: state?.description || "" });
-      return true;
-    }
-
-    _frameBase() {
-      return this.runtime.callStack.length ? this.runtime.callStack.at(-1).pendingBase : 0;
-    }
-
-    _initializeSearch(state) {
-      const position = this.runtime.current && this.positions.get(this.runtime.current.id);
-      if (!position) return null;
-      const frontier = (position.children || []).map(id => ({
-        id,
-        depth: Number(this.runtime.current.depth || 0) + 1,
-        parent: this.runtime.current.occurrence
-      }));
-      const predicates = [...(state.predicates || [])];
-      const frame = state.frame ? {
-        id: `f${++this._frameCounter}`,
-        kind: state.frame.kind,
-        sourceState: state.id,
-        onEmpty: state.frame.on_empty,
-        ancestor: clone(this.runtime.current)
-      } : null;
-      this.runtime.frontier = clone(frontier);
-      this.runtime.selectedFrontier = [];
-      this.runtime.search = {
-        stateVisit: this.runtime.stateVisit,
-        parent: clone(this.runtime.current),
-        frontier,
-        predicates,
-        frame,
-        predicateIndex: 0,
-        selected: [],
-        used: [],
-        checks: predicates.map(predicate => ({ predicate, status: "waiting", selected: [] })),
-        complete: false
-      };
-      this._emit("search-start", {
-        position: position.id,
-        occurrence: this.runtime.current.occurrence,
-        predicates,
-        closure: clone(state.closure),
-        closureLabel: closureLabel(state),
-        childCount: frontier.length
-      });
-      return this.runtime.search;
-    }
-
-    _completeSearch(state, session) {
-      session.complete = true;
-      const selected = session.selected;
-      this.runtime.selectedFrontier = clone(selected);
-      if (selected.length) {
-        if (session.frame) {
-          const delimiter = {
-            stackKind: "delimiter",
-            frameId: session.frame.id,
-            frameKind: session.frame.kind,
-            sourceState: session.frame.sourceState,
-            onEmpty: session.frame.onEmpty,
-            ancestor: clone(session.frame.ancestor),
-            childCount: selected.length
-          };
-          this.runtime.pending.push(delimiter);
-          this._emit("delimiter-pushed", { delimiter: clone(delimiter) });
-          [...selected].reverse().forEach(item => this.runtime.pending.push(item));
-          this._emit("positions-pushed", {
-            frameId: session.frame.id,
-            frameKind: session.frame.kind,
-            ancestor: clone(session.frame.ancestor),
-            items: clone(selected)
-          });
-        } else {
-          [...selected].reverse().forEach(item => this.runtime.pending.push(item));
-        }
-        this._setNode(session.parent, {
-          status: "expanded",
-          note: `${selected.length} child${selected.length === 1 ? "" : "ren"} retained by ${state.id}`
-        });
-      } else {
-        this._setNode(session.parent, {
-          status: "closed",
-          note: `no child matched ${state.predicates.join(" → ")}`
-        });
-      }
-      this.runtime.lastMatch = selected.at(-1)?.matchedBy || null;
-      this.runtime.reason = selected.length
-        ? `${selected.length} child${selected.length === 1 ? "" : "ren"} retained`
-        : "no child matched";
-      this._emit("search-complete", {
-        position: session.parent.id,
-        occurrence: session.parent.occurrence,
-        frame: clone(session.frame),
-        selected: clone(selected),
-        selectedCount: selected.length,
-        closure: clone(state.closure),
-        closureLabel: closureLabel(state)
-      });
-      this.runtime.current = selected.length ? null : clone(session.parent);
-      this._transition(selected.length ? state.on.pushed : state.on.none, selected.length ? "matches retained" : "no matches");
-    }
-
-    _stepSearch(state) {
-      const position = this.runtime.current && this.positions.get(this.runtime.current.id);
-      if (!position) {
-        this._emit("search-error", { reason: "search state has no current position" });
-        this._transition(this.policy.outcomes.reject_state, "search without position", "search state has no current position");
-        return;
-      }
-
-      const session = this.runtime.search?.stateVisit === this.runtime.stateVisit
-        ? this.runtime.search
-        : this._initializeSearch(state);
-      if (!session) {
-        this._transition(this.policy.outcomes.reject_state, "missing oracle position", "current position is not in the oracle");
-        return;
-      }
-
-      const index = session.predicateIndex;
-      const predicate = session.predicates[index];
-      if (predicate === undefined) {
-        this._completeSearch(state, session);
-        return;
-      }
-
-      session.checks[index].status = "checking";
-      const closure = state.closure || { mode: "first", count: 1 };
-      const maximum = closure.mode === "first"
-        ? Number(closure.count || 1)
-        : closure.mode === "one_each" && closure.count
-          ? Number(closure.count)
-          : Infinity;
-      const used = new Set(session.used);
-      const selectedNow = [];
-      const matchingIds = [];
-
-      for (const child of session.frontier) {
-        if (used.has(child.id)) continue;
-        const childPosition = this.positions.get(child.id);
-        if (!childPosition?.predicates?.includes(predicate)) continue;
-        matchingIds.push(child.id);
-        if (session.selected.length >= maximum) break;
-        const item = this._newOccurrence(child.id, child.depth, child.parent, predicate, "queued", session.frame);
-        session.selected.push(item);
-        session.used.push(child.id);
-        used.add(child.id);
-        selectedNow.push(item);
-        if (session.selected.length >= maximum) break;
-        if (closure.mode === "one_each") break;
-      }
-
-      session.checks[index].selected = selectedNow.map(item => item.id);
-      session.checks[index].status = selectedNow.length ? "matched" : "missed";
-      this.runtime.lastMatch = selectedNow.length ? predicate : this.runtime.lastMatch;
-      this._emit("predicate-checked", {
-        position: position.id,
-        occurrence: session.parent.occurrence,
-        predicate,
-        predicateIndex: index,
-        predicateCount: session.predicates.length,
-        matchingIds,
-        selected: clone(selectedNow),
-        selectedTotal: session.selected.length,
-        closure: clone(closure),
-        closureReached: session.selected.length >= maximum
-      });
-
-      const closureReached = session.selected.length >= maximum;
-      const lastPredicate = index >= session.predicates.length - 1;
-      if (closureReached || lastPredicate) {
-        if (closureReached) {
-          session.checks.slice(index + 1).forEach(check => { check.status = "skipped"; });
-        }
-        this._completeSearch(state, session);
-      } else {
-        session.predicateIndex += 1;
-        session.checks[session.predicateIndex].status = "next";
-      }
-    }
-
-    _restoreDelimiter(delimiter, discarded = []) {
-      const ancestor = clone(delimiter.ancestor);
-      this.runtime.current = ancestor;
       this.runtime.frontier = [];
       this.runtime.selectedFrontier = [];
-      this.runtime.lastMatch = delimiter.frameKind;
-      this.runtime.reason = `${delimiter.frameKind} frame for ${ancestor?.id || "ancestor"} completed`;
-      if (ancestor) this._setNode(ancestor, { status: "active" });
-      this._emit("delimiter-popped", {
-        delimiter: clone(delimiter),
-        ancestor,
-        discarded: discarded.map(item => item.id)
-      });
-      return ancestor;
+      this.runtime.thoughtCount += 1;
+      this.runtime.action = "inspect board";
+      this.runtime.reason = `Examine ${this.stateDef()?.label || item.cardId}`;
+      this._routesAtBoard = new Set([item.cardId]);
+      this._setNode(item, { status: "active" });
+      this.runtime.timeline.push({ state: item.cardId, label: this.stateDef()?.label || item.cardId, occurrence: item.occurrence });
+      this._emit("line-selected", { item });
     }
 
-    _popUntilCurrentFrame(state) {
-      const frameId = this.runtime.current?.frameId;
-      if (!frameId) {
-        this._emit("frame-error", { reason: "current position has no enclosing frame" });
-        this._transition(state.on.empty, "missing frame delimiter", "current position has no enclosing frame");
+    _transition(rule) {
+      const from = this.runtime.state;
+      this._emit("inspect-routed", { item: this.runtime.current, from, to: rule.to, label: rule.label || conditionLabel(rule.when), when: rule.when });
+      if (this._routesAtBoard.has(rule.to)) {
+        this._emit("safety-limit", { reason: "Card routing cycles on an unchanged board", from, to: rule.to });
+        this._finish(false, "Card routing cycles on an unchanged board");
         return;
       }
-      const discarded = [];
-      while (this.runtime.pending.length) {
-        const item = this.runtime.pending.pop();
-        if (item?.stackKind === "delimiter") {
-          if (item.frameId !== frameId) {
-            this._emit("frame-error", { reason: `encountered delimiter ${item.frameId} before ${frameId}` });
-            this._transition(state.on.empty, "mismatched frame delimiter", `encountered delimiter ${item.frameId} before ${frameId}`);
-            return;
-          }
-          discarded.forEach(position => this._setNode(position, {
-            status: "discarded",
-            note: `discarded with ${item.frameKind} frame for ${item.ancestor?.id || "ancestor"}`
-          }));
-          this._restoreDelimiter(item, discarded);
-          this._transition(state.on.delimiter, "frame delimiter popped");
+      this._routesAtBoard.add(rule.to);
+      this.runtime.state = rule.to;
+      this.runtime.current.cardId = rule.to;
+      this._setNode(this.runtime.current, { cardId: rule.to });
+      this.runtime.action = "change chess card";
+      this.runtime.reason = rule.label || conditionLabel(rule.when);
+      this.runtime.timeline.push({ state: rule.to, label: this.stateDef()?.label || rule.to, occurrence: this.runtime.current.occurrence });
+      this._emit("state-enter", { from, state: rule.to, kind: "card", label: this.stateDef()?.label || rule.to });
+    }
+
+    _finish(proved, reason) {
+      this.runtime.search = null;
+      this.runtime.frontier = [];
+      this.runtime.selectedFrontier = [];
+      let item = this.runtime.current;
+      while (item) {
+        this._setNode(item, { status: proved ? "accepted" : "rejected", note: reason });
+        this._emit("branch-complete", { item, result: proved ? "prove" : "fail", reason });
+        const parent = this._stack.at(-1);
+        if (!parent) {
+          if (!proved && this._remainingInitial.length) { this._select(this._remainingInitial.shift()); return; }
+          this.runtime.current = item;
+          this.runtime.state = item.cardId;
+          this.runtime.result = proved ? "accept" : "reject";
+          this.runtime.reason = reason;
+          this.runtime.action = proved ? "proof complete" : "line failed";
+          for (const other of this._remainingInitial) this._setNode(other, { status: "discarded", note: "A preceding initial board proved the objective" });
+          this._remainingInitial = [];
+          this._emit("terminal", { result: this.runtime.result, reason });
           return;
         }
-        discarded.push(item);
-      }
-      this._emit("frame-error", { reason: `delimiter ${frameId} was not found` });
-      this._transition(state.on.empty, "frame delimiter missing", `delimiter ${frameId} was not found`);
-    }
-
-    _compactRule(state, event, token, position, predicate) {
-      return (this.policy.transitions || []).find(row => row.from === state.id && row.event === event
-        && (event !== "candidate" || row.predicate === predicate)
-        && Object.entries(row.token || {}).every(([key, value]) => Array.isArray(value) ? value.includes(token?.[key]) : token?.[key] === value)
-        && conditionMatches(position, null, row.when));
-    }
-
-    _compactHeader(token, state, replacement = {}) {
-      const values = { symbol: token?.symbol, card: token?.card, context: token?.context,
-        allowance: token?.allowance ?? state.allowance };
-      const original = { ...values };
-      Object.entries(replacement).forEach(([key, value]) => { values[key] = typeof value === "string" && value.startsWith("$") ? original[value.slice(1)] : value; });
-      const header = { stackKind: "sigil" };
-      Object.entries(values).forEach(([key, value]) => { if (value !== undefined) header[key] = value; });
-      return header;
-    }
-
-    _compactRoute(state, event, token, preserve = false, selectedRule = undefined, position = undefined) {
-      position ??= this.runtime.current && this.positions.get(this.runtime.current.id);
-      const row = selectedRule || this._compactRule(state, event, token, position);
-      if (row?.push_header !== null && (row?.push_header !== undefined || preserve)) {
-        this.runtime.pending.push(this._compactHeader(token, state, row?.push_header || {}));
-      }
-      const to = row?.to || state.on?.[event] || state.on?.default || this.policy.outcomes.reject_state;
-      const label = row?.label || `${state.action || state.kind}: ${event}`;
-      this.runtime.lastMatch = label;
-      this._emit(event === "read" ? "inspect-routed" : "sigil-transition", {
-        item: clone(this.runtime.current), token: clone(token), predicates: clone(position?.predicates || []),
-        rule: clone(row || null), event, label, to
-      });
-      this._transition(to, label);
-    }
-
-    _compactFinishSearch(state, session, header) {
-      session.complete = true;
-      const pairs = session.selected.map(item => {
-        const sigil = item._sigil;
-        delete item._sigil;
-        return { item, sigil };
-      });
-      const selected = session.selected;
-      this.runtime.selectedFrontier = clone(selected);
-      if (selected.length) {
-        const delimiter = {
-          stackKind: "delimiter", frameId: session.frame.id, frameKind: state.frame.kind,
-          sourceState: state.id, ancestor: clone(session.parent), childCount: selected.length,
-          symbol: header.symbol, context: header.context, frame: state.frame.kind,
-          ...(header.card ? { card: header.card } : {})
-        };
-        this.runtime.pending.push(delimiter);
-        this._emit("delimiter-pushed", { delimiter: clone(delimiter) });
-        [...pairs].reverse().forEach(({ item, sigil }) => this.runtime.pending.push(sigil, item));
-        this._emit("positions-pushed", { frameId: session.frame.id, frameKind: state.frame.kind,
-          ancestor: clone(session.parent), items: clone(selected) });
-      }
-      this._setNode(session.parent, { status: selected.length ? "expanded" : "closed",
-        note: selected.length ? `${selected.length} children retained by ${state.id}` : `no child matched ${state.predicates.join(" → ")}` });
-      this.runtime.lastMatch = selected.at(-1)?.matchedBy || null;
-      this.runtime.reason = selected.length ? `${selected.length} children retained` : "no child matched";
-      this._emit("search-complete", {
-        position: session.parent.id, occurrence: session.parent.occurrence, frame: clone(session.frame),
-        selected: clone(selected), selectedCount: selected.length, closure: clone(state.closure), closureLabel: closureLabel(state)
-      });
-      const position = this.positions.get(session.parent.id);
-      this.runtime.current = selected.length ? null : clone(session.parent);
-      this._compactRoute(state, selected.length ? "pushed" : "none", header, true, undefined, position);
-    }
-
-    _compactSearch(state) {
-      const header = this.runtime.pending.pop();
-      if (header?.stackKind !== "sigil" || !["available", "spent"].includes(header.allowance)) {
-        this._transition(this.policy.outcomes.reject_state, "missing active sigil"); return;
-      }
-      const position = this.runtime.current && this.positions.get(this.runtime.current.id);
-      if (!position) { this._transition(this.policy.outcomes.reject_state, "search without position"); return; }
-      let session = this.runtime.search?.stateVisit === this.runtime.stateVisit ? this.runtime.search : null;
-      if (!session) {
-        const read = this._compactRule(state, "read", header, position);
-        if (read) { this._compactRoute(state, "read", header, true, read, position); return; }
-        session = this._initializeSearch(state);
-      }
-      const index = session.predicateIndex;
-      const predicate = session.predicates[index];
-      if (predicate === undefined) { this._compactFinishSearch(state, session, header); return; }
-      const closure = state.closure;
-      const maximum = closure.mode === "first" ? closure.count : closure.mode === "one_each" && closure.count ? closure.count : Infinity;
-      const used = new Set(session.used), selectedNow = [], matchingIds = [];
-      session.checks[index].status = "checking";
-      for (const child of session.frontier) {
-        if (used.has(child.id)) continue;
-        const childPosition = this.positions.get(child.id);
-        if (!childPosition?.predicates?.includes(predicate)) continue;
-        const row = this._compactRule(state, "candidate", header, childPosition, predicate);
-        if (!row) continue;
-        matchingIds.push(child.id);
-        if (session.selected.length >= maximum) break;
-        const item = this._newOccurrence(child.id, child.depth, child.parent, predicate, "queued", session.frame);
-        const next = typeof row.child === "string" ? { symbol: row.child } : row.child;
-        item._sigil = { stackKind: "sigil", symbol: next.symbol, context: state.frame.kind,
-          ...(next.card ? { card: next.card } : {}) };
-        session.selected.push(item); session.used.push(child.id); used.add(child.id); selectedNow.push(item);
-        if (session.selected.length >= maximum || closure.mode === "one_each") break;
-      }
-      session.checks[index].selected = selectedNow.map(item => item.id);
-      session.checks[index].status = selectedNow.length ? "matched" : "missed";
-      this.runtime.lastMatch = selectedNow.length ? predicate : this.runtime.lastMatch;
-      this._emit("predicate-checked", { position: position.id, occurrence: session.parent.occurrence, predicate,
-        predicateIndex: index, predicateCount: session.predicates.length, matchingIds, selected: clone(selectedNow),
-        selectedTotal: session.selected.length, closure: clone(closure), closureReached: session.selected.length >= maximum });
-      if (session.selected.length >= maximum || index >= session.predicates.length - 1) {
-        if (session.selected.length >= maximum) session.checks.slice(index + 1).forEach(check => { check.status = "skipped"; });
-        this._compactFinishSearch(state, session, header);
-      } else {
-        session.predicateIndex += 1;
-        session.checks[session.predicateIndex].status = "next";
-        this.runtime.pending.push(header);
-      }
-    }
-
-    _stepCompact(state) {
-      if (state.kind === "search") { this._compactSearch(state); return; }
-      if (state.kind === "accept" || state.kind === "reject") {
-        this.runtime.result = state.kind; this._emit("terminal", { result: state.kind }); return;
-      }
-      if (state.action === "start") {
-        if (this.runtime.bootstrapError) { this._compactRoute(state, "empty", null); return; }
-        const token = { stackKind: "sigil", symbol: state.initial_symbol || "ROOT", context: "root",
-          ...(state.initial_card ? { card: state.initial_card } : {}) };
-        [...this.runtime.initialItems].reverse().forEach(item => this.runtime.pending.push(clone(token), item));
-        this.runtime.current = null;
-        this._emit("initial-retained", { items: clone(this.runtime.initialItems) });
-        this._compactRoute(state, "pushed", { ...token, allowance: "available" }, true); return;
-      }
-      if (state.action === "discard") {
-        const discarded = [];
-        while (this.runtime.pending.length) {
-          const token = this.runtime.pending.pop();
-          if (token?.stackKind === "delimiter") {
-            discarded.forEach(item => this._setNode(item, { status: "discarded", note: "discarded with completed obligation" }));
-            this._restoreDelimiter(token, discarded);
-            this._compactRoute(state, "delimiter", token, true); return;
-          }
-          if (token?.stackKind !== "sigil") discarded.push(token);
+        this._emit("child-finished", { item, parent: parent.item, result: proved ? "prove" : "fail", side: parent.side });
+        if (parent.side === "my" && proved) {
+          this._emit("choice-proved", { item, parent: parent.item, label: "This move withstands the examined replies", side: "my" });
+          for (const other of parent.remaining) this._setNode(other, { status: "discarded", note: "A preceding move proved the objective" });
+        } else if (parent.side === "their" && !proved) {
+          for (const other of parent.remaining) this._setNode(other, { status: "discarded", note: "An opponent reply refuted the line" });
+        } else if (parent.remaining.length) {
+          this._select(parent.remaining.shift());
+          return;
+        } else if (parent.side === "their") {
+          this._emit("replies-proved", { item: parent.item, label: "Every selected opponent reply is answered", side: "their" });
         }
-        this._compactRoute(state, "empty", null); return;
+        this._stack.pop();
+        item = parent.item;
+        this.runtime.current = item;
+        this.runtime.state = parent.cardId;
+        reason = parent.side === "my"
+          ? proved ? "A candidate move proves the objective" : "Every selected move failed"
+          : proved ? "Every selected opponent reply is answered" : "An opponent reply refutes the line";
       }
-      const token = this.runtime.pending.pop();
-      if (!token) { this._compactRoute(state, "empty", null); return; }
-      if (state.action === "pop_position") {
-        if (token.stackKind === "delimiter") {
-          this._restoreDelimiter(token); this._compactRoute(state, "delimiter", token, true);
-        } else if (token.stackKind === "position") {
-          this.runtime.current = token; this.runtime.frontier = []; this.runtime.selectedFrontier = [];
-          this.runtime.lastMatch = token.matchedBy || "initial"; this.runtime.reason = `examining ${token.id}`;
-          this._setNode(token, { status: "active" }); this._emit("line-selected", { item: clone(token) });
-          this._compactRoute(state, "position", token);
-        } else this._transition(this.policy.outcomes.reject_state, "expected a position or delimiter");
+    }
+
+    _beginSearch(card, position) {
+      const side = position.side;
+      // All moves, including replies to check, come from the current card.
+      const mandatoryEvasions = false;
+      const choices = card[side].predicates;
+      const predicates = choices.map(choice => typeof choice === "string" ? choice : choice.predicate);
+      const conditions = choices.map(choice => typeof choice === "string" ? null : choice.when);
+      const limit = side === "my" ? Math.min(card.my.limit || 5, this.policy.our_move_candidate_limit || 5) : Infinity;
+      const frontier = (position.children || []).map(id => ({ id, parent: this.runtime.current.occurrence, depth: this.runtime.current.depth + 1 }));
+      this.runtime.search = { side, parent: clone(this.runtime.current), cardId: card.id, predicates, conditions,
+        predicateIndex: 0, limit: Number.isFinite(limit) ? limit : null, selected: [], used: [],
+        checks: predicates.map((predicate, index) => ({ predicate, when: conditions[index], status: "waiting", selected: [] })), complete: false,
+        mandatoryEvasions, frontier };
+      this.runtime.frontier = clone(frontier);
+      this.runtime.selectedFrontier = [];
+      this.runtime.action = "choose chess moves";
+      this._emit("search-start", { position: position.id, occurrence: this.runtime.current.occurrence,
+        side, predicates, conditions, childCount: frontier.length, mandatoryEvasions,
+        closure: side === "my" ? { mode: "first", count: limit } : { mode: "all" } });
+    }
+
+    _searchNext() {
+      const search = this.runtime.search;
+      const predicate = search.predicates[search.predicateIndex];
+      if (predicate !== undefined) {
+        const selected = [], matchingIds = [];
+        const used = new Set(search.used);
+        const limit = search.limit ?? Infinity;
+        const when = search.conditions[search.predicateIndex];
+        const conditionMatched = !when || conditionMatches(this.positions.get(search.parent.id), when);
+        for (const child of search.frontier) {
+          if (!conditionMatched) break;
+          if (used.has(child.id) || !this.positions.get(child.id)?.predicates?.includes(predicate)) continue;
+          matchingIds.push(child.id);
+          if (search.selected.length >= limit) continue;
+          const item = this._newOccurrence(child.id, child.depth, child.parent, predicate, search.cardId);
+          search.selected.push(item); selected.push(item); search.used.push(child.id); used.add(child.id);
+        }
+        const check = search.checks[search.predicateIndex];
+        check.status = !conditionMatched ? "ineligible" : selected.length ? "matched" : "missed";
+        check.selected = selected.map(item => item.id);
+        this.runtime.lastMatch = selected.length ? predicate : this.runtime.lastMatch;
+        this.runtime.selectedFrontier = clone(search.selected);
+        this._emit("predicate-checked", { position: search.parent.id, occurrence: search.parent.occurrence,
+          side: search.side, predicate, predicateIndex: search.predicateIndex, predicateCount: search.predicates.length,
+          when, conditionMatched, matchingIds, selected, selectedTotal: search.selected.length, closureReached: search.selected.length >= limit });
+        search.predicateIndex++;
+        if (search.predicateIndex < search.predicates.length && search.selected.length < limit) return;
+      }
+      search.complete = true;
+      for (const check of search.checks) if (check.status === "waiting") check.status = "skipped";
+      this._emit("search-complete", { position: search.parent.id, occurrence: search.parent.occurrence,
+        side: search.side, selected: search.selected, selectedCount: search.selected.length,
+        mandatoryEvasions: search.mandatoryEvasions,
+        closure: search.side === "my" ? { mode: "first", count: search.limit } : { mode: "all" } });
+      if (!search.selected.length) {
+        this._emit("inspect-routed", { item: search.parent, result: "fail", to: "fail", label: "No move matches this card" });
+        this._finish(false, "No move matches this card");
         return;
       }
-      if (token.stackKind !== "sigil") { this._transition(this.policy.outcomes.reject_state, "expected a sigil"); return; }
-      this._compactRoute(state, "read", token, state.action !== "pop_header");
+      this._setNode(search.parent, { status: "expanded", note: `${search.selected.length} moves selected by ${this.stateDef().label}` });
+      this._stack.push({ item: search.parent, cardId: search.cardId, side: search.side, remaining: search.selected.slice(1) });
+      this._emit("positions-pushed", { items: search.selected, parent: search.parent, side: search.side });
+      this._select(search.selected[0]);
+    }
+
+    _searchCard(card, position) {
+      if (this.runtime.current.depth >= this.policy.budgets.depth) {
+        this._emit("depth-closed", { item: this.runtime.current, depth: this.runtime.current.depth });
+        this._finish(false, `Execution safety depth ${this.policy.budgets.depth} reached`);
+      } else {
+        this._beginSearch(card, position);
+        this._searchNext();
+      }
     }
 
     step() {
-      this._stepEvents = [];
       if (this.runtime.result) return { events: [], snapshot: this.snapshot() };
-      const errors = this.validation.filter(issue => issue.level === "error");
-      if (errors.length) {
+      this._stepEvents = [];
+      this.runtime.microStepCount++;
+      if (!this._started) {
+        this._started = true;
+        const errors = this.validation.filter(issue => issue.level === "error");
+        if (errors.length || !this.runtime.current || !this.positions.has(this.runtime.current.id)) {
+          this.runtime.result = "reject";
+          this.runtime.reason = errors.length ? errors.map(issue => `${issue.title}: ${issue.detail}`).join("; ") : "No initial board is available";
+          this._emit("terminal", { result: "reject", reason: this.runtime.reason });
+        } else this._select(this.runtime.current);
+        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
+      }
+      if (this.runtime.thoughtCount > this.policy.budgets.thoughts) {
         this.runtime.result = "reject";
-        this.runtime.reason = `invalid project: ${errors[0].title}`;
-        this._emit("invalid-project", { issues: errors });
-        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
-      }
-
-      this.runtime.microStepCount += 1;
-      if (!this._countStateVisit() || this.runtime.result) {
-        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
-      }
-
-      const state = this.stateDef();
-      if (!state) {
-        this._transition(this.policy.outcomes.reject_state, "missing state", `state ${this.runtime.state} is missing`);
-        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
-      }
-
-      if (compact(this.policy)) {
-        this._stepCompact(state);
-        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
-      }
-
-      if (state.kind === "push_initial") {
-        if (this.runtime.bootstrapError) {
-          this._emit("initial-invalid", { reason: this.runtime.bootstrapError });
-          this._transition(state.on.invalid, "invalid initial input", this.runtime.bootstrapError);
+        this.runtime.reason = `Execution safety limit: ${this.policy.budgets.thoughts} explored positions`;
+        this._emit("budget-exhausted", { budget: this.policy.budgets.thoughts, reason: this.runtime.reason });
+        this._emit("terminal", { result: "reject", reason: this.runtime.reason });
+      } else if (this.runtime.search) this._searchNext();
+      else {
+        const card = this.stateDef();
+        const position = this.positions.get(this.runtime.current?.id);
+        if (!card || !position) this._finish(false, "The current chess card or board is missing");
+        else if (position.predicates.some(fact => ["oracle_limit", "unexplorable"].includes(fact))) {
+          this._emit("oracle-incomplete", { item: this.runtime.current, reason: "The Oracle could not supply a complete board" });
+          this._finish(false, "Unresolved: incomplete Oracle board");
+        } else if (position.fen && this._stack.some(frame => frame.cardId === card.id
+          && this.positions.get(frame.item.id)?.fen?.split(/\s+/).slice(0, 4).join(" ") === position.fen.split(/\s+/).slice(0, 4).join(" "))) {
+          this._emit("search-cycle", { item: this.runtime.current, reason: "This card revisited the same board on this line" });
+          this._finish(false, "Unresolved: repeating board and card");
         } else {
-          [...this.runtime.initialItems].reverse().forEach(item => this.runtime.pending.push(item));
-          this._emit("initial-retained", { items: clone(this.runtime.initialItems) });
-          this._transition(state.on.pushed, "initial positions retained");
+          const rule = card.rules.find(rule => conditionMatches(position, rule.when));
+          if (rule?.to === card.id) {
+            this._emit("inspect-routed", { item: this.runtime.current, from: card.id, to: card.id,
+              label: rule.label || conditionLabel(rule.when), when: rule.when });
+            this._searchCard(card, position);
+          } else if (rule?.to) this._transition(rule);
+          else if (rule?.result) {
+            const label = rule.label || conditionLabel(rule.when);
+            this._emit("inspect-routed", { item: this.runtime.current, result: rule.result, to: rule.result, label, when: rule.when });
+            this._finish(rule.result === "prove", label);
+          } else this._searchCard(card, position);
         }
-      } else if (state.kind === "pop") {
-        if (state.until === "current_frame") {
-          this._popUntilCurrentFrame(state);
-        } else {
-          const base = this._frameBase();
-          if (this.runtime.pending.length <= base) {
-            this.runtime.current = null;
-            this.runtime.frontier = [];
-            this.runtime.selectedFrontier = [];
-            this._emit("frontier-empty", {
-              local: Boolean(this.runtime.callStack.length),
-              routine: this.runtime.routine,
-              reason: this.runtime.callStack.length ? "subroutine has no local line left" : "no retained line remains"
-            });
-            this._transition(state.on.empty, "no retained line", this.runtime.callStack.length ? this.runtime.reason : "every retained line closed");
-          } else {
-            const item = this.runtime.pending.pop();
-            if (item?.stackKind === "delimiter") {
-              this._restoreDelimiter(item);
-              this._transition(item.onEmpty, "frame exhausted");
-            } else {
-              this.runtime.current = item;
-              this.runtime.frontier = [];
-              this.runtime.selectedFrontier = [];
-              this.runtime.lastMatch = item.matchedBy || "initial";
-              this.runtime.reason = `examining ${item.id}`;
-              this._setNode(item, { status: "active" });
-              this._emit("line-selected", { item: clone(item) });
-              this._transition(state.on.thought, "line selected");
-            }
-          }
-        }
-      } else if (state.kind === "inspect") {
-        const item = this.runtime.current;
-        const position = item && this.positions.get(item.id);
-        if (!position) {
-          const target = state.on?.missing || this.policy.outcomes.reject_state;
-          this._emit("inspect-error", { reason: "current position has no oracle card" });
-          this._transition(target, "missing oracle card", "current position has no oracle card");
-        } else {
-          const win = state.terminal_checks === false
-            ? null
-            : this.policy.outcomes.winning_predicates.find(predicate => position.predicates.includes(predicate));
-          const failure = state.terminal_checks === false
-            ? null
-            : this.policy.outcomes.failure_predicates.find(predicate => position.predicates.includes(predicate));
-
-          if (win) {
-            this.runtime.lastMatch = win;
-            this._setNode(item, { status: "accepted", note: `winning predicate ${win}` });
-            this._emit("winning-predicate", { item: clone(item), predicate: win });
-            this._transition(this.policy.outcomes.accept_state, "winning predicate", `${position.id} carries winning predicate ${win}`);
-          } else if (failure) {
-            this.runtime.lastMatch = failure;
-            this._setNode(item, { status: "rejected", note: `failure predicate ${failure}` });
-            this._emit("failure-predicate", { item: clone(item), predicate: failure });
-            this._transition(this.policy.outcomes.reject_state, "failure predicate", `${position.id} carries failure predicate ${failure}`);
-          } else if ((item.depth || 0) >= this.policy.budgets.depth) {
-            const target = state.on?.depth || state.default || this.policy.outcomes.reject_state;
-            this._setNode(item, { status: "closed", note: `depth ${this.policy.budgets.depth} closure` });
-            this.runtime.current = null;
-            this.runtime.frontier = [];
-            this.runtime.selectedFrontier = [];
-            this._emit("depth-closed", { item: clone(item), depth: this.policy.budgets.depth });
-            this._transition(target, "depth closure");
-          } else {
-            const rule = (state.rules || []).find(candidate => conditionMatches(position, item, candidate.when));
-            const target = rule?.to || state.default || this.policy.outcomes.reject_state;
-            const label = rule?.label || (rule ? conditionLabel(rule.when) : "default");
-            this.runtime.lastMatch = label;
-            this.runtime.reason = `${position.id}: ${label}`;
-            this._emit("inspect-routed", {
-              item: clone(item),
-              predicates: clone(position.predicates),
-              rule: clone(rule || null),
-              label,
-              to: target
-            });
-            this._transition(target, label);
-          }
-        }
-      } else if (state.kind === "search") {
-        this._stepSearch(state);
-      } else if (state.kind === "call") {
-        const callee = this.routineDef(state.call?.routine);
-        if (!callee) {
-          this._transition(this.policy.outcomes.reject_state, "invalid call", `routine ${state.call?.routine} does not exist`);
-        } else if (this.runtime.callStack.length >= this.policy.budgets.call_depth) {
-          this._emit("call-depth-exhausted", { budget: this.policy.budgets.call_depth });
-          this._transition(this.policy.outcomes.reject_state, "call depth exhausted", "subroutine call-depth budget exhausted");
-        } else {
-          this.runtime.callStack.push({
-            callerRoutine: state.routine,
-            calleeRoutine: callee.id,
-            returnTo: state.call.return_to,
-            pendingBase: this.runtime.pending.length,
-            callerCurrent: this.runtime.current ? clone(this.runtime.current) : null,
-            resumeCurrent: Boolean(state.call.resume_current),
-            callState: state.id
-          });
-          this.runtime.reason = `entered ${callee.id}`;
-          this._emit("routine-called", {
-            from: state.routine,
-            routine: callee.id,
-            entry: callee.entry,
-            returnTo: state.call.return_to
-          });
-          this._transition(callee.entry, `call ${callee.id}`);
-        }
-      } else if (state.kind === "return") {
-        if (!this.runtime.callStack.length) {
-          const target = state.on?.no_frame || this.policy.outcomes.reject_state;
-          this._emit("return-error", { reason: "no caller frame" });
-          this._transition(target, "return without frame", "RETURN had no caller frame");
-        } else {
-          const frame = this.runtime.callStack.pop();
-          const discardedItems = this.runtime.pending.slice(frame.pendingBase);
-          discardedItems.forEach(item => this._setNode(item, { status: "discarded", note: `discarded on return from ${frame.calleeRoutine}` }));
-          this.runtime.pending.length = frame.pendingBase;
-          this.runtime.current = frame.resumeCurrent ? frame.callerCurrent : null;
-          this.runtime.frontier = [];
-          this.runtime.selectedFrontier = [];
-          this.runtime.reason = `returned from ${frame.calleeRoutine} to ${frame.returnTo}`;
-          this._emit("routine-returned", {
-            from: frame.calleeRoutine,
-            to: frame.callerRoutine,
-            returnTo: frame.returnTo,
-            discarded: discardedItems.map(item => item.id)
-          });
-          this._transition(frame.returnTo, `return from ${frame.calleeRoutine}`);
-        }
-      } else if (state.kind === "accept") {
-        this.runtime.result = "accept";
-        this.runtime.reason ||= `entered ${state.id}`;
-        this._emit("terminal", { result: "accept", reason: this.runtime.reason, state: state.id });
-      } else if (state.kind === "reject") {
-        this.runtime.result = "reject";
-        this.runtime.reason ||= `entered ${state.id}`;
-        this._emit("terminal", { result: "reject", reason: this.runtime.reason, state: state.id });
       }
-
       return { events: clone(this._stepEvents), snapshot: this.snapshot() };
     }
 
-    run(options = {}) {
-      const maxMicroSteps = Math.max(1, Number(options.maxMicroSteps || 10000));
-      const eventLog = [];
-      let count = 0;
-      while (!this.runtime.result && count < maxMicroSteps) {
-        const result = this.step();
-        eventLog.push(...result.events);
-        count += 1;
-      }
-      if (!this.runtime.result && count >= maxMicroSteps) {
+    run({ maxMicroSteps = 10000 } = {}) {
+      const events = [];
+      for (let count = 0; !this.runtime.result && count < maxMicroSteps; count++) events.push(...this.step().events);
+      if (!this.runtime.result) {
+        this._stepEvents = [];
         this.runtime.result = "reject";
-        this.runtime.reason = `engine safety limit ${maxMicroSteps} reached`;
-        this._emit("safety-limit", { maxMicroSteps });
+        this.runtime.reason = `Execution safety limit: ${maxMicroSteps} steps`;
+        this._emit("safety-limit", { maxMicroSteps, reason: this.runtime.reason });
+        this._emit("terminal", { result: "reject", reason: this.runtime.reason });
+        events.push(...this._stepEvents);
       }
-      return { events: clone(eventLog), snapshot: this.snapshot() };
+      return { events, snapshot: this.snapshot() };
     }
 
     snapshot() {
-      const currentState = this.stateDef();
-      const nodes = this.runtime.nodeOrder.map(occurrence => clone(this.runtime.nodes[occurrence]));
-      return clone({
-        engineVersion: VERSION,
-        state: this.runtime.state,
-        stateKind: currentState?.kind === "control" ? currentState.prepare || "control" : currentState?.kind || null,
-        stateAction: currentState?.action || currentState?.kind || null,
-        stateDescription: currentState?.description || "",
-        routine: this.runtime.routine,
-        pendingCount: this.runtime.pending.filter(item => !["delimiter", "sigil"].includes(item?.stackKind)).length,
-        sigilCount: this.runtime.pending.filter(item => item?.stackKind === "sigil").length,
-        activeSigil: compact(this.policy) && this.runtime.pending.at(-1)?.stackKind === "sigil" ? this.runtime.pending.at(-1) : null,
-        delimiterCount: this.runtime.pending.filter(item => item?.stackKind === "delimiter").length,
-        pendingStackCount: this.runtime.pending.length,
-        current: this.runtime.current,
-        callStack: this.runtime.callStack,
-        frontier: this.runtime.frontier,
-        selectedFrontier: this.runtime.selectedFrontier,
-        search: this.runtime.search,
-        thoughtCount: this.runtime.thoughtCount,
-        microStepCount: this.runtime.microStepCount,
-        result: this.runtime.result,
-        reason: this.runtime.reason,
-        lastMatch: this.runtime.lastMatch,
-        action: this.runtime.action,
-        timeline: this.runtime.timeline,
-        trace: this.runtime.trace,
-        roots: this.runtime.roots,
-        nodes
-      });
+      const pending = [...this._remainingInitial, ...this._stack.flatMap(frame => frame.remaining)];
+      return clone({ engineVersion: VERSION, state: this.runtime.state,
+        // The unchanged Oracle uses this capability to emit the current board's
+        // legal one-ply child facts before any card rule is evaluated.
+        stateKind: "search", stateAction: "card", stateDescription: this.stateDef()?.description || "",
+        current: this.runtime.current, pendingCount: pending.length, pendingStackCount: pending.length,
+        stack: this._stack.map(frame => ({ position: frame.item, card: frame.cardId, side: frame.side, remaining: frame.remaining })),
+        frontier: this.runtime.frontier, selectedFrontier: this.runtime.selectedFrontier, search: this.runtime.search,
+        thoughtCount: this.runtime.thoughtCount, microStepCount: this.runtime.microStepCount,
+        result: this.runtime.result, reason: this.runtime.reason, action: this.runtime.action,
+        lastMatch: this.runtime.lastMatch, timeline: this.runtime.timeline, trace: this.runtime.trace,
+        roots: this.runtime.roots, nodes: this.runtime.nodeOrder.map(id => this.runtime.nodes[id]) });
     }
   }
 
-  function createRunner(project, options = {}) {
-    return new Runner(project, options);
-  }
-
+  const createRunner = (project, options = {}) => new Runner(project, options);
   function runTest(project, test, options = {}) {
     const issues = validateProject(project);
     const errors = issues.filter(issue => issue.level === "error");
-    if (errors.length) {
-      return {
-        name: test?.name || "Unnamed test",
-        expected: test?.expected,
-        actual: "invalid",
-        pass: false,
-        reason: errors.map(issue => `${issue.title}: ${issue.detail}`).join("; "),
-        issues
-      };
-    }
+    if (errors.length) return { name: test?.name || "Unnamed test", expected: test?.expected, actual: "invalid", pass: false, issues, reason: errors.map(issue => issue.title).join("; ") };
     const runner = new Runner(project, { initial: test?.initial || project.initial });
-    const result = runner.run({ maxMicroSteps: options.maxMicroSteps || test?.max_micro_steps || 10000 });
-    const actual = result.snapshot.result || "reject";
-    return {
-      name: test?.name || "Unnamed test",
-      expected: test?.expected,
-      actual,
-      pass: actual === test?.expected,
-      reason: result.snapshot.reason,
-      thoughts: result.snapshot.thoughtCount,
-      microSteps: result.snapshot.microStepCount,
-      finalState: result.snapshot.state,
-      snapshot: options.includeSnapshot ? result.snapshot : undefined
-    };
+    const { snapshot } = runner.run({ maxMicroSteps: options.maxMicroSteps || test?.max_micro_steps || 10000 });
+    return { name: test?.name || "Unnamed test", expected: test?.expected, actual: snapshot.result,
+      pass: snapshot.result === test?.expected, reason: snapshot.reason, thoughts: snapshot.thoughtCount,
+      microSteps: snapshot.microStepCount, finalState: snapshot.state, snapshot: options.includeSnapshot ? snapshot : undefined };
   }
-
   function runTests(project, tests = project?.tests || [], options = {}) {
-    const results = (tests || []).map(test => runTest(project, test, options));
-    return {
-      pass: results.every(result => result.pass),
-      passed: results.filter(result => result.pass).length,
-      total: results.length,
-      results
-    };
+    const results = tests.map(test => runTest(project, test, options));
+    return { pass: results.every(result => result.pass), passed: results.filter(result => result.pass).length, total: results.length, results };
   }
 
   const GRAMMAR = Object.freeze({
-    policy: {
-      schema: POLICY_SCHEMA,
-      entry: "state-id",
-      outcomes: {
-        accept_state: "state-id(kind=accept)",
-        reject_state: "state-id(kind=reject)",
-        winning_predicates: ["predicate"],
-        failure_predicates: ["predicate"]
-      },
-      budgets: { thoughts: "integer>=1", depth: "integer>=0", call_depth: "integer>=0" },
-      routines: [{ id: "routine-id", label: "optional text", entry: "state-id in this routine" }],
-      states: "ordered array of state objects",
-      compact_control: "control_model.name = compact-sigil-dfa/v1; fixed cards plus a global transition table and one active inert sigil on the pending stack",
-      transitions: "compact only: ordered {from,event,when?:{any?,all?,none?},token?:{symbol?,card?,context?,allowance?,frame?},to?,push_header?:{symbol?,card?,context?,allowance?}|null,predicate?,child?:symbol|{card,symbol}}; candidate rows admit one fixed card category and supply its next inert sigil"
-    },
-    stateKinds: {
-      control: {
-        action: "start|pop_header|pop_position|pop_continuation|propagate|discard",
-        allowance: "optional available|spent; finite control input while an active header is off the stack",
-        prepare: "optional inspect|search; fixed Oracle preparation for this state",
-        initial_symbol: "start: initial obligation name (default ROOT)",
-        initial_card: "start: optional initial named card",
-        on: "optional fixed fallback targets by event; otherwise the global table selects the next state"
-      },
-      push_initial: { on: { pushed: "state-id", invalid: "state-id" } },
-      pop: {
-        until: 'optional "current_frame"',
-        on: { thought: "state-id for ordinary pop", delimiter: "state-id for pop-until", empty: "state-id" }
-      },
-      inspect: {
-        terminal_checks: "boolean (default true)",
-        rules: [{ label: "text", when: { side: "my|their", frame: "root|choice|replies", any: ["p"], all: ["p"], none: ["p"] }, to: "state-id" }],
-        default: "optional state-id",
-        on: { depth: "optional state-id", missing: "optional state-id" }
-      },
-      search: {
-        side: "optional my|their documentation label",
-        predicates: ["checked in exact order"],
-        closure: { mode: "first|all|one_each", count: "required for first; optional for one_each" },
-        frame: "optional { kind: choice|replies, on_empty: state-id }; pushes an invisible delimiter",
-        on: { pushed: "state-id", none: "state-id" }
-      },
-      call: { call: { routine: "routine-id", return_to: "state-id", resume_current: "boolean" } },
-      return: { on: { no_frame: "optional state-id" } },
-      accept: {},
-      reject: {}
-    },
-    project: {
-      schema: PROJECT_SCHEMA,
-      name: "text",
-      initial: ["position-id"],
-      policy: "policy object",
-      positions: [{
-        id: "unique position-id",
-        side: "my|their",
-        predicates: ["predicate"],
-        help: "optional UI text",
-        children: ["position-id"],
-        label: "optional UI label; ignored by engine"
-      }],
-      tests: [{ name: "text", initial: ["position-id"], expected: "accept|reject" }]
-    }
+    policy: { schema: POLICY_SCHEMA, entry: "named chess card", budgets: { thoughts: "execution safety limit", depth: "execution safety limit" },
+      states: [{ id: "card name", label: "human chess idea", kind: "card",
+        rules: [{ label: "chess reason", when: { any: ["board predicate"], all: ["board predicate"], none: ["board predicate"] }, to: "next named chess card OR use result: prove/fail" }],
+        my: { predicates: ["ordered move predicate OR {predicate, when: current board condition}"], limit: 5 }, their: { predicates: ["ordered reply predicate OR {predicate, when: current board condition}"] } }] },
+    search: "Try our selected moves until one proves the objective; answer every opponent reply selected by this card. A self transition selects this card's moves immediately.",
+    memory: "The search stack remembers only boards, the chess card chosen at each board, and untried sibling moves.",
+    project: { schema: PROJECT_SCHEMA, name: "study name", initial: ["board ID"], policy: "chess-card policy", positions: [{ id: "board ID", side: "my or their", predicates: ["chess fact"], children: ["child board ID"] }] }
   });
 
-  const api = {
-    VERSION,
-    POLICY_SCHEMA,
-    PROJECT_SCHEMA,
-    STATE_KINDS,
-    GRAMMAR,
-    Runner,
-    createRunner,
-    validatePolicy,
-    validateProject,
-    runTest,
-    runTests,
-    closureLabel,
-    conditionLabel,
-    conditionMatches,
-    stateDefFromPolicy,
-    policyGraphTargets
-  };
-
-  return Object.freeze(api);
+  return Object.freeze({ VERSION, POLICY_SCHEMA, PROJECT_SCHEMA, STATE_KINDS, GRAMMAR, Runner,
+    createRunner, validatePolicy, validateProject, runTest, runTests,
+    closureLabel, conditionLabel, conditionMatches, stateDefFromPolicy, policyGraphTargets });
 });
