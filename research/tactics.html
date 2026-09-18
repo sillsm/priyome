@@ -79,6 +79,11 @@ button,input,select,textarea{font:inherit}button,select{cursor:pointer}button:di
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;transition-duration:.001ms!important}}
 .rule-row{grid-template-columns:21px minmax(0,1fr)}.rule-row .transition-target{grid-column:2;justify-self:start;max-width:100%;white-space:normal;text-align:left;font-family:inherit;font-size:9px}.predicate-row strong{font-size:9px}.candidate-guard{display:block;margin-top:3px;color:var(--faint);font-size:8px;line-height:1.4}.predicate-row.skipped .candidate-guard{text-decoration:none}.state-description{font-size:10px}
 .common-chess-rules{margin-top:7px;padding-top:6px;border-top:1px solid rgba(114,220,139,.2)}.common-chess-rule{margin-top:4px;font-size:8px;line-height:1.35;color:var(--muted)}.common-chess-rule.active{padding:3px 5px;border-radius:6px;background:rgba(167,124,255,.1);color:var(--text)}.common-chess-rule>span{display:block;margin-top:2px}
+  .board-conditions { margin-top: 6px; font-size: 12px; font-weight: 400; }
+  .board-conditions summary { cursor: pointer; color: var(--muted); }
+  .board-conditions[open] { max-height: 320px; overflow: auto; }
+  .board-conditions ul { padding-left: 18px; white-space: normal; }
+  .board-conditions li { margin: 5px 0; }
 </style>
 </head>
 <body>
@@ -203,7 +208,7 @@ No policy events yet.</pre>
       <section class="dialog-panel" data-panel="config">
         <div class="config-switch" role="tablist" aria-label="Configuration pane">
           <button class="active" type="button" data-config-pane-button="runtime">Runtime</button>
-          <button type="button" data-config-pane-button="policytest">PolicyTest</button>
+          <button type="button" data-config-pane-button="policytest">Snapshot tests</button>
         </div>
         <div class="config-pane active" data-config-pane="runtime">
           <div class="settings-list">
@@ -217,8 +222,9 @@ No policy events yet.</pre>
           <div class="policy-test-toolbar">
             <label><span class="detail-label">Policy</span><select class="control" id="policyTestPolicySelect"></select></label>
             <button class="control" id="reloadPolicyTestsBtn" type="button">Reload tests</button>
-            <button class="control primary" id="runPolicyTestsBtn" type="button">Run tests</button>
+            <button class="control primary" id="runPolicyTestsBtn" type="button">Run snapshot tests</button>
           </div>
+          <p class="muted">These tests compare the saved PGN tree and expected result. Supplied-line coverage is checked separately.</p>
           <div class="policy-test-meta"><span class="mini-chip" id="policyTestSummary">not loaded</span><span class="policy-test-source" id="policyTestSource"></span></div>
           <div class="policy-test-layout">
             <div class="policy-test-list" id="policyTestList"><div class="issue warn"><strong>No tests loaded.</strong><br>Select a policy and reload its declared .test file.</div></div>
@@ -259,8 +265,8 @@ No policy events yet.</pre>
 <input id="policyFileInput" type="file" hidden accept=".json,application/json" />
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-<script src="/predicate.js?v=2.1.0-card-replies"></script>
-<script src="/reasoning/predicate-input.js?v=2.0.1-board-facts"></script>
+<script src="/predicate.js?v=ff60b9a1aa57055b"></script>
+<script src="/reasoning/predicate-input.js?v=6010aa23512cc648"></script>
 <script type="module">
 (() => {
   "use strict";
@@ -272,14 +278,14 @@ No policy events yet.</pre>
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SCRATCHCHESS_URL = "/research/scratchchess.js?v=796098e1957517e";
   const ORACLE_URL = "/scratchchess_oracle.js?v=2.19.0-static-board-facts";
-  const RADICAL_POLICY_URL = "/reasoning/radicalpolicy.json?v=0.200.0-sequential-checkpoint200";
+  const RADICAL_POLICY_URL = "/reasoning/radicalpolicy.json?v=004d856aedecbbc8";
   const BASIC_POLICY_URL = "/reasoning/basicpolicy.json?v=7.1.0-stockfish-suite";
   const REASONING_POLICY_URL = "/reasoning/reasoningpolicy.json?v=15.0.0-woodpecker50";
   const PUZZLES_URL = "/tactical_positions.md";
   const STORAGE_POLICIES = "priyomes-predicate-tactics-policies-v2";
   const STORAGE_SETTINGS = "priyomes-predicate-tactics-settings-v1";
   const HIDDEN_KINDS = new Set();
-  const TACTICS_BUILD = "2026-09-11-defender-royal-fork";
+  const TACTICS_BUILD = "2026-09-18-radical-checkpoint-285";
   const P = window.PredicatePolicy;
   const Inputs = window.PredicateInputs;
 
@@ -386,8 +392,8 @@ No policy events yet.</pre>
         if (!Number.isInteger(oracle[key]) || oracle[key] < minimum) error("Invalid Oracle setting", `${key} must be an integer of at least ${minimum}.`);
       }
     }
-    for (const detail of Inputs.validate(policy?.predicate_inputs || {})) error("Invalid board fact", detail);
-    if (policy?.our_move_candidate_limit !== 5) error("Own-move limit must be five", "Each card may retain at most five of our choices.");
+    for (const detail of Inputs.validate(policy?.predicate_inputs || {}, policy?.move_selectors || {})) error("Invalid board fact", detail);
+    if (!Number.isInteger(policy?.our_move_candidate_limit) || policy.our_move_candidate_limit < 1 || policy.our_move_candidate_limit > 5) error("Invalid own-move limit", "Each card may retain one through five of our choices.");
     for (const state of policy?.states || []) {
       if (state.kind !== "card") error("Every state must be a chess card", state.id || "Unnamed card");
       if (!String(state.label || "").trim() || !String(state.description || "").trim()) error("A chess card needs an explanation", state.id || "Unnamed card");
@@ -413,7 +419,7 @@ No policy events yet.</pre>
       typeof module.ScratchChessOracle === "function"
     );
     app.Oracle = oracle.ScratchChessOracle;
-    const radical = await importExact("/radical_oracle.js?v=0.200.0-sequential-checkpoint200", "Radical Oracle extension", module => typeof module.ScratchChessOracle === "function");
+    const radical = await importExact("/radical_oracle.js?v=08961fb348642f78", "Radical Oracle extension", module => typeof module.ScratchChessOracle === "function");
     app.RadicalOracle = radical.ScratchChessOracle;
     app.oracleVersion = oracle.SCRATCHCHESS_ORACLE_VERSION;
     if (!app.oracleVersion) throw new Error(`${ORACLE_URL} did not export SCRATCHCHESS_ORACLE_VERSION`);
@@ -605,7 +611,7 @@ No policy events yet.</pre>
   }
 
   function latestMeaningfulEvent(events) {
-    const priority = ["terminal", "budget-exhausted", "inspect-routed", "branch-complete", "choice-proved", "replies-proved", "predicate-checked", "search-complete", "line-selected", "positions-pushed", "frontier-empty", "depth-closed", "state-enter", "transition"];
+    const priority = ["terminal", "board-read", "board-read-denied", "budget-exhausted", "inspect-routed", "branch-complete", "choice-proved", "replies-proved", "predicate-checked", "search-complete", "line-selected", "positions-pushed", "frontier-empty", "depth-closed", "state-enter", "transition"];
     for (const type of priority) {
       const event = [...(events || [])].reverse().find((item) => item.type === type);
       if (event) return event;
@@ -706,10 +712,56 @@ No policy events yet.</pre>
   function stateIcon() { return "♞"; }
 
   function predicateLabelForPolicy(value, policy) {
+    if (value?.select) {
+      const spec = policy?.move_selectors?.[value.select];
+      if (!spec) return "Unknown selector";
+      return `${spec.label} (${countSelectorClauses(spec.match, policy)} clauses)`;
+    }
+    if (value && typeof value === "object" && value.match) return predicateLabelForPolicy(value.match, policy);
+    if (value && typeof value === "object" && !value.predicate) {
+      const parts = [];
+      if (value.all?.length) parts.push(value.all.map(x => predicateLabelForPolicy(x, policy)).join("; "));
+      if (value.any?.length) parts.push(value.any.length > 6 ? `Any of ${value.any.length} explicit board conditions` : value.any.map(x => predicateLabelForPolicy(x, policy)).join(" OR "));
+      if (value.none?.length) parts.push(value.none.map(x => `Absent: ${predicateLabelForPolicy(x, policy)}`).join("; "));
+      return parts.join("; ");
+    }
     const name = typeof value === "string" ? value : value?.predicate;
-    const definition = policy?.predicate_labels?.[name];
+    const definition = policy?.board_move_predicates?.[name] || policy?.predicate_labels?.[name];
     return (typeof definition === "string" ? definition : definition?.label) || humanizeId(name);
   }
+
+  function countSelectorClauses(expr, policy) {
+    if (typeof expr === "string") return 1;
+    if (expr?.select) return countSelectorClauses(policy.move_selectors[expr.select].match, policy);
+    return ["all", "any", "none"].reduce((n, key) => n + (expr?.[key] || []).reduce((m, x) => m + countSelectorClauses(x, policy), 0), 0);
+  }
+
+  function predicateConditionsHtml(value, seen = new Set()) {
+    if (value?.select) return predicateConditionsHtml(app.policy.move_selectors[value.select].match, seen);
+    if (typeof value === "string") {
+      const board = app.policy.board_move_predicates?.[value];
+      if (board) return `<li>${esc(board.label)}</li>`;
+      const declaration = app.policy.predicate_inputs?.[value];
+      if (declaration && !seen.has(value)) return `<li>${esc(predicateLabel(value))}<ul>${predicateConditionsHtml(declaration, new Set([...seen, value]))}</ul></li>`;
+      return `<li>${esc(predicateLabel(value))}</li>`;
+    }
+    let html = ["all", "any", "none"].filter(key => value?.[key]?.length).map(key => `<li>${{all:"All",any:"At least one",none:"None"}[key]}:<ul>${value[key].map(x => predicateConditionsHtml(x, seen)).join("")}</ul></li>`).join("");
+    if (value?.children) html += `<li>Legal child count ${esc(JSON.stringify(value.children.count))}:<ul>${predicateConditionsHtml(value.children.where, seen)}</ul></li>`;
+    if (value?.fields) html += `<li>Piece fields: ${esc(JSON.stringify(value.fields))}</li>`;
+    return html;
+  }
+
+  // Expand long conjunction lists only when requested; keep the live cards small.
+  addEventListener("toggle", event => {
+    const element = event.target, key = element?.dataset?.boardCondition;
+    if (!element?.open || !key) return;
+    const content = element.querySelector(".condition-content");
+    if (!content || content.dataset.loaded === "true") return;
+    const split = key.indexOf(":"), kind = key.slice(0, split), name = key.slice(split + 1);
+    const expression = kind === "selector" ? {select: name} : kind === "expression" ? JSON.parse(decodeURIComponent(name)) : name;
+    content.innerHTML = `<ul>${predicateConditionsHtml(expression)}</ul>`;
+    content.dataset.loaded = "true";
+  }, true);
 
   function predicateLabel(value) {
     return predicateLabelForPolicy(value, app.policy);
@@ -725,10 +777,14 @@ No policy events yet.</pre>
 
   function boardConditionMatches(position, condition = {}) {
     if (!position) return false;
-    const names = new Set(position.predicates || []);
-    return (!condition.all?.length || condition.all.every(name => names.has(name)))
-      && (!condition.any?.length || condition.any.some(name => names.has(name)))
-      && (!condition.none?.length || condition.none.every(name => !names.has(name)));
+    if (typeof condition === "string") return Boolean(position.predicates?.includes(condition));
+    if (condition.select) {
+      const target = app.policy?.move_selectors?.[condition.select]?.match;
+      return Boolean(target) && boardConditionMatches(position, target);
+    }
+    return (!condition.all?.length || condition.all.every(x => boardConditionMatches(position, x)))
+      && (!condition.any?.length || condition.any.some(x => boardConditionMatches(position, x)))
+      && (!condition.none?.length || condition.none.every(x => !boardConditionMatches(position, x)));
   }
 
   function inputExpressionMatches(position, expression = {}) {
@@ -781,13 +837,25 @@ No policy events yet.</pre>
     const selections = selection.predicates;
     const position = active ? app.runner?.positions?.get(snapshot.current?.id) : null;
     const rows = selections.map((value, index) => {
-      const predicate = typeof value === "string" ? value : value.predicate;
+      const predicate = typeof value === "string" ? value : value.select ? {select: value.select} : value.match || value.predicate;
       const guard = typeof value === "object" ? value.when : null;
       const eligible = !guard || !position || boardConditionMatches(position, guard);
-      const check = checked.get(predicate);
+      const check = active ? snapshot.search?.checks?.[index] : null;
       const names = selectedCardNames(check?.selected);
       const status = !eligible ? "not on this board" : names.length ? names.join(" · ") : check?.status === "missed" ? "none" : check?.status === "matched" ? "retained" : "";
-      return `<div class="predicate-row ${esc(!eligible ? "skipped" : check?.status || "waiting")}"><span class="order">${index + 1}</span><span class="predicate-copy"><strong title="${esc(predicate)}">${esc(predicateLabel(predicate))}</strong>${guard ? `<small class="candidate-guard">When: ${esc(boardConditionText(guard))}</small>` : ""}</span><span class="matches" title="${esc(status)}">${esc(status)}</span></div>`;
+      const selection = predicate?.select ? app.policy.move_selectors[predicate.select].match : predicate;
+      const candidateIds = check?.selected?.length ? check.selected : position?.children || [];
+      const witnessLabels = [...new Set(candidateIds.flatMap(id => {
+        const candidate = app.runner?.positions?.get(id);
+        if (!candidate || !boardConditionMatches(candidate, selection)) return [];
+        const selected = snapshot.search?.selected?.find(x => x.id === id);
+        if (selected?.matchedBy) return [predicateLabel(selected.matchedBy)];
+        const names = candidate.predicates.filter(name => app.policy.board_move_predicates?.[name]);
+        return names.length ? names.map(predicateLabel) : [predicateLabel(predicate)];
+      }))].slice(0, 6);
+      const detailKey = typeof predicate === "string" ? `predicate:${predicate}` : predicate.select ? `selector:${predicate.select}` : `expression:${encodeURIComponent(JSON.stringify(predicate))}`;
+      const details = `<details class="board-conditions" data-board-condition="${esc(detailKey)}"><summary>Exact board conditions</summary><div class="condition-content"></div></details>`;
+      return `<div class="predicate-row ${esc(!eligible ? "skipped" : check?.status || "waiting")}"><span class="order">${index + 1}</span><span class="predicate-copy"><strong title="${esc(predicate)}">${esc(witnessLabels.length ? witnessLabels.join(" · ") : predicateLabel(predicate))}</strong>${details}${guard ? `<small class="candidate-guard">When: ${esc(boardConditionText(guard))}</small>` : ""}</span><span class="matches" title="${esc(status)}">${esc(status)}</span></div>`;
     }).join("");
     const title = side === "my" ? "Our move" : "Opponent’s replies";
     const explanation = side === "my" ? `Try in this order; keep at most ${selection.limit || app.policy.our_move_candidate_limit || 5} choices.`
@@ -796,6 +864,7 @@ No policy events yet.</pre>
   }
 
   function commonCardRules(policy = app.policy) {
+    if (policy?.terminal_rules?.length) return policy.terminal_rules;
     const cards = (policy?.states || []).filter(state => state.kind === "card");
     if (!cards.length) return [];
     const shared = [];
@@ -824,10 +893,12 @@ No policy events yet.</pre>
   function cardRulesHtml(state, snapshot) {
     const commonCount = commonCardRules().length;
     const position = snapshot.state === state.id ? app.runner?.positions?.get(snapshot.current?.id) : null;
-    const matched = position?.prepared && position?.expanded ? (state.rules || []).findIndex(rule => boardConditionMatches(position, rule.when)) : -1;
-    const localRules = (state.rules || []).slice(commonCount);
+    const boardKey = position?.fen ? position.fen.trim().split(/\s+/).slice(0, 4).join(" ") : position?.id;
+    const exhausted = state.id === app.policy.board_reads?.entry ? new Set(snapshot.current?.triedAtBoard?.[boardKey] || []) : new Set();
+    const matched = position?.prepared && position?.expanded ? (state.rules || []).findIndex(rule => !exhausted.has(rule.to) && boardConditionMatches(position, rule.when)) : -1;
+    const localRules = (state.rules || []).slice(app.policy.terminal_rules?.length ? 0 : commonCount);
     const rows = localRules.map((rule, localIndex) => {
-      const index = localIndex + commonCount;
+      const index = localIndex + (app.policy.terminal_rules?.length ? 0 : commonCount);
       const condition = boardConditionText(rule.when);
       const witnesses = boardWitnesses(position, [...(rule.when?.all || []), ...(rule.when?.any || [])]);
       const target = rule.to
@@ -898,6 +969,8 @@ No policy events yet.</pre>
 
   function eventMessage(event, snapshot) {
     const name = stateTitle(stateDef(snapshot.state));
+    if (event?.type === "board-read") return { title: `Read ${event.count} of ${event.limit}`, detail: `Choose a plan: ${event.cause}.` };
+    if (event?.type === "board-read-denied") return { title: "Three reads used", detail: "Continue the current plan. No further new idea on this line." };
     if (!event) return { title: name, detail: "Read the board facts, then try the card’s moves." };
     if (event.type === "predicate-checked" && event.conditionMatched === false) return { title: predicateLabel(event.predicate), detail: `This idea requires: ${boardConditionText(event.when)}. That condition is absent here.` };
     if (event.type === "predicate-checked") return event.selected?.length
@@ -1032,7 +1105,7 @@ No policy events yet.</pre>
       };
       for (const item of event.selected || []) {
         if (!item?.occurrence) continue;
-        generated.set(item.occurrence, source);
+        generated.set(item.occurrence, { ...source, predicate: item.matchedBy || source.predicate });
       }
     }
     const stateById = new Map((policy?.states || []).map((state) => [state?.id, state]));
@@ -1137,7 +1210,7 @@ No policy events yet.</pre>
     const generated = moveGenerationByOccurrence(snapshot);
     const claimedLine = claimedWinningOccurrences(snapshot);
     $("#nodeCountChip").textContent = `${nodes.length} explored node${nodes.length === 1 ? "" : "s"}`;
-    $("#depthChip").textContent = `depth ${nodes.length ? Math.max(...nodes.map((node) => Number(node.depth || 0))) : 0}/${app.policy?.budgets?.depth ?? "—"}`;
+    $("#depthChip").textContent = `depth ${nodes.length ? Math.max(...nodes.map((node) => Number(node.depth || 0))) : 0}/${app.policy?.budgets?.depth ?? "—"}${app.policy.board_reads ? ` · reads ${snapshot.current?.readCount || 0}/${app.policy.board_reads.limit}` : ""}`;
     if (!nodes.length) { $("#treeBody").innerHTML = '<div class="tree-empty">No position has been popped and examined yet.</div>'; return; }
     const nodeMap = new Map(nodes.map((node) => [node.occurrence, node]));
     const byParent = new Map();
@@ -1270,7 +1343,7 @@ No policy events yet.</pre>
     if (event.type === "line-selected") return `POSITION ${event.item?.id ? cardDisplay(event.item.id) : "initial board"}`;
     if (event.type === "inspect-routed") return `BOARD FACT ${event.label || "matched"} → ${event.result || stateTitle(stateDef(event.to))}`;
     if (event.type === "predicate-checked" && event.conditionMatched === false) return `${stateTitle(stateDef(event.state))}: ${predicateLabel(event.predicate)} | not applicable: ${boardConditionText(event.when)}`;
-    if (event.type === "predicate-checked") return `${stateTitle(stateDef(event.state))}: ${predicateLabel(event.predicate)} | ${event.selected?.length ? `consider ${selectedCardNames(event.selected).join(" · ")}` : "no match"}`;
+    if (event.type === "predicate-checked") return `${stateTitle(stateDef(event.state))}: ${predicateLabel(event.predicate)} | ${event.selected?.length ? `consider ${event.selected.map(item => `${cardDisplay(item.id)}: ${predicateLabel(item.matchedBy || event.predicate)}`).join(" · ")}` : "no match"}`;
     if (event.type === "search-complete") return `${event.side === "my" ? "OUR CHOICES" : "OPPONENT REPLIES"} ${stateTitle(stateDef(event.state))} | ${event.selectedCount || 0} @ ${cardDisplay(event.position)}`;
     if (event.type === "choice-proved") return "CHOICE WORKS: set aside other choices from this board";
     if (event.type === "replies-proved") return "REPLIES ANSWERED: every retained reply allows the objective";
@@ -1393,7 +1466,7 @@ No policy events yet.</pre>
       const source = generated.get(node.occurrence);
       const comments = [];
       // Comparison comments use stable predicate names; display comments use this run's policy labels.
-      if (source) comments.push(moveSourceText(source, "; ", includeDiagnostics, includeDiagnostics ? policy : null));
+      if (source) comments.push(moveSourceText(source, "; ", includeDiagnostics, (includeDiagnostics || policy?.board_move_predicates) ? policy : null));
       if (includeDiagnostics) comments.push(...(diagnostics.get(node.occurrence) || []));
       const comment = pgnComment(comments.filter(Boolean).join("; "));
       return `${prefix} ${san}${comment ? ` {${comment}}` : ""}`;
