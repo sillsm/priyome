@@ -1,7 +1,7 @@
 {
   "schema": "predicate-policy/v2",
   "name": "basic",
-  "version": "5.8.0",
+  "version": "6.9.0-compact-sigil-dfa",
   "goal": "gain_at_least_exchange",
   "test_file": "/reasoning/basicpolicy.test",
   "entry": "START",
@@ -29,274 +29,171 @@
     {
       "id": "START",
       "routine": "main",
-      "kind": "push_initial",
-      "label": "Start",
-      "description": "Push the root board position.",
+      "kind": "control",
+      "role": "START",
+      "action": "start",
+      "initial_symbol": "BASIC",
       "on": {
-        "pushed": "POP_POSITION",
+        "pushed": "POP_HEADER",
+        "empty": "EXHAUSTED",
         "invalid": "EXHAUSTED"
       }
     },
     {
-      "id": "POP_POSITION",
+      "id": "POP_HEADER",
       "routine": "main",
-      "kind": "pop",
-      "label": "Pop next position",
-      "description": "Pop the highest-priority retained board position. A delimiter marks where the current batch ends.",
+      "kind": "control",
+      "role": "POP_HEADER",
+      "action": "pop_header",
       "on": {
-        "thought": "INSPECT_POSITION",
         "empty": "EXHAUSTED"
       }
     },
     {
-      "id": "INSPECT_POSITION",
+      "id": "POP_POSITION_AVAILABLE",
       "routine": "main",
-      "kind": "inspect",
-      "label": "Inspect position",
-      "terminal_checks": false,
-      "description": "Choose the next card from ordinary chess facts visible in the current position.",
-      "rules": [
-        {
-          "label": "we gave mate",
-          "when": {
-            "any": [
-              "mate"
-            ]
-          },
-          "to": "LINE_PROVED"
-        },
-        {
-          "label": "we are mated or stalemated",
-          "when": {
-            "any": [
-              "mated",
-              "stalemate"
-            ]
-          },
-          "to": "LINE_FAILED"
-        },
-        {
-          "label": "capturing the mate-threat responder wins the material objective",
-          "when": {
-            "all": [
-              "capture_mate_threat_responder",
-              "up_material"
-            ]
-          },
-          "to": "LINE_PROVED"
-        },
-        {
-          "label": "the edge mating-net refutation answers the mate-threat response",
-          "when": {
-            "any": [
-              "queen_rook_edge_mate_net"
-            ]
-          },
-          "to": "LINE_PROVED"
-        },
-        {
-          "label": "the mate-threat reply card could not classify this opponent reply",
-          "when": {
-            "any": [
-              "unclassified_mate_threat_reply"
-            ]
-          },
-          "to": "LINE_FAILED"
-        },
-        {
-          "label": "refute the named mate-threat response on the next ply",
-          "when": {
-            "side": "my",
-            "any": [
-              "mate_threat_response_pending"
-            ]
-          },
-          "to": "SEARCH_MATE_THREAT_RESPONSE_REFUTATION"
-        },
-        {
-          "label": "an opponent recapture erased the material objective with no bound continuation",
-          "when": {
-            "all": [
-              "recapture"
-            ],
-            "none": [
-              "up_material",
-              "mate_available",
-              "winning_recapture_available",
-              "skewer_available",
-              "capture_back_of_alignment_available",
-              "alignment_back_piece_exposed",
-              "alignment_capture_chain",
-              "defender_of_loose_piece_is_attacked",
-              "attacked_piece",
-              "skewer",
-              "mate_threat_followup_capture_ready",
-              "mate_threat_interposer_was_recaptured"
-            ]
-          },
-          "to": "LINE_FAILED"
-        },
-        {
-          "label": "we answered a check and remain up the material objective",
-          "when": {
-            "all": [
-              "check_response",
-              "up_material"
-            ]
-          },
-          "to": "LINE_PROVED"
-        },
-        {
-          "label": "the two-ply check extension ended without preserving the material objective",
-          "when": {
-            "any": [
-              "check_response"
-            ]
-          },
-          "to": "LINE_FAILED"
-        },
-        {
-          "label": "our king is in check",
-          "when": {
-            "side": "my",
-            "any": [
-              "in_check"
-            ]
-          },
-          "to": "SEARCH_CHECK_RESPONSES"
-        },
-        {
-          "label": "continue after a mate-threat interposition",
-          "when": {
-            "side": "my",
-            "any": [
-              "mate_threat_interposer_ready_to_capture",
-              "mate_threat_followup_capture_ready"
-            ]
-          },
-          "to": "SEARCH_MATE_THREAT_CONTINUATION"
-        },
-        {
-          "label": "continue the visible alignment capture chain",
-          "when": {
-            "side": "my",
-            "any": [
-              "alignment_capture_chain"
-            ]
-          },
-          "to": "SEARCH_ALIGNMENT_CAPTURE_CHAIN"
-        },
-        {
-          "label": "cash an exposed back piece in the alignment",
-          "when": {
-            "side": "my",
-            "any": [
-              "alignment_back_piece_exposed"
-            ]
-          },
-          "to": "SEARCH_ALIGNMENT_CAPTURE_CHAIN"
-        },
-        {
-          "label": "our move",
-          "when": {
-            "side": "my"
-          },
-          "to": "SEARCH_OUR_MOVE"
-        },
-        {
-          "label": "the defender of a loose piece is attacked",
-          "when": {
-            "side": "their",
-            "any": [
-              "defender_of_loose_piece_is_attacked"
-            ]
-          },
-          "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
-        },
-        {
-          "label": "the opponent must answer our visible mate-in-one threat",
-          "when": {
-            "side": "their",
-            "any": [
-              "threaten_mate_in_1"
-            ]
-          },
-          "to": "SEARCH_REPLIES_TO_MATE_THREAT"
-        },
-        {
-          "label": "the opponent may recapture or check after we captured the mate-threat interposer",
-          "when": {
-            "side": "their",
-            "any": [
-              "mate_threat_interposer_captured"
-            ]
-          },
-          "to": "SEARCH_REPLIES_AFTER_MATE_INTERPOSER_CAPTURE"
-        },
-        {
-          "label": "more than two relevant replies remain after the current human reply card",
-          "when": {
-            "side": "their",
-            "any": [
-              "more_than_two_relevant_replies"
-            ]
-          },
-          "to": "LINE_FAILED"
-        },
-        {
-          "label": "we are up the material objective",
-          "when": {
-            "side": "their",
-            "any": [
-              "up_material"
-            ]
-          },
-          "to": "SEARCH_WHEN_UP_MATERIAL"
-        },
-        {
-          "label": "the opponent has two or fewer legal moves",
-          "when": {
-            "side": "their",
-            "any": [
-              "two_or_fewer_legal_moves"
-            ]
-          },
-          "to": "SEARCH_ALL_REPLIES"
-        },
-        {
-          "label": "the current position contains a skewer",
-          "when": {
-            "side": "their",
-            "any": [
-              "skewer"
-            ]
-          },
-          "to": "SEARCH_REPLIES_TO_SKEWER"
-        },
-        {
-          "label": "the current position contains an attacked or loose piece",
-          "when": {
-            "side": "their",
-            "any": [
-              "attacked_piece",
-              "loose_piece"
-            ]
-          },
-          "to": "SEARCH_REPLIES_TO_ATTACKED_PIECE"
-        },
-        {
-          "label": "this basic policy cannot narrow the opponent's replies",
-          "when": {
-            "side": "their"
-          },
-          "to": "LINE_FAILED"
-        }
-      ],
+      "kind": "control",
+      "role": "POP_POSITION_AVAILABLE",
+      "action": "pop_position",
+      "allowance": "available",
       "on": {
-        "depth": "LINE_FAILED",
-        "missing": "EXHAUSTED"
-      },
-      "default": "EXHAUSTED"
+        "position": "POP_CONTINUATION_AVAILABLE",
+        "empty": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "POP_CONTINUATION_AVAILABLE",
+      "routine": "main",
+      "kind": "control",
+      "role": "POP_CONTINUATION_AVAILABLE",
+      "action": "pop_continuation",
+      "allowance": "available",
+      "prepare": "inspect",
+      "on": {
+        "empty": "EXHAUSTED",
+        "default": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "POP_POSITION_SPENT",
+      "routine": "main",
+      "kind": "control",
+      "role": "POP_POSITION_SPENT",
+      "action": "pop_position",
+      "allowance": "spent",
+      "on": {
+        "position": "POP_CONTINUATION_SPENT",
+        "empty": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "POP_CONTINUATION_SPENT",
+      "routine": "main",
+      "kind": "control",
+      "role": "POP_CONTINUATION_SPENT",
+      "action": "pop_continuation",
+      "allowance": "spent",
+      "prepare": "inspect",
+      "on": {
+        "empty": "EXHAUSTED",
+        "default": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "PROVE",
+      "routine": "main",
+      "kind": "control",
+      "role": "LINE_PROVED",
+      "action": "propagate",
+      "prepare": "inspect",
+      "on": {
+        "empty": "EXHAUSTED",
+        "default": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "DISCARD_PROVE_AVAILABLE",
+      "routine": "main",
+      "kind": "control",
+      "role": "DISCARD_CHOICE_FRAME",
+      "action": "discard",
+      "allowance": "available",
+      "on": {
+        "delimiter": "PROVE",
+        "empty": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "DISCARD_PROVE_SPENT",
+      "routine": "main",
+      "kind": "control",
+      "role": "DISCARD_CHOICE_FRAME",
+      "action": "discard",
+      "allowance": "spent",
+      "on": {
+        "delimiter": "PROVE",
+        "empty": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "FAIL",
+      "routine": "main",
+      "kind": "control",
+      "role": "LINE_FAILED",
+      "action": "propagate",
+      "prepare": "inspect",
+      "on": {
+        "empty": "EXHAUSTED",
+        "default": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "DISCARD_FAIL_AVAILABLE",
+      "routine": "main",
+      "kind": "control",
+      "role": "DISCARD_REPLY_FRAME",
+      "action": "discard",
+      "allowance": "available",
+      "on": {
+        "delimiter": "FAIL",
+        "empty": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "DISCARD_FAIL_SPENT",
+      "routine": "main",
+      "kind": "control",
+      "role": "DISCARD_REPLY_FRAME",
+      "action": "discard",
+      "allowance": "spent",
+      "on": {
+        "delimiter": "FAIL",
+        "empty": "EXHAUSTED"
+      }
+    },
+    {
+      "id": "SOLVED",
+      "routine": "main",
+      "kind": "accept",
+      "role": "SOLVED"
+    },
+    {
+      "id": "EXHAUSTED",
+      "routine": "main",
+      "kind": "reject",
+      "role": "EXHAUSTED"
+    },
+    {
+      "id": "DRAW",
+      "routine": "main",
+      "kind": "control",
+      "role": "DRAW",
+      "action": "propagate",
+      "prepare": "inspect",
+      "on": {
+        "empty": "EXHAUSTED",
+        "default": "FAIL"
+      }
     },
     {
       "id": "SEARCH_OUR_MOVE",
@@ -304,18 +201,22 @@
       "kind": "search",
       "side": "my",
       "label": "Our move",
-      "description": "Scan one human chess list in order and push every matching legal move. After mate: checks with one reply, a visible mate-in-one threat, checks with two replies, then capture an undefended non-pawn before broader checks and captures.",
+      "description": "Scan the single ordered ordinary move card and retain at most the first five distinct matching legal moves. Rank checking attacks and checks with one or two legal replies before undefended non-pawn captures. Preserve the existing priority of alignment captures and checks that add a back-rank defender. If none proves the line, fail explicitly at the candidate-budget boundary.",
       "predicates": [
         "mate",
+        "capture_alignment_target",
+        "capture_back_of_alignment",
+        "check_with_only_interpositions",
         "check_with_one_reply",
-        "threaten_mate_in_1",
         "check_with_two_replies",
-        "capture_undefended_non_pawn_piece",
-        "move_middle_with_check",
+        "check_adds_defender_to_back_rank_entry_square",
         "check_and_attack_piece",
+        "capture_undefended_non_pawn_piece",
+        "threaten_mate_in_1",
+        "attack_sole_defended_piece_of_loose_alignment",
+        "move_middle_with_check",
         "skewer",
         "check",
-        "capture_back_of_alignment",
         "recapture",
         "capture_defender_of_alignment_target",
         "capture",
@@ -324,155 +225,98 @@
         "add_attacker_to_pinned_piece"
       ],
       "closure": {
-        "mode": "all"
-      },
-      "frame": {
-        "kind": "choice",
-        "on_empty": "LINE_FAILED"
-      },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
-      }
-    },
-    {
-      "id": "SEARCH_ALIGNMENT_CAPTURE_CHAIN",
-      "routine": "main",
-      "kind": "search",
-      "side": "my",
-      "label": "Alignment capture chain",
-      "description": "A slider, an enemy middle piece, and an enemy back piece are aligned; the middle piece also defends another piece. This temporary card cashes the already-observed relation before starting unrelated checks: capture the defended alignment target, then capture the exposed back piece if the middle piece leaves the line.",
-      "predicates": [
-        "mate",
-        "capture_alignment_target",
-        "capture_back_of_alignment",
-        "recapture",
-        "check_with_one_reply",
-        "check_with_two_replies",
-        "check",
-        "capture_undefended_non_pawn_piece",
-        "capture",
-        "safely_add_attacker_to_defender_of_loose_piece",
-        "add_attacker_to_loose_non_pawn_piece",
-        "add_attacker_to_pinned_piece"
-      ],
-      "closure": {
-        "mode": "all"
-      },
-      "frame": {
-        "kind": "choice",
-        "on_empty": "LINE_FAILED"
-      },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
-      }
-    },
-    {
-      "id": "SEARCH_MATE_THREAT_RESPONSE_REFUTATION",
-      "routine": "main",
-      "kind": "search",
-      "side": "my",
-      "label": "One-ply refutation of a mate-threat response",
-      "description": "The opponent tried a named answer to the mate threat. Show the response on the board, then retain one immediate mate, capture of the responding piece that wins the material objective, or the first move of a recognized queen-rook edge mating net.",
-      "predicates": [
-        "mate",
-        "capture_mate_threat_responder",
-        "queen_rook_edge_mate_net"
-      ],
-      "closure": {
         "mode": "first",
-        "count": 1
+        "count": 5
       },
       "frame": {
-        "kind": "choice",
-        "on_empty": "LINE_FAILED"
+        "kind": "choice"
       },
       "on": {
-        "pushed": "POP_POSITION",
-        "none": "SEARCH_OUR_MOVE"
-      }
-    },
-    {
-      "id": "SEARCH_MATE_THREAT_CONTINUATION",
-      "routine": "main",
-      "kind": "search",
-      "side": "my",
-      "label": "Continue after the mate-threat interposition",
-      "description": "A forcing check has made the mate-threat interposer capturable, or its recapture exposed an undefended non-pawn. Capture that exact visible target and do not start another idea.",
-      "predicates": [
-        "mate",
-        "capture_mate_threat_interposer",
-        "capture_undefended_non_pawn_piece"
-      ],
-      "closure": {
-        "mode": "first",
-        "count": 1
+        "pushed": "POP_HEADER",
+        "none": "FAIL"
       },
-      "frame": {
-        "kind": "choice",
-        "on_empty": "LINE_FAILED"
-      },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
-      }
-    },
-    {
-      "id": "SEARCH_REPLIES_AFTER_MATE_INTERPOSER_CAPTURE",
-      "routine": "main",
-      "kind": "search",
-      "side": "their",
-      "label": "Live replies after capturing the interposer",
-      "description": "We have captured the mate-threat interposer and banked the material objective. Push every recapture that keeps the queen safe and every countercheck without a material-preserving immediate answer. Closed recaptures and checks remain in the oracle facts but are not live reply obligations.",
-      "predicates": [
-        "mated",
-        "safe_recapture",
-        "countercheck_survives"
-      ],
-      "closure": {
-        "mode": "all"
-      },
-      "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
-      },
-      "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_PROVED"
-      }
+      "role": "SEARCH_OUR_MOVE"
     },
     {
       "id": "SEARCH_REPLIES_TO_MATE_THREAT",
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Live replies to mate in one",
-      "description": "Enumerate every legal reply matching a named human mate-threat response idea. Even a visibly bad countercheck, king escape, interposition, target move, or defender move is pushed and shown before its one-ply refutation.",
+      "label": "Genuine replies to mate in one",
+      "description": "Partition every legal opponent reply by the resulting board. Retain every reply after which our side has no legal mate in one. Every omitted reply must carry mate_in_1_available and at least one exact mating-move witness. Each retained defense returns to ordinary inspection.",
       "predicates": [
-        "mated",
-        "check_with_one_reply",
-        "check_with_two_replies",
-        "check",
-        "capture_mate_threat_piece",
-        "capture_mate_threat_supporter",
-        "move_mating_target",
-        "king_escape_from_mate_threat",
-        "add_defender_to_mating_square",
-        "interpose_mate_threat_battery",
-        "unclassified_mate_threat_reply"
+        "no_mate_in_1_available"
       ],
       "closure": {
         "mode": "all"
       },
       "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
+        "kind": "replies"
       },
       "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_PROVED"
-      }
+        "pushed": "POP_HEADER",
+        "none": "PROVE"
+      },
+      "forced_complement": {
+        "predicate": "mate_in_1_available",
+        "witness_fact": "mate_in_1_move"
+      },
+      "role": "SEARCH_REPLIES_TO_MATE_THREAT"
+    },
+    {
+      "id": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Critical replies to the loose-alignment attack",
+      "description": "Retain every recapture and every reply after which no legal capture immediately reaches the configured material objective. Every omitted non-recapture must carry material_objective_capture_in_1_available and at least one exact capture witness. Each retained reply returns to ordinary inspection.",
+      "predicates": [
+        "recapture",
+        "no_material_objective_capture_in_1_available"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies"
+      },
+      "on": {
+        "pushed": "POP_HEADER",
+        "none": "PROVE"
+      },
+      "forced_complement": {
+        "predicate": "material_objective_capture_in_1_available",
+        "witness_fact": "material_objective_capture_in_1_move"
+      },
+      "role": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK"
+    },
+    {
+      "id": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Try to save the piece",
+      "description": "When one enemy non-pawn has at least two effective attackers and exactly one effective defender, retain every reply that adds a defender, checks or mates us, creates a mate-in-one threat, or creates attackers greater than defenders against one of our non-pawns. Other replies are quiet under this card.",
+      "predicates": [
+        "mated",
+        "add_defender_to_attacked_piece",
+        "check_with_one_reply",
+        "check_with_two_replies",
+        "check",
+        "threaten_mate_in_1",
+        "create_attacker_surplus_on_non_pawn_piece"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies"
+      },
+      "on": {
+        "pushed": "POP_HEADER",
+        "none": "PROVE"
+      },
+      "role": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS"
     },
     {
       "id": "SEARCH_CHECK_RESPONSES",
@@ -480,7 +324,7 @@
       "kind": "search",
       "side": "my",
       "label": "Answer the check",
-      "description": "A check earns a two-ply extension: the checking move and one answer. Prefer mate, recapture, capture, then checks ordered by one reply, two replies, and other checks, then any legal king response.",
+      "description": "A check earns a two-ply extension: the checking move and one answer. Prefer mate, recapture, capture, then checks ordered by one reply, two replies, and other checks, then any legal king response. This root-side choice card is hard-capped at five distinct candidates; exhausting those five fails loudly.",
       "predicates": [
         "mate",
         "recapture",
@@ -492,16 +336,17 @@
         "legal_move"
       ],
       "closure": {
-        "mode": "all"
+        "mode": "first",
+        "count": 5
       },
       "frame": {
-        "kind": "choice",
-        "on_empty": "LINE_FAILED"
+        "kind": "choice"
       },
       "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
-      }
+        "pushed": "POP_HEADER",
+        "none": "FAIL"
+      },
+      "role": "SEARCH_CHECK_RESPONSES"
     },
     {
       "id": "SEARCH_ALL_REPLIES",
@@ -509,7 +354,7 @@
       "kind": "search",
       "side": "their",
       "label": "All replies",
-      "description": "The opponent has at most two legal moves, so examine both. Captures and checks are ordered first; checks with fewer legal replies are preferred.",
+      "description": "Enumerate every legal opponent reply whenever the visible policy requires exhaustive coverage. Captures and checks are ordered first, but every legal reply is retained.",
       "predicates": [
         "mated",
         "capture",
@@ -524,21 +369,21 @@
         "mode": "all"
       },
       "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
+        "kind": "replies"
       },
       "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_FAILED"
-      }
+        "pushed": "POP_HEADER",
+        "none": "FAIL"
+      },
+      "role": "SEARCH_ALL_REPLIES"
     },
     {
       "id": "SEARCH_WHEN_UP_MATERIAL",
       "routine": "main",
       "kind": "search",
       "side": "their",
-      "label": "Replies while we are up material",
-      "description": "When the opponent is down the material objective, consider only mate, recapture, and checks ordered by one reply, two replies, then other checks. A check is followed for exactly one answering move.",
+      "label": "Verify opponent checks and recaptures",
+      "description": "After the material objective is reached, retain mates, recaptures and checks without using the last-chance allowance. If no reply matches, try the separately budgeted optional counterattack card.",
       "predicates": [
         "mated",
         "recapture",
@@ -550,13 +395,35 @@
         "mode": "all"
       },
       "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
+        "kind": "replies"
       },
       "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_PROVED"
-      }
+        "pushed": "POP_HEADER",
+        "none": "FAIL"
+      },
+      "role": "SEARCH_WHEN_UP_MATERIAL"
+    },
+    {
+      "id": "SEARCH_LAST_CHANCE",
+      "routine": "main",
+      "kind": "search",
+      "side": "their",
+      "label": "Opponent last chance",
+      "description": "Only after no mate, recapture or check matches, retain safe counterattacks once per puzzle. The policy applies this budget here; ordinary forcing replies never spend it.",
+      "predicates": [
+        "create_safe_attacker_surplus_on_non_pawn_piece"
+      ],
+      "closure": {
+        "mode": "all"
+      },
+      "frame": {
+        "kind": "replies"
+      },
+      "on": {
+        "pushed": "POP_HEADER",
+        "none": "PROVE"
+      },
+      "role": "SEARCH_LAST_CHANCE"
     },
     {
       "id": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
@@ -564,7 +431,7 @@
       "kind": "search",
       "side": "their",
       "label": "Replies to an attacked piece",
-      "description": "Consider ordinary ways to answer an attack: capture the attacker, move or defend the piece, block the attack, give a forcing check, or make a capture.",
+      "description": "Consider ordinary ways to answer an attack: capture the attacker, move or defend the piece, block the attack, give a forcing check, or make a capture. Unmatched moves are quiet under this card\u2019s explicit reply vocabulary.",
       "predicates": [
         "mated",
         "capture_attacker",
@@ -580,13 +447,13 @@
         "mode": "all"
       },
       "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
+        "kind": "replies"
       },
       "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_PROVED"
-      }
+        "pushed": "POP_HEADER",
+        "none": "PROVE"
+      },
+      "role": "SEARCH_REPLIES_TO_ATTACKED_PIECE"
     },
     {
       "id": "SEARCH_REPLIES_TO_SKEWER",
@@ -594,7 +461,7 @@
       "kind": "search",
       "side": "their",
       "label": "Replies to a skewer",
-      "description": "Consider ordinary ways to answer a skewer: capture the skewering piece, move or defend the skewered piece, block the line, give a forcing check, or make a capture.",
+      "description": "Consider ordinary ways to answer a skewer: capture the skewering piece, move or defend the skewered piece, block the line, give a forcing check, or make a capture. Unmatched moves are quiet under this card\u2019s explicit reply vocabulary.",
       "predicates": [
         "mated",
         "capture_attacker",
@@ -610,13 +477,13 @@
         "mode": "all"
       },
       "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
+        "kind": "replies"
       },
       "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_PROVED"
-      }
+        "pushed": "POP_HEADER",
+        "none": "PROVE"
+      },
+      "role": "SEARCH_REPLIES_TO_SKEWER"
     },
     {
       "id": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
@@ -624,134 +491,126 @@
       "kind": "search",
       "side": "their",
       "label": "Replies while a defender is attacked",
-      "description": "A non-pawn piece is attacked and has exactly one effective defender; our last move safely attacked that defender. Retain only a move that puts the defender on a safe square while it still defends the loose piece, a capture that does the same, or a direct capture of the attacking piece.",
+      "description": "A non-pawn piece is attacked and has exactly one effective defender; our last move safely attacked that defender. Retain a bounded forcing check, a move that puts the defender on a safe square while it still defends the target, or a capture of either the chaser or the target\u2019s original attacker. Other replies are the policy\u2019s declared quiet boundary.",
       "predicates": [
         "mated",
+        "capture_attacker",
+        "check_with_one_reply",
+        "check_with_two_replies",
         "move_defender_while_still_defending_loose_piece",
-        "capture_and_keep_defending_loose_piece",
-        "capture_attacker"
+        "capture_and_keep_defending_loose_piece"
       ],
       "closure": {
         "mode": "all"
       },
       "frame": {
-        "kind": "replies",
-        "on_empty": "LINE_PROVED"
+        "kind": "replies"
       },
       "on": {
-        "pushed": "POP_POSITION",
-        "none": "LINE_PROVED"
-      }
+        "pushed": "POP_HEADER",
+        "none": "PROVE"
+      },
+      "role": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER"
     },
     {
-      "id": "LINE_PROVED",
+      "id": "SEARCH_SAVE_HANGING_PIECE",
       "routine": "main",
-      "kind": "inspect",
-      "label": "Propagate proof",
-      "terminal_checks": false,
-      "description": "One successful candidate proves a choice frame. Every retained opponent reply must be discharged before a replies frame is proved.",
-      "rules": [
-        {
-          "label": "a chosen move worked; discard its unused alternatives",
-          "when": {
-            "frame": "choice"
-          },
-          "to": "DISCARD_CHOICE_FRAME"
-        },
-        {
-          "label": "one opponent reply is discharged; examine the next",
-          "when": {
-            "frame": "replies"
-          },
-          "to": "POP_POSITION"
-        },
-        {
-          "label": "the root position is proved",
-          "when": {
-            "frame": "root"
-          },
-          "to": "SOLVED"
-        }
+      "kind": "search",
+      "side": "my",
+      "label": "Save a hanging piece",
+      "description": "Save a hanging piece",
+      "predicates": [
+        "mate",
+        "capture_hanging_piece_attacker",
+        "add_defender_to_attacked_piece",
+        "move_hanging_piece",
+        "check_with_one_reply",
+        "check_with_two_replies",
+        "check"
       ],
-      "on": {
-        "depth": "EXHAUSTED",
-        "missing": "EXHAUSTED"
+      "closure": {
+        "mode": "first",
+        "count": 5
       },
-      "default": "EXHAUSTED"
+      "frame": {
+        "kind": "choice"
+      },
+      "on": {
+        "pushed": "POP_HEADER",
+        "none": "FAIL"
+      },
+      "role": "SEARCH_SAVE_HANGING_PIECE"
     },
     {
-      "id": "LINE_FAILED",
+      "id": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
       "routine": "main",
-      "kind": "inspect",
-      "label": "Propagate failure",
-      "terminal_checks": false,
-      "description": "A failed candidate falls through to the next candidate. A failed opponent reply refutes the parent choice.",
-      "rules": [
-        {
-          "label": "this candidate failed; try the next candidate",
-          "when": {
-            "frame": "choice"
-          },
-          "to": "POP_POSITION"
-        },
-        {
-          "label": "an opponent reply refuted this candidate",
-          "when": {
-            "frame": "replies"
-          },
-          "to": "DISCARD_REPLY_FRAME"
-        },
-        {
-          "label": "the root position is not solved by this policy",
-          "when": {
-            "frame": "root"
-          },
-          "to": "EXHAUSTED"
-        }
+      "kind": "search",
+      "side": "my",
+      "label": "Save from a cheaper attacker",
+      "description": "Save from a cheaper attacker",
+      "predicates": [
+        "mate",
+        "capture_hanging_piece_attacker",
+        "move_hanging_piece",
+        "add_defender_to_attacked_piece",
+        "check_with_one_reply",
+        "check_with_two_replies",
+        "check"
       ],
-      "on": {
-        "depth": "EXHAUSTED",
-        "missing": "EXHAUSTED"
+      "closure": {
+        "mode": "first",
+        "count": 5
       },
-      "default": "EXHAUSTED"
-    },
-    {
-      "id": "DISCARD_CHOICE_FRAME",
-      "routine": "main",
-      "kind": "pop",
-      "until": "current_frame",
-      "label": "Commit successful choice",
-      "description": "Discard unused sibling moves until the choice delimiter, restore the ancestor, and propagate proof.",
+      "frame": {
+        "kind": "choice"
+      },
       "on": {
-        "delimiter": "LINE_PROVED",
-        "empty": "EXHAUSTED"
-      }
+        "pushed": "POP_HEADER",
+        "none": "FAIL"
+      },
+      "role": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER"
     },
     {
-      "id": "DISCARD_REPLY_FRAME",
+      "id": "SEARCH_OUR_MOVE_AFTER_REPLY",
       "routine": "main",
-      "kind": "pop",
-      "until": "current_frame",
-      "label": "Abort refuted replies",
-      "description": "Discard the remaining sibling replies until the replies delimiter, restore the ancestor, and propagate failure.",
+      "kind": "search",
+      "side": "my",
+      "label": "Our move after reply",
+      "description": "Prioritize finishing a forcing line with an undefended-piece capture, after mate, alignment captures, and structural checking continuations.",
+      "predicates": [
+        "mate",
+        "capture_alignment_target",
+        "capture_back_of_alignment",
+        "check_with_only_interpositions",
+        "check_adds_defender_to_back_rank_entry_square",
+        "capture_undefended_non_pawn_piece",
+        "check_with_one_reply",
+        "check_with_two_replies",
+        "check_and_attack_piece",
+        "threaten_mate_in_1",
+        "attack_sole_defended_piece_of_loose_alignment",
+        "move_middle_with_check",
+        "skewer",
+        "check",
+        "recapture",
+        "capture_defender_of_alignment_target",
+        "capture",
+        "safely_add_attacker_to_defender_of_loose_piece",
+        "add_attacker_to_loose_non_pawn_piece",
+        "add_attacker_to_pinned_piece"
+      ],
+      "closure": {
+        "mode": "first",
+        "count": 5
+      },
+      "frame": {
+        "kind": "choice"
+      },
       "on": {
-        "delimiter": "LINE_FAILED",
-        "empty": "EXHAUSTED"
-      }
-    },
-    {
-      "id": "SOLVED",
-      "routine": "main",
-      "kind": "accept",
-      "label": "Solved",
-      "description": "A root move worked against every retained opponent reply."
-    },
-    {
-      "id": "EXHAUSTED",
-      "routine": "main",
-      "kind": "reject",
-      "label": "Failed loudly",
-      "description": "Every candidate failed, or this basic policy could not narrow a required reply set."
+        "pushed": "POP_HEADER",
+        "none": "FAIL"
+      },
+      "role": "SEARCH_OUR_MOVE_AFTER_REPLY"
     }
   ],
   "oracle": {
@@ -759,7 +618,2037 @@
     "reply_class_limit": 2,
     "objective_gain": 2,
     "max_positions": 12000,
-    "attack_min_value": 3,
-    "mate_threat_limit": 1
+    "attack_min_value": 3
+  },
+  "proof": {
+    "quiet_closure_states": [
+      "SEARCH_WHEN_UP_MATERIAL",
+      "SEARCH_LAST_CHANCE",
+      "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "SEARCH_REPLIES_TO_SKEWER",
+      "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "SEARCH_REPLIES_TO_ATTACKER_SURPLUS"
+    ],
+    "quiet_definition": "Only a declared quiet-closure state may close unlisted replies. After the objective is reached, SEARCH_WHEN_UP_MATERIAL first examines mates, recaptures and checks without a visit budget. If no such reply matches, SEARCH_LAST_CHANCE examines safe attacker-surplus counterattacks, with one visit shared across the entire puzzle. If the forcing card retained replies, completion of that reply frame closes the parent without reopening optional counterplay there. A quiet defensive answer uses the existing bounded endpoint rule. An exhausted optional card closes only an objective-preserving position without immediate mate, recapture or check. This policy vocabulary does not claim to cover every off-square material-restoring capture.",
+    "terminal_predicates": [
+      "mate",
+      "up_material"
+    ],
+    "forced_closure_states": [
+      {
+        "state": "SEARCH_REPLIES_TO_MATE_THREAT",
+        "retained_predicate": "no_mate_in_1_available",
+        "closed_predicate": "mate_in_1_available",
+        "witness_fact": "mate_in_1_move"
+      },
+      {
+        "state": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK",
+        "retained_predicates": [
+          "recapture",
+          "no_material_objective_capture_in_1_available"
+        ],
+        "closed_predicate": "material_objective_capture_in_1_available",
+        "witness_fact": "material_objective_capture_in_1_move"
+      }
+    ],
+    "forced_definition": "Each forced closure partitions every legal opponent reply with explicit witnesses. Mate-threat replies with no legal mate in one are retained universally; every omitted reply has mate_in_1_available and an exact mate_in_1_move witness. Loose-alignment replies retain every recapture and every board with no immediate objective-winning capture; every omitted non-recapture has material_objective_capture_in_1_available and an exact material_objective_capture_in_1_move witness."
+  },
+  "our_move_candidate_limit": 5,
+  "transitions": [
+    {
+      "from": "POP_HEADER",
+      "event": "read",
+      "to": "POP_POSITION_AVAILABLE",
+      "token": {
+        "allowance": "available"
+      },
+      "push_header": null
+    },
+    {
+      "from": "POP_POSITION_AVAILABLE",
+      "event": "delimiter",
+      "to": "FAIL",
+      "token": {
+        "frame": "choice"
+      },
+      "label": "OUR MOVE TOP-5 EXHAUSTED \u2014 every retained candidate failed"
+    },
+    {
+      "from": "POP_POSITION_AVAILABLE",
+      "event": "delimiter",
+      "to": "PROVE",
+      "token": {
+        "frame": "replies"
+      },
+      "label": "Every retained opponent reply is discharged"
+    },
+    {
+      "from": "POP_HEADER",
+      "event": "read",
+      "to": "POP_POSITION_SPENT",
+      "token": {
+        "allowance": "spent"
+      },
+      "push_header": null
+    },
+    {
+      "from": "POP_POSITION_SPENT",
+      "event": "delimiter",
+      "to": "FAIL",
+      "token": {
+        "frame": "choice"
+      },
+      "label": "OUR MOVE TOP-5 EXHAUSTED \u2014 every retained candidate failed"
+    },
+    {
+      "from": "POP_POSITION_SPENT",
+      "event": "delimiter",
+      "to": "PROVE",
+      "token": {
+        "frame": "replies"
+      },
+      "label": "Every retained opponent reply is discharged"
+    },
+    {
+      "from": "PROVE",
+      "event": "read",
+      "to": "EXHAUSTED",
+      "when": {
+        "all": [
+          "at_policy_depth_limit"
+        ]
+      },
+      "push_header": null,
+      "label": "Declared position-depth limit"
+    },
+    {
+      "from": "PROVE",
+      "event": "read",
+      "to": "SOLVED",
+      "token": {
+        "context": "root"
+      },
+      "push_header": null
+    },
+    {
+      "from": "PROVE",
+      "event": "read",
+      "to": "POP_HEADER",
+      "token": {
+        "context": "replies"
+      },
+      "label": "Continue the next retained sibling"
+    },
+    {
+      "from": "PROVE",
+      "event": "read",
+      "to": "DISCARD_PROVE_AVAILABLE",
+      "token": {
+        "context": "choice",
+        "allowance": "available"
+      },
+      "push_header": null
+    },
+    {
+      "from": "PROVE",
+      "event": "read",
+      "to": "DISCARD_PROVE_SPENT",
+      "token": {
+        "context": "choice",
+        "allowance": "spent"
+      },
+      "push_header": null
+    },
+    {
+      "from": "FAIL",
+      "event": "read",
+      "to": "EXHAUSTED",
+      "when": {
+        "all": [
+          "at_policy_depth_limit"
+        ]
+      },
+      "push_header": null,
+      "label": "Declared position-depth limit"
+    },
+    {
+      "from": "FAIL",
+      "event": "read",
+      "to": "EXHAUSTED",
+      "token": {
+        "context": "root"
+      },
+      "push_header": null
+    },
+    {
+      "from": "FAIL",
+      "event": "read",
+      "to": "POP_HEADER",
+      "token": {
+        "context": "choice"
+      },
+      "label": "Continue the next retained sibling"
+    },
+    {
+      "from": "FAIL",
+      "event": "read",
+      "to": "DISCARD_FAIL_AVAILABLE",
+      "token": {
+        "context": "replies",
+        "allowance": "available"
+      },
+      "push_header": null
+    },
+    {
+      "from": "FAIL",
+      "event": "read",
+      "to": "DISCARD_FAIL_SPENT",
+      "token": {
+        "context": "replies",
+        "allowance": "spent"
+      },
+      "push_header": null
+    },
+    {
+      "from": "DRAW",
+      "event": "read",
+      "to": "FAIL",
+      "label": "Draw currently fails this line"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "at_policy_depth_limit"
+        ]
+      },
+      "to": "FAIL",
+      "label": "Declared position-depth limit"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "position_repeated_on_played_line"
+        ]
+      },
+      "to": "DRAW",
+      "label": "second occurrence on this line is a draw"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "mate"
+        ]
+      },
+      "to": "PROVE",
+      "label": "we gave mate"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "mated",
+          "stalemate"
+        ]
+      },
+      "to": "FAIL",
+      "label": "we are mated or stalemated"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "in_check",
+          "their_turn"
+        ],
+        "none": [
+          "recapture_available",
+          "countercheck_available"
+        ]
+      },
+      "to": "PROVE",
+      "label": "we reached the objective, are not materially behind, and our check permits neither recapture nor countercheck"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "recapture"
+        ],
+        "none": [
+          "up_material",
+          "mate_available",
+          "winning_recapture_available",
+          "skewer_available",
+          "capture_back_of_alignment_available",
+          "alignment_back_piece_exposed",
+          "alignment_capture_chain",
+          "defender_of_loose_piece_is_attacked",
+          "attacked_piece",
+          "skewer",
+          "check_with_only_interpositions",
+          "capture_mate_threat_piece",
+          "capture_mate_threat_supporter"
+        ]
+      },
+      "to": "FAIL",
+      "label": "a non-mate-defense recapture erased the material objective with no bound continuation"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "check_response",
+          "up_material"
+        ],
+        "none": [
+          "mate_available",
+          "recapture_available"
+        ]
+      },
+      "to": "PROVE",
+      "label": "we answered the forcing check, remain not behind after reaching the objective, and no immediate mate or recapture remains"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "check_response"
+        ],
+        "none": [
+          "up_material"
+        ]
+      },
+      "to": "FAIL",
+      "label": "the forcing check response did not preserve both the objective gain and a non-losing material balance"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "in_check"
+        ],
+        "all": [
+          "our_turn"
+        ]
+      },
+      "to": "SEARCH_CHECK_RESPONSES",
+      "label": "our king is in check"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "recapture",
+          "up_material",
+          "our_turn"
+        ],
+        "none": [
+          "in_check"
+        ]
+      },
+      "to": "PROVE",
+      "label": "the opponent used its final recapture without erasing our objective-backed material advantage or checking us"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "create_attacker_surplus_on_non_pawn_piece",
+          "hanging_piece_attacked_by_lower_value_piece",
+          "our_turn"
+        ],
+        "none": [
+          "capture"
+        ]
+      },
+      "to": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "label": "new pressure by a cheaper attacker"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "create_attacker_surplus_on_non_pawn_piece",
+          "our_turn"
+        ],
+        "none": [
+          "capture"
+        ]
+      },
+      "to": "SEARCH_SAVE_HANGING_PIECE",
+      "label": "save a newly attacked piece after gaining material"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "capture",
+          "our_turn"
+        ],
+        "none": [
+          "in_check",
+          "create_attacker_surplus_on_non_pawn_piece"
+        ]
+      },
+      "to": "PROVE",
+      "label": "a final capture preserved the material objective"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC",
+        "context": "replies"
+      },
+      "when": {
+        "all": [
+          "check_available",
+          "our_turn"
+        ],
+        "none": [
+          "threaten_mate_in_1",
+          "recapture",
+          "no_mate_in_1_available",
+          "capture_back_of_alignment_available",
+          "alignment_capture_chain",
+          "alignment_middle_defends_piece"
+        ]
+      },
+      "to": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "label": "continue the tactic by collecting a loose piece before another ordinary check sequence"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "our_turn"
+        ]
+      },
+      "to": "SEARCH_OUR_MOVE",
+      "label": "our move"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "check_adds_defender_to_back_rank_entry_square"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_ALL_REPLIES",
+      "label": "the checking move repaired a vulnerable back-rank entry square; enumerate every reply"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "their_turn"
+        ],
+        "any": [
+          "move_hanging_piece",
+          "capture_hanging_piece_attacker",
+          "add_defender_to_attacked_piece"
+        ],
+        "none": [
+          "capture",
+          "recapture",
+          "check_response",
+          "mate_available",
+          "recapture_available"
+        ]
+      },
+      "to": "PROVE",
+      "label": "a quiet defensive answer preserves the objective and ends the last chance"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "up_material"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_WHEN_UP_MATERIAL",
+      "label": "we reached the objective and are not materially behind; verify the opponent checks and recaptures"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "check_with_only_interpositions"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_ALL_REPLIES",
+      "label": "the checking slider leaves only interpositions"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "two_or_fewer_legal_moves"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_ALL_REPLIES",
+      "label": "the opponent has two or fewer legal moves"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "threaten_mate_in_1"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_MATE_THREAT",
+      "label": "enumerate every genuine defense to the mate-in-one threat"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "attack_sole_defended_piece_of_loose_alignment"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK",
+      "label": "answer the sole-defended loose-alignment attack"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "defender_of_loose_piece_is_attacked"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "label": "the defender of a loose piece is attacked"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "attacker_surplus_on_non_pawn_piece"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "label": "the opponent must try to save a non-pawn attacked by two pieces and defended once"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "more_than_two_relevant_replies"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "FAIL",
+      "label": "more than two relevant replies remain after the current human reply card"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "skewer"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_SKEWER",
+      "label": "the current position contains a skewer"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "in_check",
+          "attacked_piece",
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_ALL_REPLIES",
+      "label": "a checking attack needs legal check evasions"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "attacked_piece",
+          "loose_piece"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "label": "the current position contains an attacked or loose piece"
+    },
+    {
+      "from": "POP_CONTINUATION_AVAILABLE",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "FAIL",
+      "label": "this basic policy cannot narrow the opponent's replies"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "at_policy_depth_limit"
+        ]
+      },
+      "to": "FAIL",
+      "label": "Declared position-depth limit"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "position_repeated_on_played_line"
+        ]
+      },
+      "to": "DRAW",
+      "label": "second occurrence on this line is a draw"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "mate"
+        ]
+      },
+      "to": "PROVE",
+      "label": "we gave mate"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "mated",
+          "stalemate"
+        ]
+      },
+      "to": "FAIL",
+      "label": "we are mated or stalemated"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "in_check",
+          "their_turn"
+        ],
+        "none": [
+          "recapture_available",
+          "countercheck_available"
+        ]
+      },
+      "to": "PROVE",
+      "label": "we reached the objective, are not materially behind, and our check permits neither recapture nor countercheck"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "recapture"
+        ],
+        "none": [
+          "up_material",
+          "mate_available",
+          "winning_recapture_available",
+          "skewer_available",
+          "capture_back_of_alignment_available",
+          "alignment_back_piece_exposed",
+          "alignment_capture_chain",
+          "defender_of_loose_piece_is_attacked",
+          "attacked_piece",
+          "skewer",
+          "check_with_only_interpositions",
+          "capture_mate_threat_piece",
+          "capture_mate_threat_supporter"
+        ]
+      },
+      "to": "FAIL",
+      "label": "a non-mate-defense recapture erased the material objective with no bound continuation"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "check_response",
+          "up_material"
+        ],
+        "none": [
+          "mate_available",
+          "recapture_available"
+        ]
+      },
+      "to": "PROVE",
+      "label": "we answered the forcing check, remain not behind after reaching the objective, and no immediate mate or recapture remains"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "check_response"
+        ],
+        "none": [
+          "up_material"
+        ]
+      },
+      "to": "FAIL",
+      "label": "the forcing check response did not preserve both the objective gain and a non-losing material balance"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "in_check"
+        ],
+        "all": [
+          "our_turn"
+        ]
+      },
+      "to": "SEARCH_CHECK_RESPONSES",
+      "label": "our king is in check"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "recapture",
+          "up_material",
+          "our_turn"
+        ],
+        "none": [
+          "in_check"
+        ]
+      },
+      "to": "PROVE",
+      "label": "the opponent used its final recapture without erasing our objective-backed material advantage or checking us"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "create_attacker_surplus_on_non_pawn_piece",
+          "hanging_piece_attacked_by_lower_value_piece",
+          "our_turn"
+        ],
+        "none": [
+          "capture"
+        ]
+      },
+      "to": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "label": "new pressure by a cheaper attacker"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "create_attacker_surplus_on_non_pawn_piece",
+          "our_turn"
+        ],
+        "none": [
+          "capture"
+        ]
+      },
+      "to": "SEARCH_SAVE_HANGING_PIECE",
+      "label": "save a newly attacked piece after gaining material"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "capture",
+          "our_turn"
+        ],
+        "none": [
+          "in_check",
+          "create_attacker_surplus_on_non_pawn_piece"
+        ]
+      },
+      "to": "PROVE",
+      "label": "a final capture preserved the material objective"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC",
+        "context": "replies"
+      },
+      "when": {
+        "all": [
+          "check_available",
+          "our_turn"
+        ],
+        "none": [
+          "threaten_mate_in_1",
+          "recapture",
+          "no_mate_in_1_available",
+          "capture_back_of_alignment_available",
+          "alignment_capture_chain",
+          "alignment_middle_defends_piece"
+        ]
+      },
+      "to": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "label": "continue the tactic by collecting a loose piece before another ordinary check sequence"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "our_turn"
+        ]
+      },
+      "to": "SEARCH_OUR_MOVE",
+      "label": "our move"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "check_adds_defender_to_back_rank_entry_square"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_ALL_REPLIES",
+      "label": "the checking move repaired a vulnerable back-rank entry square; enumerate every reply"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "their_turn"
+        ],
+        "any": [
+          "move_hanging_piece",
+          "capture_hanging_piece_attacker",
+          "add_defender_to_attacked_piece"
+        ],
+        "none": [
+          "capture",
+          "recapture",
+          "check_response",
+          "mate_available",
+          "recapture_available"
+        ]
+      },
+      "to": "PROVE",
+      "label": "a quiet defensive answer preserves the objective and ends the last chance"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "up_material"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_WHEN_UP_MATERIAL",
+      "label": "we reached the objective and are not materially behind; verify the opponent checks and recaptures"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "check_with_only_interpositions"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_ALL_REPLIES",
+      "label": "the checking slider leaves only interpositions"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "two_or_fewer_legal_moves"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_ALL_REPLIES",
+      "label": "the opponent has two or fewer legal moves"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "threaten_mate_in_1"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_MATE_THREAT",
+      "label": "enumerate every genuine defense to the mate-in-one threat"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "attack_sole_defended_piece_of_loose_alignment"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK",
+      "label": "answer the sole-defended loose-alignment attack"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "defender_of_loose_piece_is_attacked"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "label": "the defender of a loose piece is attacked"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "attacker_surplus_on_non_pawn_piece"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "label": "the opponent must try to save a non-pawn attacked by two pieces and defended once"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "more_than_two_relevant_replies"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "FAIL",
+      "label": "more than two relevant replies remain after the current human reply card"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "skewer"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_SKEWER",
+      "label": "the current position contains a skewer"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "in_check",
+          "attacked_piece",
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_ALL_REPLIES",
+      "label": "a checking attack needs legal check evasions"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "any": [
+          "attacked_piece",
+          "loose_piece"
+        ],
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "label": "the current position contains an attacked or loose piece"
+    },
+    {
+      "from": "POP_CONTINUATION_SPENT",
+      "event": "read",
+      "token": {
+        "symbol": "BASIC"
+      },
+      "when": {
+        "all": [
+          "their_turn"
+        ]
+      },
+      "to": "FAIL",
+      "label": "this basic policy cannot narrow the opponent's replies"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "mate",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "capture_alignment_target",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "capture_back_of_alignment",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "check_with_only_interpositions",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "check_adds_defender_to_back_rank_entry_square",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "check_and_attack_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "capture_undefended_non_pawn_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "threaten_mate_in_1",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "attack_sole_defended_piece_of_loose_alignment",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "move_middle_with_check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "skewer",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "recapture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "capture_defender_of_alignment_target",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "capture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "safely_add_attacker_to_defender_of_loose_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "add_attacker_to_loose_non_pawn_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "candidate",
+      "predicate": "add_attacker_to_pinned_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE",
+      "event": "none",
+      "to": "FAIL",
+      "label": "OUR MOVE NO MATCH \u2014 no legal move matched the fixed card"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_MATE_THREAT",
+      "event": "candidate",
+      "predicate": "no_mate_in_1_available",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK",
+      "event": "candidate",
+      "predicate": "recapture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_LOOSE_ALIGNMENT_ATTACK",
+      "event": "candidate",
+      "predicate": "no_material_objective_capture_in_1_available",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "event": "candidate",
+      "predicate": "mated",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "event": "candidate",
+      "predicate": "add_defender_to_attacked_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "event": "candidate",
+      "predicate": "threaten_mate_in_1",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKER_SURPLUS",
+      "event": "candidate",
+      "predicate": "create_attacker_surplus_on_non_pawn_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "candidate",
+      "predicate": "mate",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "candidate",
+      "predicate": "recapture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "candidate",
+      "predicate": "capture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "candidate",
+      "predicate": "king_move",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "candidate",
+      "predicate": "legal_move",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_CHECK_RESPONSES",
+      "event": "none",
+      "to": "FAIL",
+      "label": "OUR MOVE NO MATCH \u2014 no legal move matched the fixed card"
+    },
+    {
+      "from": "SEARCH_ALL_REPLIES",
+      "event": "candidate",
+      "predicate": "mated",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_ALL_REPLIES",
+      "event": "candidate",
+      "predicate": "capture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_ALL_REPLIES",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_ALL_REPLIES",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_ALL_REPLIES",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_ALL_REPLIES",
+      "event": "candidate",
+      "predicate": "save_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_ALL_REPLIES",
+      "event": "candidate",
+      "predicate": "king_move",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_ALL_REPLIES",
+      "event": "candidate",
+      "predicate": "legal_move",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "candidate",
+      "predicate": "mated",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "candidate",
+      "predicate": "recapture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "none",
+      "token": {
+        "allowance": "available"
+      },
+      "to": "SEARCH_LAST_CHANCE",
+      "push_header": {
+        "allowance": "spent"
+      },
+      "label": "No forcing reply matched; spend the one last-chance allowance"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "none",
+      "token": {
+        "allowance": "spent"
+      },
+      "when": {
+        "all": [
+          "at_policy_depth_limit"
+        ]
+      },
+      "to": "FAIL",
+      "label": "Declared position-depth limit"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "none",
+      "token": {
+        "allowance": "spent"
+      },
+      "when": {
+        "all": [
+          "up_material",
+          "their_turn"
+        ],
+        "none": [
+          "in_check",
+          "mate_available",
+          "recapture_available",
+          "check_available"
+        ]
+      },
+      "to": "PROVE",
+      "label": "the objective holds with no immediate mate, recapture or check"
+    },
+    {
+      "from": "SEARCH_WHEN_UP_MATERIAL",
+      "event": "none",
+      "token": {
+        "allowance": "spent"
+      },
+      "to": "FAIL",
+      "label": "Last chance already spent; immediate danger or lost objective remains"
+    },
+    {
+      "from": "SEARCH_LAST_CHANCE",
+      "event": "candidate",
+      "predicate": "create_safe_attacker_surplus_on_non_pawn_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "mated",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "capture_attacker",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "move_attacked_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "defend_attacked_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "block_attack",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_PIECE",
+      "event": "candidate",
+      "predicate": "capture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "mated",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "capture_attacker",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "move_skewered_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "defend_skewered_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "block_skewer",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_SKEWER",
+      "event": "candidate",
+      "predicate": "capture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "event": "candidate",
+      "predicate": "mated",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "event": "candidate",
+      "predicate": "capture_attacker",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "event": "candidate",
+      "predicate": "move_defender_while_still_defending_loose_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_REPLIES_TO_ATTACKED_DEFENDER",
+      "event": "candidate",
+      "predicate": "capture_and_keep_defending_loose_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_HANGING_PIECE",
+      "event": "candidate",
+      "predicate": "mate",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_HANGING_PIECE",
+      "event": "candidate",
+      "predicate": "capture_hanging_piece_attacker",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_HANGING_PIECE",
+      "event": "candidate",
+      "predicate": "add_defender_to_attacked_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_HANGING_PIECE",
+      "event": "candidate",
+      "predicate": "move_hanging_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_HANGING_PIECE",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_HANGING_PIECE",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_HANGING_PIECE",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_HANGING_PIECE",
+      "event": "none",
+      "to": "FAIL",
+      "label": "OUR MOVE NO MATCH \u2014 no legal move matched the fixed card"
+    },
+    {
+      "from": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "event": "candidate",
+      "predicate": "mate",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "event": "candidate",
+      "predicate": "capture_hanging_piece_attacker",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "event": "candidate",
+      "predicate": "move_hanging_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "event": "candidate",
+      "predicate": "add_defender_to_attacked_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_SAVE_FROM_CHEAPER_ATTACKER",
+      "event": "none",
+      "to": "FAIL",
+      "label": "OUR MOVE NO MATCH \u2014 no legal move matched the fixed card"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "mate",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "capture_alignment_target",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "capture_back_of_alignment",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "check_with_only_interpositions",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "check_adds_defender_to_back_rank_entry_square",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "capture_undefended_non_pawn_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "check_with_one_reply",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "check_with_two_replies",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "check_and_attack_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "threaten_mate_in_1",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "attack_sole_defended_piece_of_loose_alignment",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "move_middle_with_check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "skewer",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "check",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "recapture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "capture_defender_of_alignment_target",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "capture",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "safely_add_attacker_to_defender_of_loose_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "add_attacker_to_loose_non_pawn_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "candidate",
+      "predicate": "add_attacker_to_pinned_piece",
+      "child": "BASIC"
+    },
+    {
+      "from": "SEARCH_OUR_MOVE_AFTER_REPLY",
+      "event": "none",
+      "to": "FAIL",
+      "label": "OUR MOVE NO MATCH \u2014 no legal move matched the fixed card"
+    }
+  ],
+  "predicate_inputs": {
+    "our_turn": {
+      "fields": {
+        "side": {
+          "eq": "my"
+        }
+      }
+    },
+    "their_turn": {
+      "fields": {
+        "side": {
+          "eq": "their"
+        }
+      }
+    },
+    "at_policy_depth_limit": {
+      "path_depth": {
+        "min": 48
+      }
+    },
+    "position_repeated_on_played_line": {
+      "repetition": {
+        "field": "fen",
+        "pattern": "^\\S+\\s+\\S+\\s+\\S+\\s+\\S+",
+        "count": 2
+      }
+    }
+  },
+  "description": "Fourteen fixed move/reply cards. Only current state, named predicates and popped sigils select the next card.",
+  "control_model": {
+    "name": "compact-sigil-dfa/v1",
+    "inputs": [
+      "current_state",
+      "predicate",
+      "popped_symbol"
+    ],
+    "input_adapter": "/reasoning/predicate-input.js",
+    "last_chance": {
+      "description": "The incoming none transition spends the allowance once; backtracking preserves spent.",
+      "spend_transitions": [
+        {
+          "from": "SEARCH_WHEN_UP_MATERIAL",
+          "event": "none",
+          "to": "SEARCH_LAST_CHANCE"
+        }
+      ]
+    },
+    "sigils_are_positions": false
   }
 }

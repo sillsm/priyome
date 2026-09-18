@@ -1,6 +1,6 @@
 /*
  * Priyomes Predicate Policy Engine
- * predicate.js v1.1.0
+ * predicate.js v1.3.0-compact-sigil
  *
  * A DOM-free, deterministic engine for coordinate-free predicate policies over
  * finite game trees. The browser UI, storage, animation, examples, and editors
@@ -23,16 +23,17 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function predicatePolicyFactory() {
   "use strict";
 
-  const VERSION = "1.1.0";
+  const VERSION = "1.3.0-compact-sigil";
   const POLICY_SCHEMA = "predicate-policy/v2";
   const PROJECT_SCHEMA = "predicate-policy-dfa-lab/project-v3";
   const STATE_KINDS = Object.freeze([
-    "push_initial", "pop", "inspect", "search", "call", "return", "accept", "reject"
+    "push_initial", "pop", "inspect", "search", "control", "call", "return", "accept", "reject"
   ]);
 
   const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
   const unique = values => [...new Set(values)];
   const isObject = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  const compact = policy => policy?.control_model?.name === "compact-sigil-dfa/v1";
   const isStringArray = (value, allowEmpty = false) => Array.isArray(value)
     && (allowEmpty || value.length > 0)
     && value.every(item => typeof item === "string" && item.trim());
@@ -79,6 +80,8 @@
   function policyGraphTargets(state, policy) {
     const targets = [];
     if (!state) return targets;
+    if (compact(policy)) return unique([...Object.values(state.on || {}),
+      ...(policy.transitions || []).filter(row => row.from === state.id).map(row => row.to)]).filter(Boolean);
     if (state.kind === "inspect") {
       (state.rules || []).forEach(rule => rule?.to && targets.push(rule.to));
       if (state.default) targets.push(state.default);
@@ -98,6 +101,7 @@
   }
 
   function validatePolicy(candidate) {
+    if (compact(candidate)) return validateCompactPolicy(candidate);
     const issues = [];
     const error = (title, detail) => issues.push({ level: "error", scope: "policy", title, detail });
     const warn = (title, detail) => issues.push({ level: "warn", scope: "policy", title, detail });
@@ -116,6 +120,9 @@
     const routineIds = routines.map(routine => routine?.id).filter(Boolean);
     const stateSet = new Set(stateIds);
     const routineSet = new Set(routineIds);
+    ["plans", "plan_start_card", "plan_entries", "plan_outcomes", "proof_preference", "transitions"].forEach(key => {
+      if (candidate[key] !== undefined) error("Unsupported control machinery", key);
+    });
 
     unique(stateIds.filter((id, index) => stateIds.indexOf(id) !== index)).forEach(id => error("Duplicate state ID", id));
     unique(routineIds.filter((id, index) => routineIds.indexOf(id) !== index)).forEach(id => error("Duplicate routine ID", id));
@@ -160,7 +167,11 @@
       const name = state?.id || `state ${index + 1}`;
       if (!state?.id || typeof state.id !== "string") error("State has no ID", name);
       if (!STATE_KINDS.includes(state?.kind)) error(`${name} has invalid kind`, String(state?.kind));
+      if (state?.kind === "control") error(`${name} requires the compact control model`, "Declare compact-sigil-dfa/v1.");
       if (!routineSet.has(state?.routine)) error(`${name} has invalid routine`, state?.routine || "missing");
+      ["routes", "plan", "selectors", "always_predicates", "max_visits_per_puzzle", "tie_break"].forEach(key => {
+        if (state[key] !== undefined) error(`${name} has unsupported control machinery`, key);
+      });
 
       const requireTarget = (target, label) => {
         if (!target || !stateSet.has(target)) error(`${name} has invalid ${label} target`, target || "missing");
@@ -208,6 +219,7 @@
         (state.rules || []).forEach((rule, ruleIndex) => {
           requireTarget(rule?.to, `rule ${ruleIndex + 1}`);
           const when = rule?.when || {};
+          if (!isObject(when) || Object.keys(when).some(key => !["side", "frame", "any", "all", "none"].includes(key))) error(`${name} has unsupported inspection input`, "Only side/frame/any/all/none are supported.");
           if (when.side && !["my", "their"].includes(when.side)) error(`${name} rule ${ruleIndex + 1} has invalid side`, when.side);
           if (when.frame && !["root", "choice", "replies"].includes(when.frame)) error(`${name} rule ${ruleIndex + 1} has invalid frame`, when.frame);
           ["any", "all", "none"].forEach(key => {
@@ -254,6 +266,67 @@
       if (unreachable.length) warn("Unreachable states", unreachable.join(", "));
     }
 
+    return issues;
+  }
+
+  function validateCompactPolicy(policy) {
+    const issues = [];
+    const error = (title, detail) => issues.push({ level: "error", scope: "policy", title, detail });
+    const states = Array.isArray(policy.states) ? policy.states : [];
+    const ids = new Set(states.map(state => state.id));
+    const target = (id, context) => { if (!ids.has(id)) error("Unknown state", `${context}: ${id}`); };
+    if (policy.schema !== POLICY_SCHEMA || !states.length || ids.size !== states.length) error("Invalid compact policy", "Use the policy schema and unique state IDs.");
+    target(policy.entry, "entry");
+    for (const key of ["accept_state", "reject_state"]) target(policy.outcomes?.[key], key);
+    if (!isStringArray(policy.outcomes?.winning_predicates) || !isStringArray(policy.outcomes?.failure_predicates, true)) error("Invalid outcome predicates", "Use named predicate arrays.");
+    if (!Array.isArray(policy.routines) || !policy.routines.length) error("Missing routines", "Declare the main routine.");
+    (policy.routines || []).forEach(routine => target(routine.entry, routine.id));
+    for (const key of ["thoughts", "depth", "call_depth"]) if (!Number.isInteger(policy.budgets?.[key]) || policy.budgets[key] < (key === "thoughts" ? 1 : 0)) error("Invalid safety budget", key);
+    const forbidden = ["plans", "plan_start_card", "plan_entries", "plan_outcomes", "proof_preference"];
+    forbidden.forEach(key => { if (policy[key] !== undefined) error("Unsupported control machinery", key); });
+    const declared = new Set(), used = new Set();
+    const declare = value => { if (typeof value !== "string" || !value) error("Invalid sigil", String(value)); else declared.add(value); };
+    states.forEach(state => {
+      if (!["search", "control", "accept", "reject"].includes(state.kind)) error("Invalid compact state kind", state.id);
+      if (state.kind === "control" && !["start", "pop_header", "pop_position", "pop_continuation", "propagate", "discard"].includes(state.action)) error("Invalid fixed action", state.id);
+      if (state.prepare !== undefined && !["inspect", "search"].includes(state.prepare)) error("Invalid preparation", state.id);
+      if (state.allowance !== undefined && !["available", "spent"].includes(state.allowance)) error("Invalid control allowance", state.id);
+      if (state.action === "start") declare(state.initial_symbol || "ROOT");
+      Object.values(state.on || {}).forEach(id => target(id, state.id));
+      ["routes", "rules", "plan", "selectors", "always_predicates", "max_visits_per_puzzle", "tie_break"].forEach(key => { if (state[key] !== undefined) error("Card-internal control is unsupported", `${state.id}: ${key}`); });
+      if (state.kind === "search") {
+        if (!isStringArray(state.predicates)) error("Invalid fixed predicate order", state.id);
+        if (!["first", "all", "one_each"].includes(state.closure?.mode)) error("Invalid closure", state.id);
+        if (state.closure?.mode === "first" && (!Number.isInteger(state.closure.count) || state.closure.count < 1)) error("Invalid closure count", state.id);
+        if (!["choice", "replies"].includes(state.frame?.kind)) error("Invalid frame", state.id);
+        if (state.frame?.on_empty !== undefined) error("Executable frame continuation is unsupported", state.id);
+      }
+    });
+    if (!Array.isArray(policy.transitions)) error("Missing transition table", "Declare an ordered global transition table.");
+    (Array.isArray(policy.transitions) ? policy.transitions : []).forEach((row, index) => {
+      const context = `transition ${index + 1}`;
+      target(row.from, context);
+      if (!["read", "candidate", "pushed", "none", "position", "delimiter", "empty"].includes(row.event)) error("Invalid action event", context);
+      const when = row.when || {};
+      if (!isObject(when) || Object.keys(when).some(key => !["any", "all", "none"].includes(key)) || Object.values(when).some(value => !isStringArray(value, true))) error("Invalid predicate input", context);
+      const token = row.token || {};
+      if (!isObject(token) || Object.keys(token).some(key => !["symbol", "card", "context", "allowance", "frame"].includes(key))) error("Invalid popped input", context);
+      if (token.card !== undefined) (Array.isArray(token.card) ? token.card : [token.card]).forEach(card => target(card, context));
+      if (token.symbol !== undefined) (Array.isArray(token.symbol) ? token.symbol : [token.symbol]).forEach(symbol => used.add(symbol));
+      if (row.event === "candidate") {
+        const state = stateDefFromPolicy(policy, row.from);
+        if (state?.kind !== "search" || !state.predicates.includes(row.predicate)) error("Invalid candidate category", context);
+        declare(typeof row.child === "string" ? row.child : row.child?.symbol);
+        if (row.child?.card) target(row.child.card, context);
+      } else target(row.to, context);
+      if (row.push_header !== undefined && row.push_header !== null) {
+        if (!isObject(row.push_header) || Object.keys(row.push_header).some(key => !["symbol", "card", "context", "allowance"].includes(key))) error("Invalid pushed sigil", context);
+        const symbol = row.push_header?.symbol;
+        if (symbol !== undefined && symbol !== "$symbol") declare(symbol);
+      }
+    });
+    used.forEach(symbol => { if (!declared.has(symbol)) error("Unknown sigil input", symbol); });
+    if (!issues.length) issues.push({ level: "ok", scope: "policy", title: "Compact sigil policy is valid", detail: "Fixed cards and global transitions consume named predicates and inert stack inputs." });
     return issues;
   }
 
@@ -426,7 +499,7 @@
         ancestor: null
       }));
 
-      if (!this.runtime.bootstrapError && entryState && entryState.kind !== "push_initial") {
+      if (!this.runtime.bootstrapError && entryState && entryState.kind !== "push_initial" && !(compact(this.policy) && entryState.action === "start")) {
         if (entryState.kind === "pop") {
           [...this.runtime.initialItems].reverse().forEach(item => this.runtime.pending.push(item));
         } else {
@@ -452,6 +525,7 @@
     }
 
     _emit(type, data = {}) {
+      const state = this.stateDef();
       const event = {
         index: this.runtime.trace.length,
         type,
@@ -459,6 +533,9 @@
         routine: this.runtime.routine,
         thoughtCount: this.runtime.thoughtCount,
         microStepCount: this.runtime.microStepCount,
+        ...(state?.card ? { card: state.card } : {}),
+        ...(state?.role ? { role: state.role } : {}),
+        ...(data.to ? { toRole: this.stateDef(data.to)?.role || data.to } : {}),
         ...clone(data)
       };
       this.runtime.trace.push(event);
@@ -747,6 +824,169 @@
       this._transition(state.on.empty, "frame delimiter missing", `delimiter ${frameId} was not found`);
     }
 
+    _compactRule(state, event, token, position, predicate) {
+      return (this.policy.transitions || []).find(row => row.from === state.id && row.event === event
+        && (event !== "candidate" || row.predicate === predicate)
+        && Object.entries(row.token || {}).every(([key, value]) => Array.isArray(value) ? value.includes(token?.[key]) : token?.[key] === value)
+        && conditionMatches(position, null, row.when));
+    }
+
+    _compactHeader(token, state, replacement = {}) {
+      const values = { symbol: token?.symbol, card: token?.card, context: token?.context,
+        allowance: token?.allowance ?? state.allowance };
+      const original = { ...values };
+      Object.entries(replacement).forEach(([key, value]) => { values[key] = typeof value === "string" && value.startsWith("$") ? original[value.slice(1)] : value; });
+      const header = { stackKind: "sigil" };
+      Object.entries(values).forEach(([key, value]) => { if (value !== undefined) header[key] = value; });
+      return header;
+    }
+
+    _compactRoute(state, event, token, preserve = false, selectedRule = undefined, position = undefined) {
+      position ??= this.runtime.current && this.positions.get(this.runtime.current.id);
+      const row = selectedRule || this._compactRule(state, event, token, position);
+      if (row?.push_header !== null && (row?.push_header !== undefined || preserve)) {
+        this.runtime.pending.push(this._compactHeader(token, state, row?.push_header || {}));
+      }
+      const to = row?.to || state.on?.[event] || state.on?.default || this.policy.outcomes.reject_state;
+      const label = row?.label || `${state.action || state.kind}: ${event}`;
+      this.runtime.lastMatch = label;
+      this._emit(event === "read" ? "inspect-routed" : "sigil-transition", {
+        item: clone(this.runtime.current), token: clone(token), predicates: clone(position?.predicates || []),
+        rule: clone(row || null), event, label, to
+      });
+      this._transition(to, label);
+    }
+
+    _compactFinishSearch(state, session, header) {
+      session.complete = true;
+      const pairs = session.selected.map(item => {
+        const sigil = item._sigil;
+        delete item._sigil;
+        return { item, sigil };
+      });
+      const selected = session.selected;
+      this.runtime.selectedFrontier = clone(selected);
+      if (selected.length) {
+        const delimiter = {
+          stackKind: "delimiter", frameId: session.frame.id, frameKind: state.frame.kind,
+          sourceState: state.id, ancestor: clone(session.parent), childCount: selected.length,
+          symbol: header.symbol, context: header.context, frame: state.frame.kind,
+          ...(header.card ? { card: header.card } : {})
+        };
+        this.runtime.pending.push(delimiter);
+        this._emit("delimiter-pushed", { delimiter: clone(delimiter) });
+        [...pairs].reverse().forEach(({ item, sigil }) => this.runtime.pending.push(sigil, item));
+        this._emit("positions-pushed", { frameId: session.frame.id, frameKind: state.frame.kind,
+          ancestor: clone(session.parent), items: clone(selected) });
+      }
+      this._setNode(session.parent, { status: selected.length ? "expanded" : "closed",
+        note: selected.length ? `${selected.length} children retained by ${state.id}` : `no child matched ${state.predicates.join(" → ")}` });
+      this.runtime.lastMatch = selected.at(-1)?.matchedBy || null;
+      this.runtime.reason = selected.length ? `${selected.length} children retained` : "no child matched";
+      this._emit("search-complete", {
+        position: session.parent.id, occurrence: session.parent.occurrence, frame: clone(session.frame),
+        selected: clone(selected), selectedCount: selected.length, closure: clone(state.closure), closureLabel: closureLabel(state)
+      });
+      const position = this.positions.get(session.parent.id);
+      this.runtime.current = selected.length ? null : clone(session.parent);
+      this._compactRoute(state, selected.length ? "pushed" : "none", header, true, undefined, position);
+    }
+
+    _compactSearch(state) {
+      const header = this.runtime.pending.pop();
+      if (header?.stackKind !== "sigil" || !["available", "spent"].includes(header.allowance)) {
+        this._transition(this.policy.outcomes.reject_state, "missing active sigil"); return;
+      }
+      const position = this.runtime.current && this.positions.get(this.runtime.current.id);
+      if (!position) { this._transition(this.policy.outcomes.reject_state, "search without position"); return; }
+      let session = this.runtime.search?.stateVisit === this.runtime.stateVisit ? this.runtime.search : null;
+      if (!session) {
+        const read = this._compactRule(state, "read", header, position);
+        if (read) { this._compactRoute(state, "read", header, true, read, position); return; }
+        session = this._initializeSearch(state);
+      }
+      const index = session.predicateIndex;
+      const predicate = session.predicates[index];
+      if (predicate === undefined) { this._compactFinishSearch(state, session, header); return; }
+      const closure = state.closure;
+      const maximum = closure.mode === "first" ? closure.count : closure.mode === "one_each" && closure.count ? closure.count : Infinity;
+      const used = new Set(session.used), selectedNow = [], matchingIds = [];
+      session.checks[index].status = "checking";
+      for (const child of session.frontier) {
+        if (used.has(child.id)) continue;
+        const childPosition = this.positions.get(child.id);
+        if (!childPosition?.predicates?.includes(predicate)) continue;
+        const row = this._compactRule(state, "candidate", header, childPosition, predicate);
+        if (!row) continue;
+        matchingIds.push(child.id);
+        if (session.selected.length >= maximum) break;
+        const item = this._newOccurrence(child.id, child.depth, child.parent, predicate, "queued", session.frame);
+        const next = typeof row.child === "string" ? { symbol: row.child } : row.child;
+        item._sigil = { stackKind: "sigil", symbol: next.symbol, context: state.frame.kind,
+          ...(next.card ? { card: next.card } : {}) };
+        session.selected.push(item); session.used.push(child.id); used.add(child.id); selectedNow.push(item);
+        if (session.selected.length >= maximum || closure.mode === "one_each") break;
+      }
+      session.checks[index].selected = selectedNow.map(item => item.id);
+      session.checks[index].status = selectedNow.length ? "matched" : "missed";
+      this.runtime.lastMatch = selectedNow.length ? predicate : this.runtime.lastMatch;
+      this._emit("predicate-checked", { position: position.id, occurrence: session.parent.occurrence, predicate,
+        predicateIndex: index, predicateCount: session.predicates.length, matchingIds, selected: clone(selectedNow),
+        selectedTotal: session.selected.length, closure: clone(closure), closureReached: session.selected.length >= maximum });
+      if (session.selected.length >= maximum || index >= session.predicates.length - 1) {
+        if (session.selected.length >= maximum) session.checks.slice(index + 1).forEach(check => { check.status = "skipped"; });
+        this._compactFinishSearch(state, session, header);
+      } else {
+        session.predicateIndex += 1;
+        session.checks[session.predicateIndex].status = "next";
+        this.runtime.pending.push(header);
+      }
+    }
+
+    _stepCompact(state) {
+      if (state.kind === "search") { this._compactSearch(state); return; }
+      if (state.kind === "accept" || state.kind === "reject") {
+        this.runtime.result = state.kind; this._emit("terminal", { result: state.kind }); return;
+      }
+      if (state.action === "start") {
+        if (this.runtime.bootstrapError) { this._compactRoute(state, "empty", null); return; }
+        const token = { stackKind: "sigil", symbol: state.initial_symbol || "ROOT", context: "root",
+          ...(state.initial_card ? { card: state.initial_card } : {}) };
+        [...this.runtime.initialItems].reverse().forEach(item => this.runtime.pending.push(clone(token), item));
+        this.runtime.current = null;
+        this._emit("initial-retained", { items: clone(this.runtime.initialItems) });
+        this._compactRoute(state, "pushed", { ...token, allowance: "available" }, true); return;
+      }
+      if (state.action === "discard") {
+        const discarded = [];
+        while (this.runtime.pending.length) {
+          const token = this.runtime.pending.pop();
+          if (token?.stackKind === "delimiter") {
+            discarded.forEach(item => this._setNode(item, { status: "discarded", note: "discarded with completed obligation" }));
+            this._restoreDelimiter(token, discarded);
+            this._compactRoute(state, "delimiter", token, true); return;
+          }
+          if (token?.stackKind !== "sigil") discarded.push(token);
+        }
+        this._compactRoute(state, "empty", null); return;
+      }
+      const token = this.runtime.pending.pop();
+      if (!token) { this._compactRoute(state, "empty", null); return; }
+      if (state.action === "pop_position") {
+        if (token.stackKind === "delimiter") {
+          this._restoreDelimiter(token); this._compactRoute(state, "delimiter", token, true);
+        } else if (token.stackKind === "position") {
+          this.runtime.current = token; this.runtime.frontier = []; this.runtime.selectedFrontier = [];
+          this.runtime.lastMatch = token.matchedBy || "initial"; this.runtime.reason = `examining ${token.id}`;
+          this._setNode(token, { status: "active" }); this._emit("line-selected", { item: clone(token) });
+          this._compactRoute(state, "position", token);
+        } else this._transition(this.policy.outcomes.reject_state, "expected a position or delimiter");
+        return;
+      }
+      if (token.stackKind !== "sigil") { this._transition(this.policy.outcomes.reject_state, "expected a sigil"); return; }
+      this._compactRoute(state, "read", token, state.action !== "pop_header");
+    }
+
     step() {
       this._stepEvents = [];
       if (this.runtime.result) return { events: [], snapshot: this.snapshot() };
@@ -766,6 +1006,11 @@
       const state = this.stateDef();
       if (!state) {
         this._transition(this.policy.outcomes.reject_state, "missing state", `state ${this.runtime.state} is missing`);
+        return { events: clone(this._stepEvents), snapshot: this.snapshot() };
+      }
+
+      if (compact(this.policy)) {
+        this._stepCompact(state);
         return { events: clone(this._stepEvents), snapshot: this.snapshot() };
       }
 
@@ -945,10 +1190,13 @@
       return clone({
         engineVersion: VERSION,
         state: this.runtime.state,
-        stateKind: currentState?.kind || null,
+        stateKind: currentState?.kind === "control" ? currentState.prepare || "control" : currentState?.kind || null,
+        stateAction: currentState?.action || currentState?.kind || null,
         stateDescription: currentState?.description || "",
         routine: this.runtime.routine,
-        pendingCount: this.runtime.pending.filter(item => item?.stackKind !== "delimiter").length,
+        pendingCount: this.runtime.pending.filter(item => !["delimiter", "sigil"].includes(item?.stackKind)).length,
+        sigilCount: this.runtime.pending.filter(item => item?.stackKind === "sigil").length,
+        activeSigil: compact(this.policy) && this.runtime.pending.at(-1)?.stackKind === "sigil" ? this.runtime.pending.at(-1) : null,
         delimiterCount: this.runtime.pending.filter(item => item?.stackKind === "delimiter").length,
         pendingStackCount: this.runtime.pending.length,
         current: this.runtime.current,
@@ -1025,9 +1273,19 @@
       },
       budgets: { thoughts: "integer>=1", depth: "integer>=0", call_depth: "integer>=0" },
       routines: [{ id: "routine-id", label: "optional text", entry: "state-id in this routine" }],
-      states: "ordered array of state objects"
+      states: "ordered array of state objects",
+      compact_control: "control_model.name = compact-sigil-dfa/v1; fixed cards plus a global transition table and one active inert sigil on the pending stack",
+      transitions: "compact only: ordered {from,event,when?:{any?,all?,none?},token?:{symbol?,card?,context?,allowance?,frame?},to?,push_header?:{symbol?,card?,context?,allowance?}|null,predicate?,child?:symbol|{card,symbol}}; candidate rows admit one fixed card category and supply its next inert sigil"
     },
     stateKinds: {
+      control: {
+        action: "start|pop_header|pop_position|pop_continuation|propagate|discard",
+        allowance: "optional available|spent; finite control input while an active header is off the stack",
+        prepare: "optional inspect|search; fixed Oracle preparation for this state",
+        initial_symbol: "start: initial obligation name (default ROOT)",
+        initial_card: "start: optional initial named card",
+        on: "optional fixed fallback targets by event; otherwise the global table selects the next state"
+      },
       push_initial: { on: { pushed: "state-id", invalid: "state-id" } },
       pop: {
         until: 'optional "current_frame"',
