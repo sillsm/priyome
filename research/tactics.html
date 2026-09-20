@@ -274,6 +274,8 @@ No policy events yet.</pre>
   const ORACLE_URL = "/scratchchess_oracle.js?v=2.19.0-static-board-facts";
   const BASIC_POLICY_URL = "/reasoning/basicpolicy.json?v=7.1.0-stockfish-suite";
   const REASONING_POLICY_URL = "/reasoning/reasoningpolicy.json?v=15.0.0-woodpecker50";
+  const RADICAL2_POLICY_URL = "/reasoning/radical2.json?v=3.5.0";
+  const RADICAL2_ORACLE_URL = "/reasoning/radical2-oracle.js?v=1.2.1-rebase";
   const PUZZLES_URL = "/tactical_positions.md";
   const STORAGE_POLICIES = "priyomes-predicate-tactics-policies-v2";
   const STORAGE_SETTINGS = "priyomes-predicate-tactics-settings-v1";
@@ -298,6 +300,10 @@ No policy events yet.</pre>
     puzzleIndex: 0,
     basicPolicy: null,
     reasoningPolicy: null,
+    radical2Policy: null,
+    Radical2Oracle: null,
+    radical2ReferenceAudit: null,
+    radical2Error: "",
     savedPolicies: {},
     unsupportedSavedPolicies: {},
     policyId: "basic",
@@ -429,6 +435,25 @@ No policy events yet.</pre>
     return parsed;
   }
 
+  // Optional independent feature: a missing Radical 2 asset must not disable
+  // the existing Basic / Reasoning page or switch their Oracle implementation.
+  async function loadRadical2() {
+    try {
+      const [policy, module] = await Promise.all([
+        loadBuiltInPolicy(RADICAL2_POLICY_URL, "Radical 2 policy"),
+        importExact(RADICAL2_ORACLE_URL, "Radical 2 Oracle", m =>
+          typeof m.Radical2Oracle === "function" && typeof m.auditRadical2Reference === "function")
+      ]);
+      app.radical2Policy = policy;
+      app.Radical2Oracle = module.Radical2Oracle;
+      app.radical2ReferenceAudit = module.auditRadical2Reference;
+      app.radical2OracleVersion = module.RADICAL2_ORACLE_VERSION;
+    } catch (error) {
+      app.radical2Error = error?.message || String(error);
+      console.warn("Radical 2 unavailable; Basic and Reasoning are unchanged:", error);
+    }
+  }
+
   function parsePositions(markdown) {
     const output = [];
     let current = null;
@@ -498,6 +523,7 @@ No policy events yet.</pre>
       { id: "basic", label: app.basicPolicy.name || "basic", policy: app.basicPolicy },
       { id: "reasoning", label: app.reasoningPolicy.name || "reasoning", policy: app.reasoningPolicy }
     ];
+    if (app.radical2Policy) options.push({ id: "radical2", label: "Radical 2", policy: app.radical2Policy });
     Object.entries(app.savedPolicies || {}).filter(([name]) => !app.unsupportedSavedPolicies[name]).sort(([a], [b]) => a.localeCompare(b)).forEach(([name, policy]) => options.push({ id: `saved:${name}`, label: `${name} · saved`, policy }));
     return options;
   }
@@ -508,7 +534,7 @@ No policy events yet.</pre>
   }
 
   function policyTestIdentity(id) {
-    if (id === "basic" || id === "reasoning") return id;
+    if (id === "basic" || id === "reasoning" || id === "radical2") return id;
     if (id.startsWith("saved:")) return id.slice(6);
     throw new Error(`Unknown policy ${id}`);
   }
@@ -553,6 +579,7 @@ No policy events yet.</pre>
   function policyById(id) {
     if (id === "basic") return clone(app.basicPolicy);
     if (id === "reasoning") return clone(app.reasoningPolicy);
+    if (id === "radical2" && app.radical2Policy) return clone(app.radical2Policy);
     if (id.startsWith("saved:")) {
       const name = id.slice(6);
       if (!app.savedPolicies[name]) throw new Error(`Saved policy ${name} does not exist`);
@@ -568,6 +595,16 @@ No policy events yet.</pre>
   }
 
   function createOracleForPuzzle(puzzle, policy = app.policy) {
+    if (policy.oracle_module === "radical2") {
+      if (!app.Radical2Oracle) throw new Error(app.radical2Error || "Radical 2 Oracle has not loaded");
+      const oracle = new app.Radical2Oracle({ createGame: app.scratch.createGame, ...effectiveOracleConfig(policy) });
+      const previousMove = puzzle.source_setup?.uci || null;
+      const previousCapture = previousMove ? oracle.facts.board(puzzle.source_setup.fen).isCapture(previousMove) : false;
+      // Only the board and actual preceding move cross the runtime boundary.
+      oracle.reset({ fen: puzzle.fen, title: puzzle.title, previousMove, previousCapture,
+        policyDepth: Number(policy.budgets.depth) });
+      return oracle;
+    }
     const oracle = new app.Oracle({ createGame: app.scratch.createGame, ...effectiveOracleConfig(policy) });
     oracle.reset({ fen: puzzle.fen, title: puzzle.title, theme: puzzle.theme || "", solution: puzzle.solution || "", where: puzzle.where || "", policyDepth: Number(policy?.budgets?.depth || 0) });
     return oracle;
@@ -1236,7 +1273,7 @@ No policy events yet.</pre>
     $("#resultText").textContent = result ? [result.toUpperCase(), diagnostic].filter(Boolean).join(" · ") : app.running ? "running" : stateTitle(stateDef(snapshot?.state));
     $("#resultChip").className = `status-chip ${result || ""}`;
     $("#engineChip").innerHTML = `<span class="status-dot"></span><span>Chess facts · one-ply horizon</span>`;
-    $("#engineChip").title = `predicate.js ${P.VERSION}; Oracle ${app.oracleVersion}; ${TACTICS_BUILD}`;
+    $("#engineChip").title = `predicate.js ${P.VERSION}; Oracle ${app.policy?.oracle_module === "radical2" ? "Radical 2 " + app.radical2OracleVersion : app.oracleVersion}; ${TACTICS_BUILD}`;
     $("#policySelect").value = app.policyId;
     $("#puzzleSelect").value = String(app.puzzleIndex);
     const disabled = !app.initialized || app.locked;
@@ -1781,9 +1818,19 @@ No policy events yet.</pre>
     const identity = policyTestIdentity(option.id);
     if (test.policy !== identity) throw new Error(`${test.name}: test policy ${test.policy} does not match selected policy ${identity}`);
     const puzzle = { title: test.name, fen: test.fen, theme: "policy test", solution: "", where: "", notes: [] };
+    const radical2Test = option.policy.oracle_module === "radical2" && test.headers.PredicateCompareMode === "ACCEPTED_SOURCE_PATH";
+    if (option.policy.oracle_module === "radical2" && test.headers.LichessSourceFEN && test.headers.LichessSetupMoveUCI) {
+      puzzle.source_setup = { fen: test.headers.LichessSourceFEN, uci: test.headers.LichessSetupMoveUCI };
+    }
     const headless = runHeadless(puzzle, clone(option.policy), identity);
     const actualMovetext = extractPgnMovetext(headless.comparisonPgn || headless.pgn);
-    const equal = canonicalPgnMovetext(actualMovetext) === canonicalPgnMovetext(test.expectedMovetext);
+    // SOURCE_PATH is opt-in test comparison, not an alternative search rule.
+    // Legacy EQUAL/NOT_EQUAL comparisons retain their exact previous meaning.
+    const referenceAudit = radical2Test
+      ? app.radical2ReferenceAudit(headless.snapshot, test.headers.LichessSolutionUCI,
+          JSON.parse(test.headers.PredicateReplyFixtures || "[]")) : null;
+    const equal = referenceAudit ? referenceAudit.sourcePathPass
+      : canonicalPgnMovetext(actualMovetext) === canonicalPgnMovetext(test.expectedMovetext);
     const relationPass = test.compare === "EQUAL" ? equal : !equal;
     const actualResult = String(headless.snapshot.result || "").toUpperCase();
     const resultPass = actualResult === test.expectedResult;
@@ -1792,7 +1839,7 @@ No policy events yet.</pre>
     const batchAudit = ourMoveBatchAudit(headless.snapshot, option.policy);
     const batchLimit = test.maxOurMoveBatch === null ? Number(option.policy?.our_move_candidate_limit || 5) : test.maxOurMoveBatch;
     const batchPass = batchAudit.pass && batchAudit.maxSelected <= batchLimit;
-    const pass = relationPass && resultPass && exploredPass && batchPass;
+    const pass = relationPass && resultPass && exploredPass && batchPass && (!referenceAudit || referenceAudit.replyFixturesPass);
     const relationDescription = test.compare === "EQUAL"
       ? (equal ? "Movetext matched." : "Movetext did not match.")
       : (!equal ? "Negative comparison passed: movetext differed as required." : "Negative comparison failed: movetext unexpectedly matched.");
@@ -1819,8 +1866,11 @@ No policy events yet.</pre>
       expectedMovetext: test.expectedMovetext,
       actualMovetext,
       actualPgn: headless.pgn,
-      detail: `${relationDescription} PredicateResult expected ${test.expectedResult}, actual ${actualResult}. ${exploredDescription} ${batchDescription}`,
-      diff: firstCanonicalDifference(test.expectedMovetext, actualMovetext),
+      detail: referenceAudit
+        ? `Source path ${referenceAudit.sourcePliesCovered}/${referenceAudit.sourcePlies}; reply fixtures ${referenceAudit.replyFixturesPass ? "passed" : "FAILED"}. PredicateResult expected ${test.expectedResult}, actual ${actualResult}. ${exploredDescription} ${batchDescription}`
+        : `${relationDescription} PredicateResult expected ${test.expectedResult}, actual ${actualResult}. ${exploredDescription} ${batchDescription}`,
+      ...(referenceAudit ? { referenceAudit } : {}),
+      diff: referenceAudit ? JSON.stringify(referenceAudit, null, 2) : firstCanonicalDifference(test.expectedMovetext, actualMovetext),
       headless
     };
   }
@@ -2108,8 +2158,10 @@ No policy events yet.</pre>
         loadRuntimeModules(),
         loadBuiltInPolicy(BASIC_POLICY_URL, "Basic policy").then((policy) => { app.basicPolicy = policy; }),
         loadBuiltInPolicy(REASONING_POLICY_URL, "Reasoning policy").then((policy) => { app.reasoningPolicy = policy; }),
-        loadPuzzles()
+        loadPuzzles(),
+        loadRadical2()
       ]);
+      if (app.policyId === "radical2" && !app.radical2Policy) app.policyId = "basic";
       loadSavedPolicies();
       validatePuzzleLibrary();
       app.policy = policyById(app.policyId);
@@ -2118,8 +2170,9 @@ No policy events yet.</pre>
       renderPolicySelect();
       renderPolicyTests();
       app.initialized = true;
+      if (app.radical2Error) toast(`Radical 2 not loaded: ${app.radical2Error}`, "warn");
       await startPuzzle(0);
-      $("#engineChip").title = `ScratchChess: ${app.scratch.source}\nOracle: ${app.oracleSource}`;
+      $("#engineChip").title = `ScratchChess: ${app.scratch.source}\nOracle: ${app.policy?.oracle_module === "radical2" ? RADICAL2_ORACLE_URL : app.oracleSource}`;
     } catch (error) {
       console.error(error);
       document.body.innerHTML = `<div class="fatal"><strong>Predicate Chess could not start.</strong><br>${esc(error?.message || error)}<br><br>Required deployment paths: /predicate.js, /reasoning/predicate-input.js, /research/scratchchess.js, /scratchchess_oracle.js, /reasoning/basicpolicy.json, /reasoning/reasoningpolicy.json, and /tactical_positions.md.</div>`;
