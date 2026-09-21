@@ -1,3 +1,9 @@
+/** Unified Radical 2 observation module.
+ * Packaging only: original factual adapter plus approved completion observations.
+ * The JSON policy owns selection, transitions and stopping. No source-deck selector.
+ * The separately exported reference auditor runs only after search.
+ */
+const CORE = (() => {
 /** Radical 2 isolated deployment module.
  * Mechanically bundles the previously tested facts and pre-trainer Oracle.
  * No shared globals, search-engine changes, learned model or answer table.
@@ -452,16 +458,16 @@ class SuccessorOracle{
 return {SuccessorOracle,replyClass,SUCCESSOR_ORACLE_VERSION};
 })();
 
-export const Radical2Oracle = ORACLE_MODULE.SuccessorOracle;
-export const RADICAL2_ORACLE_VERSION = ORACLE_MODULE.SUCCESSOR_ORACLE_VERSION;
-export const Radical2Facts = FACT_MODULE;
-export const radical2ReplyClass = ORACLE_MODULE.replyClass;
+const Radical2Oracle = ORACLE_MODULE.SuccessorOracle;
+const RADICAL2_ORACLE_VERSION = ORACLE_MODULE.SUCCESSOR_ORACLE_VERSION;
+const Radical2Facts = FACT_MODULE;
+const radical2ReplyClass = ORACLE_MODULE.replyClass;
 
 /** Post-run source/reply-fixture assertions. The caller supplies a COMPLETED
  * snapshot. Expected moves and fixture labels never cross into the Oracle.
  * Matches pass 3's accepted-root traversal and annotation qualification.
  */
-export function auditRadical2Reference(snapshot, solutionUci, fixtures) {
+function auditRadical2Reference(snapshot, solutionUci, fixtures) {
   if (!Array.isArray(fixtures)) throw new Error('Radical 2 reply fixtures must be an array');
   const expected = String(solutionUci || '').trim().split(/\s+/).filter(Boolean);
   if (!expected.length || expected.some(u => !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(u))) {
@@ -507,3 +513,203 @@ export function auditRadical2Reference(snapshot, solutionUci, fixtures) {
     sourcePathPass:snapshot.result === 'accept' && sourcePliesCovered === expected.length,
     replyFixturesPass:issues.length === 0, issues};
 }
+
+return {Radical2Oracle,RADICAL2_ORACLE_VERSION,Radical2Facts,radical2ReplyClass,auditRadical2Reference};
+})();
+const OBSERVATIONS = (() => {
+const {Radical2Oracle, Radical2Facts}=CORE;
+/** Observation-only extension for the five-position study.
+ * The original Radical2Oracle is imported unchanged. No test data, case IDs,
+ * FEN constants, source moves, search/score routines or reply labels are read.
+ * Additional computations are geometric before/after observations only.
+ */
+const COMPLETION_OBSERVATIONS=(()=>{
+/** Observation layer only. No puzzle IDs, FEN fixtures, source moves, engine scores,
+ * decision trees, policy cards, or search recursion. The policy owns acceptance.
+ */
+
+const {other,sq,name,VALUES}=Radical2Facts;
+const type=p=>(p||'').toLowerCase();
+const distance=(a,b)=>Math.max(Math.abs((a&7)-(b&7)),Math.abs((a>>3)-(b>>3)));
+const step=c=>c==='w'?8:-8;
+const rank=(s,c)=>c==='w'?(s>>3):7-(s>>3);
+const clearAhead=(b,p,c)=>{for(let z=p+step(c);z>=0&&z<64;z+=step(c))if(b.cells[z])return false;return true;};
+const DEFINITIONS={
+ "all_attacked_pawns_defended":"Every currently geometrically attacked solver pawn has at least one friendly geometric defender.",
+ "multiple_own_pawns":"The solver has at least two pawns.",
+ "material_lead_rook":"Solver material inventory balance is at least five.",
+ "enemy_queen_absent":"The opponent has no queen.",
+ "material_lead_queen":"Solver material inventory balance is at least nine.",
+ "attacks_king_shelter":"The moved unit directly attacks an enemy pawn adjacent to the enemy king.",
+ "king_rook_supported_file":"A solver king on its third rank and rook on its first rank share a file with an empty intervening square controlled by the king.",
+ "rook_pawn_screen":"A friendly a- or h-pawn is on its second rank, screening a back-rank corner.",
+ "king_on_home_two_ranks":"Solver king is on its first or second rank.",
+ queens_absent:'Neither side has a queen.',
+ connected_rooks:'Two solver rooks geometrically defend each other.',
+ king_has_flight:'The solver king has a legal adjacent destination.',
+ opposite_bishop_ending:'Exactly one bishop on each side, on opposite colors; no knight, rook or queen.',
+ king_guards_next_two:'A solver king controls the next two empty advance squares of a non-rook passed pawn.',
+ enemy_passers_blockaded:'At least one enemy passer exists and every enemy passer is physically blocked on its next square by a solver non-pawn unit.',
+ passer_exposed:'At least one solver passer is geometrically attacked and undefended.',
+ edge_king_barrier:'The enemy king is on an edge file, same rank as the solver king, with one file between them.',
+ single_clear_majority_candidate:'Exactly one non-rook candidate on a solver-majority wing, unopposed on its file but not yet passed, with an entirely empty forward file. Subsequent candidate observations use this same unique witness.',
+ candidate_exposed:'A solver candidate is attacked and undefended.',
+ candidate_advance_ready:'A clear-file candidate has an immediate advance square which is unattacked or defended by the solver.',
+ candidate_beyond_king:'A clear-file candidate lies on the opposite side of the solver king from an edge-confined enemy king.',
+ enemy_king_blocks_passer:'An enemy king physically occupies the next square of an enemy passed pawn.',
+ king_distance_exceeds_pushes:'For a clear-file candidate the enemy king distance to promotion exceeds the pawn push count. Distance observation only, not a race theorem.',
+ queen_only_heavy:'Enemy has at least one queen but no rook or knight.',
+ rook_shelter_corridor:'Solver king and rook on own back rank; the rook guards an empty horizontal route to a corner with a friendly pawn immediately in front.',
+ compensated_piece_attacks:'Each attacked solver non-pawn is defended or each attacker is sole defender of an attacked enemy countertarget of at least equal value.',
+ material_lead_minor:'Solver material inventory balance is at least three.',
+ king_guards_rook_now:'The solver king geometrically defends a friendly rook on this board.',
+ promotion_trade_margin:'Balance remains positive after any legal capture of the newly promoted piece, counting a geometrical unpinned nonking recapture at the same square.',
+ counterchecks_land_on_controlled_squares:'Every legal opponent checking move ends on a square already geometrically controlled by the solver. This does not assert that taking the checker is legal or sufficient, nor that every check is a refuted move.',
+ king_supports_next_two:'Moved king controls the next two empty advance squares of a friendly non-rook passed pawn.'
+};
+function boardObservation(b,solver,move=null){
+ const enemy=other(solver),k=b.king(solver),ek=b.king(enemy),ps=b.pieces(solver,'p'),eps=b.pieces(enemy,'p'),out={};
+ const add=(id,w={})=>out[id]=w;
+ if(ps.length>=2)add('multiple_own_pawns',{pawns:ps.map(name)});
+ if(!b.pieces(null,'q').length)add('queens_absent');
+ const rr=b.pieces(solver,'r'),pairs=rr.flatMap((r,i)=>rr.slice(i+1).filter(s=>b.attacksFrom(r).includes(s)).map(s=>[name(r),name(s)]));
+ if(pairs.length)add('connected_rooks',{pairs});
+ if(b.kingMoves(solver).length)add('king_has_flight',{moves:b.kingMoves(solver)});
+ if(rr.some(r=>rank(r,solver)===0&&(r&7)===(k&7)&&rank(k,solver)===2&&!b.cells[(r+k)/2]))add('king_rook_supported_file',{king:name(k),rooks:rr.filter(r=>rank(r,solver)===0&&(r&7)===(k&7)).map(name)});
+ if(rr.some(r=>distance(k,r)===1))add('king_guards_rook_now',{king:name(k),rooks:rr.filter(r=>distance(k,r)===1).map(name)});
+ const bishops=b.pieces(solver,'b'),eb=b.pieces(enemy,'b');
+ if(!b.pieces(null,'nrq').length&&bishops.length===1&&eb.length===1&&((bishops[0]+(bishops[0]>>3))&1)!==((eb[0]+(eb[0]>>3))&1))add('opposite_bishop_ending');
+ const runners=ps.filter(p=>b.passed(p));
+ const guards=runners.filter(p=>(p&7)!==0&&(p&7)!==7&&p+2*step(solver)>=0&&p+2*step(solver)<64&&[p+step(solver),p+2*step(solver)].every(z=>!b.cells[z]&&distance(k,z)===1));
+ if(guards.length)add('king_guards_next_two',{king:name(k),pawns:guards.map(name)});
+ if(runners.some(p=>b.attacked(enemy,p)&&!b.attacked(solver,p)))add('passer_exposed');
+ const epass=eps.filter(p=>b.passed(p));
+ if(epass.some(p=>p+step(enemy)===ek))add('enemy_king_blocks_passer',{king:name(ek)});
+ if(epass.length&&epass.every(p=>b.pieces(solver,'nbrqk').includes(p+step(enemy))))add('enemy_passers_blockaded',{pawns:epass.map(p=>({pawn:name(p),blocker:name(p+step(enemy))}))});
+ if(((ek&7)===0||(ek&7)===7)&&(k>>3)===(ek>>3)&&Math.abs((k&7)-(ek&7))===2)add('edge_king_barrier',{ourKing:name(k),enemyKing:name(ek)});
+ const candidates=ps.filter(p=>(p&7)!==0&&(p&7)!==7&&!b.passed(p)&&!eps.some(e=>(e&7)===(p&7)&&(solver==='w'?e>p:e<p)));
+ if(candidates.some(p=>b.attacked(enemy,p)&&!b.attacked(solver,p)))add('candidate_exposed');
+ const candidateMajority=candidates.filter(p=>{const wing=(p&7)>=4;return ps.filter(x=>((x&7)>=4)===wing).length>eps.filter(x=>((x&7)>=4)===wing).length});
+ const clear=candidateMajority.length===1&&clearAhead(b,candidateMajority[0],solver)?candidateMajority:[];
+ if(clear.length)add('single_clear_majority_candidate',{pawns:clear.map(name)});
+ const ready=clear.filter(p=>!b.attacked(enemy,p+step(solver))||b.attacked(solver,p+step(solver)));
+ if(ready.length)add('candidate_advance_ready',{pawns:ready.map(name)});
+ if(out.edge_king_barrier){const a=clear.filter(p=>((p&7)-(k&7))*((ek&7)-(k&7))<0);if(a.length)add('candidate_beyond_king',{pawns:a.map(name)});}
+ const late=clear.filter(p=>distance(ek,(p&7)+(solver==='w'?56:0))>7-rank(p,solver));
+ if(late.length)add('king_distance_exceeds_pushes',{pawns:late.map(name),king:name(ek)});
+ if(b.pieces(enemy,'q').length&&!b.pieces(enemy,'nr').length)add('queen_only_heavy');
+ if(rank(k,solver)<=1)add('king_on_home_two_ranks');
+ if(ps.some(p=>rank(p,solver)===1&&((p&7)===0||(p&7)===7)))add('rook_pawn_screen');
+ if(rank(k,solver)===0){const corridors=[];for(const corner of solver==='w'?[0,7]:[56,63]){
+   if(!ps.includes(corner+step(solver)))continue;const dx=Math.sign(corner-k);if(!dx)continue;let path=[];for(let z=k+dx;;z+=dx){path.push(z);if(z===corner)break;}
+   for(const r of rr.filter(r=>rank(r,solver)===0))if(path.every(z=>!b.cells[z])&&((r&7)-(k&7))*((corner&7)-(k&7))<0&&Radical2Facts.between(r,corner).every(z=>!b.cells[z]||z===k))corridors.push({king:name(k),rook:name(r),corner:name(corner),pawn:name(corner+step(solver)),path:path.map(name)});
+  }if(corridors.length)add('rook_shelter_corridor',{corridors});}
+ const targets=b.pieces(solver,'nbrq').filter(t=>b.attacked(enemy,t)),comp=[];
+ for(const t of targets){if(b.attacked(solver,t)){comp.push({target:name(t),defenders:b.attackers(solver,t).map(name)});continue;}
+  const bound=b.attackers(enemy,t).map(a=>({a,counter:b.pieces(enemy,'pnbrq').filter(x=>x!==a&&VALUES[type(b.cells[x])]>=VALUES[type(b.cells[t])]&&b.attacked(solver,x)&&b.attackers(enemy,x).length===1&&b.attackers(enemy,x)[0]===a)}));
+  if(bound.some(v=>!v.counter.length))break;comp.push({target:name(t),overload:bound.map(v=>({attacker:name(v.a),targets:v.counter.map(name)}))});
+ }
+ if(comp.length===targets.length)add('compensated_piece_attacks',{targets:comp});
+ if(!b.pieces(enemy,'q').length)add('enemy_queen_absent');
+ const attackedPawns=ps.filter(t=>b.attacked(enemy,t));if(attackedPawns.every(t=>b.attacked(solver,t)))add('all_attacked_pawns_defended',{pawns:attackedPawns.map(name)});
+ const bal=b.balance(solver);if(bal>=5)add('material_lead_rook',{balance:bal});if(bal>=9)add('material_lead_queen',{balance:bal});if(bal>=3)add('material_lead_minor',{balance:bal});
+ const turn=b.withTurn(enemy);
+ if(move?.promotion && move.side===solver){const target=sq(move.to),defenders=b.attackers(solver,target).filter(t=>type(b.cells[t])!=='k'&&!b.pinned(solver,t));const caps=turn.legal().filter(u=>turn.captureSquare(u)===target);
+  const losses=caps.map(u=>({move:u,loss:VALUES[type(b.cells[target])]-(defenders.length?VALUES[type(b.cells[sq(u.slice(0,2))])]:0)}));
+  if(bal>Math.max(0,...losses.map(t=>t.loss)))add('promotion_trade_margin',{target:move.to,balance:bal,defenders:defenders.map(name),captures:losses});}
+ if(!turn.checkingMoves().some(u=>!b.attacked(solver,sq(u.slice(2,4)))))add('counterchecks_land_on_controlled_squares');
+ return out;
+}
+function moveObservation(b,u,n=b.apply(u)){
+ const c=b.turn,z=sq(u.slice(2,4)),out={};
+ if(!n.checkingMoves().some(v=>!n.attacked(c,sq(v.slice(2,4)))))out.counterchecks_land_on_controlled_squares={checkingMoves:n.checkingMoves()};
+ if(type(b.cells[sq(u.slice(0,2))])!=='k')return out;
+ const pawns=n.pieces(c,'p').filter(p=>(p&7)!==0&&(p&7)!==7&&n.passed(p)&&p+2*step(c)>=0&&p+2*step(c)<64&&[p+step(c),p+2*step(c)].every(s=>!n.cells[s]&&distance(z,s)===1));
+ if(pawns.length)out.king_supports_next_two={king:name(z),pawns:pawns.map(name)};return out;
+}
+function replyObservation(b,u,n=b.apply(u)){
+ const c=b.turn,e=other(c),z=sq(u.slice(2,4)),king=n.king(e);
+ const targets=n.pieces(e,'p').filter(t=>distance(t,king)===1&&n.attacksFrom(z).includes(t));
+ return targets.length?{attacks_king_shelter:{attacker:name(z),king:name(king),pawns:targets.map(name)}}:{};
+}
+
+return {boardObservation,moveObservation,replyObservation,DEFINITIONS};
+})();
+const {boardObservation,moveObservation,replyObservation,DEFINITIONS}=COMPLETION_OBSERVATIONS;
+const {other,sq,name}=Radical2Facts;
+const type=p=>(p||'').toLowerCase();
+const step=c=>c==='w'?8:-8;
+function opposed(b,s,c){return b.pieces(other(c),'p').some(t=>(t&7)===(s&7)&&(c==='w'?t>s:t<s));}
+function opposition(b){const a=b.king('w'),z=b.king('b');return ((a&7)===(z&7)&&Math.abs((a>>3)-(z>>3))===2)||((a>>3)===(z>>3)&&Math.abs((a&7)-(z&7))===2);}
+function oppositionClear(b){const a=b.king('w'),z=b.king('b');return opposition(b)&&!b.cells[(a+z)/2];}
+const NEW_DEFINITIONS={...DEFINITIONS,
+ king_to_edge_file:'The king moves from a non-edge file to the a-file or h-file. Geometry only; not a safety judgment.',
+ attacks_passer:'The moved piece geometrically attacks an opposing passed pawn in the resulting position.',
+ blocks_opposing_pawn:'The moved pawn ends directly in front of an opposing pawn on the same file.',
+ keeps_opposition_geometry:'Both kings remain unmoved in rank/file opposition with one empty intervening square.',
+ controls_passer_path:'The moved piece controls an empty forward-file square of an opposing passed pawn.',
+ wing_pawn_majority:'The solver has more pawns than the opponent on at least one fixed half: a-d or e-h.',
+ pawn_unopposed_on_file:'At least one solver pawn has no opposing pawn strictly ahead on the same file.',
+ supports_pawn_advance:'The moved piece defends an empty square immediately ahead of a friendly pawn.',
+ supported_unopposed_advance:'A solver pawn unopposed on its file has an empty immediate forward square geometrically defended by a friendly unit. Two related observations with the same pawn witness.',
+ moved_pawn_unopposed_on_file:'The moved pawn has no opposing pawn ahead on its file in the resulting position; captures are included and adjacent sentries may remain.',
+ king_can_capture_mover:'The opponent has a legal king capture of the moved piece.',
+ king_defends_rook:'The moved king geometrically defends a friendly rook in the resulting position.'
+};
+function boardExtras(b,solver){
+ const out={},own=b.pieces(solver,'p'),enemy=b.pieces(other(solver),'p');
+ const halves=[0,1].map(h=>({half:h===0?'a-d':'e-h',ours:own.filter(s=>((s&7)<4?0:1)===h).map(name),theirs:enemy.filter(s=>((s&7)<4?0:1)===h).map(name)})).filter(h=>h.ours.length>h.theirs.length);
+ if(halves.length)out.wing_pawn_majority={solver,halves};
+ const unopposed=own.filter(s=>!opposed(b,s,solver));
+ if(unopposed.length)out.pawn_unopposed_on_file={pawns:unopposed.map(name)};
+ const supported=unopposed.map(s=>({s,z:s+step(solver)})).filter(({z})=>z>=0&&z<64&&!b.cells[z]&&b.attacked(solver,z));
+ if(supported.length)out.supported_unopposed_advance={pawns:supported.map(({s,z})=>({pawn:name(s),advance:name(z),defenders:b.attackers(solver,z).map(name)}))};
+ return out;
+}
+function moveExtras(b,u,n=b.apply(u)){
+ const out={},c=b.turn,a=sq(u.slice(0,2)),z=sq(u.slice(2,4)),t=type(b.cells[a]),attacks=n.attacksFrom(z),enemy=other(c);
+ const passers=n.pieces(enemy,'p').filter(s=>n.passed(s));
+ const targets=passers.filter(s=>attacks.includes(s));
+ if(targets.length)out.attacks_passer={piece:name(z),pawns:targets.map(name)};
+ if(t==='p' && type(n.cells[z])==='p' && !opposed(n,z,c))out.moved_pawn_unopposed_on_file={pawns:[name(z)],mover:c};
+ const kingCaptures=n.legal().filter(v=>sq(v.slice(0,2))===n.king(enemy)&&n.captureSquare(v)===z);
+ if(kingCaptures.length)out.king_can_capture_mover={moves:kingCaptures};
+ const target=z+step(c);
+ if(t==='p'&&target>=0&&target<64&&type(n.cells[target])==='p'&&n.pieces(enemy,'p').includes(target))out.blocks_opposing_pawn={pawn:name(z),blocked:name(target)};
+ if(b.king('w')===n.king('w')&&b.king('b')===n.king('b')&&oppositionClear(b)&&oppositionClear(n))out.keeps_opposition_geometry={kings:['w','b'].map(c=>name(n.king(c)))};
+ const controlled=[];
+ for(const p of passers)for(let x=p+step(enemy);x>=0&&x<64;x+=step(enemy))if(!n.cells[x]&&attacks.includes(x))controlled.push({pawn:name(p),square:name(x)});
+ if(controlled.length)out.controls_passer_path={piece:name(z),squares:controlled};
+ const support=n.pieces(c,'p').map(p=>({p,x:p+step(c)})).filter(({x})=>x>=0&&x<64&&!n.cells[x]&&attacks.includes(x));
+ if(support.length)out.supports_pawn_advance={piece:name(z),pawns:support.map(({p,x})=>({pawn:name(p),advance:name(x)}))};
+ if(t==='k'){
+  if((z&7)===0||(z&7)===7)if((a&7)!==0&&(a&7)!==7)out.king_to_edge_file={from:name(a),to:name(z)};
+  const rooks=n.pieces(c,'r').filter(p=>attacks.includes(p));
+  if(rooks.length)out.king_defends_rook={king:name(z),rooks:rooks.map(name)};
+ }
+ return out;
+}
+class FiveStudyOracle extends Radical2Oracle{
+ expandPosition(id){
+  const c=super.expandPosition(id);
+  if(c.studyAnnotated)return c;
+  const b=this.facts.board(c.fen),extra={...boardExtras(b,this.rootSide),...boardObservation(b,this.rootSide,c.move)};
+  Object.assign(c.observed,extra);c.predicates=[...new Set([...c.predicates,...Object.keys(extra)])];
+  c.facts.push(...Object.entries(extra).map(([k,v])=>`${k}: ${JSON.stringify(v)}`));
+  for(const childId of c.children){
+   const child=this.getPosition(childId),f={...moveExtras(b,child.move.uci,this.facts.board(child.fen)),...moveObservation(b,child.move.uci,this.facts.board(child.fen)),...replyObservation(b,child.move.uci,this.facts.board(child.fen))};
+   Object.assign(child.rawMoveFacts,f);child.predicates=[...new Set([...child.predicates,...Object.keys(f)])];
+   child.facts.push(...Object.entries(f).map(([k,v])=>`${k}: ${JSON.stringify(v)}`));
+  }
+  c.studyAnnotated=true;return c;
+ }
+}
+
+return {FiveStudyOracle,NEW_DEFINITIONS,boardExtras,moveExtras};
+})();
+export const Radical2Oracle=OBSERVATIONS.FiveStudyOracle;
+export const RADICAL2_ORACLE_VERSION=CORE.RADICAL2_ORACLE_VERSION;
+export const Radical2Facts=CORE.Radical2Facts;
+export const radical2ReplyClass=CORE.radical2ReplyClass;
+export const auditRadical2Reference=CORE.auditRadical2Reference;
+export const completionObservationDefinitions=OBSERVATIONS.NEW_DEFINITIONS;
