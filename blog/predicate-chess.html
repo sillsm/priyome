@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script type="text/markdown" id="pc-markdown">
+# Predicate Chess
+
+*Part I · Facts, proof trees, and the precondition theorem*
+
+**Max Sills · October 5, 2026**
+
+I've been trying to build a chess system I can actually learn. I want to look at a position, recognize a few facts, and use those facts to decide what deserves calculation. Then I want to be able to explain every step.
+
+The project has gotten tangled. We need some truths we can go back to.
+
+So I'm starting over at the foundation. How do the pieces move? What does it mean to attack something? What are we claiming when we say a tactic works? And what has to be true on the board before a particular tactic can happen?
+
+The idea is to solve tactics as little proofs. A position gives us facts. A legal move takes us to another position, with another set of facts. We follow the branches until we can establish the objective we actually set out to prove.
+
+The first theorem is going to be deliberately small. It says that certain relationships between the opponent's pieces must already exist before our move can exploit them. The useful part is being precise about which relationships, and what “before” means.
+
+## 1. The ground floor
+
+The movement rules are our starting axioms. Here is the short version of how the pieces move.[2]
+
+| Piece | Movement |
+| --- | --- |
+| Rook | Any distance along a rank or file. |
+| Bishop | Any distance along a diagonal. |
+| Queen | Rook or bishop movement. |
+| Knight | Two squares along one axis and one along the other; it can jump. |
+| King | One square in any direction, subject to safety. |
+| Pawn | Forward into an empty square; optionally two from its starting rank if clear. Captures diagonally forward. |
+
+Sliding pieces cannot pass through occupied squares. Ordinary captures replace an enemy piece; friendly pieces cannot share a square. On its last rank, a pawn promotes to a same-color queen, rook, bishop, or knight.[2]
+
+Two special moves need their own rules:[1]
+
+- **Castling:** The king moves two squares toward a rook, which moves to the crossed square. Both must be unmoved, the intervening squares empty, and the king’s starting, transit, and destination squares safe.
+- **En passant:** Immediately after an adjacent enemy pawn advances two squares, a pawn may capture it as if it had advanced one, subject to king safety.
+
+**Check** means the king is attacked. A legal move must leave your king safe. **Checkmate** means check with no legal reply. No legal move without check is **stalemate**, a draw. Kings are never captured.[1]
+
+There is a subtle distinction we need to preserve: a pinned piece still attacks squares for king safety, even when moving there would be illegal. “Attacks” and “can legally capture” are different predicates.[1]
+
+For this project, I call the part that reads those facts the **Oracle**. It recognizes what is on the board. When I am playing, I have to learn to do that recognition myself.
+
+## 2. A position is a collection of facts
+
+A **predicate** is a statement we can evaluate at a position. It has to say something definite enough to be true or false.
+
+| Predicate | The fact it records |
+| --- | --- |
+| White is in check | White's king is currently attacked. |
+| The black queen and king share a file | Their file coordinates match. |
+| There is a clear rook line from a1 to a7 | The squares strictly between the endpoints are empty. |
+| The knight has a legal move to e6 | That move satisfies the movement and king-safety rules. |
+| Black has no legal reply | The legal move set is empty. |
+| White's material balance is at least +3 | A stated accounting convention reaches that threshold. |
+
+“This is the best move” would require a different kind of argument. “The queen and king share a file” is something I can look at and check.
+
+These verified facts are the local premises of the proof. We can think of them as the axioms we have available at that node. The distinction is that the rules remain fixed while the local facts change. “White is in check” can become false after one legal move. We do not change the rules to make that happen.
+
+The Oracle can also be wrong. A proof built on a misread diagonal is only a proof of what would follow from that mistaken premise. The connection back to the actual board has to be checked.
+
+Sometimes the useful fact is negative: the line is blocked; the knight cannot reach the fork square; the candidate leaves our king in check. I will call a fact that blocks a proposed step an **anti-predicate**. It is an explicit reason to reject that step. If the Oracle reports only selected facts, an omitted predicate is still unknown. Rejecting a move requires a checked negative, not an omission from the list.
+
+I also want to distinguish three levels of description. Two targets may have the right **geometry**. A piece may actually **attack** them. A legal sequence may **win something**. Each is a separate claim, and each needs its own support.
+
+## 3. What we are proving on the tree
+
+Take a position and draw an edge for each legal move. Every edge is one **ply**: one move by one player. The position after that move is the next node.
+
+Each node carries its position and its predicates. A complete state also needs the side to move, castling and en passant information, and any history relevant to the rules. Two identical-looking boards do not necessarily offer identical legal continuations.
+
+Now give the tree an objective. For example:
+
+- **Mate:** the opponent is in check and has no legal move.
+- **Reach a material threshold:** our stated material balance reaches a stated number at a stated assessment point.
+- **Gain material:** the balance improves by a stated amount relative to the root position.
+
+For material accounting, I can choose pawn = 1, knight = 3, bishop = 3, rook = 5, queen = 9, with kings outside the calculation. That makes the arithmetic precise. It does not turn the arithmetic into a proof that the game is won. A position can satisfy a material predicate while allowing an immediate recapture or mate.
+
+If I intend to claim that I *keep* the gain, my objective and continuation have to establish that too. A phrase like “the position looks quiet” needs a definition before it can close a proof. For the complete proof in this article, we will use checkmate.
+
+### One winning leaf is only the beginning
+
+Suppose I find a line that ends in mate. That establishes a possible sequence. It becomes a forced tactic only when I can account for the opponent's choices along the way.
+
+At **my turn**, I need at least one move that works. At **their turn**, my claim has to survive every legal response. My continuation may be different against different responses.
+
+That gives us an **OR** at my nodes and an **AND** at the opponent's nodes. The proof is a branching strategy: I choose a move, they choose a reply, and I have an answer for each reply.
+
+For an exact mate objective within a remaining budget of h plies, the rules for a certificate are:
+
+| Position or node | What closes the proof |
+| --- | --- |
+| The opponent is already checkmated | Accept this leaf. |
+| Another game-ending result has occurred | This branch fails the mate objective. |
+| The budget is exhausted without mate | This branch has not established the objective. |
+| My turn | One legal child has a completed proof within h − 1 plies. |
+| Opponent's turn | There is at least one legal reply, and every legal child has a completed proof within h − 1 plies. |
+
+The requirement that replies exist prevents an empty AND from accidentally treating stalemate as success. If I exhaust a declared search budget, that also does not prove the position cannot be won. It tells me what this bounded proof has established.
+
+Why does the certificate work? Start at its leaves, where the objective has been checked. At my nodes, I can choose the certified child. At their nodes, whichever legal reply they choose has a certified continuation. Apply that reasoning back up the finite tree and it reaches the root.
+
+I can handle several defenses with one argument if that argument really covers all of them. A defense I have simply left out remains a hole in the proof.
+
+## 4. The precondition theorem
+
+Here is the version I think we can actually rely on.
+
+> **The precondition theorem — geometry of unchanged targets.**
+>
+> Suppose our legal move establishes a pin, skewer, sliding-piece fork, or knight fork involving two surviving enemy pieces. Any necessary relationship that depends only on those targets' square coordinates and the attacking movement pattern must already hold in the position immediately before our move.
+>
+> The relevant precondition therefore exists at least one ply before our move establishes the tactical relationship.
+
+That is a conditional theorem. It does not say every relationship involved in the finished tactic exists beforehand. The attacker may have to move. A line may have to be cleared. A pawn may promote into the attacking piece.
+
+It says the geometry of the **unchanged enemy targets** is already there.
+
+The reason is simple. Our move does not relocate a surviving enemy piece. If the enemy king and queen are still on the board after our move, they are on the same squares as before it. This remains true when we capture some third piece, castle, or promote.
+
+For a little notation, let s be the parent position and s′ the position after our move. Let T mean the particular tactical relationship, and let G be its necessary target geometry. For the relevant targets:
+
+> **T(s′) implies G(s′). Their coordinates are unchanged, so G(s′) equals G(s). Therefore T(s′) implies G(s).**
+
+For a promotion, use the movement pattern of the resulting piece in both evaluations of G. The theorem concerns a potential relationship between the targets, so that piece need not have existed on the earlier board.
+
+### Proof by contradiction
+
+Assume our move establishes T, but its necessary geometry G was absent one ply earlier.
+
+Because T now exists, G must hold in the resulting position. Yet the target pieces have not moved, and G depends only on their square coordinates and the specified movement pattern. Its value therefore cannot have changed across our move.
+
+G would have to be both present and absent for the same coordinates. That is the contradiction.
+
+This is the extra step that makes “one ply earlier” legitimate. Showing that a pin requires alignment proves a same-position dependency. Showing that the target coordinates are unchanged carries that dependency back to the preceding node.
+
+<div class="pc-widget" data-pc-widget="geometry"></div>
+
+*These are worked positions. Use the example menu and step controls to compare the relationship before and after the recorded move. The boards distinguish geometric preconditions from the attacks that become active.*
+
+## 5. What “aligned” has to mean
+
+The theorem is only as useful as its predicates. “Aligned” needs a definition appropriate to the tactic.
+
+### Pins and skewers: a common line
+
+For a sliding pin or skewer, the two enemy targets share a rank, file, or diagonal compatible with the attacking piece. In the finished pattern, the attacker and the two targets occupy one line in the required order.
+
+For an **absolute pin**, one target stands between a slider and its own king. With no other obstruction on that segment, an off-line move that leaves the slider in place would expose the king. A **relative pin** has some other valuable target behind the front piece. The movement rules alone do not establish whether moving that piece is a bad trade.
+
+For a **skewer**, the front target is attacked and the second target lies behind it. A king in front must have its check answered, but the full proof still has to inspect legal answers. A block, capture of the attacker, or another repair may prevent the hoped-for gain.
+
+**Contradiction proof.** Assume our move pins or skewers two surviving targets that did not share the required line in the parent position. They occupy the same two squares after our move. They therefore still do not share that line. But the alleged pin or skewer requires that line. Impossible.
+
+What follows is a precondition for the pattern. The open path, attacker placement, move legality, and eventual gain remain separate work.
+
+An absolute pin also does not necessarily mean the pinned piece has no legal moves. It may be able to stay on the pin line or capture the pinning piece. The exact prohibited move is the one that leaves its king attacked.
+
+### Sliding forks: a shared firing square
+
+For forks, ordinary straight-line alignment is too narrow.
+
+A rook on c3 can attack a target on c7 and another on h3. Those targets share neither a rank, a file, nor a diagonal. They meet the rook along different rays.
+
+So the right geometric predicate is: **there is a square from which this kind of piece could attack both target squares on an otherwise empty board.** I will call it a shared firing square. The actual position must also provide the appropriate clear paths; the two targets must not screen one another.
+
+**Contradiction proof.** Suppose our sliding piece forks two unchanged targets from square x after our move, but no shared firing square existed before it. The completed fork makes x a witness: its movement pattern reaches both targets. Their squares have not changed. x was therefore a geometric witness in the parent position too. That contradicts its supposed absence.
+
+This condition can be weak. For a rook, targets on different ranks and files have the two rectangle corners as geometric intersections. The useful additional questions are whether our rook can legally reach an intersection, whether the attack paths are clear, and whether the fork achieves the objective. The geometry theorem does not answer those questions for us.
+
+### Knight forks: a shared jump square
+
+For a knight, I want “knight alignment” to mean something equally concrete: **there is a board square one knight jump away from each target.**
+
+Take the set of squares from which a knight attacks the first target. Take the corresponding set for the second. If the sets intersect, the targets have a shared jump square.
+
+**Contradiction proof.** Suppose our knight forks two unchanged targets from x, but their jump-square sets did not intersect beforehand. After the move, x is in both sets. The target coordinates are identical before and after, so both sets are identical too. Their intersection therefore already contained x. Contradiction.
+
+The targets must be on the same color, since every knight attack from one square lands on the opposite color. Same color alone is insufficient: two distant squares can have no shared jump square.
+
+The knight also has to get there legally. A shared jump square does not promise a one-move route from the knight's current location, and an active fork does not by itself promise a material win.
+
+## 6. Why the timing qualification matters
+
+My first formulation was broader: the precondition must always exist a ply before the tactic. That claim allows a counterexample.
+
+Put a white king on e1, a white rook on d3, a black rook on e8, and a black king on a8. White is in check along the e-file. White can answer it with **1.Re3**. The white rook and king become aligned, and the rook becomes absolutely pinned, in that same move.
+
+The rook was never pinned *without* alignment. Alignment and pinning arose together. The statement “a pin requires alignment” remains true; the unrestricted claim that alignment always arose earlier is false.
+
+This is why the theorem talks about our move exploiting **surviving enemy targets**. In the counterexample, the moving side relocates one of the targets. The invariant used in the proof is absent.
+
+The distinction gives us a useful sequence when the relationship is newly created: the opponent can put their pieces into the geometry; our subsequent move can exploit it. The theorem guarantees the geometry in the position before our activation. It makes no claim about how many plies it had existed before that.
+
+## 7. Removing the guard: what actually has to come first
+
+The same discipline matters for removing or distracting a defender.
+
+The familiar picture is a target attacked once and defended once. If I can remove the defender while preserving the threat, perhaps I can take the target. That is a useful pattern to look for. It does not make “exactly one attacker and exactly one defender” a universal precondition.
+
+A target might have several attackers or defenders. A nominal defender might be pinned and unable to make the relevant recapture. And the move that removes the guard can also create the attack.
+
+I want to separate **geometric support** from an **effective guard**. Geometric support says a friendly piece controls the target square under its movement pattern. An effective guard has a legal response to the particular contemplated capture or threat. Whether that response defeats our objective is part of the branch proof. A defender count alone cannot establish it.
+
+The guard lemma is narrower:
+
+> **Guard dependency.** If an event removes a particular guard's existing defensive function, that function exists immediately before the event. The resulting loss of that function must then be checked in the new position.
+
+**Contradiction proof.** Assume we have removed an existing guard of a target, but that piece had no relevant defensive function immediately beforehand. Then the event did not remove that function. The change may have opened a line, created a fork, or improved our position in some other way, but it cannot establish the claimed removal of an existing defense. That contradicts the description of the event.
+
+This is a dependency built into what we mean by removing an existing guard. It does **not** prove that the target was already attacked before the guard disappeared.
+
+### The attack can switch on during the removal
+
+Here is a concrete example from the board menu. White has a rook on d1 and knight on d4. Black has a rook on d6, knight on f5, and king on h6. White's king is on h1.
+
+The black knight guards the rook on d6. White's knight on d4 blocks White's rook, so the black rook currently has **zero White attackers**.
+
+White plays **1.Nxf5+**. That move captures the guard, opens the d-file, and checks the black king. The rook on d6 now has **two White attackers**: the rook on d1 and the knight on f5. After any of the four legal king replies, White can take the rook with **2.Rxd6** (with check after **1…Kg6**).
+
+The guarding relationship came first. The attack did not have to. Several things happened in the same move, and the proof needs to allow that.
+
+### Distraction has its own timing
+
+If I distract a guard, I may make an offer on my move, the opponent may move the guard on theirs, and I may take the target on my next move. The relevant dependency is immediately before the guard's departure. It does not require the full pattern to have existed an arbitrary number of plies earlier.
+
+I also have to prove the departure or handle the refusal. “They will take the bait” is an unfinished branch. If the target moves, another guard takes over, a countercheck intervenes, or a recapture is still possible, that has to be resolved before I can accept the objective.
+
+## 8. A complete little proof
+
+Let's use a deliberately spare position so we can see the entire argument.
+
+White has a king on g5 and rooks on a1 and c1. Black has only a king on h8. It is White's turn. The objective is **mate within three plies**: White moves, Black replies, White mates.
+
+Our proposed first move is **1.Ra8+**. Black has exactly two legal replies:
+
+| Black's reply | White's continuation | Terminal fact |
+| --- | --- | --- |
+| 1…Kh7 | 2.Rc7# | Black is in check and has no legal move. |
+| 1…Kg7 | 2.Rc7# | Black is in check and has no legal move. |
+
+The rook on a8 controls the eighth rank. The rook arriving on c7 checks along the seventh. White's king covers the relevant escapes to the sixth rank. There is no black piece that can block or capture a rook.
+
+Those observations explain the mate. The explicit check that the legal reply set is empty certifies each terminal node.
+
+The two branches establish the AND at Black's turn. That closes the chosen child at White's root, so the OR at the root is satisfied. We do not need to show that Ra8+ is White's only winning move.
+
+<div class="pc-widget" data-pc-widget="proof"></div>
+
+*Click the nodes to inspect the positions. Leave one defense open to see the proof become incomplete. The moves and legal-reply sets are recorded and verified; the widget recomputes the certificate's AND/OR status. It is a worked proof, not a general chess solver.*
+
+For the three-ply objective, a branch that still needs a fourth ply has not closed. That is the value of specifying the claim before looking at the answer.
+
+## 9. What I can take back to the board
+
+The precondition theorem gives me a reason to inspect relationships before calculating moves. For a named tactic against fixed targets, the absence of its necessary geometry rules out immediate activation of that tactic.
+
+Its presence gives me something to investigate. It does not certify success.
+
+If the geometry is absent, a longer plan can still create it. I might force a king onto a line, draw a queen onto a forkable square, or induce a defender to move. So failure of a one-ply precondition must not erase every longer idea.
+
+That suggests a small chain of work I can keep explicit:
+
+| Current card | Fact or result | Action and next card |
+| --- | --- | --- |
+| Read the relationship | A relevant line or shared attack square exists | Retain that idea; go to Test the activation. |
+| Test the activation | A candidate legally establishes the named pattern | Add that child; go to Answer the defenses. |
+| Test the activation | The candidate is illegal, or does not establish the pattern | Reject this candidate for that stated reason; inspect another candidate or retire this immediate idea when exhausted. |
+| Answer the defenses | A reply has a completed continuation satisfying the objective | Record that defense as covered; inspect the remaining defenses. |
+| Answer the defenses | A reply defeats this candidate within the stated scope | Return to Test the activation; keep the refuting branch. |
+| Settle the objective | The exact terminal predicate holds and the required branches are covered | Accept the certificate. |
+
+This is the outline of a policy we can develop. It still needs explicit rules for requesting and ordering candidates and for any grouped treatment of defenses. Those decisions belong on the cards. The Oracle supplies the board facts; the cards specify what we do with them.
+
+What I remember between steps is also explicit: the objective, the current card, the relationship I am pursuing, the moves I have tried, the defenses I have covered, and the reason an idea failed. That is the state of the argument.
+
+For now, the thing I want to memorize is this:
+
+> **Find the relationship. Test the move that activates it. Account for the replies. Check the objective.**
+
+I want a small set of claims that survive being challenged. A pin needs a line. A fork needs a shared attack square. Removing a guard requires a guard. A forced tactic requires an answer to the opponent's choices.
+
+And whenever I say something had to happen earlier, I need to identify what stayed unchanged across the move. That is the part of the proof I was missing.
+
+---
+
+### Source and example notes
+
+[1] [FIDE Laws of Chess](https://handbook.fide.com/chapter/e012023), especially Articles 1, 3 and 5. The movement summary is abbreviated; the full rules govern legality. The predicate vocabulary and theorems here are definitions and deductions for this article.
+
+[2] [US Chess: Learn to Play Chess](https://uschess.org/index.php?Itemid=28&id=7324&lang=en&option=com_content&task=view), the piece-movement introduction. The discussion of king safety and legal moves here follows the FIDE definitions above.
+
+The diagrams use sparse instructional positions, with recorded legal moves and resulting positions. They are not claims about the performance of the existing Predicate Chess project. The examples expose geometric facts; the mate tree demonstrates a finite proof certificate. Neither widget accepts arbitrary positions or runs a general tactical search.
+</script>
+
+<!--
+EDITING AND RENDERING THIS BLOG
+
+1. Edit the Markdown block directly above (id="pc-markdown"). It is the
+   article's source of truth. The first H1 is the title; the italic paragraph
+   below it is the subtitle; the next bold paragraph is the byline.
+2. Save this .html file, then open or reload it in a browser. The bundled
+   Markdown renderer below builds the page from that block on every load.
+   No build command, server, internet connection, or separate .md file is needed.
+3. Keep or move the two small div mounts in the Markdown to position the
+   geometric examples and proof tree. Their rendering code and recorded chess
+   data are below. Ordinary prose, headings, links, lists, and tables belong
+   in the Markdown block, not in that code.
+4. To render in another page, include the source block, styles, empty article
+   mount, bundled parser, renderer, and chess runtime in this order. The
+   article renders first; the chess runtime then initializes its mounts.
+5. This is an inert raw-text script block, not executable JavaScript.
+   When discussing a closing script tag in prose, write &lt;/script&gt; so
+   that a literal closing tag does not end the Markdown block early.
+
+EVERYTHING BELOW IS RENDERING: STYLES, MOUNTS, BUNDLED PARSER, AND CHESS WIDGETS.
+The visible article is generated from the Markdown above; there is no second
+pre-rendered copy of its prose to keep in sync.
+-->
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="">
+<title>Article</title>
+<style>
+html{scroll-behavior:smooth;background:#f6f3eb}body{margin:0}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+.pc-post {
+  --pc-ink: #152e35;
+  --pc-muted: #586a69;
+  --pc-paper: #f6f3eb;
+  --pc-teal: #167567;
+  --pc-gold: #b58740;
+  color: var(--pc-ink);
+  background: var(--pc-paper);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 19px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  padding: 0 30px 90px;
+  overflow-wrap: break-word;
+}
+.pc-post *, .pc-post *::before, .pc-post *::after { box-sizing: border-box; }
+.pc-post > * { max-width: 750px; margin-left: auto; margin-right: auto; }
+.pc-post a { color: #146e63; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.pc-post a:hover { color: #10493f; }
+.pc-post p { margin-top: 0; margin-bottom: 1.2em; }
+.pc-post h1, .pc-post h2, .pc-post h3 { color: var(--pc-ink); font-weight: 500; line-height: 1.15; letter-spacing: -.035em; }
+.pc-post h1 { font-size: clamp(58px, 7.5vw, 94px); margin: 20px 0 20px; max-width: 850px; }
+.pc-post h2 { font-size: 37px; margin-top: 2.15em; margin-bottom: .8em; padding-top: 25px; border-top: 1px solid #d4d7cc; scroll-margin-top: 30px; }
+.pc-post h3 { font-size: 26px; margin-top: 1.55em; margin-bottom: .75em; }
+.pc-post strong { font-weight: 700; }
+.pc-post blockquote { padding: 22px 28px; border-left: 3px solid var(--pc-teal); background: #e9eee5; margin-top: 28px; margin-bottom: 30px; border-radius: 0 12px 12px 0; }
+.pc-post blockquote > :last-child { margin-bottom: 0; }
+.pc-post blockquote p { font-size: 20px; line-height: 1.65; }
+.pc-post ul, .pc-post ol { padding-left: 26px; }
+.pc-post li { padding-left: 4px; margin-bottom: 10px; }
+.pc-post .pc-table-wrap { max-width: 900px; overflow-x: auto; margin-top: 24px; margin-bottom: 28px; border: 1px solid #d5d8cd; border-radius: 12px; background: #fbfaf5; }
+.pc-post table { width: 100%; border-collapse: collapse; text-align: left; font: 15px/1.6 system-ui, sans-serif; margin: 0; }
+.pc-post th { font-size: 11px; line-height: 1.5; letter-spacing: .10em; text-transform: uppercase; color: #d8e8db; background: var(--pc-ink); padding: 15px 19px; }
+.pc-post td { padding: 15px 19px; border-bottom: 1px solid #e0e3d8; vertical-align: top; }
+.pc-post tr:last-child td { border-bottom: 0; }
+.pc-post td:first-child { min-width: 148px; font-weight: 600; color: #25483f; }
+.pc-post hr { max-width: 750px; border: 0; border-top: 1px solid #ccd3c7; margin-top: 70px; margin-bottom: 30px; }
+.pc-post > .pc-widget { max-width: 1090px; margin-top: 36px; margin-bottom: 18px; }
+.pc-post > .pc-widget + p { max-width: 850px; font: 13px/1.7 system-ui, sans-serif; color: var(--pc-muted); margin-bottom: 45px; }
+.pc-post .pc-topline { max-width: 1090px; display: flex; justify-content: space-between; align-items: center; padding: 25px 0; border-bottom: 1px solid #cfd5c9; gap: 20px; font: 11px/1.5 system-ui,sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+.pc-post .pc-topline a { text-decoration: none; color: #47665b; }
+.pc-post .pc-topline-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.pc-post .pc-topline-mark { width: 23px; height: 23px; display: inline-block; border: 1px solid #167567; background: conic-gradient(#167567 25%,transparent 0 50%,#167567 0 75%,transparent 0); background-size: 11px 11px; border-radius: 2px; }
+.pc-post .pc-hero { max-width: 1090px; padding: 52px 0 38px; position: relative; isolation: isolate; border-bottom: 1px solid #cfd5c9; margin-bottom: 44px; }
+.pc-post .pc-hero::after { content: ''; position: absolute; z-index: -1; right: 6px; top: 44px; width: 206px; height: 206px; opacity: .28; transform: rotate(-9deg); background: repeating-linear-gradient(0deg,transparent 0 24px,#b2bba7 24px 25px),repeating-linear-gradient(90deg,transparent 0 24px,#b2bba7 24px 25px); border: 1px solid #b2bba7; mask-image: linear-gradient(90deg,transparent,black 65%); }
+.pc-post .pc-kicker { font: 10px/1.5 system-ui,sans-serif; letter-spacing: .19em; color: #167567; text-transform: uppercase; display:flex; align-items:center; gap:12px; }
+.pc-post .pc-kicker::before { content:''; display:inline-block; width:32px; height:1px; background:#b58740; }
+.pc-post .pc-deck { font-size: 24px; line-height: 1.45; max-width: 700px; color: #4c665c; margin: 0 0 24px; }
+.pc-post .pc-deck em { font-style: normal; }
+.pc-post .pc-byline { font: 11px/1.6 system-ui,sans-serif; letter-spacing: .07em; text-transform: uppercase; color: #597066; margin:0; }
+.pc-post .pc-byline strong { font-weight:500; }
+.pc-post .pc-reading-path { max-width: 750px; display:flex; flex-wrap:wrap; gap:8px; margin-bottom:34px; font:11px/1.5 system-ui,sans-serif; }
+.pc-post .pc-reading-path a { border:1px solid #d1d7c9; border-radius:999px; padding:7px 13px; text-decoration:none; color:#3c5d51; background:#f9f8f0; }
+.pc-post .pc-opening { font-size: 23px; line-height:1.65; }
+.pc-post .pc-source-note { font: 13px/1.75 system-ui,sans-serif; color:#586a69; }
+.pc-post .pc-colophon { max-width:1090px; border-top:1px solid #ccd3c7; margin-top:50px; padding-top:22px; font:10px/1.6 system-ui,sans-serif; letter-spacing:.16em; text-transform:uppercase; color:#67776a; display:flex; justify-content:space-between; gap:20px; }
+@media (max-width: 650px) {
+  .pc-post { padding: 0 18px 50px; font-size: 17px; line-height: 1.75; }
+  .pc-post .pc-hero { padding: 34px 0 29px; margin-bottom: 26px; }
+  .pc-post .pc-hero::after { width: 133px; height: 133px; right: 0; top: 50px; opacity: .18; }
+  .pc-post h1 { font-size: 57px; line-height: 1.04; max-width:330px; letter-spacing: -.05em; }
+  .pc-post h2 { font-size:29px; margin-top:1.7em; padding-top:21px; }
+  .pc-post h3 { font-size:23px; }
+  .pc-post .pc-deck { font-size:19px; max-width:300px; }
+  .pc-post .pc-topline { font-size:9px; letter-spacing:.11em; padding:19px 0; }
+  .pc-post .pc-opening { font-size:20px; }
+  .pc-post blockquote { padding:18px 20px; }
+  .pc-post blockquote p { font-size:18px; }
+  .pc-post table { font-size:13px; }
+  .pc-post th { padding:13px 12px; font-size:10px; }
+  .pc-post td { padding:13px 12px; }
+  .pc-post td:first-child { min-width:96px; }
+  .pc-post .pc-widget { margin-left:-6px; margin-right:-6px; }
+  .pc-post .pc-byline { font-size:10px; }
+}
+@media print {
+  .pc-post { background:white; padding:0; font-size:11pt; }
+  .pc-post .pc-topline, .pc-post .pc-reading-path, .pc-post .pc-colophon { display:none; }
+  .pc-post h2, .pc-post h3 { break-after:avoid; }
+  .pc-post blockquote, .pc-post tr, .pc-post .pc-widget { break-inside:avoid; }
+  .pc-post .pc-widget button, .pc-post .pc-widget select { color:#152e35; }
+}
+
+.pc-post .pc-contents{max-width:750px;margin:0 auto 34px;font:12px/1.6 system-ui,sans-serif;color:#456054}
+.pc-post .pc-contents summary{cursor:pointer;width:max-content;border:1px solid #d1d7c9;border-radius:999px;padding:8px 15px;background:#f9f8f0;min-height:38px}
+.pc-post .pc-contents nav{display:flex;flex-wrap:wrap;gap:8px;padding-top:14px}
+.pc-post .pc-contents nav a{border:1px solid #d1d7c9;border-radius:8px;padding:8px 12px;text-decoration:none;background:#fbfaf5}
+.pc-post .pc-contents a:focus-visible,.pc-post .pc-contents summary:focus-visible{outline:3px solid #b58740;outline-offset:3px}
+.pc-post .pc-render-error{padding:24px;max-width:750px;margin:30px auto;border:1px solid #bd8b68}
+@media print{.pc-post .pc-contents{display:none}}
+</style>
+</head>
+<body>
+<article id="pc-article" class="pc-post"></article>
+<noscript><p>This article renders its Markdown with JavaScript. Enable JavaScript and reload, or read the Markdown block at the top of this file.</p></noscript>
+
+<!-- Bundled Markdown parser: Marked 17.0.5. License retained below. -->
+<script>
+/*
+# License information
+
+## Contribution License Agreement
+
+If you contribute code to this project, you are implicitly allowing your code
+to be distributed under the MIT license. You are also implicitly verifying that
+all code is your original work. `</legalese>`
+
+## Marked
+
+Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/)
+Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+## Markdown
+
+Copyright © 2004, John Gruber
+http://daringfireball.net/
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+* Neither the name “Markdown” nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
+
+*/
+/**
+ * marked v17.0.5 - a markdown parser
+ * Copyright (c) 2018-2026, MarkedJS. (MIT License)
+ * Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
+ * https://github.com/markedjs/marked
+ */
+
+/**
+ * DO NOT EDIT THIS FILE
+ * The code in this file is generated from files in ./src/
+ */
+(function(g,f){if(typeof exports=="object"&&typeof module<"u"){module.exports=f()}else if("function"==typeof define && define.amd){define("marked",f)}else {g["marked"]=f()}}(typeof globalThis < "u" ? globalThis : typeof self < "u" ? self : this,function(){var exports={};var __exports=exports;var module={exports};
+"use strict";var G=Object.defineProperty;var Re=Object.getOwnPropertyDescriptor;var Te=Object.getOwnPropertyNames;var Oe=Object.prototype.hasOwnProperty;var we=(l,e)=>{for(var t in e)G(l,t,{get:e[t],enumerable:!0})},ye=(l,e,t,n)=>{if(e&&typeof e=="object"||typeof e=="function")for(let r of Te(e))!Oe.call(l,r)&&r!==t&&G(l,r,{get:()=>e[r],enumerable:!(n=Re(e,r))||n.enumerable});return l};var Pe=l=>ye(G({},"__esModule",{value:!0}),l);var xt={};we(xt,{Hooks:()=>P,Lexer:()=>x,Marked:()=>A,Parser:()=>b,Renderer:()=>y,TextRenderer:()=>S,Tokenizer:()=>w,defaults:()=>R,getDefaults:()=>_,lexer:()=>mt,marked:()=>g,options:()=>pt,parse:()=>gt,parseInline:()=>dt,parser:()=>ft,setOptions:()=>ct,use:()=>ht,walkTokens:()=>kt});module.exports=Pe(xt);function _(){return{async:!1,breaks:!1,extensions:null,gfm:!0,hooks:null,pedantic:!1,renderer:null,silent:!1,tokenizer:null,walkTokens:null}}var R=_();function N(l){R=l}var L={exec:()=>null};function k(l,e=""){let t=typeof l=="string"?l:l.source,n={replace:(r,i)=>{let s=typeof i=="string"?i:i.source;return s=s.replace(m.caret,"$1"),t=t.replace(r,s),n},getRegex:()=>new RegExp(t,e)};return n}var Se=(()=>{try{return!!new RegExp("(?<=1)(?<!1)")}catch{return!1}})(),m={codeRemoveIndent:/^(?: {1,4}| {0,3}\t)/gm,outputLinkReplace:/\\([\[\]])/g,indentCodeCompensation:/^(\s+)(?:```)/,beginningSpace:/^\s+/,endingHash:/#$/,startingSpaceChar:/^ /,endingSpaceChar:/ $/,nonSpaceChar:/[^ ]/,newLineCharGlobal:/\n/g,tabCharGlobal:/\t/g,multipleSpaceGlobal:/\s+/g,blankLine:/^[ \t]*$/,doubleBlankLine:/\n[ \t]*\n[ \t]*$/,blockquoteStart:/^ {0,3}>/,blockquoteSetextReplace:/\n {0,3}((?:=+|-+) *)(?=\n|$)/g,blockquoteSetextReplace2:/^ {0,3}>[ \t]?/gm,listReplaceNesting:/^ {1,4}(?=( {4})*[^ ])/g,listIsTask:/^\[[ xX]\] +\S/,listReplaceTask:/^\[[ xX]\] +/,listTaskCheckbox:/\[[ xX]\]/,anyLine:/\n.*\n/,hrefBrackets:/^<(.*)>$/,tableDelimiter:/[:|]/,tableAlignChars:/^\||\| *$/g,tableRowBlankLine:/\n[ \t]*$/,tableAlignRight:/^ *-+: *$/,tableAlignCenter:/^ *:-+: *$/,tableAlignLeft:/^ *:-+ *$/,startATag:/^<a /i,endATag:/^<\/a>/i,startPreScriptTag:/^<(pre|code|kbd|script)(\s|>)/i,endPreScriptTag:/^<\/(pre|code|kbd|script)(\s|>)/i,startAngleBracket:/^</,endAngleBracket:/>$/,pedanticHrefTitle:/^([^'"]*[^\s])\s+(['"])(.*)\2/,unicodeAlphaNumeric:/[\p{L}\p{N}]/u,escapeTest:/[&<>"']/,escapeReplace:/[&<>"']/g,escapeTestNoEncode:/[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/,escapeReplaceNoEncode:/[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/g,caret:/(^|[^\[])\^/g,percentDecode:/%25/g,findPipe:/\|/g,splitPipe:/ \|/,slashPipe:/\\\|/g,carriageReturn:/\r\n|\r/g,spaceLine:/^ +$/gm,notSpaceStart:/^\S*/,endingNewline:/\n$/,listItemRegex:l=>new RegExp(`^( {0,3}${l})((?:[	 ][^\\n]*)?(?:\\n|$))`),nextBulletRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}(?:[*+-]|\\d{1,9}[.)])((?:[ 	][^\\n]*)?(?:\\n|$))`),hrRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}((?:- *){3,}|(?:_ *){3,}|(?:\\* *){3,})(?:\\n+|$)`),fencesBeginRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}(?:\`\`\`|~~~)`),headingBeginRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}#`),htmlBeginRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}<(?:[a-z].*>|!--)`,"i"),blockquoteBeginRegex:l=>new RegExp(`^ {0,${Math.min(3,l-1)}}>`)},$e=/^(?:[ \t]*(?:\n|$))+/,_e=/^((?: {4}| {0,3}\t)[^\n]+(?:\n(?:[ \t]*(?:\n|$))*)?)+/,Le=/^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/,B=/^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/,Me=/^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/,j=/ {0,3}(?:[*+-]|\d{1,9}[.)])/,ie=/^(?!bull |blockCode|fences|blockquote|heading|html|table)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html|table))+?)\n {0,3}(=+|-+) *(?:\n+|$)/,oe=k(ie).replace(/bull/g,j).replace(/blockCode/g,/(?: {4}| {0,3}\t)/).replace(/fences/g,/ {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g,/ {0,3}>/).replace(/heading/g,/ {0,3}#{1,6}/).replace(/html/g,/ {0,3}<[^\n>]+>\n/).replace(/\|table/g,"").getRegex(),ze=k(ie).replace(/bull/g,j).replace(/blockCode/g,/(?: {4}| {0,3}\t)/).replace(/fences/g,/ {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g,/ {0,3}>/).replace(/heading/g,/ {0,3}#{1,6}/).replace(/html/g,/ {0,3}<[^\n>]+>\n/).replace(/table/g,/ {0,3}\|?(?:[:\- ]*\|)+[\:\- ]*\n/).getRegex(),F=/^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/,Ee=/^[^\n]+/,U=/(?!\s*\])(?:\\[\s\S]|[^\[\]\\])+/,Ie=k(/^ {0,3}\[(label)\]: *(?:\n[ \t]*)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n[ \t]*)?| *\n[ \t]*)(title))? *(?:\n+|$)/).replace("label",U).replace("title",/(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex(),Ae=k(/^(bull)([ \t][^\n]+?)?(?:\n|$)/).replace(/bull/g,j).getRegex(),v="address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul",K=/<!--(?:-?>|[\s\S]*?(?:-->|$))/,Ce=k("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$))","i").replace("comment",K).replace("tag",v).replace("attribute",/ +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex(),ae=k(F).replace("hr",B).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("|lheading","").replace("|table","").replace("blockquote"," {0,3}>").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list"," {0,3}(?:[*+-]|1[.)])[ \\t]").replace("html","</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag",v).getRegex(),Be=k(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph",ae).getRegex(),W={blockquote:Be,code:_e,def:Ie,fences:Le,heading:Me,hr:B,html:Ce,lheading:oe,list:Ae,newline:$e,paragraph:ae,table:L,text:Ee},re=k("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr",B).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("blockquote"," {0,3}>").replace("code","(?: {4}| {0,3}	)[^\\n]").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list"," {0,3}(?:[*+-]|1[.)])[ \\t]").replace("html","</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag",v).getRegex(),De={...W,lheading:ze,table:re,paragraph:k(F).replace("hr",B).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("|lheading","").replace("table",re).replace("blockquote"," {0,3}>").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list"," {0,3}(?:[*+-]|1[.)])[ \\t]").replace("html","</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag",v).getRegex()},qe={...W,html:k(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment",K).replace(/tag/g,"(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(),def:/^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +(["(][^\n]+[")]))? *(?:\n+|$)/,heading:/^(#{1,6})(.*)(?:\n+|$)/,fences:L,lheading:/^(.+?)\n {0,3}(=+|-+) *(?:\n+|$)/,paragraph:k(F).replace("hr",B).replace("heading",` *#{1,6} *[^
+]`).replace("lheading",oe).replace("|table","").replace("blockquote"," {0,3}>").replace("|fences","").replace("|list","").replace("|html","").replace("|tag","").getRegex()},ve=/^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/,He=/^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/,le=/^( {2,}|\\)\n(?!\s*$)/,Ze=/^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/,z=/[\p{P}\p{S}]/u,H=/[\s\p{P}\p{S}]/u,X=/[^\s\p{P}\p{S}]/u,Ge=k(/^((?![*_])punctSpace)/,"u").replace(/punctSpace/g,H).getRegex(),ue=/(?!~)[\p{P}\p{S}]/u,Ne=/(?!~)[\s\p{P}\p{S}]/u,Qe=/(?:[^\s\p{P}\p{S}]|~)/u,je=k(/link|precode-code|html/,"g").replace("link",/\[(?:[^\[\]`]|(?<a>`+)[^`]+\k<a>(?!`))*?\]\((?:\\[\s\S]|[^\\\(\)]|\((?:\\[\s\S]|[^\\\(\)])*\))*\)/).replace("precode-",Se?"(?<!`)()":"(^^|[^`])").replace("code",/(?<b>`+)[^`]+\k<b>(?!`)/).replace("html",/<(?! )[^<>]*?>/).getRegex(),pe=/^(?:\*+(?:((?!\*)punct)|([^\s*]))?)|^_+(?:((?!_)punct)|([^\s_]))?/,Fe=k(pe,"u").replace(/punct/g,z).getRegex(),Ue=k(pe,"u").replace(/punct/g,ue).getRegex(),ce="^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)punct(\\*+)(?=[\\s]|$)|notPunctSpace(\\*+)(?!\\*)(?=punctSpace|$)|(?!\\*)punctSpace(\\*+)(?=notPunctSpace)|[\\s](\\*+)(?!\\*)(?=punct)|(?!\\*)punct(\\*+)(?!\\*)(?=punct)|notPunctSpace(\\*+)(?=notPunctSpace)",Ke=k(ce,"gu").replace(/notPunctSpace/g,X).replace(/punctSpace/g,H).replace(/punct/g,z).getRegex(),We=k(ce,"gu").replace(/notPunctSpace/g,Qe).replace(/punctSpace/g,Ne).replace(/punct/g,ue).getRegex(),Xe=k("^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)punct(_+)(?=[\\s]|$)|notPunctSpace(_+)(?!_)(?=punctSpace|$)|(?!_)punctSpace(_+)(?=notPunctSpace)|[\\s](_+)(?!_)(?=punct)|(?!_)punct(_+)(?!_)(?=punct)","gu").replace(/notPunctSpace/g,X).replace(/punctSpace/g,H).replace(/punct/g,z).getRegex(),Je=k(/^~~?(?:((?!~)punct)|[^\s~])/,"u").replace(/punct/g,z).getRegex(),Ve="^[^~]+(?=[^~])|(?!~)punct(~~?)(?=[\\s]|$)|notPunctSpace(~~?)(?!~)(?=punctSpace|$)|(?!~)punctSpace(~~?)(?=notPunctSpace)|[\\s](~~?)(?!~)(?=punct)|(?!~)punct(~~?)(?!~)(?=punct)|notPunctSpace(~~?)(?=notPunctSpace)",Ye=k(Ve,"gu").replace(/notPunctSpace/g,X).replace(/punctSpace/g,H).replace(/punct/g,z).getRegex(),et=k(/\\(punct)/,"gu").replace(/punct/g,z).getRegex(),tt=k(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/).replace("scheme",/[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email",/[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex(),nt=k(K).replace("(?:-->|$)","-->").getRegex(),rt=k("^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>").replace("comment",nt).replace("attribute",/\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/).getRegex(),q=/(?:\[(?:\\[\s\S]|[^\[\]\\])*\]|\\[\s\S]|`+(?!`)[^`]*?`+(?!`)|``+(?=\])|[^\[\]\\`])*?/,st=k(/^!?\[(label)\]\(\s*(href)(?:(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)(title))?\s*\)/).replace("label",q).replace("href",/<(?:\\.|[^\n<>\\])+>|[^ \t\n\x00-\x1f]*/).replace("title",/"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/).getRegex(),he=k(/^!?\[(label)\]\[(ref)\]/).replace("label",q).replace("ref",U).getRegex(),ke=k(/^!?\[(ref)\](?:\[\])?/).replace("ref",U).getRegex(),it=k("reflink|nolink(?!\\()","g").replace("reflink",he).replace("nolink",ke).getRegex(),se=/[hH][tT][tT][pP][sS]?|[fF][tT][pP]/,J={_backpedal:L,anyPunctuation:et,autolink:tt,blockSkip:je,br:le,code:He,del:L,delLDelim:L,delRDelim:L,emStrongLDelim:Fe,emStrongRDelimAst:Ke,emStrongRDelimUnd:Xe,escape:ve,link:st,nolink:ke,punctuation:Ge,reflink:he,reflinkSearch:it,tag:rt,text:Ze,url:L},ot={...J,link:k(/^!?\[(label)\]\((.*?)\)/).replace("label",q).getRegex(),reflink:k(/^!?\[(label)\]\s*\[([^\]]*)\]/).replace("label",q).getRegex()},Q={...J,emStrongRDelimAst:We,emStrongLDelim:Ue,delLDelim:Je,delRDelim:Ye,url:k(/^((?:protocol):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/).replace("protocol",se).replace("email",/[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/).getRegex(),_backpedal:/(?:[^?!.,:;*_'"~()&]+|\([^)]*\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/,del:/^(~~?)(?=[^\s~])((?:\\[\s\S]|[^\\])*?(?:\\[\s\S]|[^\s~\\]))\1(?=[^~]|$)/,text:k(/^([`~]+|[^`~])(?:(?= {2,}\n)|(?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)|[\s\S]*?(?:(?=[\\<!\[`*~_]|\b_|protocol:\/\/|www\.|$)|[^ ](?= {2,}\n)|[^a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-](?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)))/).replace("protocol",se).getRegex()},at={...Q,br:k(le).replace("{2,}","*").getRegex(),text:k(Q.text).replace("\\b_","\\b_| {2,}\\n").replace(/\{2,\}/g,"*").getRegex()},D={normal:W,gfm:De,pedantic:qe},E={normal:J,gfm:Q,breaks:at,pedantic:ot};var lt={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"},de=l=>lt[l];function O(l,e){if(e){if(m.escapeTest.test(l))return l.replace(m.escapeReplace,de)}else if(m.escapeTestNoEncode.test(l))return l.replace(m.escapeReplaceNoEncode,de);return l}function V(l){try{l=encodeURI(l).replace(m.percentDecode,"%")}catch{return null}return l}function Y(l,e){let t=l.replace(m.findPipe,(i,s,a)=>{let o=!1,u=s;for(;--u>=0&&a[u]==="\\";)o=!o;return o?"|":" |"}),n=t.split(m.splitPipe),r=0;if(n[0].trim()||n.shift(),n.length>0&&!n.at(-1)?.trim()&&n.pop(),e)if(n.length>e)n.splice(e);else for(;n.length<e;)n.push("");for(;r<n.length;r++)n[r]=n[r].trim().replace(m.slashPipe,"|");return n}function I(l,e,t){let n=l.length;if(n===0)return"";let r=0;for(;r<n;){let i=l.charAt(n-r-1);if(i===e&&!t)r++;else if(i!==e&&t)r++;else break}return l.slice(0,n-r)}function ge(l,e){if(l.indexOf(e[1])===-1)return-1;let t=0;for(let n=0;n<l.length;n++)if(l[n]==="\\")n++;else if(l[n]===e[0])t++;else if(l[n]===e[1]&&(t--,t<0))return n;return t>0?-2:-1}function fe(l,e=0){let t=e,n="";for(let r of l)if(r==="	"){let i=4-t%4;n+=" ".repeat(i),t+=i}else n+=r,t++;return n}function me(l,e,t,n,r){let i=e.href,s=e.title||null,a=l[1].replace(r.other.outputLinkReplace,"$1");n.state.inLink=!0;let o={type:l[0].charAt(0)==="!"?"image":"link",raw:t,href:i,title:s,text:a,tokens:n.inlineTokens(a)};return n.state.inLink=!1,o}function ut(l,e,t){let n=l.match(t.other.indentCodeCompensation);if(n===null)return e;let r=n[1];return e.split(`
+`).map(i=>{let s=i.match(t.other.beginningSpace);if(s===null)return i;let[a]=s;return a.length>=r.length?i.slice(r.length):i}).join(`
+`)}var w=class{options;rules;lexer;constructor(e){this.options=e||R}space(e){let t=this.rules.block.newline.exec(e);if(t&&t[0].length>0)return{type:"space",raw:t[0]}}code(e){let t=this.rules.block.code.exec(e);if(t){let n=t[0].replace(this.rules.other.codeRemoveIndent,"");return{type:"code",raw:t[0],codeBlockStyle:"indented",text:this.options.pedantic?n:I(n,`
+`)}}}fences(e){let t=this.rules.block.fences.exec(e);if(t){let n=t[0],r=ut(n,t[3]||"",this.rules);return{type:"code",raw:n,lang:t[2]?t[2].trim().replace(this.rules.inline.anyPunctuation,"$1"):t[2],text:r}}}heading(e){let t=this.rules.block.heading.exec(e);if(t){let n=t[2].trim();if(this.rules.other.endingHash.test(n)){let r=I(n,"#");(this.options.pedantic||!r||this.rules.other.endingSpaceChar.test(r))&&(n=r.trim())}return{type:"heading",raw:t[0],depth:t[1].length,text:n,tokens:this.lexer.inline(n)}}}hr(e){let t=this.rules.block.hr.exec(e);if(t)return{type:"hr",raw:I(t[0],`
+`)}}blockquote(e){let t=this.rules.block.blockquote.exec(e);if(t){let n=I(t[0],`
+`).split(`
+`),r="",i="",s=[];for(;n.length>0;){let a=!1,o=[],u;for(u=0;u<n.length;u++)if(this.rules.other.blockquoteStart.test(n[u]))o.push(n[u]),a=!0;else if(!a)o.push(n[u]);else break;n=n.slice(u);let p=o.join(`
+`),c=p.replace(this.rules.other.blockquoteSetextReplace,`
+    $1`).replace(this.rules.other.blockquoteSetextReplace2,"");r=r?`${r}
+${p}`:p,i=i?`${i}
+${c}`:c;let d=this.lexer.state.top;if(this.lexer.state.top=!0,this.lexer.blockTokens(c,s,!0),this.lexer.state.top=d,n.length===0)break;let h=s.at(-1);if(h?.type==="code")break;if(h?.type==="blockquote"){let T=h,f=T.raw+`
+`+n.join(`
+`),$=this.blockquote(f);s[s.length-1]=$,r=r.substring(0,r.length-T.raw.length)+$.raw,i=i.substring(0,i.length-T.text.length)+$.text;break}else if(h?.type==="list"){let T=h,f=T.raw+`
+`+n.join(`
+`),$=this.list(f);s[s.length-1]=$,r=r.substring(0,r.length-h.raw.length)+$.raw,i=i.substring(0,i.length-T.raw.length)+$.raw,n=f.substring(s.at(-1).raw.length).split(`
+`);continue}}return{type:"blockquote",raw:r,tokens:s,text:i}}}list(e){let t=this.rules.block.list.exec(e);if(t){let n=t[1].trim(),r=n.length>1,i={type:"list",raw:"",ordered:r,start:r?+n.slice(0,-1):"",loose:!1,items:[]};n=r?`\\d{1,9}\\${n.slice(-1)}`:`\\${n}`,this.options.pedantic&&(n=r?n:"[*+-]");let s=this.rules.other.listItemRegex(n),a=!1;for(;e;){let u=!1,p="",c="";if(!(t=s.exec(e))||this.rules.block.hr.test(e))break;p=t[0],e=e.substring(p.length);let d=fe(t[2].split(`
+`,1)[0],t[1].length),h=e.split(`
+`,1)[0],T=!d.trim(),f=0;if(this.options.pedantic?(f=2,c=d.trimStart()):T?f=t[1].length+1:(f=d.search(this.rules.other.nonSpaceChar),f=f>4?1:f,c=d.slice(f),f+=t[1].length),T&&this.rules.other.blankLine.test(h)&&(p+=h+`
+`,e=e.substring(h.length+1),u=!0),!u){let $=this.rules.other.nextBulletRegex(f),ee=this.rules.other.hrRegex(f),te=this.rules.other.fencesBeginRegex(f),ne=this.rules.other.headingBeginRegex(f),xe=this.rules.other.htmlBeginRegex(f),be=this.rules.other.blockquoteBeginRegex(f);for(;e;){let Z=e.split(`
+`,1)[0],C;if(h=Z,this.options.pedantic?(h=h.replace(this.rules.other.listReplaceNesting,"  "),C=h):C=h.replace(this.rules.other.tabCharGlobal,"    "),te.test(h)||ne.test(h)||xe.test(h)||be.test(h)||$.test(h)||ee.test(h))break;if(C.search(this.rules.other.nonSpaceChar)>=f||!h.trim())c+=`
+`+C.slice(f);else{if(T||d.replace(this.rules.other.tabCharGlobal,"    ").search(this.rules.other.nonSpaceChar)>=4||te.test(d)||ne.test(d)||ee.test(d))break;c+=`
+`+h}T=!h.trim(),p+=Z+`
+`,e=e.substring(Z.length+1),d=C.slice(f)}}i.loose||(a?i.loose=!0:this.rules.other.doubleBlankLine.test(p)&&(a=!0)),i.items.push({type:"list_item",raw:p,task:!!this.options.gfm&&this.rules.other.listIsTask.test(c),loose:!1,text:c,tokens:[]}),i.raw+=p}let o=i.items.at(-1);if(o)o.raw=o.raw.trimEnd(),o.text=o.text.trimEnd();else return;i.raw=i.raw.trimEnd();for(let u of i.items){if(this.lexer.state.top=!1,u.tokens=this.lexer.blockTokens(u.text,[]),u.task){if(u.text=u.text.replace(this.rules.other.listReplaceTask,""),u.tokens[0]?.type==="text"||u.tokens[0]?.type==="paragraph"){u.tokens[0].raw=u.tokens[0].raw.replace(this.rules.other.listReplaceTask,""),u.tokens[0].text=u.tokens[0].text.replace(this.rules.other.listReplaceTask,"");for(let c=this.lexer.inlineQueue.length-1;c>=0;c--)if(this.rules.other.listIsTask.test(this.lexer.inlineQueue[c].src)){this.lexer.inlineQueue[c].src=this.lexer.inlineQueue[c].src.replace(this.rules.other.listReplaceTask,"");break}}let p=this.rules.other.listTaskCheckbox.exec(u.raw);if(p){let c={type:"checkbox",raw:p[0]+" ",checked:p[0]!=="[ ]"};u.checked=c.checked,i.loose?u.tokens[0]&&["paragraph","text"].includes(u.tokens[0].type)&&"tokens"in u.tokens[0]&&u.tokens[0].tokens?(u.tokens[0].raw=c.raw+u.tokens[0].raw,u.tokens[0].text=c.raw+u.tokens[0].text,u.tokens[0].tokens.unshift(c)):u.tokens.unshift({type:"paragraph",raw:c.raw,text:c.raw,tokens:[c]}):u.tokens.unshift(c)}}if(!i.loose){let p=u.tokens.filter(d=>d.type==="space"),c=p.length>0&&p.some(d=>this.rules.other.anyLine.test(d.raw));i.loose=c}}if(i.loose)for(let u of i.items){u.loose=!0;for(let p of u.tokens)p.type==="text"&&(p.type="paragraph")}return i}}html(e){let t=this.rules.block.html.exec(e);if(t)return{type:"html",block:!0,raw:t[0],pre:t[1]==="pre"||t[1]==="script"||t[1]==="style",text:t[0]}}def(e){let t=this.rules.block.def.exec(e);if(t){let n=t[1].toLowerCase().replace(this.rules.other.multipleSpaceGlobal," "),r=t[2]?t[2].replace(this.rules.other.hrefBrackets,"$1").replace(this.rules.inline.anyPunctuation,"$1"):"",i=t[3]?t[3].substring(1,t[3].length-1).replace(this.rules.inline.anyPunctuation,"$1"):t[3];return{type:"def",tag:n,raw:t[0],href:r,title:i}}}table(e){let t=this.rules.block.table.exec(e);if(!t||!this.rules.other.tableDelimiter.test(t[2]))return;let n=Y(t[1]),r=t[2].replace(this.rules.other.tableAlignChars,"").split("|"),i=t[3]?.trim()?t[3].replace(this.rules.other.tableRowBlankLine,"").split(`
+`):[],s={type:"table",raw:t[0],header:[],align:[],rows:[]};if(n.length===r.length){for(let a of r)this.rules.other.tableAlignRight.test(a)?s.align.push("right"):this.rules.other.tableAlignCenter.test(a)?s.align.push("center"):this.rules.other.tableAlignLeft.test(a)?s.align.push("left"):s.align.push(null);for(let a=0;a<n.length;a++)s.header.push({text:n[a],tokens:this.lexer.inline(n[a]),header:!0,align:s.align[a]});for(let a of i)s.rows.push(Y(a,s.header.length).map((o,u)=>({text:o,tokens:this.lexer.inline(o),header:!1,align:s.align[u]})));return s}}lheading(e){let t=this.rules.block.lheading.exec(e);if(t){let n=t[1].trim();return{type:"heading",raw:t[0],depth:t[2].charAt(0)==="="?1:2,text:n,tokens:this.lexer.inline(n)}}}paragraph(e){let t=this.rules.block.paragraph.exec(e);if(t){let n=t[1].charAt(t[1].length-1)===`
+`?t[1].slice(0,-1):t[1];return{type:"paragraph",raw:t[0],text:n,tokens:this.lexer.inline(n)}}}text(e){let t=this.rules.block.text.exec(e);if(t)return{type:"text",raw:t[0],text:t[0],tokens:this.lexer.inline(t[0])}}escape(e){let t=this.rules.inline.escape.exec(e);if(t)return{type:"escape",raw:t[0],text:t[1]}}tag(e){let t=this.rules.inline.tag.exec(e);if(t)return!this.lexer.state.inLink&&this.rules.other.startATag.test(t[0])?this.lexer.state.inLink=!0:this.lexer.state.inLink&&this.rules.other.endATag.test(t[0])&&(this.lexer.state.inLink=!1),!this.lexer.state.inRawBlock&&this.rules.other.startPreScriptTag.test(t[0])?this.lexer.state.inRawBlock=!0:this.lexer.state.inRawBlock&&this.rules.other.endPreScriptTag.test(t[0])&&(this.lexer.state.inRawBlock=!1),{type:"html",raw:t[0],inLink:this.lexer.state.inLink,inRawBlock:this.lexer.state.inRawBlock,block:!1,text:t[0]}}link(e){let t=this.rules.inline.link.exec(e);if(t){let n=t[2].trim();if(!this.options.pedantic&&this.rules.other.startAngleBracket.test(n)){if(!this.rules.other.endAngleBracket.test(n))return;let s=I(n.slice(0,-1),"\\");if((n.length-s.length)%2===0)return}else{let s=ge(t[2],"()");if(s===-2)return;if(s>-1){let o=(t[0].indexOf("!")===0?5:4)+t[1].length+s;t[2]=t[2].substring(0,s),t[0]=t[0].substring(0,o).trim(),t[3]=""}}let r=t[2],i="";if(this.options.pedantic){let s=this.rules.other.pedanticHrefTitle.exec(r);s&&(r=s[1],i=s[3])}else i=t[3]?t[3].slice(1,-1):"";return r=r.trim(),this.rules.other.startAngleBracket.test(r)&&(this.options.pedantic&&!this.rules.other.endAngleBracket.test(n)?r=r.slice(1):r=r.slice(1,-1)),me(t,{href:r&&r.replace(this.rules.inline.anyPunctuation,"$1"),title:i&&i.replace(this.rules.inline.anyPunctuation,"$1")},t[0],this.lexer,this.rules)}}reflink(e,t){let n;if((n=this.rules.inline.reflink.exec(e))||(n=this.rules.inline.nolink.exec(e))){let r=(n[2]||n[1]).replace(this.rules.other.multipleSpaceGlobal," "),i=t[r.toLowerCase()];if(!i){let s=n[0].charAt(0);return{type:"text",raw:s,text:s}}return me(n,i,n[0],this.lexer,this.rules)}}emStrong(e,t,n=""){let r=this.rules.inline.emStrongLDelim.exec(e);if(!r||!r[1]&&!r[2]&&!r[3]&&!r[4]||r[4]&&n.match(this.rules.other.unicodeAlphaNumeric))return;if(!(r[1]||r[3]||"")||!n||this.rules.inline.punctuation.exec(n)){let s=[...r[0]].length-1,a,o,u=s,p=0,c=r[0][0]==="*"?this.rules.inline.emStrongRDelimAst:this.rules.inline.emStrongRDelimUnd;for(c.lastIndex=0,t=t.slice(-1*e.length+s);(r=c.exec(t))!=null;){if(a=r[1]||r[2]||r[3]||r[4]||r[5]||r[6],!a)continue;if(o=[...a].length,r[3]||r[4]){u+=o;continue}else if((r[5]||r[6])&&s%3&&!((s+o)%3)){p+=o;continue}if(u-=o,u>0)continue;o=Math.min(o,o+u+p);let d=[...r[0]][0].length,h=e.slice(0,s+r.index+d+o);if(Math.min(s,o)%2){let f=h.slice(1,-1);return{type:"em",raw:h,text:f,tokens:this.lexer.inlineTokens(f)}}let T=h.slice(2,-2);return{type:"strong",raw:h,text:T,tokens:this.lexer.inlineTokens(T)}}}}codespan(e){let t=this.rules.inline.code.exec(e);if(t){let n=t[2].replace(this.rules.other.newLineCharGlobal," "),r=this.rules.other.nonSpaceChar.test(n),i=this.rules.other.startingSpaceChar.test(n)&&this.rules.other.endingSpaceChar.test(n);return r&&i&&(n=n.substring(1,n.length-1)),{type:"codespan",raw:t[0],text:n}}}br(e){let t=this.rules.inline.br.exec(e);if(t)return{type:"br",raw:t[0]}}del(e,t,n=""){let r=this.rules.inline.delLDelim.exec(e);if(!r)return;if(!(r[1]||"")||!n||this.rules.inline.punctuation.exec(n)){let s=[...r[0]].length-1,a,o,u=s,p=this.rules.inline.delRDelim;for(p.lastIndex=0,t=t.slice(-1*e.length+s);(r=p.exec(t))!=null;){if(a=r[1]||r[2]||r[3]||r[4]||r[5]||r[6],!a||(o=[...a].length,o!==s))continue;if(r[3]||r[4]){u+=o;continue}if(u-=o,u>0)continue;o=Math.min(o,o+u);let c=[...r[0]][0].length,d=e.slice(0,s+r.index+c+o),h=d.slice(s,-s);return{type:"del",raw:d,text:h,tokens:this.lexer.inlineTokens(h)}}}}autolink(e){let t=this.rules.inline.autolink.exec(e);if(t){let n,r;return t[2]==="@"?(n=t[1],r="mailto:"+n):(n=t[1],r=n),{type:"link",raw:t[0],text:n,href:r,tokens:[{type:"text",raw:n,text:n}]}}}url(e){let t;if(t=this.rules.inline.url.exec(e)){let n,r;if(t[2]==="@")n=t[0],r="mailto:"+n;else{let i;do i=t[0],t[0]=this.rules.inline._backpedal.exec(t[0])?.[0]??"";while(i!==t[0]);n=t[0],t[1]==="www."?r="http://"+t[0]:r=t[0]}return{type:"link",raw:t[0],text:n,href:r,tokens:[{type:"text",raw:n,text:n}]}}}inlineText(e){let t=this.rules.inline.text.exec(e);if(t){let n=this.lexer.state.inRawBlock;return{type:"text",raw:t[0],text:t[0],escaped:n}}}};var x=class l{tokens;options;state;inlineQueue;tokenizer;constructor(e){this.tokens=[],this.tokens.links=Object.create(null),this.options=e||R,this.options.tokenizer=this.options.tokenizer||new w,this.tokenizer=this.options.tokenizer,this.tokenizer.options=this.options,this.tokenizer.lexer=this,this.inlineQueue=[],this.state={inLink:!1,inRawBlock:!1,top:!0};let t={other:m,block:D.normal,inline:E.normal};this.options.pedantic?(t.block=D.pedantic,t.inline=E.pedantic):this.options.gfm&&(t.block=D.gfm,this.options.breaks?t.inline=E.breaks:t.inline=E.gfm),this.tokenizer.rules=t}static get rules(){return{block:D,inline:E}}static lex(e,t){return new l(t).lex(e)}static lexInline(e,t){return new l(t).inlineTokens(e)}lex(e){e=e.replace(m.carriageReturn,`
+`),this.blockTokens(e,this.tokens);for(let t=0;t<this.inlineQueue.length;t++){let n=this.inlineQueue[t];this.inlineTokens(n.src,n.tokens)}return this.inlineQueue=[],this.tokens}blockTokens(e,t=[],n=!1){for(this.tokenizer.lexer=this,this.options.pedantic&&(e=e.replace(m.tabCharGlobal,"    ").replace(m.spaceLine,""));e;){let r;if(this.options.extensions?.block?.some(s=>(r=s.call({lexer:this},e,t))?(e=e.substring(r.raw.length),t.push(r),!0):!1))continue;if(r=this.tokenizer.space(e)){e=e.substring(r.raw.length);let s=t.at(-1);r.raw.length===1&&s!==void 0?s.raw+=`
+`:t.push(r);continue}if(r=this.tokenizer.code(e)){e=e.substring(r.raw.length);let s=t.at(-1);s?.type==="paragraph"||s?.type==="text"?(s.raw+=(s.raw.endsWith(`
+`)?"":`
+`)+r.raw,s.text+=`
+`+r.text,this.inlineQueue.at(-1).src=s.text):t.push(r);continue}if(r=this.tokenizer.fences(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.heading(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.hr(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.blockquote(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.list(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.html(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.def(e)){e=e.substring(r.raw.length);let s=t.at(-1);s?.type==="paragraph"||s?.type==="text"?(s.raw+=(s.raw.endsWith(`
+`)?"":`
+`)+r.raw,s.text+=`
+`+r.raw,this.inlineQueue.at(-1).src=s.text):this.tokens.links[r.tag]||(this.tokens.links[r.tag]={href:r.href,title:r.title},t.push(r));continue}if(r=this.tokenizer.table(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.lheading(e)){e=e.substring(r.raw.length),t.push(r);continue}let i=e;if(this.options.extensions?.startBlock){let s=1/0,a=e.slice(1),o;this.options.extensions.startBlock.forEach(u=>{o=u.call({lexer:this},a),typeof o=="number"&&o>=0&&(s=Math.min(s,o))}),s<1/0&&s>=0&&(i=e.substring(0,s+1))}if(this.state.top&&(r=this.tokenizer.paragraph(i))){let s=t.at(-1);n&&s?.type==="paragraph"?(s.raw+=(s.raw.endsWith(`
+`)?"":`
+`)+r.raw,s.text+=`
+`+r.text,this.inlineQueue.pop(),this.inlineQueue.at(-1).src=s.text):t.push(r),n=i.length!==e.length,e=e.substring(r.raw.length);continue}if(r=this.tokenizer.text(e)){e=e.substring(r.raw.length);let s=t.at(-1);s?.type==="text"?(s.raw+=(s.raw.endsWith(`
+`)?"":`
+`)+r.raw,s.text+=`
+`+r.text,this.inlineQueue.pop(),this.inlineQueue.at(-1).src=s.text):t.push(r);continue}if(e){let s="Infinite loop on byte: "+e.charCodeAt(0);if(this.options.silent){console.error(s);break}else throw new Error(s)}}return this.state.top=!0,t}inline(e,t=[]){return this.inlineQueue.push({src:e,tokens:t}),t}inlineTokens(e,t=[]){this.tokenizer.lexer=this;let n=e,r=null;if(this.tokens.links){let o=Object.keys(this.tokens.links);if(o.length>0)for(;(r=this.tokenizer.rules.inline.reflinkSearch.exec(n))!=null;)o.includes(r[0].slice(r[0].lastIndexOf("[")+1,-1))&&(n=n.slice(0,r.index)+"["+"a".repeat(r[0].length-2)+"]"+n.slice(this.tokenizer.rules.inline.reflinkSearch.lastIndex))}for(;(r=this.tokenizer.rules.inline.anyPunctuation.exec(n))!=null;)n=n.slice(0,r.index)+"++"+n.slice(this.tokenizer.rules.inline.anyPunctuation.lastIndex);let i;for(;(r=this.tokenizer.rules.inline.blockSkip.exec(n))!=null;)i=r[2]?r[2].length:0,n=n.slice(0,r.index+i)+"["+"a".repeat(r[0].length-i-2)+"]"+n.slice(this.tokenizer.rules.inline.blockSkip.lastIndex);n=this.options.hooks?.emStrongMask?.call({lexer:this},n)??n;let s=!1,a="";for(;e;){s||(a=""),s=!1;let o;if(this.options.extensions?.inline?.some(p=>(o=p.call({lexer:this},e,t))?(e=e.substring(o.raw.length),t.push(o),!0):!1))continue;if(o=this.tokenizer.escape(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.tag(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.link(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.reflink(e,this.tokens.links)){e=e.substring(o.raw.length);let p=t.at(-1);o.type==="text"&&p?.type==="text"?(p.raw+=o.raw,p.text+=o.text):t.push(o);continue}if(o=this.tokenizer.emStrong(e,n,a)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.codespan(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.br(e)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.del(e,n,a)){e=e.substring(o.raw.length),t.push(o);continue}if(o=this.tokenizer.autolink(e)){e=e.substring(o.raw.length),t.push(o);continue}if(!this.state.inLink&&(o=this.tokenizer.url(e))){e=e.substring(o.raw.length),t.push(o);continue}let u=e;if(this.options.extensions?.startInline){let p=1/0,c=e.slice(1),d;this.options.extensions.startInline.forEach(h=>{d=h.call({lexer:this},c),typeof d=="number"&&d>=0&&(p=Math.min(p,d))}),p<1/0&&p>=0&&(u=e.substring(0,p+1))}if(o=this.tokenizer.inlineText(u)){e=e.substring(o.raw.length),o.raw.slice(-1)!=="_"&&(a=o.raw.slice(-1)),s=!0;let p=t.at(-1);p?.type==="text"?(p.raw+=o.raw,p.text+=o.text):t.push(o);continue}if(e){let p="Infinite loop on byte: "+e.charCodeAt(0);if(this.options.silent){console.error(p);break}else throw new Error(p)}}return t}};var y=class{options;parser;constructor(e){this.options=e||R}space(e){return""}code({text:e,lang:t,escaped:n}){let r=(t||"").match(m.notSpaceStart)?.[0],i=e.replace(m.endingNewline,"")+`
+`;return r?'<pre><code class="language-'+O(r)+'">'+(n?i:O(i,!0))+`</code></pre>
+`:"<pre><code>"+(n?i:O(i,!0))+`</code></pre>
+`}blockquote({tokens:e}){return`<blockquote>
+${this.parser.parse(e)}</blockquote>
+`}html({text:e}){return e}def(e){return""}heading({tokens:e,depth:t}){return`<h${t}>${this.parser.parseInline(e)}</h${t}>
+`}hr(e){return`<hr>
+`}list(e){let t=e.ordered,n=e.start,r="";for(let a=0;a<e.items.length;a++){let o=e.items[a];r+=this.listitem(o)}let i=t?"ol":"ul",s=t&&n!==1?' start="'+n+'"':"";return"<"+i+s+`>
+`+r+"</"+i+`>
+`}listitem(e){return`<li>${this.parser.parse(e.tokens)}</li>
+`}checkbox({checked:e}){return"<input "+(e?'checked="" ':"")+'disabled="" type="checkbox"> '}paragraph({tokens:e}){return`<p>${this.parser.parseInline(e)}</p>
+`}table(e){let t="",n="";for(let i=0;i<e.header.length;i++)n+=this.tablecell(e.header[i]);t+=this.tablerow({text:n});let r="";for(let i=0;i<e.rows.length;i++){let s=e.rows[i];n="";for(let a=0;a<s.length;a++)n+=this.tablecell(s[a]);r+=this.tablerow({text:n})}return r&&(r=`<tbody>${r}</tbody>`),`<table>
+<thead>
+`+t+`</thead>
+`+r+`</table>
+`}tablerow({text:e}){return`<tr>
+${e}</tr>
+`}tablecell(e){let t=this.parser.parseInline(e.tokens),n=e.header?"th":"td";return(e.align?`<${n} align="${e.align}">`:`<${n}>`)+t+`</${n}>
+`}strong({tokens:e}){return`<strong>${this.parser.parseInline(e)}</strong>`}em({tokens:e}){return`<em>${this.parser.parseInline(e)}</em>`}codespan({text:e}){return`<code>${O(e,!0)}</code>`}br(e){return"<br>"}del({tokens:e}){return`<del>${this.parser.parseInline(e)}</del>`}link({href:e,title:t,tokens:n}){let r=this.parser.parseInline(n),i=V(e);if(i===null)return r;e=i;let s='<a href="'+e+'"';return t&&(s+=' title="'+O(t)+'"'),s+=">"+r+"</a>",s}image({href:e,title:t,text:n,tokens:r}){r&&(n=this.parser.parseInline(r,this.parser.textRenderer));let i=V(e);if(i===null)return O(n);e=i;let s=`<img src="${e}" alt="${O(n)}"`;return t&&(s+=` title="${O(t)}"`),s+=">",s}text(e){return"tokens"in e&&e.tokens?this.parser.parseInline(e.tokens):"escaped"in e&&e.escaped?e.text:O(e.text)}};var S=class{strong({text:e}){return e}em({text:e}){return e}codespan({text:e}){return e}del({text:e}){return e}html({text:e}){return e}text({text:e}){return e}link({text:e}){return""+e}image({text:e}){return""+e}br(){return""}checkbox({raw:e}){return e}};var b=class l{options;renderer;textRenderer;constructor(e){this.options=e||R,this.options.renderer=this.options.renderer||new y,this.renderer=this.options.renderer,this.renderer.options=this.options,this.renderer.parser=this,this.textRenderer=new S}static parse(e,t){return new l(t).parse(e)}static parseInline(e,t){return new l(t).parseInline(e)}parse(e){this.renderer.parser=this;let t="";for(let n=0;n<e.length;n++){let r=e[n];if(this.options.extensions?.renderers?.[r.type]){let s=r,a=this.options.extensions.renderers[s.type].call({parser:this},s);if(a!==!1||!["space","hr","heading","code","table","blockquote","list","html","def","paragraph","text"].includes(s.type)){t+=a||"";continue}}let i=r;switch(i.type){case"space":{t+=this.renderer.space(i);break}case"hr":{t+=this.renderer.hr(i);break}case"heading":{t+=this.renderer.heading(i);break}case"code":{t+=this.renderer.code(i);break}case"table":{t+=this.renderer.table(i);break}case"blockquote":{t+=this.renderer.blockquote(i);break}case"list":{t+=this.renderer.list(i);break}case"checkbox":{t+=this.renderer.checkbox(i);break}case"html":{t+=this.renderer.html(i);break}case"def":{t+=this.renderer.def(i);break}case"paragraph":{t+=this.renderer.paragraph(i);break}case"text":{t+=this.renderer.text(i);break}default:{let s='Token with "'+i.type+'" type was not found.';if(this.options.silent)return console.error(s),"";throw new Error(s)}}}return t}parseInline(e,t=this.renderer){this.renderer.parser=this;let n="";for(let r=0;r<e.length;r++){let i=e[r];if(this.options.extensions?.renderers?.[i.type]){let a=this.options.extensions.renderers[i.type].call({parser:this},i);if(a!==!1||!["escape","html","link","image","strong","em","codespan","br","del","text"].includes(i.type)){n+=a||"";continue}}let s=i;switch(s.type){case"escape":{n+=t.text(s);break}case"html":{n+=t.html(s);break}case"link":{n+=t.link(s);break}case"image":{n+=t.image(s);break}case"checkbox":{n+=t.checkbox(s);break}case"strong":{n+=t.strong(s);break}case"em":{n+=t.em(s);break}case"codespan":{n+=t.codespan(s);break}case"br":{n+=t.br(s);break}case"del":{n+=t.del(s);break}case"text":{n+=t.text(s);break}default:{let a='Token with "'+s.type+'" type was not found.';if(this.options.silent)return console.error(a),"";throw new Error(a)}}}return n}};var P=class{options;block;constructor(e){this.options=e||R}static passThroughHooks=new Set(["preprocess","postprocess","processAllTokens","emStrongMask"]);static passThroughHooksRespectAsync=new Set(["preprocess","postprocess","processAllTokens"]);preprocess(e){return e}postprocess(e){return e}processAllTokens(e){return e}emStrongMask(e){return e}provideLexer(){return this.block?x.lex:x.lexInline}provideParser(){return this.block?b.parse:b.parseInline}};var A=class{defaults=_();options=this.setOptions;parse=this.parseMarkdown(!0);parseInline=this.parseMarkdown(!1);Parser=b;Renderer=y;TextRenderer=S;Lexer=x;Tokenizer=w;Hooks=P;constructor(...e){this.use(...e)}walkTokens(e,t){let n=[];for(let r of e)switch(n=n.concat(t.call(this,r)),r.type){case"table":{let i=r;for(let s of i.header)n=n.concat(this.walkTokens(s.tokens,t));for(let s of i.rows)for(let a of s)n=n.concat(this.walkTokens(a.tokens,t));break}case"list":{let i=r;n=n.concat(this.walkTokens(i.items,t));break}default:{let i=r;this.defaults.extensions?.childTokens?.[i.type]?this.defaults.extensions.childTokens[i.type].forEach(s=>{let a=i[s].flat(1/0);n=n.concat(this.walkTokens(a,t))}):i.tokens&&(n=n.concat(this.walkTokens(i.tokens,t)))}}return n}use(...e){let t=this.defaults.extensions||{renderers:{},childTokens:{}};return e.forEach(n=>{let r={...n};if(r.async=this.defaults.async||r.async||!1,n.extensions&&(n.extensions.forEach(i=>{if(!i.name)throw new Error("extension name required");if("renderer"in i){let s=t.renderers[i.name];s?t.renderers[i.name]=function(...a){let o=i.renderer.apply(this,a);return o===!1&&(o=s.apply(this,a)),o}:t.renderers[i.name]=i.renderer}if("tokenizer"in i){if(!i.level||i.level!=="block"&&i.level!=="inline")throw new Error("extension level must be 'block' or 'inline'");let s=t[i.level];s?s.unshift(i.tokenizer):t[i.level]=[i.tokenizer],i.start&&(i.level==="block"?t.startBlock?t.startBlock.push(i.start):t.startBlock=[i.start]:i.level==="inline"&&(t.startInline?t.startInline.push(i.start):t.startInline=[i.start]))}"childTokens"in i&&i.childTokens&&(t.childTokens[i.name]=i.childTokens)}),r.extensions=t),n.renderer){let i=this.defaults.renderer||new y(this.defaults);for(let s in n.renderer){if(!(s in i))throw new Error(`renderer '${s}' does not exist`);if(["options","parser"].includes(s))continue;let a=s,o=n.renderer[a],u=i[a];i[a]=(...p)=>{let c=o.apply(i,p);return c===!1&&(c=u.apply(i,p)),c||""}}r.renderer=i}if(n.tokenizer){let i=this.defaults.tokenizer||new w(this.defaults);for(let s in n.tokenizer){if(!(s in i))throw new Error(`tokenizer '${s}' does not exist`);if(["options","rules","lexer"].includes(s))continue;let a=s,o=n.tokenizer[a],u=i[a];i[a]=(...p)=>{let c=o.apply(i,p);return c===!1&&(c=u.apply(i,p)),c}}r.tokenizer=i}if(n.hooks){let i=this.defaults.hooks||new P;for(let s in n.hooks){if(!(s in i))throw new Error(`hook '${s}' does not exist`);if(["options","block"].includes(s))continue;let a=s,o=n.hooks[a],u=i[a];P.passThroughHooks.has(s)?i[a]=p=>{if(this.defaults.async&&P.passThroughHooksRespectAsync.has(s))return(async()=>{let d=await o.call(i,p);return u.call(i,d)})();let c=o.call(i,p);return u.call(i,c)}:i[a]=(...p)=>{if(this.defaults.async)return(async()=>{let d=await o.apply(i,p);return d===!1&&(d=await u.apply(i,p)),d})();let c=o.apply(i,p);return c===!1&&(c=u.apply(i,p)),c}}r.hooks=i}if(n.walkTokens){let i=this.defaults.walkTokens,s=n.walkTokens;r.walkTokens=function(a){let o=[];return o.push(s.call(this,a)),i&&(o=o.concat(i.call(this,a))),o}}this.defaults={...this.defaults,...r}}),this}setOptions(e){return this.defaults={...this.defaults,...e},this}lexer(e,t){return x.lex(e,t??this.defaults)}parser(e,t){return b.parse(e,t??this.defaults)}parseMarkdown(e){return(n,r)=>{let i={...r},s={...this.defaults,...i},a=this.onError(!!s.silent,!!s.async);if(this.defaults.async===!0&&i.async===!1)return a(new Error("marked(): The async option was set to true by an extension. Remove async: false from the parse options object to return a Promise."));if(typeof n>"u"||n===null)return a(new Error("marked(): input parameter is undefined or null"));if(typeof n!="string")return a(new Error("marked(): input parameter is of type "+Object.prototype.toString.call(n)+", string expected"));if(s.hooks&&(s.hooks.options=s,s.hooks.block=e),s.async)return(async()=>{let o=s.hooks?await s.hooks.preprocess(n):n,p=await(s.hooks?await s.hooks.provideLexer():e?x.lex:x.lexInline)(o,s),c=s.hooks?await s.hooks.processAllTokens(p):p;s.walkTokens&&await Promise.all(this.walkTokens(c,s.walkTokens));let h=await(s.hooks?await s.hooks.provideParser():e?b.parse:b.parseInline)(c,s);return s.hooks?await s.hooks.postprocess(h):h})().catch(a);try{s.hooks&&(n=s.hooks.preprocess(n));let u=(s.hooks?s.hooks.provideLexer():e?x.lex:x.lexInline)(n,s);s.hooks&&(u=s.hooks.processAllTokens(u)),s.walkTokens&&this.walkTokens(u,s.walkTokens);let c=(s.hooks?s.hooks.provideParser():e?b.parse:b.parseInline)(u,s);return s.hooks&&(c=s.hooks.postprocess(c)),c}catch(o){return a(o)}}}onError(e,t){return n=>{if(n.message+=`
+Please report this to https://github.com/markedjs/marked.`,e){let r="<p>An error occurred:</p><pre>"+O(n.message+"",!0)+"</pre>";return t?Promise.resolve(r):r}if(t)return Promise.reject(n);throw n}}};var M=new A;function g(l,e){return M.parse(l,e)}g.options=g.setOptions=function(l){return M.setOptions(l),g.defaults=M.defaults,N(g.defaults),g};g.getDefaults=_;g.defaults=R;g.use=function(...l){return M.use(...l),g.defaults=M.defaults,N(g.defaults),g};g.walkTokens=function(l,e){return M.walkTokens(l,e)};g.parseInline=M.parseInline;g.Parser=b;g.parser=b.parse;g.Renderer=y;g.TextRenderer=S;g.Lexer=x;g.lexer=x.lex;g.Tokenizer=w;g.Hooks=P;g.parse=g;var pt=g.options,ct=g.setOptions,ht=g.use,kt=g.walkTokens,dt=g.parseInline,gt=g,ft=b.parse,mt=x.lex;
+
+if(__exports != exports)module.exports = exports;return module.exports}));
+
+
+</script>
+
+<!-- Render the top Markdown source into the empty article mount. -->
+<script>
+(function renderMarkdownBlog(){
+  'use strict';
+  const source=document.getElementById('pc-markdown');
+  const article=document.getElementById('pc-article');
+  if(!source||!article)return;
+  const element=(tag,className,text)=>{
+    const node=document.createElement(tag);
+    if(className)node.className=className;
+    if(text!==undefined)node.textContent=text;
+    return node;
+  };
+  try{
+    article.innerHTML=marked.parse(source.textContent.trim(),{gfm:true,breaks:false});
+    const title=article.querySelector(':scope > h1');
+    const possibleSubtitle=title&&title.nextElementSibling;
+    const subtitle=possibleSubtitle&&possibleSubtitle.matches('p')&&possibleSubtitle.querySelector('em')?possibleSubtitle:null;
+    const possibleByline=(subtitle||title)&&((subtitle||title).nextElementSibling);
+    const byline=possibleByline&&possibleByline.matches('p')&&possibleByline.querySelector('strong')?possibleByline:null;
+    const titleText=title?title.textContent.trim():'Article';
+    const author=byline?byline.textContent.split('·')[0].trim():'';
+    document.title=titleText+(author?' — '+author:'');
+    document.querySelector('meta[name="description"]').setAttribute('content',subtitle?subtitle.textContent.trim():titleText);
+    article.setAttribute('aria-label',titleText);
+    article.querySelectorAll('table').forEach(table=>{
+      const wrap=element('div','pc-table-wrap');table.replaceWith(wrap);wrap.append(table);
+    });
+    const sections=Array.from(article.querySelectorAll(':scope > h2'));
+    sections.forEach((heading,index)=>{if(!heading.id)heading.id='pc-section-'+(index+1);});
+    const topline=element('nav','pc-topline');topline.setAttribute('aria-label','Article');
+    const brand=element('span','pc-topline-brand');
+    const mark=element('span','pc-topline-mark');mark.setAttribute('aria-hidden','true');
+    brand.append(mark,document.createTextNode(author||titleText));topline.append(brand);
+    if(sections.length){
+      const jump=element('a','', 'Read the article ↓');jump.href='#'+sections[0].id;topline.append(jump);
+    }
+    article.prepend(topline);
+    if(title){
+      const hero=element('header','pc-hero');title.before(hero);
+      if(subtitle)hero.append(element('div','pc-kicker',subtitle.textContent.split('·')[0].trim()));
+      hero.append(title);
+      if(subtitle){subtitle.classList.add('pc-deck');hero.append(subtitle);}
+      if(byline){byline.classList.add('pc-byline');hero.append(byline);}
+      if(sections.length){
+        const contents=element('details','pc-contents');
+        contents.append(element('summary','', 'In this article'));
+        const nav=element('nav');nav.setAttribute('aria-label','Article sections');
+        sections.forEach(section=>{
+          const a=element('a','',section.textContent.trim());a.href='#'+section.id;nav.append(a);
+        });
+        contents.append(nav);hero.after(contents);
+      }
+    }
+    const opening=article.querySelector(':scope > p');if(opening)opening.classList.add('pc-opening');
+    const sourceHeading=Array.from(article.querySelectorAll(':scope > h3')).find(h=>/source.*notes/i.test(h.textContent));
+    if(sourceHeading){
+      let paragraph=sourceHeading.nextElementSibling;
+      while(paragraph&&paragraph.tagName==='P'){paragraph.classList.add('pc-source-note');paragraph=paragraph.nextElementSibling;}
+    }
+    const footer=element('footer','pc-colophon');footer.append(element('span','',titleText));
+    if(byline)footer.append(element('span','',byline.textContent.trim()));article.append(footer);
+    article.dataset.markdownRendered='true';
+    document.dispatchEvent(new CustomEvent('pc:markdown-rendered',{detail:{article}}));
+  }catch(error){
+    article.replaceChildren(element('p','pc-render-error','The article could not render. Its Markdown source is at the top of this file.'));
+    article.dataset.markdownError=String(error.message);
+    console.error('Markdown rendering failed:',error);
+  }
+})();
+
+</script>
+
+<!-- Interactive examples: recorded chess data and their rendering runtime. -->
+<style>
+/* Predicate Chess: every visual rule is scoped to an explicit article mount. */
+.pc-widget{--pc-paper:#f6f3eb;--pc-ink:#152e35;--pc-green:#167567;--pc-gold:#b58740;--pc-muted:#53696a;--pc-line:#d9ded5;color:var(--pc-ink);background:#fffdf7;border:1px solid var(--pc-line);border-radius:22px;margin:2.2rem 0;overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.55;box-shadow:0 8px 28px #152e3506;text-align:left}
+.pc-widget *{box-sizing:border-box}.pc-widget button,.pc-widget select,.pc-widget input{font:inherit}.pc-widget button,.pc-widget select{color:var(--pc-ink)}.pc-widget button{cursor:pointer}.pc-widget button:disabled{cursor:default;opacity:.4}.pc-widget button:focus-visible,.pc-widget select:focus-visible,.pc-widget input:focus-visible,.pc-widget summary:focus-visible{outline:3px solid var(--pc-gold);outline-offset:3px}.pc-widget h3,.pc-widget h4,.pc-widget p{margin:0}.pc-widget button{touch-action:manipulation}.pc-widget .pc-header{padding:25px 28px 20px;background:var(--pc-paper);border-bottom:1px solid var(--pc-line)}.pc-widget .pc-eyebrow{font-size:10px;letter-spacing:.15em;text-transform:uppercase;font-weight:800;color:var(--pc-green);margin-bottom:7px}.pc-widget h3{font-family:Georgia,"Times New Roman",serif;font-size:26px;line-height:1.18;font-weight:500;letter-spacing:-.025em;color:var(--pc-ink)}.pc-widget .pc-intro{font-size:13px;color:var(--pc-muted);margin-top:9px;max-width:660px}.pc-widget .pc-selection{display:grid;grid-template-columns:auto 1fr;gap:13px;align-items:center;margin-top:19px}.pc-widget .pc-select-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:750;color:var(--pc-muted)}.pc-widget select{width:100%;min-height:46px;background:#fffefb;border:1px solid #c6d2c9;border-radius:9px;padding:10px 34px 10px 12px;font-size:13px;cursor:pointer}.pc-widget .pc-main{display:grid;grid-template-columns:minmax(0,1.04fr) minmax(230px,1fr);gap:24px;padding:26px 28px}.pc-widget .pc-board-wrap{min-width:0}.pc-widget .pc-board{width:100%;max-width:440px;margin:0 auto;line-height:0}.pc-widget .pc-board svg{display:block;width:100%;height:auto}.pc-widget .pc-board-meta{display:flex;gap:8px;justify-content:space-between;align-items:center;margin:4px 6px 12px;font-size:11px;min-height:26px}.pc-widget .pc-side{display:inline-flex;gap:7px;align-items:center;font-weight:650}.pc-widget .pc-side::before{content:"";display:inline-block;width:10px;height:10px;border:1px solid var(--pc-ink);border-radius:50%;background:#fffef9}.pc-widget .pc-side[data-side="b"]::before{background:var(--pc-ink)}.pc-widget .pc-position-counter{color:var(--pc-muted);font-variant-numeric:tabular-nums}.pc-widget .pc-controls{display:flex;align-items:center;gap:8px;margin:11px 5px 0}.pc-widget .pc-control{border:1px solid #cbd6cc;background:#fffefb;border-radius:9px;min-height:44px;padding:8px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:8px}.pc-widget .pc-control:hover:not(:disabled){background:#eef3eb}.pc-widget .pc-control.pc-primary{margin-left:auto;background:var(--pc-green);color:#fff;border-color:var(--pc-green)}.pc-widget .pc-control.pc-primary:hover:not(:disabled){background:#0f6257}.pc-widget .pc-reset{font-size:17px;padding:8px 13px}.pc-widget .pc-step-nav{display:flex;gap:5px;margin:10px 6px 0;overflow-x:auto;padding:1px 0 4px}.pc-widget .pc-step{min-width:44px;min-height:36px;border:1px solid #d9dfd6;border-radius:7px;background:#faf9f3;font-size:11px;white-space:nowrap;padding:5px 9px}.pc-widget .pc-step[aria-current="step"]{background:#e4efe7;border-color:var(--pc-green);font-weight:750;color:var(--pc-green)}.pc-widget .pc-detail{padding-top:8px;min-width:0;align-self:start}.pc-widget .pc-move-label{font-size:10px;text-transform:uppercase;letter-spacing:.11em;font-weight:750;color:var(--pc-muted)}.pc-widget .pc-move{display:flex;align-items:baseline;gap:12px;margin:4px 0 13px}.pc-widget .pc-san{font-family:Georgia,"Times New Roman",serif;font-size:35px;line-height:1.2;letter-spacing:-.02em}.pc-widget .pc-ply{font-size:11px;color:var(--pc-muted)}.pc-widget .pc-caption{font-size:14px;line-height:1.65;color:var(--pc-ink);margin-bottom:17px}.pc-widget .pc-fact-section{margin-top:18px}.pc-widget .pc-fact-title{font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--pc-muted);margin-bottom:9px}.pc-widget .pc-facts{list-style:none;margin:0;padding:0;display:grid;gap:8px}.pc-widget .pc-fact{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;padding:9px 10px;border:1px solid #e0e6dc;border-radius:8px;background:#f8faf4}.pc-widget .pc-fact::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;margin-top:6px;background:var(--pc-green)}.pc-widget .pc-fact.pc-created{background:#fbf4e5;border-color:#ead7b4}.pc-widget .pc-fact.pc-created::before{background:var(--pc-gold)}.pc-widget .pc-fact.pc-absent{background:#f7f6f1;border-color:#e1e1d9;color:#69716b}.pc-widget .pc-fact.pc-absent::before{background:transparent;border:1px solid #8c9189}.pc-widget .pc-fact-code{display:block;color:#62716b;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;overflow-wrap:anywhere;margin-top:3px}.pc-widget .pc-observation{margin-top:17px;padding:12px 13px;border-left:3px solid var(--pc-gold);background:#fbf6e9;font-size:12px;line-height:1.6}.pc-widget .pc-observation strong{font-weight:750}.pc-widget .pc-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 6px 0;color:var(--pc-muted);font-size:10px}.pc-widget .pc-key{display:inline-flex;gap:5px;align-items:center}.pc-widget .pc-key::before{content:"";width:9px;height:9px;background:#c3dfcf;border:1px solid #16756788;border-radius:2px}.pc-widget .pc-key.pc-key-gold::before{background:#f0daaa;border-color:#b5874099}.pc-widget .pc-key.pc-key-line::before{height:2px;width:13px;background:var(--pc-green);border:0}.pc-widget .pc-footer{border-top:1px solid var(--pc-line);padding:12px 28px;font-size:10px;color:var(--pc-muted);background:#fbfaf5;line-height:1.65}.pc-widget .pc-fen{margin:12px 6px 0;color:var(--pc-muted);font-size:10px}.pc-widget .pc-fen summary{cursor:pointer;width:max-content;min-height:28px;display:flex;align-items:center;gap:5px}.pc-widget .pc-fen summary::before{content:"+";font-size:13px}.pc-widget .pc-fen[open] summary::before{content:"−"}.pc-widget .pc-fen code{display:block;font-size:10px;overflow-wrap:anywhere;line-height:1.6;border:1px solid #e4e6dc;background:#f8f7f1;padding:9px;border-radius:7px}.pc-widget .pc-proof-options{display:flex;gap:15px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:18px}.pc-widget .pc-objective{font-size:11px;display:inline-block;border:1px solid #cad9cb;border-radius:20px;padding:6px 10px;background:#eef4e9;font-weight:700;color:var(--pc-green)}.pc-widget .pc-switch-label{display:inline-flex;gap:8px;align-items:center;min-height:44px;font-size:12px;cursor:pointer}.pc-widget .pc-switch-label input{appearance:none;-webkit-appearance:none;width:33px;height:20px;background:#d5ddd3;border:1px solid #bfcabf;border-radius:20px;position:relative;flex:none;margin:0;cursor:pointer;transition:background .15s}.pc-widget .pc-switch-label input::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #152e3530;top:2px;left:2px;transition:transform .15s}.pc-widget .pc-switch-label input:checked{background:var(--pc-gold);border-color:var(--pc-gold)}.pc-widget .pc-switch-label input:checked::after{transform:translateX(13px)}.pc-widget .pc-proof-verdict{margin:22px 28px 0;padding:14px 17px;background:#edf5e9;border:1px solid #c5d7c7;border-radius:10px;display:flex;gap:12px;align-items:flex-start}.pc-widget .pc-verdict-mark{font-size:18px;font-weight:800;line-height:1.4;color:var(--pc-green)}.pc-widget .pc-verdict-title{font-size:13px;font-weight:800;line-height:1.4;color:var(--pc-green)}.pc-widget .pc-verdict-explanation{margin-top:3px;font-size:12px;color:#4b655a;line-height:1.6}.pc-widget .pc-proof-verdict[data-proof-status="unproved"]{background:#fbf1df;border-color:#e5c995}.pc-widget .pc-proof-verdict[data-proof-status="unproved"] .pc-verdict-title,.pc-widget .pc-proof-verdict[data-proof-status="unproved"] .pc-verdict-mark{color:#8b642e}.pc-widget .pc-proof-verdict[data-proof-status="unproved"] .pc-verdict-explanation{color:#715d3d}.pc-widget .pc-proof-main{grid-template-columns:minmax(220px,.95fr) minmax(0,1.2fr);gap:25px;padding-top:20px}.pc-widget .pc-tree-panel{min-width:0;padding-top:4px}.pc-widget .pc-tree-title{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--pc-muted);margin-bottom:14px}.pc-widget .pc-tree{font-size:12px}.pc-widget .pc-tree ul{list-style:none;margin:0;padding:0}.pc-widget .pc-tree li{position:relative;margin:0;padding:0}.pc-widget .pc-tree .pc-children{margin-left:16px;border-left:1px solid #b9ccb9;padding-left:16px;margin-top:9px;display:grid;gap:9px}.pc-widget .pc-tree .pc-children>li::before{content:"";position:absolute;left:-17px;top:24px;width:16px;height:1px;background:#b9ccb9}.pc-widget .pc-node{width:100%;text-align:left;border:1px solid #d6dfd2;border-radius:8px;min-height:49px;background:#fafbf5;padding:9px 11px;display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;position:relative}.pc-widget .pc-node:hover{border-color:#83a794;background:#f1f6ec}.pc-widget .pc-node[aria-current="true"]{border-color:var(--pc-green);box-shadow:0 0 0 1px var(--pc-green);background:#eaf2e5}.pc-widget .pc-node.pc-leaf{background:#f0f6e9}.pc-widget .pc-node.pc-omitted{background:#fbf4e7;border-style:dashed;border-color:#c9a364}.pc-widget .pc-node-title{font-size:12px;line-height:1.35;font-weight:750}.pc-widget .pc-node-subtitle{font-size:10px;color:var(--pc-muted);line-height:1.45;font-weight:400;margin-top:3px;display:block}.pc-widget .pc-node-kind{font-size:9px;text-transform:uppercase;letter-spacing:.04em;font-weight:800;border:1px solid #ced9cc;border-radius:5px;padding:3px 5px;color:#4f6958;white-space:nowrap}.pc-widget .pc-node.pc-omitted .pc-node-kind{color:#8b642e;border-color:#dfc391}.pc-widget .pc-node[data-proof-node-status="refuted"]{background:#f8f3e9;border-color:#ddcfb8}.pc-widget .pc-node[data-proof-node-status="refuted"] .pc-node-kind{color:#91663b;border-color:#dbc5a5}.pc-widget .pc-node[data-proof-node-status="refuted"][aria-current="true"]{border-color:var(--pc-green)}.pc-widget .pc-coverage{margin:14px 0 0;padding:11px 12px;border-radius:8px;background:var(--pc-paper);font-size:11px;line-height:1.65;color:var(--pc-muted)}.pc-widget .pc-proof-selection{margin:13px 5px 0;padding:11px 13px;background:#f6f7ef;border-radius:9px;border:1px solid #e0e5d8}.pc-widget .pc-proof-selection .pc-caption{font-size:12px;margin:6px 0 0}.pc-widget .pc-proof-selection .pc-fact{background:#fffdf7;margin-top:6px;font-size:11px;padding:7px 9px}.pc-widget .pc-proof-selection .pc-facts{gap:0}.pc-widget .pc-inline-count{font-size:10px;color:var(--pc-green);text-transform:none;letter-spacing:0;font-weight:650}.pc-widget .pc-error{padding:24px;font-size:14px;color:#7e432c}.pc-widget .pc-sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:650px){.pc-widget{border-radius:16px;margin:1.6rem 0}.pc-widget .pc-header{padding:21px 18px 17px}.pc-widget h3{font-size:23px}.pc-widget .pc-main,.pc-widget .pc-proof-main{grid-template-columns:1fr;padding:18px;gap:17px}.pc-widget .pc-board{max-width:400px}.pc-widget .pc-detail{padding:0 5px}.pc-widget .pc-caption{font-size:13px}.pc-widget .pc-facts{grid-template-columns:1fr}.pc-widget .pc-fact-section{margin-top:15px}.pc-widget .pc-footer{padding:12px 18px}.pc-widget .pc-proof-verdict{margin:18px 18px 0;padding:13px}.pc-widget .pc-selection{grid-template-columns:1fr;gap:6px}.pc-widget .pc-proof-options{gap:6px 15px}.pc-widget .pc-tree-panel{padding:0 5px}.pc-widget .pc-san{font-size:30px}.pc-widget .pc-move{margin-bottom:10px}.pc-widget .pc-control{min-height:46px}.pc-widget .pc-switch-label{font-size:11px}.pc-widget .pc-node{min-height:52px}.pc-widget .pc-step{min-height:40px}.pc-widget .pc-board-meta{margin-top:0}.pc-widget .pc-tree .pc-children{margin-left:11px;padding-left:13px}.pc-widget .pc-tree .pc-children>li::before{left:-14px;width:13px}}
+@media(prefers-reduced-motion:reduce){.pc-widget *{transition:none!important;scroll-behavior:auto!important}}
+@media print{.pc-widget{break-inside:avoid;box-shadow:none}.pc-widget .pc-controls,.pc-widget .pc-step-nav,.pc-widget .pc-switch-label,.pc-widget .pc-fen{display:none}.pc-widget .pc-main{grid-template-columns:1fr 1fr}.pc-widget .pc-footer::after{content:" The interactive edition includes additional positions and proof branches."}}
+</style>
+<script id="pc-example-data" type="application/json">{"version":1,"verifiedWith":{"library":"python-chess","chessVersion":"1.11.2","method":"Legal moves and state predicates; exhaustive opponent replies for the displayed mate-in-two proof. No engine evaluation or game-theoretic claim for geometry widgets."},"examples":[{"id":"pin","title":"Activate an existing line","kind":"pin","objective":"Create an absolute pin on Be7.","initialFen":"4k3/4b3/8/8/8/8/8/K2R4 w - - 0 1","steps":[{"fen":"4k3/4b3/8/8/8/8/8/K2R4 w - - 0 1","san":null,"uci":null,"caption":"The bishop and king already share the e-file. The rook has not yet activated that line.","highlights":{"squares":["d1","e1","e7","e8"],"arrows":[{"from":"d1","to":"e1","color":"accent"}]},"facts":[{"label":"Be7 and Ke8 share a file","value":true,"type":"boolean"},{"label":"Be7 is absolutely pinned","value":false,"type":"boolean"}],"sideToMove":"white","inCheck":false,"checkmate":false,"legalMoveCount":16,"invariants":["Be7 and Ke8 share the e-file."],"created":[]},{"fen":"4k3/4b3/8/8/8/8/8/K3R3 b - - 1 1","san":"Re1","uci":"d1e1","caption":"Re1 activates the line. Moving Be7 off it would expose the king, so the bishop is now absolutely pinned.","highlights":{"squares":["e1","e7","e8"],"arrows":[{"from":"e1","to":"e7","color":"accent"},{"from":"e7","to":"e8","color":"accent"}]},"facts":[{"label":"Be7 and Ke8 share a file","value":true,"type":"boolean"},{"label":"Be7 is absolutely pinned","value":true,"type":"boolean"},{"label":"Black is in check","value":false,"type":"boolean"}],"sideToMove":"black","inCheck":false,"checkmate":false,"legalMoveCount":4,"invariants":["Be7 and Ke8 share the e-file."],"created":["Re1 attacks Be7 along that file.","Be7 is absolutely pinned."],"removed":[]}],"scope":"An attack relationship is demonstrated; a pin alone does not prove a material gain."},{"id":"rook-fork","title":"A fork can have two different rays","kind":"fork","objective":"Attack Kc7 and Qh3 with one rook.","initialFen":"8/2k5/8/8/8/R6q/1P6/K3B3 w - - 0 1","steps":[{"fen":"8/2k5/8/8/8/R6q/1P6/K3B3 w - - 0 1","san":null,"uci":null,"caption":"The king on c7 and queen on h3 do not share a rank, file, or diagonal. They do share a rook firing square: c3.","highlights":{"squares":["a3","c3","c7","h3"],"arrows":[{"from":"a3","to":"c3","color":"accent"},{"from":"c3","to":"c7","color":"accent"},{"from":"c3","to":"h3","color":"accent"}]},"facts":[{"label":"Kc7 and Qh3 are collinear","value":false,"type":"boolean"},{"label":"c3 shares a file with Kc7","value":true,"type":"boolean"},{"label":"c3 shares a rank with Qh3","value":true,"type":"boolean"},{"label":"Rc3 is legal","value":true,"type":"boolean"}],"sideToMove":"white","inCheck":false,"checkmate":false,"legalMoveCount":24,"invariants":["c3 shares a file with Kc7 and a rank with Qh3.","Kc7 and Qh3 are not collinear."],"created":[]},{"fen":"8/2k5/8/8/8/2R4q/1P6/K3B3 b - - 1 1","san":"Rc3+","uci":"a3c3","caption":"Rc3+ forks king and queen along different rays. The common firing square was the useful precondition.","highlights":{"squares":["c3","c7","h3"],"arrows":[{"from":"c3","to":"c7","color":"accent"},{"from":"c3","to":"h3","color":"accent"}]},"facts":[{"label":"Rc3 attacks Kc7","value":true,"type":"boolean"},{"label":"Rc3 attacks Qh3","value":true,"type":"boolean"},{"label":"Kc7 and Qh3 are collinear","value":false,"type":"boolean"},{"label":"Black is in check","value":true,"type":"boolean"}],"sideToMove":"black","inCheck":true,"checkmate":false,"legalMoveCount":7,"invariants":["c3 shares a file with Kc7 and a rank with Qh3.","Kc7 and Qh3 are not collinear."],"created":["Rc3 attacks both targets.","Black is in check."],"removed":[]}],"scope":"This widget proves the fork geometry. The direct defense 1...Qxc3 can be met by 2.Bxc3; that continuation is verified, but the widget is not a full material proof tree.","verifiedExtraLine":{"uci":["h3c3","e1c3"],"san":["Qxc3","Bxc3"],"finalFen":"8/2k5/8/8/8/2B5/1P6/K7 b - - 0 2"}},{"id":"knight-fork","title":"Knight alignment means a shared jump square","kind":"knight-fork","objective":"Attack Ke8 and Qf5 with Nd6.","initialFen":"4k3/8/8/5q2/2N5/8/1P6/K7 w - - 0 1","steps":[{"fen":"4k3/8/8/5q2/2N5/8/1P6/K7 w - - 0 1","san":null,"uci":null,"caption":"From d6 a knight attacks both e8 and f5. Nc4 can legally reach that common attack square.","highlights":{"squares":["c4","d6","e8","f5"],"arrows":[{"from":"c4","to":"d6","color":"accent"},{"from":"d6","to":"e8","color":"accent"},{"from":"d6","to":"f5","color":"accent"}]},"facts":[{"label":"d6 attacks e8 by a knight jump","value":true,"type":"boolean"},{"label":"d6 attacks f5 by a knight jump","value":true,"type":"boolean"},{"label":"Nd6 is legal","value":true,"type":"boolean"},{"label":"Ke8 and Qf5 are collinear","value":false,"type":"boolean"}],"sideToMove":"white","inCheck":false,"checkmate":false,"legalMoveCount":10,"invariants":["d6 is a shared knight attack square for e8 and f5."],"created":[]},{"fen":"4k3/8/3N4/5q2/8/8/1P6/K7 b - - 1 1","san":"Nd6+","uci":"c4d6","caption":"Nd6+ realizes the fork. A knight check cannot be interposed against.","highlights":{"squares":["d6","e8","f5"],"arrows":[{"from":"d6","to":"e8","color":"accent"},{"from":"d6","to":"f5","color":"accent"}]},"facts":[{"label":"Nd6 attacks Ke8","value":true,"type":"boolean"},{"label":"Nd6 attacks Qf5","value":true,"type":"boolean"},{"label":"Black is in check","value":true,"type":"boolean"},{"label":"Legal Black replies","value":"Kf8, Kd8, Ke7, Kd7","type":"text"}],"sideToMove":"black","inCheck":true,"checkmate":false,"legalMoveCount":4,"invariants":["d6 is a shared knight attack square for e8 and f5."],"created":["Nd6 attacks Ke8 and Qf5.","Black is in check."],"removed":[]}],"scope":"The relation belongs to the two fixed targets and a possible knight square. It is not ordinary collinearity."},{"id":"guard-removal","title":"Remove the piece that makes a capture costly","kind":"guard","objective":"Remove Be7 and take Rd8.","initialFen":"3r1k2/4b3/8/2B2N2/8/8/8/K2R4 w - - 0 1","steps":[{"fen":"3r1k2/4b3/8/2B2N2/8/8/8/K2R4 w - - 0 1","san":null,"uci":null,"caption":"Rd1 attacks Rd8. Be7 is the only black piece defending Rd8. White can take that guard with check.","highlights":{"squares":["d1","d8","e7","c5"],"arrows":[{"from":"d1","to":"d8","color":"accent"},{"from":"e7","to":"d8","color":"accent"},{"from":"c5","to":"e7","color":"accent"}]},"facts":[{"label":"White attackers of Rd8","value":1,"type":"count"},{"label":"Black defenders of Rd8","value":1,"type":"count"},{"label":"Be7 defends Rd8","value":true,"type":"boolean"}],"sideToMove":"white","inCheck":false,"checkmate":false,"legalMoveCount":34,"invariants":["Rd1 attacks Rd8."],"created":[]},{"fen":"3r1k2/4B3/8/5N2/8/8/8/K2R4 b - - 0 1","san":"Bxe7+","uci":"c5e7","caption":"Bxe7+ removes the guard and forces a king response. White now attacks Rd8 with both rook and bishop.","highlights":{"squares":["e7","d8","f8"],"arrows":[{"from":"e7","to":"f8","color":"accent"},{"from":"e7","to":"d8","color":"accent"},{"from":"d1","to":"d8","color":"accent"}]},"facts":[{"label":"Original guard Be7 remains","value":false,"type":"boolean"},{"label":"White attackers of Rd8","value":2,"type":"count"},{"label":"Black defenders of Rd8","value":0,"type":"count"},{"label":"Black is in check","value":true,"type":"boolean"},{"label":"Legal replies","value":"Kg8, Ke8, Kf7","type":"text"}],"sideToMove":"black","inCheck":true,"checkmate":false,"legalMoveCount":3,"invariants":["Rd1 attacks Rd8."],"created":["White's bishop on e7 checks Kf8.","White's bishop also attacks Rd8."],"removed":["Black's bishop on e7 no longer guards Rd8."]}],"scope":"All three legal replies to Bxe7+ allow Rxd8. This is an example with one initial attacker and one initial defender; those counts are not a universal prerequisite.","verifiedBranches":[{"uci":["f8g8","d1d8"],"san":["Kg8","Rxd8+"],"finalFen":"3R2k1/4B3/8/5N2/8/8/8/K7 b - - 0 2"},{"uci":["f8e8","d1d8"],"san":["Ke8","Rxd8+"],"finalFen":"3Rk3/4B3/8/5N2/8/8/8/K7 b - - 0 2"},{"uci":["f8f7","d1d8"],"san":["Kf7","Rxd8"],"finalFen":"3R4/4Bk2/8/5N2/8/8/8/K7 b - - 0 2"}]},{"id":"same-move-pin","title":"Alignment and pin can appear in the same move","kind":"counterexample","objective":"Test the claim that alignment must first appear at least one ply before a pin.","initialFen":"k3r3/8/8/8/8/3R4/8/4K3 w - - 0 1","steps":[{"fen":"k3r3/8/8/8/8/3R4/8/4K3 w - - 0 1","san":null,"uci":null,"caption":"White is in check. Rd3 and Ke1 do not share any rank, file, or diagonal; the rook is not pinned.","highlights":{"squares":["d3","e1","e8"],"arrows":[{"from":"e8","to":"e1","color":"accent"},{"from":"d3","to":"e3","color":"accent"}]},"facts":[{"label":"White is in check","value":true,"type":"boolean"},{"label":"Rd3 and Ke1 are collinear","value":false,"type":"boolean"},{"label":"Rd3 is absolutely pinned","value":false,"type":"boolean"}],"sideToMove":"white","inCheck":true,"checkmate":false,"legalMoveCount":5,"invariants":["The black rook stays on e8.","The white king stays on e1."],"created":[]},{"fen":"k3r3/8/8/8/8/4R3/8/4K3 b - - 1 1","san":"Re3","uci":"d3e3","caption":"Re3 legally blocks the check. In this one move, Re3 and Ke1 become aligned on the e-file and the rook becomes pinned.","highlights":{"squares":["e3","e1","e8"],"arrows":[{"from":"e8","to":"e3","color":"accent"},{"from":"e3","to":"e1","color":"accent"}]},"facts":[{"label":"Re3 and Ke1 are collinear","value":true,"type":"boolean"},{"label":"Re3 is absolutely pinned","value":true,"type":"boolean"},{"label":"White king is attacked","value":false,"type":"boolean"}],"sideToMove":"black","inCheck":false,"checkmate":false,"legalMoveCount":14,"invariants":["The black rook stays on e8.","The white king stays on e1."],"created":["The white rook and king now share the e-file.","The white rook is absolutely pinned."],"removed":["White is no longer in check."]}],"scope":"A counterexample to the unrestricted temporal claim. It does not contradict the conditional result for an attacker-only move with both targets fixed."},{"id":"same-move-guard","title":"The attack can arrive with the guard removal","kind":"counterexample","objective":"Test whether a target must already be attacked before its guard is removed.","initialFen":"8/8/3r3k/5n2/3N4/8/8/3R3K w - - 0 1","steps":[{"fen":"8/8/3r3k/5n2/3N4/8/8/3R3K w - - 0 1","san":null,"uci":null,"caption":"Nf5 guards Rd6. White does not yet attack the rook: Nd4 blocks Rd1, and Nd4 does not attack d6.","highlights":{"squares":["d1","d4","d6","f5","h6"],"arrows":[{"from":"f5","to":"d6","color":"accent"},{"from":"d4","to":"f5","color":"accent"}]},"facts":[{"label":"White attackers of Rd6","value":0,"type":"count"},{"label":"Black defenders of Rd6","value":1,"type":"count"},{"label":"Nf5 defends Rd6","value":true,"type":"boolean"}],"sideToMove":"white","inCheck":false,"checkmate":false,"legalMoveCount":19,"invariants":["The target rook stays on d6.","The black king stays on h6."],"created":[]},{"fen":"8/8/3r3k/5N2/8/8/8/3R3K b - - 0 1","san":"Nxf5+","uci":"d4f5","caption":"Nxf5+ removes the guard, opens the rook's attack, and forks king and rook. All three relationships arrive in the same move.","highlights":{"squares":["d1","d6","f5","h6"],"arrows":[{"from":"d1","to":"d6","color":"accent"},{"from":"f5","to":"d6","color":"accent"},{"from":"f5","to":"h6","color":"accent"}]},"facts":[{"label":"White attackers of Rd6","value":2,"type":"count"},{"label":"Attacker squares","value":"d1, f5","type":"text"},{"label":"Black defenders of Rd6","value":0,"type":"count"},{"label":"Black is in check","value":true,"type":"boolean"}],"sideToMove":"black","inCheck":true,"checkmate":false,"legalMoveCount":4,"invariants":["The target rook stays on d6.","The black king stays on h6."],"created":["Rd1 attacks Rd6.","White's Nf5 also attacks Rd6.","White's Nf5 checks Kh6."],"removed":["The black knight that guarded Rd6 has been captured."]}],"scope":"All four legal king replies to Nxf5+ allow Rxd6. The needed guard-target relation existed beforehand; an existing White attack on the rook did not.","verifiedBranches":[{"uci":["h6h7","d1d6"],"san":["Kh7","Rxd6"],"finalFen":"8/7k/3R4/5N2/8/8/8/7K b - - 0 2"},{"uci":["h6g6","d1d6"],"san":["Kg6","Rxd6+"],"finalFen":"8/8/3R2k1/5N2/8/8/8/7K b - - 0 2"},{"uci":["h6h5","d1d6"],"san":["Kh5","Rxd6"],"finalFen":"8/8/3R4/5N1k/8/8/8/7K b - - 0 2"},{"uci":["h6g5","d1d6"],"san":["Kg5","Rxd6"],"finalFen":"8/8/3R4/5Nk1/8/8/8/7K b - - 0 2"}]},{"id":"skewer","title":"A skewer puts the king in front","kind":"skewer","objective":"Activate a checking line with Qe8 behind the king.","initialFen":"4q3/4k3/8/8/8/8/1P6/K2R4 w - - 0 1","steps":[{"fen":"4q3/4k3/8/8/8/8/1P6/K2R4 w - - 0 1","san":null,"uci":null,"caption":"Ke7 is the front target; Qe8 is behind it on the same file. The rook can activate that line from e1.","highlights":{"squares":["d1","e1","e7","e8"],"arrows":[{"from":"d1","to":"e1","color":"accent"}]},"facts":[{"label":"Ke7 and Qe8 share a file","value":true,"type":"boolean"},{"label":"Re1 is legal","value":true,"type":"boolean"}],"sideToMove":"white","inCheck":false,"checkmate":false,"legalMoveCount":17,"invariants":["Ke7 and Qe8 share the e-file, with the king nearer e1."],"created":[]},{"fen":"4q3/4k3/8/8/8/8/1P6/K3R3 b - - 1 1","san":"Re1+","uci":"d1e1","caption":"Re1+ checks the nearer king. The king must leave the e-file, exposing the queen behind it.","highlights":{"squares":["e1","e7","e8"],"arrows":[{"from":"e1","to":"e7","color":"accent"},{"from":"e7","to":"e8","color":"accent"}]},"facts":[{"label":"Black is in check","value":true,"type":"boolean"},{"label":"Front target","value":"Ke7","type":"text"},{"label":"Rear target","value":"Qe8","type":"text"}],"sideToMove":"black","inCheck":true,"checkmate":false,"legalMoveCount":6,"invariants":["Ke7 and Qe8 share the e-file, with the king nearer e1."],"created":["Re1 checks Ke7 along the queen's file.","The checking rook, king, and queen form a skewer."],"removed":[]}],"scope":"All legal responses leave Rxe8 available. Some allow a subsequent recapture of that rook: a geometric skewer alone is not a claim of a won game."}],"proofTree":{"title":"A complete little proof: mate in two","objective":"White forces Black's checkmate within three plies (White, Black, White).","initialFen":"7k/8/8/6K1/8/8/8/R1R5 w - - 0 1","rootId":"root","mateDepthPlies":3,"mateInMoves":2,"coverage":"One first move is proved: every legal Black reply to Ra8+ is covered (Kh7 and Kg7), and Rc7# is verified after each. A second first move, Ra2, is refuted only for the mate-in-two deadline by Kg8, after which all legal White moves were checked and none mates. Other White first moves are not assessed.","nodes":[{"id":"root","parentId":null,"fen":"7k/8/8/6K1/8/8/8/R1R5 w - - 0 1","san":null,"uci":null,"sideToMove":"white","status":"choice","children":["ra8","ra2"],"caption":"White needs one first move that forces mate by White's next turn.","legalReplyCount":null,"inCheck":false,"checkmate":false,"legalMoveCount":29,"displayedMoveCount":2,"coverage":"Only two White candidates are displayed; proving one suffices.","immediateMatingMoveCount":0},{"id":"ra8","parentId":"root","fen":"R6k/8/8/6K1/8/8/8/2R5 b - - 1 1","san":"Ra8+","uci":"a1a8","sideToMove":"black","status":"defend","children":["kh7","kg7"],"caption":"Ra8+ leaves exactly two legal replies. Both must be covered.","legalReplyCount":2,"inCheck":true,"checkmate":false,"legalMoveCount":2,"allLegalReplies":[{"uci":"h8h7","san":"Kh7"},{"uci":"h8g7","san":"Kg7"}],"allRepliesCovered":true},{"id":"kh7","parentId":"ra8","fen":"R7/7k/8/6K1/8/8/8/2R5 w - - 2 2","san":"Kh7","uci":"h8h7","sideToMove":"white","status":"choice","children":["kh7-mate"],"caption":"White can choose Rc7# in this branch.","legalReplyCount":null,"inCheck":false,"checkmate":false,"legalMoveCount":34},{"id":"kh7-mate","parentId":"kh7","fen":"R7/2R4k/8/6K1/8/8/8/8 b - - 3 2","san":"Rc7#","uci":"c1c7","sideToMove":"black","status":"mate","children":[],"caption":"Black is in check and has no legal move. The objective is true.","legalReplyCount":0,"inCheck":true,"checkmate":true,"legalMoveCount":0,"predicates":{"blackInCheck":true,"blackLegalReplies":0,"blackCheckmated":true}},{"id":"kg7","parentId":"ra8","fen":"R7/6k1/8/6K1/8/8/8/2R5 w - - 2 2","san":"Kg7","uci":"h8g7","sideToMove":"white","status":"choice","children":["kg7-mate"],"caption":"White can choose Rc7# in this branch.","legalReplyCount":null,"inCheck":false,"checkmate":false,"legalMoveCount":33},{"id":"kg7-mate","parentId":"kg7","fen":"R7/2R3k1/8/6K1/8/8/8/8 b - - 3 2","san":"Rc7#","uci":"c1c7","sideToMove":"black","status":"mate","children":[],"caption":"Black is in check and has no legal move. The objective is true.","legalReplyCount":0,"inCheck":true,"checkmate":true,"legalMoveCount":0,"predicates":{"blackInCheck":true,"blackLegalReplies":0,"blackCheckmated":true}},{"id":"ra2","parentId":"root","fen":"7k/8/8/6K1/8/8/R7/2R5 b - - 1 1","san":"Ra2","uci":"a1a2","sideToMove":"black","status":"refuted","children":["ra2-kg8"],"caption":"Ra2 does not force mate in two. One legal reply suffices to refute this deadline.","legalReplyCount":3,"inCheck":false,"checkmate":false,"legalMoveCount":3,"allRepliesCovered":false,"scope":"Only a refuting reply is needed and displayed."},{"id":"ra2-kg8","parentId":"ra2","fen":"6k1/8/8/6K1/8/8/R7/2R5 w - - 2 2","san":"Kg8","uci":"h8g8","sideToMove":"white","status":"horizon-fail","children":[],"caption":"After Kg8, none of White's legal moves is checkmate. This branch misses mate in two; it is not a lost position.","legalReplyCount":null,"inCheck":false,"checkmate":false,"legalMoveCount":36,"scope":"All legal White moves were checked for immediate mate.","lastMoveCandidatesChecked":36,"matingMoveCount":0}],"verifiedBranches":[{"uci":["a1a8","h8h7","c1c7"],"san":["Ra8+","Kh7","Rc7#"],"finalFen":"R7/2R4k/8/6K1/8/8/8/8 b - - 3 2"},{"uci":["a1a8","h8g7","c1c7"],"san":["Ra8+","Kg7","Rc7#"],"finalFen":"R7/2R3k1/8/6K1/8/8/8/8 b - - 3 2"}],"rootImmediateMatingMoves":[],"failedAlternativeVerification":{"lineUci":["a1a2","h8g8"],"lineSan":["Ra2","Kg8"],"legalLastMoveCount":36,"lastMoves":[{"uci":"g5h6","san":"Kh6","checkmate":false},{"uci":"g5g6","san":"Kg6","checkmate":false},{"uci":"g5f6","san":"Kf6","checkmate":false},{"uci":"g5h5","san":"Kh5","checkmate":false},{"uci":"g5f5","san":"Kf5","checkmate":false},{"uci":"g5h4","san":"Kh4","checkmate":false},{"uci":"g5g4","san":"Kg4","checkmate":false},{"uci":"g5f4","san":"Kf4","checkmate":false},{"uci":"a2a8","san":"Ra8+","checkmate":false},{"uci":"a2a7","san":"Ra7","checkmate":false},{"uci":"a2a6","san":"Ra6","checkmate":false},{"uci":"a2a5","san":"Ra5","checkmate":false},{"uci":"a2a4","san":"Ra4","checkmate":false},{"uci":"a2a3","san":"Ra3","checkmate":false},{"uci":"a2h2","san":"Rh2","checkmate":false},{"uci":"a2g2","san":"Rg2","checkmate":false},{"uci":"a2f2","san":"Rf2","checkmate":false},{"uci":"a2e2","san":"Re2","checkmate":false},{"uci":"a2d2","san":"Rd2","checkmate":false},{"uci":"a2c2","san":"Rac2","checkmate":false},{"uci":"a2b2","san":"Rb2","checkmate":false},{"uci":"a2a1","san":"Raa1","checkmate":false},{"uci":"c1c8","san":"Rc8+","checkmate":false},{"uci":"c1c7","san":"Rc7","checkmate":false},{"uci":"c1c6","san":"Rc6","checkmate":false},{"uci":"c1c5","san":"Rc5","checkmate":false},{"uci":"c1c4","san":"Rc4","checkmate":false},{"uci":"c1c3","san":"Rc3","checkmate":false},{"uci":"c1c2","san":"Rcc2","checkmate":false},{"uci":"c1h1","san":"Rh1","checkmate":false},{"uci":"c1g1","san":"Rg1","checkmate":false},{"uci":"c1f1","san":"Rf1","checkmate":false},{"uci":"c1e1","san":"Re1","checkmate":false},{"uci":"c1d1","san":"Rd1","checkmate":false},{"uci":"c1b1","san":"Rb1","checkmate":false},{"uci":"c1a1","san":"Rca1","checkmate":false}]}}}</script>
+<script>
+(() => {
+  'use strict';
+  const source = document.getElementById('pc-example-data');
+  if (!source) return;
+  let data;
+  try { data = JSON.parse(source.textContent); } catch (_) { return; }
+  const escape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const colorNames = {green:'#167567',teal:'#167567',accent:'#167567',gold:'#b58740',amber:'#b58740',red:'#b36b50',blue:'#3c7d96',ink:'#152e35'};
+  const color = (v, fallback='#167567') => colorNames[v] || (/^#[a-fA-F0-9]{3,8}$/.test(v || '') ? v : fallback);
+  const squarePoint = square => /^[a-h][1-8]$/.test(square || '') ? {x:32 + (square.charCodeAt(0)-97)*56 + 28,y:16+(8-Number(square[1]))*56+28} : null;
+  const glyphs = {p:'♟',r:'♜',n:'♞',b:'♝',q:'♛',k:'♚'};
+  const pieceNames = {p:'pawn',r:'rook',n:'knight',b:'bishop',q:'queen',k:'king'};
+  function parseFen(fen) {
+    const fields = String(fen || '').trim().split(/\s+/), pieces = [];
+    (fields[0] || '').split('/').forEach((rank,row) => {
+      let col=0;
+      for(const item of rank) {
+        if(/[1-8]/.test(item)) col+=Number(item);
+        else { pieces.push({piece:item,square:String.fromCharCode(97+col)+(8-row)}); col++; }
+      }
+    });
+    return {pieces,side:fields[1] === 'b' ? 'b' : 'w'};
+  }
+  function annotations(step) {
+    let highlights = step.highlights || [], arrows = step.arrows || [], lines = step.lines || [];
+    if (!Array.isArray(highlights)) { arrows=[...arrows,...(highlights.arrows || [])];lines=[...lines,...(highlights.lines || [])]; highlights=highlights.squares || highlights.targets || []; }
+    return {highlights,arrows,lines};
+  }
+  function board(step, uid) {
+    const fen=step.fen || '', parsed=parseFen(fen), a=annotations(step), marks=[];
+    const label=parsed.pieces.map(p => `${p.piece === p.piece.toUpperCase() ? 'White' : 'Black'} ${pieceNames[p.piece.toLowerCase()]} ${p.square}`).join(', ');
+    let html=`<svg viewBox="0 0 500 490" role="img" aria-label="${escape(label)}. ${parsed.side==='w'?'White':'Black'} to move." xmlns="http://www.w3.org/2000/svg"><title>${escape(step.san || 'Initial position')}</title><defs><clipPath id="${uid}-clip"><rect x="32" y="16" width="448" height="448" rx="5"/></clipPath></defs><g clip-path="url(#${uid}-clip)">`;
+    for(let row=0;row<8;row++) for(let col=0;col<8;col++) html+=`<rect x="${32+col*56}" y="${16+row*56}" width="56" height="56" fill="${(row+col)%2 ? '#8daf9e' : '#eeeede'}"/>`;
+    const uci=String(step.uci || '');
+    if (/^[a-h][1-8][a-h][1-8]/.test(uci)) for(const sq of [uci.slice(0,2),uci.slice(2,4)]) { const p=squarePoint(sq); html+=`<rect x="${p.x-28}" y="${p.y-28}" width="56" height="56" fill="#e7c277" opacity=".46"/>`; }
+    for(const item of a.highlights) {
+      const h=typeof item==='string'?{square:item}:item, sq=h.square || h.sq, p=squarePoint(sq);
+      if(p) html+=`<rect x="${p.x-24}" y="${p.y-24}" width="48" height="48" rx="6" fill="${color(h.color,'#b58740')}" fill-opacity=".12" stroke="${color(h.color,'#b58740')}" stroke-width="2.7"/>`;
+    }
+    for(const item of a.lines) {
+      const from=item.from || item[0], to=item.to || item[1], p=squarePoint(from), q=squarePoint(to);
+      if(p&&q) html+=`<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${color(item.color)}" stroke-width="8" opacity=".32" stroke-linecap="round" stroke-dasharray="${item.dashed?'5 7':'none'}"/>`;
+    }
+    for(const p of parsed.pieces) {
+      const pt=squarePoint(p.square); if(!pt) continue;
+      const white=p.piece===p.piece.toUpperCase();
+      html+=`<text x="${pt.x}" y="${pt.y+18}" text-anchor="middle" font-family="DejaVu Sans, Noto Sans Symbols 2, Arial Unicode MS, serif" font-size="48" fill="${white?'#fffdf0':'#153239'}" stroke="${white?'#263f3d':'#102c30'}" stroke-width="${white?'.9':'.35'}" paint-order="stroke fill" aria-hidden="true">${glyphs[p.piece.toLowerCase()] || ''}</text>`;
+    }
+    a.arrows.forEach((item,index)=>{
+      const from=item.from || item[0],to=item.to || item[1],p=squarePoint(from),q=squarePoint(to);
+      if(!p||!q) return;
+      const stroke=color(item.color), dx=q.x-p.x,dy=q.y-p.y,len=Math.hypot(dx,dy), ux=dx/len,uy=dy/len;
+      if(!len) return;
+      const end={x:q.x-ux*17,y:q.y-uy*17},base={x:end.x-ux*11,y:end.y-uy*11};
+      html+=`<path d="M ${p.x+ux*12} ${p.y+uy*12} L ${end.x-ux*5} ${end.y-uy*5}" fill="none" stroke="${stroke}" stroke-width="5" stroke-linecap="round" opacity=".88" ${item.dashed?'stroke-dasharray="5 6"':''}/><polygon points="${end.x},${end.y} ${base.x-uy*6},${base.y+ux*6} ${base.x+uy*6},${base.y-ux*6}" fill="${stroke}" opacity=".95"/>`;
+    });
+    html+='</g><rect x="32" y="16" width="448" height="448" rx="5" fill="none" stroke="#476b5b" stroke-width="1"/>';
+    for(let i=0;i<8;i++) html+=`<text x="${60+i*56}" y="484" text-anchor="middle" font-size="11" font-family="system-ui,sans-serif" fill="#586d61">${String.fromCharCode(97+i)}</text><text x="17" y="${49+i*56}" text-anchor="middle" font-size="11" font-family="system-ui,sans-serif" fill="#586d61">${8-i}</text>`;
+    return html+'</svg>';
+  }
+  function factList(facts, type='') {
+    if(!facts) return '';
+    const items=Array.isArray(facts)?facts:Object.entries(facts).map(([label,value])=>({label,value}));
+    return `<ul class="pc-facts">${items.map(f=>{
+      if(typeof f==='string') return `<li class="pc-fact ${type==='created'?'pc-created':''}"><span>${escape(f)}</span></li>`;
+      const absent=f.value===false || f.truth===false || f.present===false || f.status==='absent';
+      const created=f.type==='created' || f.status==='created' || f.new===true || type==='created';
+      const label=f.label || f.text || f.predicate || f.name || '', detail=typeof f.value==='boolean'?(f.value?'True':'False'):f.value!==undefined?String(f.value):'';
+      return `<li class="pc-fact ${absent?'pc-absent':created?'pc-created':''}"><span>${escape(label)}${detail && detail!==label?`: <strong>${escape(detail)}</strong>`:''}${f.code?`<span class="pc-fact-code">${escape(f.code)}</span>`:''}</span></li>`;
+    }).join('')}</ul>`;
+  }
+  function fenBlock(fen) { return `<details class="pc-fen"><summary>Position FEN</summary><code>${escape(fen)}</code></details>`; }
+  function sideLabel(fen) { const side=parseFen(fen).side;return `<span class="pc-side" data-side="${side}">${side==='w'?'White':'Black'} to move</span>`; }
+  const legend='<div class="pc-legend"><span class="pc-key pc-key-gold">Relevant square</span><span class="pc-key pc-key-line">Move / attack relation</span></div>';
+  function geometry(root, index) {
+    const exampleOrder=['pin','skewer','rook-fork','knight-fork','guard-removal','same-move-pin','same-move-guard'];
+    const examples=[...(data.examples || [])].sort((a,b)=>exampleOrder.indexOf(a.id)-exampleOrder.indexOf(b.id));
+    if(!examples.length) {root.innerHTML='<p class="pc-error">The worked examples are missing.</p>';return;}
+    let exampleIndex=0,stepIndex=0;
+    root.innerHTML=`<header class="pc-header"><div class="pc-eyebrow">Worked positions · recorded legal moves</div><h3>The relationship comes into focus</h3><p class="pc-intro">Choose a motif and step through the position. The facts beside the board make the timing of each relationship explicit.</p><div class="pc-selection"><label class="pc-select-label" for="pc-example-${index}">Explore</label><select id="pc-example-${index}" data-action="example" aria-label="Choose a tactical example">${examples.map((ex,i)=>`<option value="${i}">${escape(ex.title)}</option>`).join('')}</select></div></header><div class="pc-main"><div class="pc-board-wrap"><div class="pc-board-meta" data-role="meta"></div><div class="pc-board" data-role="board"></div><nav class="pc-controls" aria-label="Worked position navigation"><button class="pc-control" data-action="previous" aria-label="Previous position"><span aria-hidden="true">←</span> Previous</button><button class="pc-control pc-reset" data-action="reset" aria-label="Reset this example" title="Reset this example">↺</button><button class="pc-control pc-primary" data-action="next" aria-label="Next position">Next <span aria-hidden="true">→</span></button></nav><nav class="pc-step-nav" data-role="steps" aria-label="Recorded positions"></nav>${legend}<div data-role="fen"></div></div><div class="pc-detail" data-role="detail" aria-live="polite" aria-atomic="true"></div></div><footer class="pc-footer">Verified worked walkthroughs. Controls replay recorded positions; this article does not run a chess search or evaluate arbitrary moves.</footer>`;
+    const get=role=>root.querySelector(`[data-role="${role}"]`);
+    function render() {
+      const ex=examples[exampleIndex],steps=ex.steps || [],step=steps[stepIndex];
+      if(!step) return;
+      root.dataset.example=ex.id || String(exampleIndex);root.dataset.step=String(stepIndex);root.dataset.stepCount=String(steps.length);
+      get('meta').innerHTML=sideLabel(step.fen)+`<span class="pc-position-counter">Position ${stepIndex+1} of ${steps.length}</span>`;
+      get('board').innerHTML=board(step,`pc-g${index}-${stepIndex}`);
+      get('steps').innerHTML=steps.map((s,i)=>`<button class="pc-step" data-step="${i}" aria-label="Go to ${i===0?'initial position':escape(s.san || 'position '+(i+1))}" ${i===stepIndex?'aria-current="step"':''}>${i===0?'Start':escape(s.san || 'Ply '+i)}</button>`).join('');
+      const initial=stepIndex===0,stable=step.invariants || step.stable || [],created=step.created || [],facts=step.facts || [];
+      let detail=`<div class="pc-move-label">${initial?'At the starting node':'After the recorded move'}</div><div class="pc-move"><span class="pc-san">${initial?'Before':escape(step.san || 'Ply '+stepIndex)}</span><span class="pc-ply">${initial?'Ply 0':`Ply ${stepIndex}`}</span></div><p class="pc-caption">${escape(step.caption || ex.description || '')}</p>`;
+      if(facts.length || (!Array.isArray(facts)&&Object.keys(facts).length)) detail+=`<section class="pc-fact-section"><h4 class="pc-fact-title">Facts at this node</h4>${factList(facts)}</section>`;
+      if(stable.length) detail+=`<section class="pc-fact-section"><h4 class="pc-fact-title">${initial?'Already in place':'What stays fixed'}</h4>${factList(stable)}</section>`;
+      if(created.length) detail+=`<section class="pc-fact-section"><h4 class="pc-fact-title">What this move creates</h4>${factList(created,'created')}</section>`;
+      const observation=step.takeaway || step.observation || ex.takeaway || ex.theoremNote || ex.scope;
+      if(observation) detail+=`<div class="pc-observation"><strong>What this establishes.</strong> ${escape(observation)}</div>`;
+      get('detail').innerHTML=detail;get('fen').innerHTML=fenBlock(step.fen);
+      root.querySelector('[data-action="previous"]').disabled=stepIndex===0;
+      root.querySelector('[data-action="next"]').disabled=stepIndex===steps.length-1;
+    }
+    root.addEventListener('change',e=>{if(e.target.matches('[data-action="example"]')){exampleIndex=Number(e.target.value);stepIndex=0;render();}});
+    root.addEventListener('click',e=>{
+      const b=e.target.closest('button');if(!b || !root.contains(b))return;
+      if(b.dataset.step!==undefined){stepIndex=Number(b.dataset.step);render();root.querySelector(`[data-step="${stepIndex}"]`).focus({preventScroll:true});return;}
+      if(b.dataset.action==='previous' && stepIndex>0)stepIndex--;
+      if(b.dataset.action==='next' && stepIndex<(examples[exampleIndex].steps.length-1))stepIndex++;
+      if(b.dataset.action==='reset')stepIndex=0;
+      render();
+    });
+    render();root.dataset.pcReady='true';
+  }
+  function normalizeProof(raw) {
+    const p=raw || {}, nodeMap=new Map();
+    if(Array.isArray(p.nodes))p.nodes.forEach(n=>nodeMap.set(String(n.id),n));
+    else if(p.nodes)Object.entries(p.nodes).forEach(([id,n])=>nodeMap.set(String(id),{id,...n}));
+    const rootValue=p.rootId || p.root;
+    if(typeof rootValue==='object') {
+      const walk=(n,path)=>{n={...n,id:String(n.id || path)};nodeMap.set(n.id,n);n.children=(n.children||[]).map((c,i)=>typeof c==='object'?walk(c,path+'-'+i):String(c));return n.id;};
+      return {...p,rootId:walk(rootValue,'root'),nodeMap};
+    }
+    for(const [id,n]of nodeMap) {
+      n.children=(n.children || n.moves || []).map(c=>typeof c==='string'?c:typeof c==='object'?String(c.to || c.child || c.id):String(c));
+    }
+    return {...p,rootId:String(rootValue || nodeMap.keys().next().value || ''),nodeMap};
+  }
+  function proof(root,index) {
+    const p=normalizeProof(data.proofTree),nodes=p.nodeMap;
+    if(!nodes.size) {root.innerHTML='<p class="pc-error">The proof tree is missing.</p>';return;}
+    const children=n=>(n.children||[]).map(id=>nodes.get(String(id))).filter(Boolean);
+    const rootNode=nodes.get(p.rootId),defense=Array.from(nodes.values()).find(n=>n.type==='AND'||n.kind==='AND'||n.operator==='AND'||n.role==='opponent'||(children(n).length>1&&parseFen(n.fen).side==='b'));
+    const defenses=defense?children(defense):[], omitBranch=String(p.omitBranchId || (defenses[defenses.length-1]||{}).id || '');
+    const descendants=new Set();
+    function mark(id){if(descendants.has(String(id)))return;descendants.add(String(id));const n=nodes.get(String(id));if(n)children(n).forEach(c=>mark(c.id));}
+    if(omitBranch)mark(omitBranch);
+    let selectedId=p.rootId,omitted=false,nodeStatuses=new Map();
+    const total=Number(p.replyCount || (defense && (defense.legalReplyCount || defense.legalRepliesCount)) || defenses.length);
+    root.innerHTML=`<header class="pc-header"><div class="pc-eyebrow">A bounded AND / OR proof</div><h3>${escape(p.title || 'Trace every defense')}</h3><p class="pc-intro">${escape(p.description || 'At our turn, one successful choice is enough. At the opponent’s turn, every legal defense needs an answer. Select any node to inspect its board.')}</p><div class="pc-proof-options"><span class="pc-objective">${escape(p.objective || 'Objective: checkmate')}</span><label class="pc-switch-label"><input type="checkbox" data-action="omit-defense" aria-label="Leave one defense open"><span>Leave one defense open</span></label></div></header><div class="pc-proof-verdict" data-role="verdict" aria-live="polite"></div><div class="pc-main pc-proof-main"><div class="pc-board-wrap"><div class="pc-board-meta" data-role="meta"></div><div class="pc-board" data-role="board"></div><div class="pc-proof-selection" data-role="selection" aria-live="polite"></div><div data-role="fen"></div></div><div class="pc-tree-panel"><div class="pc-tree-title"><span>Select a node</span><span class="pc-inline-count" data-role="count"></span></div><div class="pc-tree" data-role="tree"></div><div class="pc-coverage" data-role="coverage"></div></div></div><footer class="pc-footer">${escape(p.verification || 'This is a fixed, verified miniature. The tree records the chosen attacking move and every legal opponent reply at the defense node. The switch withholds one continuation to demonstrate an incomplete proof.')}</footer>`;
+    const get=role=>root.querySelector(`[data-role="${role}"]`);
+    function nodeKind(n){
+      const k=String(n.type || n.kind || n.operator || '').toUpperCase();
+      if(n.checkmate||n.mate||n.status==='mate'||n.terminal==='checkmate')return 'MATE';
+      if(n.status==='horizon-fail')return 'BOUND';
+      if(k==='AND'||k==='OR')return k;
+      if(!children(n).length)return n.status==='failed'?'FAILED':'LEAF';
+      return parseFen(n.fen).side==='w'?'OR':'AND';
+    }
+    // Evaluate the recorded finite proof, using three values. A missing branch
+    // is unresolved. At White nodes one proved choice suffices; at Black nodes
+    // every legal reply must be covered, unless one reply already refutes.
+    function evaluateNode(n, active=new Set()) {
+      const id=String(n.id);
+      if(omitted&&id===omitBranch){nodeStatuses.set(id,'unproved');return 'unproved';}
+      if(active.has(id))return 'unproved';
+      let result='unproved';
+      const k=nodeKind(n),kids=children(n),next=new Set(active);next.add(id);
+      if(n.checkmate===true && parseFen(n.fen).side==='b')result='proved';
+      else if(n.status==='horizon-fail'&&n.matingMoveCount===0&&n.lastMoveCandidatesChecked===n.legalMoveCount)result='refuted';
+      else if(kids.length){
+        const states=kids.map(c=>evaluateNode(c,next));
+        if(k==='OR') {
+          if(states.includes('proved'))result='proved';
+          else if(kids.length===n.legalMoveCount&&states.every(s=>s==='refuted'))result='refuted';
+        }else if(k==='AND'){
+          if(states.includes('refuted'))result='refuted';
+          else if((kids.length===(n.legalReplyCount ?? n.legalMoveCount))&&states.every(s=>s==='proved'))result='proved';
+        }
+      }
+      nodeStatuses.set(id,result);return result;
+    }
+    function nodeTitle(n){return n.label || n.san || (String(n.id)===p.rootId?'White to move':'Position');}
+    function nodeMarkup(n,path=new Set()) {
+      if(path.has(String(n.id)))return '';
+      const branchOpen=omitted&&String(n.id)===omitBranch,k=nodeKind(n),sub=n.subtitle || (n.status==='refuted'?`${n.legalReplyCount} legal replies · 1 refutation shown`:k==='AND'?`${n.legalReplyCount || total} legal defenses to cover`:k==='OR'?'One successful move suffices':k==='MATE'?'Checkmate verified':k==='BOUND'?'No mate on White’s next move':''),id=String(n.id),nextPath=new Set(path);nextPath.add(id);
+      let html=`<li><button class="pc-node ${k==='MATE'?'pc-leaf':''} ${branchOpen?'pc-omitted':''}" data-node="${escape(id)}" data-proof-node-status="${nodeStatuses.get(id) || 'unproved'}" aria-current="${selectedId===id?'true':'false'}" aria-label="Inspect ${escape(nodeTitle(n))}${branchOpen?', continuation withheld':''}"><span><span class="pc-node-title">${escape(nodeTitle(n))}</span><span class="pc-node-subtitle">${branchOpen?'Defense exists; continuation withheld':escape(sub)}</span></span><span class="pc-node-kind">${branchOpen?'OPEN':k}</span></button>`;
+      const kids=children(n);
+      if(kids.length&&!branchOpen)html+=`<ul class="pc-children">${kids.map(c=>nodeMarkup(c,nextPath)).join('')}</ul>`;
+      return html+'</li>';
+    }
+    function render() {
+      if(omitted&&descendants.has(selectedId)&&selectedId!==omitBranch)selectedId=omitBranch;
+      nodeStatuses=new Map();
+      const selected=nodes.get(selectedId)||rootNode,status=evaluateNode(rootNode),covered=defenses.filter(n=>nodeStatuses.get(String(n.id))==='proved').length;
+      root.dataset.proofStatus=status;root.dataset.selectedNode=selectedId;root.dataset.coveredReplies=String(covered);root.dataset.totalReplies=String(total);
+      const verdict=get('verdict');verdict.dataset.proofStatus=status;
+      verdict.innerHTML=`<span class="pc-verdict-mark" aria-hidden="true">${omitted?'?':'✓'}</span><div><div class="pc-verdict-title">${status==='proved'?'The root is proved':'The root is unproved'}</div><div class="pc-verdict-explanation">${omitted?`${covered} of ${total} legal defenses have a completed answer here. A winning leaf on another branch does not settle the open defense.`:`All ${total} legal defenses to ${escape(defense.san || 'the chosen move')} reach the objective within the recorded bound.`}</div></div>`;
+      get('tree').innerHTML=`<ul>${nodeMarkup(rootNode)}</ul>`;
+      get('count').textContent=`${covered} / ${total} defenses covered`;
+      get('meta').innerHTML=sideLabel(selected.fen)+`<span class="pc-position-counter">${escape(nodeTitle(selected))}</span>`;
+      get('board').innerHTML=board(selected,`pc-p${index}-${String(selected.id).replace(/[^a-zA-Z0-9]/g,'')}`);
+      const withheld=omitted&&selectedId===omitBranch;
+      const selectedSide=parseFen(selected.fen).side==='w'?'White':'Black';
+      const knownFacts=selected.facts || [{label:`${selectedSide} is in check`,value:selected.inCheck},{label:`Legal ${selectedSide} moves`,value:selected.legalMoveCount}].filter(f=>f.value!==undefined);
+      if(!selected.facts&&selected.checkmate)knownFacts.push({label:'Black is checkmated',value:true});
+      if(!selected.facts&&selected.matingMoveCount!==undefined)knownFacts.push({label:'Immediate mating moves',value:selected.matingMoveCount});
+      get('selection').innerHTML=`<div class="pc-move-label">${withheld?'An unanswered defense':nodeKind(selected)==='MATE'?'Objective reached':nodeKind(selected)==='BOUND'?'This candidate misses the deadline':'Selected proof node'}</div><p class="pc-caption">${escape(withheld?'This legal reply remains in the tree. Its continuation has been withheld, so the proof is incomplete. Turn the switch off to restore it.':selected.caption || selected.description || nodeTitle(selected))}</p>${factList(withheld?[`${selectedSide} to move; the response is still required.`]:knownFacts)}`;
+      get('fen').innerHTML=fenBlock(selected.fen);
+      get('coverage').innerHTML=`<strong>Opponent coverage.</strong> ${escape(p.coverage || (defense&&defense.coverage) || `The defense node has ${total} legal replies. Each displayed reply is an AND obligation.`)} ${omitted?'One obligation is deliberately left open in this view.':'Every obligation shown has its recorded continuation.'}`;
+    }
+    root.addEventListener('click',e=>{const b=e.target.closest('[data-node]');if(!b||!root.contains(b))return;selectedId=b.dataset.node;render();const replacement=root.querySelector(`[data-node="${CSS.escape(selectedId)}"]`);if(replacement)replacement.focus({preventScroll:true});});
+    root.addEventListener('change',e=>{if(e.target.matches('[data-action="omit-defense"]')){omitted=e.target.checked;render();}});
+    render();root.dataset.pcReady='true';
+  }
+  function init() {document.querySelectorAll('.pc-widget[data-pc-widget]').forEach((root,i)=>{if(root.dataset.pcReady)return;try{if(root.dataset.pcWidget==='geometry')geometry(root,i);if(root.dataset.pcWidget==='proof')proof(root,i);}catch(error){root.innerHTML='<p class="pc-error">The interactive example could not initialize. The article’s written proof remains available above.</p>';root.dataset.pcError=String(error.message);}});}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
+</script>
+
+</body>
+</html>
