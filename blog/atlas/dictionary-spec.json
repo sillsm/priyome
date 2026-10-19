@@ -4,9 +4,9 @@
     "instruction": "do not change without explicit user instruction; must use each time to verify pgn conformity with spec"
   },
   "specification": {
-    "id": "predicate-chess-readable-pgn/10",
+    "id": "predicate-chess-readable-pgn/17",
     "title": "Predicate Chess — authoritative full-tree PGN",
-    "version": 10,
+    "version": 17,
     "changeControl": {
       "instruction": "do not change without explicit user instruction; must use each time to verify pgn conformity with spec",
       "requiresExplicitUserInstruction": true,
@@ -21,7 +21,14 @@
       ],
       "onUnknown": "reject; never silently discard, rename, extend, or auto-register",
       "onSpecChange": "reject unless this specification and its pinned lock are explicitly reauthorized; no automatic relock command",
-      "workshopAuthorization": "User requested supplied defense lines and named certificates to be saved into the corpus PGN, explicitly marked as user-provided continuations. This narrowly adds USER metadata and the named-main-certificate editor, not new theorem or acceptance semantics."
+      "workshopAuthorization": "User requested supplied defense lines and named certificates to be saved into the corpus PGN, explicitly marked as user-provided continuations. This narrowly adds USER metadata and the named-main-certificate editor, not new theorem or acceptance semantics.",
+      "approvedChange": "User-authorized four-category mating-constraint theorem, explicit bounded capture-reply ending, and strict classification checks. No REASON or blanket interruption predicate.",
+      "defensiveClosureAuthorization": "User requested the defensive-closure theorem and signed classes in the dictionary, dictionary-generated PGN text, one representative per class, exact change enumeration, and the complete updated PGN. Existing predicates, certificates and Atlas execution code are unchanged.",
+      "representativeOnlyAuthorization": "User requires one physical representative per class and at most 14 actual stored positions for the compact 0VIf3 explanation. Replace expanded member RAVs and the duplicate entry alias with signed move-label coverage, accepted class recipes and a single physical closure entry. Preserve the frozen Lichess line as the reference prefix of the extended analysis; count every stored position without discounts. Existing predicates, certificates and Atlas code remain unchanged.",
+      "entryClassAuthorization": "User requires actual validation of theorem ENTRY and an explicit CLASS keyword for tree and theorem subclasses, with a three-word name followed by Representative, Members, positive predicates and negative predicates on separate lines. Preserve the accepted fourteen-position 0VIf3 graph. Changes affect the standalone dictionary and validator; Atlas is unchanged.",
+      "inheritanceClassAuthorization": "User removes DEFINITION and PRE, requires automatic inherited predicates, and makes CLASS optional for multiple sibling defenses within a tree or theorem application. Preserve the accepted fourteen-position 0VIf3 graph; singleton defenses are ordinary children. This revision changes the standalone specification and validator.",
+      "metatreeAuthorization": "User requested canonical spite-check defensive closure and full tree structure validation. Theorems are abstract trees over actual plies with required predicates at their nodes. Only mate, threatening mate in one, check and capture have the one-ply atomic exception. Preserve the accepted 0VIf3 physical graph and existing END/CERT definitions; enumerate every dictionary edit. The user subsequently authorized an Atlas puzzle-tree view with checked metatree overlays and class enclosures.",
+      "corpusCheckpointAuthorization": "User requested a fresh ZIP with the complete corpus adhering to this specification, the matching dictionary and an Atlas with a visible Board/Tree tab switch. Preserve the accepted physical 0VIf3 tree, existing predicates, executable theorems, endings and class recipes. Keep historical candidate labels separate from validated ENTRY applications, report annotation migrations and enumerate every dictionary edit in an exact reversible diff."
     },
     "start": "Document",
     "tokens": {
@@ -30,7 +37,6 @@
       "PIECES": "PIECES: (?:Uppercase = White; lowercase = Black|Uppercase = Black; lowercase = White)\\.",
       "START": "START: ${Facts}\\.",
       "OBSERVED": "OBSERVED: ${Facts}\\.",
-      "PRE": "PRE: ${Atom} observed ${PriorLocation}; (?:same target piece|same bound pieces; continuously true)\\.",
       "ENTRY": "ENTRY \"${TheoremNames}\": ${AtomList}\\.",
       "CLASS": "CLASS: ${ClassBody}",
       "END": "END(?: \"${CertificateName}\")?: ${AtomList}\\.",
@@ -46,7 +52,8 @@
       "LBRACE": "\\{",
       "RBRACE": "\\}",
       "NODE": "NODE: ${NODE}\\.",
-      "USER": "USER: Continuation from ${NODE}; move (?:supplied|enumerated|none); certificate (?:selected|checked|none)\\."
+      "USER": "USER: Continuation from ${NODE}; move (?:supplied|enumerated|none); certificate (?:selected|checked|none)\\.",
+      "MOTIF": "MOTIF \"${TheoremNames}\": ${AtomList}\\."
     },
     "macros": {
       "UINT": "(?:0|[1-9][0-9]*)",
@@ -170,26 +177,28 @@
       "P_turn": "(?:turn\\(${SIDE}\\))",
       "P_two_step_attack_route": "(?:two_step_attack_route\\(${ROLE};${ROLE}\\+${ROLE}\\))",
       "P_value": "(?:value\\(${ROLE}\\)>value\\(${ROLE}\\))",
-      "Predicate": "(?:${P_adjacent_pawn_majority}|${P_aligned}|${P_alignment}|${P_attacked}|${P_attacked_count}|${P_attacks}|${P_base_defended}|${P_blockaded_near_pawn_count}|${P_capture_moves}|${P_capture_promoted_piece}|${P_capture_value}|${P_castling_path_clear}|${P_castling_path_safe}|${P_castling_right}|${P_check}|${P_check_moves}|${P_controlled_promotion_count}|${P_counterchecks}|${P_defended_count}|${P_defenders}|${P_defends}|${P_distance}|${P_distance_count}|${P_distance_to_promotion}|${P_distance_to_step}|${P_double_attack_moves}|${P_en_passant_available}|${P_endgame}|${P_evasion_captures}|${P_evasion_promotions}|${P_fork_moves}|${P_fork_pattern}|${P_hang}|${P_has_captures}|${P_has_checks}|${P_has_mate_in_1}|${P_in_check}|${P_king_controls_promotion}|${P_king_defends}|${P_king_distance}|${P_legal}|${P_legal_blockade_move}|${P_legal_capture}|${P_legal_check}|${P_legal_escort_move}|${P_legal_holding_move}|${P_legal_mate}|${P_legal_move}|${P_legal_moves}|${P_legal_pawn_advance}|${P_legal_promotion}|${P_line}|${P_line_blocker}|${P_loose}|${P_mate}|${P_mate_in_1}|${P_material}|${P_material_balance}|${P_mobility}|${P_near_promotion}|${P_near_promotion_count}|${P_net_gain}|${P_net_gain_after}|${P_no_captures}|${P_no_checks}|${P_no_mate_in_1}|${P_non_pawn_material}|${P_nonpromotion_checks}|${P_open_step}|${P_opposed_pawns}|${P_overloaded}|${P_passed}|${P_passed_pawn}|${P_pawn}|${P_pawn_box}|${P_pawn_chain}|${P_pawn_distances}|${P_pawn_lock}|${P_pawn_route_blocked}|${P_pawn_route_clear}|${P_pawn_same_rank}|${P_pawn_step_blocked}|${P_pawn_step_clear}|${P_piece}|${P_piece_count}|${P_pin}|${P_promoted}|${P_promotion_control_route}|${P_promotion_distance}|${P_promotion_distance_count}|${P_promotion_moves}|${P_promotion_square_control}|${P_queens_absent}|${P_quiet}|${P_reserve_step}|${P_rival_promotion_moves}|${P_shared_defender}|${P_skewer}|${P_sole_defender}|${P_support_route}|${P_turn}|${P_two_step_attack_route}|${P_value}|${P_obstructed_alignment}|${P_promotion_fork_pattern}|${P_mate_threat_in_2})",
+      "Predicate": "(?:${P_adjacent_pawn_majority}|${P_aligned}|${P_alignment}|${P_attacked}|${P_attacked_count}|${P_attacks}|${P_base_defended}|${P_blockaded_near_pawn_count}|${P_capture_moves}|${P_capture_promoted_piece}|${P_capture_value}|${P_castling_path_clear}|${P_castling_path_safe}|${P_castling_right}|${P_check}|${P_check_moves}|${P_controlled_promotion_count}|${P_counterchecks}|${P_defended_count}|${P_defenders}|${P_defends}|${P_distance}|${P_distance_count}|${P_distance_to_promotion}|${P_distance_to_step}|${P_double_attack_moves}|${P_en_passant_available}|${P_endgame}|${P_evasion_captures}|${P_evasion_promotions}|${P_fork_moves}|${P_fork_pattern}|${P_hang}|${P_has_captures}|${P_has_checks}|${P_has_mate_in_1}|${P_in_check}|${P_king_controls_promotion}|${P_king_defends}|${P_king_distance}|${P_legal}|${P_legal_blockade_move}|${P_legal_capture}|${P_legal_check}|${P_legal_escort_move}|${P_legal_holding_move}|${P_legal_mate}|${P_legal_move}|${P_legal_moves}|${P_legal_pawn_advance}|${P_legal_promotion}|${P_line}|${P_line_blocker}|${P_loose}|${P_mate}|${P_mate_in_1}|${P_material}|${P_material_balance}|${P_mobility}|${P_near_promotion}|${P_near_promotion_count}|${P_net_gain}|${P_net_gain_after}|${P_no_captures}|${P_no_checks}|${P_no_mate_in_1}|${P_non_pawn_material}|${P_nonpromotion_checks}|${P_open_step}|${P_opposed_pawns}|${P_overloaded}|${P_passed}|${P_passed_pawn}|${P_pawn}|${P_pawn_box}|${P_pawn_chain}|${P_pawn_distances}|${P_pawn_lock}|${P_pawn_route_blocked}|${P_pawn_route_clear}|${P_pawn_same_rank}|${P_pawn_step_blocked}|${P_pawn_step_clear}|${P_piece}|${P_piece_count}|${P_pin}|${P_promoted}|${P_promotion_control_route}|${P_promotion_distance}|${P_promotion_distance_count}|${P_promotion_moves}|${P_promotion_square_control}|${P_queens_absent}|${P_quiet}|${P_reserve_step}|${P_rival_promotion_moves}|${P_shared_defender}|${P_skewer}|${P_sole_defender}|${P_support_route}|${P_turn}|${P_two_step_attack_route}|${P_value}|${P_obstructed_alignment}|${P_promotion_fork_pattern}|${P_mate_threat_in_2}|${P_mating_route}|${P_guarded_mating_route}|${P_capture_reply_tree}|${P_sole_checking_piece})",
       "Atom": "(?:not )?${Predicate}",
       "AtomList": "${Atom}(?:; ${Atom})*",
       "Facts": "(?:none|${AtomList})",
-      "TheoremName": "(?:Material\\ assured\\ by\\ capture|Pawn\\ restraint\\ /\\ tempo|Promotion\\ blockade|Safe\\ checking\\ gain|Promotion\\ control|Win\\ the\\ pawn\\ race|Mate\\ threat\\ in\\ 2|Remove\\ defender|Take\\ /\\ exchange|Attack\\ /\\ drive|Protected\\ base|Secure\\ escort|Attack\\ route|Breakthrough|King\\ access|Mate\\ threat|Passed\\ pawn|Attraction|Deflection|Opposition|Royal\\ fork|Clearance|Promotion|Support|Repair|Skewer|Check|Fork|Mate|Pin)",
-      "TheoremNames": "(?:Take\\ /\\ exchange\\ \\+\\ Material\\ assured\\ by\\ capture\\ \\+\\ Promotion\\ blockade|Take\\ /\\ exchange\\ \\+\\ Material\\ assured\\ by\\ capture\\ \\+\\ Protected\\ base|Take\\ /\\ exchange\\ \\+\\ Breakthrough\\ \\+\\ Protected\\ base|Passed\\ pawn\\ \\+\\ Win\\ the\\ pawn\\ race\\ \\+\\ Breakthrough|Take\\ /\\ exchange\\ \\+\\ Material\\ assured\\ by\\ capture|Take\\ /\\ exchange\\ \\+\\ Check\\ \\+\\ Safe\\ checking\\ gain|Mate\\ threat\\ \\+\\ Material\\ assured\\ by\\ capture|Take\\ /\\ exchange\\ \\+\\ Repair\\ \\+\\ Protected\\ base|Clearance\\ \\+\\ Material\\ assured\\ by\\ capture|Promotion\\ \\+\\ Material\\ assured\\ by\\ capture|Clearance\\ \\+\\ Check\\ \\+\\ Safe\\ checking\\ gain|Promotion\\ \\+\\ Check\\ \\+\\ Safe\\ checking\\ gain|Promotion\\ \\+\\ Check\\ \\+\\ Win\\ the\\ pawn\\ race|Take\\ /\\ exchange\\ \\+\\ Promotion\\ blockade|Attack\\ /\\ drive\\ \\+\\ Promotion\\ blockade|Fork\\ \\+\\ Material\\ assured\\ by\\ capture|Deflection\\ \\+\\ Check\\ \\+\\ Breakthrough|Fork\\ \\+\\ Check\\ \\+\\ Safe\\ checking\\ gain|Pin\\ \\+\\ Material\\ assured\\ by\\ capture|Mate\\ threat\\ \\+\\ Promotion\\ blockade|Take\\ /\\ exchange\\ \\+\\ Check\\ \\+\\ Repair|Take\\ /\\ exchange\\ \\+\\ Protected\\ base|Passed\\ pawn\\ \\+\\ Win\\ the\\ pawn\\ race|Attack\\ /\\ drive\\ \\+\\ Breakthrough|Promotion\\ \\+\\ Win\\ the\\ pawn\\ race|King\\ access\\ \\+\\ Protected\\ base|Support\\ \\+\\ Promotion\\ blockade|King\\ access\\ \\+\\ Secure\\ escort|Material\\ assured\\ by\\ capture|Repair\\ \\+\\ Promotion\\ blockade|Check\\ \\+\\ Promotion\\ blockade|Clearance\\ \\+\\ Check\\ \\+\\ Repair|Mate\\ threat\\ \\+\\ Breakthrough|Opposition\\ \\+\\ Secure\\ escort|Passed\\ pawn\\ \\+\\ Breakthrough|Repair\\ \\+\\ Win\\ the\\ pawn\\ race|Attraction\\ \\+\\ Breakthrough|Check\\ \\+\\ Win\\ the\\ pawn\\ race|Pin\\ \\+\\ Promotion\\ blockade|Take\\ /\\ exchange\\ \\+\\ Repair|Remove\\ defender\\ \\+\\ Check|Repair\\ \\+\\ Protected\\ base|Take\\ /\\ exchange\\ \\+\\ Check|Pawn\\ restraint\\ /\\ tempo|Repair\\ \\+\\ Secure\\ escort|Repair\\ \\+\\ Breakthrough|Check\\ \\+\\ Breakthrough|Mate\\ threat\\ \\+\\ Repair|Attraction\\ \\+\\ Repair|Fork\\ \\+\\ Breakthrough|Attraction\\ \\+\\ Check|Clearance\\ \\+\\ Repair|Deflection\\ \\+\\ Check|Pin\\ \\+\\ Breakthrough|Promotion\\ blockade|Royal\\ fork\\ \\+\\ Check|Safe\\ checking\\ gain|Clearance\\ \\+\\ Check|Promotion\\ \\+\\ Check|Promotion\\ control|Win\\ the\\ pawn\\ race|Mate\\ threat\\ in\\ 2|Clearance\\ \\+\\ Pin|Remove\\ defender|Take\\ /\\ exchange|Attack\\ /\\ drive|Check\\ \\+\\ Repair|Protected\\ base|Repair\\ \\+\\ Check|Skewer\\ \\+\\ Check|Fork\\ \\+\\ Repair|Mate\\ \\+\\ Repair|Secure\\ escort|Attack\\ route|Breakthrough|Fork\\ \\+\\ Check|Pin\\ \\+\\ Repair|King\\ access|Mate\\ threat|Passed\\ pawn|Pin\\ \\+\\ Check|Attraction|Deflection|Opposition|Royal\\ fork|Clearance|Promotion|Support|Repair|Skewer|Check|Fork|Mate|Pin)",
-      "CertificateName": "(?:Material\\ won;\\ promotion\\ controlled|Pawn\\ race\\ won;\\ protected\\ promotion|Material\\ won\\ with\\ a\\ safe\\ check|Pawn\\ won;\\ minor\\-piece\\ endgame|Checked\\ net\\ \\+2\\ and\\ quiet|Checked\\ mate\\ in\\ one|Mate\\ threat\\ in\\ 2|Net\\ \\+2\\ and\\ quiet|Checked\\ mate|Material\\ won|Mate)",
+      "TheoremName": "(?:Material\\ assured\\ by\\ capture|Pawn\\ restraint\\ /\\ tempo|Promotion\\ blockade|Safe\\ checking\\ gain|Promotion\\ control|Win\\ the\\ pawn\\ race|Mate\\ threat\\ in\\ 2|Remove\\ defender|Take\\ /\\ exchange|Attack\\ /\\ drive|Protected\\ base|Secure\\ escort|Attack\\ route|Breakthrough|King\\ access|Mate\\ threat|Passed\\ pawn|Attraction|Deflection|Opposition|Royal\\ fork|Clearance|Promotion|Support|Repair|Skewer|Check|Fork|Mate|Pin|Constrain\\ by\\ mate\\ threat|Single-queen defensive closure)",
+      "TheoremNames": "(?:Take\\ /\\ exchange\\ \\+\\ Material\\ assured\\ by\\ capture\\ \\+\\ Promotion\\ blockade|Take\\ /\\ exchange\\ \\+\\ Material\\ assured\\ by\\ capture\\ \\+\\ Protected\\ base|Take\\ /\\ exchange\\ \\+\\ Breakthrough\\ \\+\\ Protected\\ base|Passed\\ pawn\\ \\+\\ Win\\ the\\ pawn\\ race\\ \\+\\ Breakthrough|Take\\ /\\ exchange\\ \\+\\ Material\\ assured\\ by\\ capture|Take\\ /\\ exchange\\ \\+\\ Check\\ \\+\\ Safe\\ checking\\ gain|Mate\\ threat\\ \\+\\ Material\\ assured\\ by\\ capture|Take\\ /\\ exchange\\ \\+\\ Repair\\ \\+\\ Protected\\ base|Clearance\\ \\+\\ Material\\ assured\\ by\\ capture|Promotion\\ \\+\\ Material\\ assured\\ by\\ capture|Clearance\\ \\+\\ Check\\ \\+\\ Safe\\ checking\\ gain|Promotion\\ \\+\\ Check\\ \\+\\ Safe\\ checking\\ gain|Promotion\\ \\+\\ Check\\ \\+\\ Win\\ the\\ pawn\\ race|Take\\ /\\ exchange\\ \\+\\ Promotion\\ blockade|Attack\\ /\\ drive\\ \\+\\ Promotion\\ blockade|Fork\\ \\+\\ Material\\ assured\\ by\\ capture|Deflection\\ \\+\\ Check\\ \\+\\ Breakthrough|Fork\\ \\+\\ Check\\ \\+\\ Safe\\ checking\\ gain|Pin\\ \\+\\ Material\\ assured\\ by\\ capture|Mate\\ threat\\ \\+\\ Promotion\\ blockade|Take\\ /\\ exchange\\ \\+\\ Check\\ \\+\\ Repair|Take\\ /\\ exchange\\ \\+\\ Protected\\ base|Passed\\ pawn\\ \\+\\ Win\\ the\\ pawn\\ race|Attack\\ /\\ drive\\ \\+\\ Breakthrough|Promotion\\ \\+\\ Win\\ the\\ pawn\\ race|King\\ access\\ \\+\\ Protected\\ base|Support\\ \\+\\ Promotion\\ blockade|King\\ access\\ \\+\\ Secure\\ escort|Material\\ assured\\ by\\ capture|Repair\\ \\+\\ Promotion\\ blockade|Check\\ \\+\\ Promotion\\ blockade|Clearance\\ \\+\\ Check\\ \\+\\ Repair|Mate\\ threat\\ \\+\\ Breakthrough|Opposition\\ \\+\\ Secure\\ escort|Passed\\ pawn\\ \\+\\ Breakthrough|Repair\\ \\+\\ Win\\ the\\ pawn\\ race|Attraction\\ \\+\\ Breakthrough|Check\\ \\+\\ Win\\ the\\ pawn\\ race|Pin\\ \\+\\ Promotion\\ blockade|Take\\ /\\ exchange\\ \\+\\ Repair|Remove\\ defender\\ \\+\\ Check|Repair\\ \\+\\ Protected\\ base|Take\\ /\\ exchange\\ \\+\\ Check|Pawn\\ restraint\\ /\\ tempo|Repair\\ \\+\\ Secure\\ escort|Repair\\ \\+\\ Breakthrough|Check\\ \\+\\ Breakthrough|Mate\\ threat\\ \\+\\ Repair|Attraction\\ \\+\\ Repair|Fork\\ \\+\\ Breakthrough|Attraction\\ \\+\\ Check|Clearance\\ \\+\\ Repair|Deflection\\ \\+\\ Check|Pin\\ \\+\\ Breakthrough|Promotion\\ blockade|Royal\\ fork\\ \\+\\ Check|Safe\\ checking\\ gain|Clearance\\ \\+\\ Check|Promotion\\ \\+\\ Check|Promotion\\ control|Win\\ the\\ pawn\\ race|Mate\\ threat\\ in\\ 2|Clearance\\ \\+\\ Pin|Remove\\ defender|Take\\ /\\ exchange|Attack\\ /\\ drive|Check\\ \\+\\ Repair|Protected\\ base|Repair\\ \\+\\ Check|Skewer\\ \\+\\ Check|Fork\\ \\+\\ Repair|Mate\\ \\+\\ Repair|Secure\\ escort|Attack\\ route|Breakthrough|Fork\\ \\+\\ Check|Pin\\ \\+\\ Repair|King\\ access|Mate\\ threat|Passed\\ pawn|Pin\\ \\+\\ Check|Attraction|Deflection|Opposition|Royal\\ fork|Clearance|Promotion|Support|Repair|Skewer|Check|Fork|Mate|Pin|Single-queen defensive closure)",
+      "CertificateName": "(?:Material\\ won;\\ promotion\\ controlled|Pawn\\ race\\ won;\\ protected\\ promotion|Material\\ won\\ with\\ a\\ safe\\ check|Pawn\\ won;\\ minor\\-piece\\ endgame|Checked\\ net\\ \\+2\\ and\\ quiet|Checked\\ mate\\ in\\ one|Mate\\ threat\\ in\\ 2|Net\\ \\+2\\ and\\ quiet|Checked\\ mate|Material\\ won|Mate|Material\\ won;\\ short\\ capture\\ replies)",
       "MainlineBody": "(?:${NUMBER} ${SAN}(?: (?:${NUMBER} )?${SAN})*)?\\.",
-      "PriorLocation": "(?:at start|after ${NUMBER} ${SAN}|after ply ${UINT})",
-      "ClassCountOne": "1 other defense shares",
-      "ClassCountMany": "(?:[2-9]|[1-9][0-9]+) other defenses share",
-      "ClassBody": "(?:${ClassCountOne}|${ClassCountMany}) (?:the same accepted ending predicates|identical retained player responses and continuation endings)\\. Concrete boards and legal reply lists remain separate\\.",
+      "ClassBody": "${DefensiveClosureClassBody}",
       "OpenMessage": "(?:Breakthrough\\ entry\\ fitted\\.\\ This\\ opposing\\ reply\\ still\\ needs\\ its\\ next\\ theorem\\ or\\ accepted\\ ending\\.|Ending\\ predicates\\ also\\ match\\ a\\ retained\\ continuing\\ position;\\ explicit\\ refinement\\ is\\ still\\ needed\\.|Other\\ legal\\ defense\\ —\\ still\\ not\\ sure\\.\\ Reply\\ enumerated\\ and\\ terminal\\-tested;\\ next\\ player\\ response\\ not\\ supplied\\.|Outside\\ passer\\ created;\\ king\\ escort\\ is\\ visible\\.\\ Enemy\\ rook\\ containment\\ remains\\ OPEN\\.|Short\\ composition\\ fitted\\ where\\ recorded;\\ no\\ quiet\\ or\\ mate\\ closure\\ at\\ this\\ boundary\\.|Still\\ not\\ sure:\\ material\\ won,\\ but\\ the\\ opponent\\ has\\ checks\\ or\\ captures;\\ no\\ quiet\\ terminal\\ fitted\\.|Stockfish\\ supplied\\ line\\ —\\ still\\ not\\ sure\\.\\ No\\ short\\ terminal\\ reason\\ at\\ the\\ \\+2\\-ply\\ review\\ horizon\\.)",
       "EngineFit": "(?:Not a fitted theorem|(?:Locally fitted|Now locally fitted|New local entry fit): ${TheoremNames})\\.",
       "EngineBody": "(?:(?:Our response|Opponent reply) supplied by Stockfish 11; best found, depth ${POSINT}, ${POSINT} nodes\\. ${EngineFit}|Stockfish 11 saved PV, locally fitted where shown; source ${NODE}, analysis ${UINT}, PV ply ${POSINT}\\. Not a new root search\\.|Stockfish 11 reported PV continuation, now locally fitted\\. Source ${NODE}, analysis ${UINT}, PV ply ${POSINT}; not a new root search\\.|Stockfish 11 best found: depth ${POSINT}, ${POSINT} nodes\\. Local theorem fit is separate from closure\\.|Stockfish 11 best found at this board: depth ${POSINT}, ${POSINT} nodes\\. Local theorem fit recorded separately\\.)",
-      "Header": "(?:\\[Event \"${EVENTID} - puzzle rating ${UINT}\"\\]|\\[Site \"https://lichess\\.org/training/${PUZZLE}\"\\]|\\[Date \"\\?\\?\\?\\?\\.\\?\\?\\.\\?\\?\"\\]|\\[Round \"-\"\\]|\\[White \"(?:Player|Defense)\"\\]|\\[Black \"(?:Player|Defense)\"\\]|\\[Result \"\\*\"\\]|\\[SetUp \"1\"\\]|\\[FEN \"${FEN}\"\\]|\\[LichessRating \"${UINT}\"\\]|\\[PGNGrammar \"predicate-chess-readable-pgn/10\"\\]|\\[MainlineSource \"Lichess snapshot 2026-09-10\"\\]|\\[Engine \"Stockfish 11 64\"\\]|\\[EngineLimit \"depth 18 or 250000 requested nodes; first limit reached\"\\]|\\[ReviewScope \"(?:Retained engine continuations; accepted END/CERT endings|Original defense CERT plus at most 2 plies)\"\\]|\\[Unresolved \"OPEN is not an accepted closure\"\\]|\\[Example \"${EXAMPLE}\"\\]|\\[ManualWork \"Checked defense continuation\"\\]|\\[OriginalPuzzleId \"${PUZZLE}\"\\]|\\[OriginalPuzzleFEN \"${FEN}\"\\]|\\[OriginalMaterialBalance \"${INT}\"\\]|\\[WorkSourceRevision \"${HASH}\"\\]|\\[ClassMember \"${NODE}\"\\])",
+      "Header": "(?:\\[Event \"${EVENTID} - puzzle rating ${UINT}\"\\]|\\[Site \"https://lichess\\.org/training/${PUZZLE}\"\\]|\\[Date \"\\?\\?\\?\\?\\.\\?\\?\\.\\?\\?\"\\]|\\[Round \"-\"\\]|\\[White \"(?:Player|Defense)\"\\]|\\[Black \"(?:Player|Defense)\"\\]|\\[Result \"\\*\"\\]|\\[SetUp \"1\"\\]|\\[FEN \"${FEN}\"\\]|\\[LichessRating \"${UINT}\"\\]|\\[PGNGrammar \"predicate-chess-readable-pgn/17\"\\]|\\[MainlineSource \"Lichess snapshot 2026-09-10\"\\]|\\[Engine \"Stockfish 11 64\"\\]|\\[EngineLimit \"depth 18 or 250000 requested nodes; first limit reached\"\\]|\\[ReviewScope \"(?:Retained engine continuations; accepted END/CERT endings|Original defense CERT plus at most 2 plies)\"\\]|\\[Unresolved \"OPEN is not an accepted closure\"\\]|\\[Example \"${EXAMPLE}\"\\]|\\[ManualWork \"Checked defense continuation\"\\]|\\[OriginalPuzzleId \"${PUZZLE}\"\\]|\\[OriginalPuzzleFEN \"${FEN}\"\\]|\\[OriginalMaterialBalance \"${INT}\"\\]|\\[WorkSourceRevision \"${HASH}\"\\]|\\[ClassMember \"${NODE}\"\\]|\\[PositionsExplored \"positions explored = ${UINT} raw positions \\+ ${UINT} classes = ${UINT}\"\\]|\\[DictionarySHA256 \"${HASH}\"\\])",
       "P_obstructed_alignment": "(?:obstructed_alignment\\(${ROLE}>${ROLE}>${ROLE};${ROLE};${DIRECTION}\\))",
       "P_promotion_fork_pattern": "(?:promotion_fork_pattern\\(${PAWN};${PROMOTED};${ROLE}\\+${ROLE}\\))",
       "P_mate_threat_in_2": "(?:mate_threat_in_2\\(${SIDE}\\))",
-      "ApprovedJoinTarget": "${PUZZLE} / ${NODE}"
+      "ApprovedJoinTarget": "${PUZZLE} / ${NODE}",
+      "P_mating_route": "(?:mating_route\\(K\\))",
+      "P_guarded_mating_route": "(?:guarded_mating_route\\(K,q\\))",
+      "P_capture_reply_tree": "(?:capture_reply_tree\\(K,6\\))",
+      "DefensiveClosureClassBody": "(?:Restoring rook recapture\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})+\\. \\+ check\\(K\\); legal_capture\\(K,r\\)\\. - net_gain\\(K\\)>=2\\.|Profitable queen capture\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})+\\. \\+ net_gain\\(K\\)>=2; legal_capture\\(A,q\\); \\(value\\(q\\)>value\\(A\\) OR defenders\\(q=0\\)\\)\\. - none\\.|Nonchecking material retention\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})+\\. \\+ net_gain\\(K\\)>=2\\. - check\\(K\\); \\(legal_capture\\(A,q\\) AND \\(value\\(q\\)>value\\(A\\) OR defenders\\(q=0\\)\\)\\)\\.|Check requires defense\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})+\\. \\+ net_gain\\(K\\)>=2; check\\(K\\)\\. - \\(legal_capture\\(A,q\\) AND \\(value\\(q\\)>value\\(A\\) OR defenders\\(q=0\\)\\)\\)\\.|Promotion becomes imminent\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})+\\. \\+ net_gain\\(K\\)>=2; near_promotion\\(p\\)\\. - check\\(K\\); \\(legal_capture\\(A,q\\) AND \\(value\\(q\\)>value\\(A\\) OR defenders\\(q=0\\)\\)\\)\\.|Nonforcing material retention\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})+\\. \\+ net_gain\\(K\\)>=2\\. - check\\(K\\); near_promotion\\(p\\); \\(legal_capture\\(A,q\\) AND \\(value\\(q\\)>value\\(A\\) OR defenders\\(q=0\\)\\)\\)\\.)",
+      "P_sole_checking_piece": "(?:sole_checking_piece\\(q\\))"
     },
     "productions": {
       "Document": [
@@ -242,9 +251,6 @@
           "OBSERVED"
         ],
         [
-          "PRE"
-        ],
-        [
           "ENTRY"
         ],
         [
@@ -270,6 +276,9 @@
         ],
         [
           "USER"
+        ],
+        [
+          "MOTIF"
         ]
       ],
       "MoreTags": [
@@ -301,6 +310,8 @@
     "headers": {
       "required": [
         "Event",
+        "PositionsExplored",
+        "DictionarySHA256",
         "Site",
         "Date",
         "Round",
@@ -332,6 +343,8 @@
       ],
       "order": [
         "Event",
+        "PositionsExplored",
+        "DictionarySHA256",
         "Site",
         "Date",
         "Round",
@@ -366,7 +379,7 @@
         "SetUp": "1",
         "FEN": "${FEN}",
         "LichessRating": "${UINT}",
-        "PGNGrammar": "predicate-chess-readable-pgn/10",
+        "PGNGrammar": "predicate-chess-readable-pgn/17",
         "MainlineSource": "Lichess snapshot 2026-09-10",
         "Engine": "Stockfish 11 64",
         "EngineLimit": "depth 18 or 250000 requested nodes; first limit reached",
@@ -378,7 +391,9 @@
         "OriginalPuzzleFEN": "${FEN}",
         "OriginalMaterialBalance": "${INT}",
         "WorkSourceRevision": "${HASH}",
-        "ClassMember": "${NODE}"
+        "ClassMember": "${NODE}",
+        "PositionsExplored": "positions explored = ${UINT} raw positions \\+ ${UINT} classes = ${UINT}",
+        "DictionarySHA256": "${HASH}"
       },
       "duplicates": "forbidden",
       "unknown": "forbidden",
@@ -392,7 +407,6 @@
         "PIECES",
         "START",
         "OBSERVED",
-        "PRE",
         "ENTRY",
         "CLASS",
         "END",
@@ -401,7 +415,8 @@
         "STOCKFISH",
         "OPEN",
         "NODE",
-        "USER"
+        "USER",
+        "MOTIF"
       ],
       "rootRequiredPrefix": [
         "MAINLINE",
@@ -417,14 +432,14 @@
         "MAINLINE",
         "PIECES",
         "START",
-        "CLASS",
         "ENTRY",
         "STOCKFISH",
         "OPEN",
         "JOIN",
         "END",
         "NODE",
-        "USER"
+        "USER",
+        "MOTIF"
       ],
       "terminals": [
         "END",
@@ -433,11 +448,15 @@
       ],
       "open": "OPEN",
       "prohibited": [
-        "REASON"
+        "REASON",
+        "PRE",
+        "DEFINITION"
       ],
       "closureRule": "An END or CERT is an accepted predicate-conjunction leaf; JOIN is an accepted acyclic reference. OPEN is unresolved, never an accepted closure. No other annotation changes acceptance. Multiple accepted certificates at one endpoint are allowed. A continuing position cannot carry a closure.",
       "nodeRule": "Every position in a checkpoint PGN has exactly one explicit NODE anchor, unique within its game. It has no chess or acceptance authority.",
-      "userRule": "USER records user-supplied moves, legally enumerated replies, or a selected/checked certificate, anchored to a same-game ancestor NODE. It never gives acceptance. No STOCKFISH attribution is generated for a user move. Existing engine provenance is retained."
+      "userRule": "USER records user-supplied moves, legally enumerated replies, or a selected/checked certificate, anchored to a same-game ancestor NODE. It never gives acceptance. No STOCKFISH attribution is generated for a user move. Existing engine provenance is retained.",
+      "classRule": "CLASS optionally groups at least two legal sibling defenses at a defense parent in a tree or theorem application. Its three-word dictionary name identifies one signed recipe in the applicable dictionary scope. Any number of ordinary children may coexist with these groups; a one-member case is an ordinary child.",
+      "motifRule": "MOTIF preserves a historical candidate name and its proposed atoms. It does not assert that those atoms hold, supplies no inherited observation or physical binding, invokes no theorem, and grants no END/CERT or CLASS authority. Its names and atom syntax must be registered. Present it as a candidate idea, never as a checked metatree overlay. Any separate ENTRY must independently pass every current entry and complete-tree check."
     },
     "vocabulary": {
       "predicateSchemas": {
@@ -779,6 +798,15 @@
         ],
         "mate_threat_in_2": [
           "mate_threat_in_2\\(${SIDE}\\)"
+        ],
+        "mating_route": [
+          "mating_route\\(K\\)"
+        ],
+        "guarded_mating_route": [
+          "guarded_mating_route\\(K,q\\)"
+        ],
+        "capture_reply_tree": [
+          "capture_reply_tree\\(K,6\\)"
         ]
       },
       "theoremNames": [
@@ -811,7 +839,9 @@
         "Skewer",
         "Support",
         "Take / exchange",
-        "Win the pawn race"
+        "Win the pawn race",
+        "Constrain by mate threat",
+        "Single-queen defensive closure"
       ],
       "certificateNames": [
         "Checked mate",
@@ -824,7 +854,8 @@
         "Material won; promotion controlled",
         "Net +2 and quiet",
         "Pawn race won; protected promotion",
-        "Pawn won; minor-piece endgame"
+        "Pawn won; minor-piece endgame",
+        "Material won; short capture replies"
       ],
       "openMessages": [
         "Breakthrough entry fitted. This opposing reply still needs its next theorem or accepted ending.",
@@ -862,14 +893,14 @@
       "Root annotations MAINLINE, PIECES and START occur once in this order and nowhere else.",
       "Every byte is consumed: unknown keywords, predicates, theorem/terminal names, extra prose, NAGs, percent escape lines, semicolon comments, and unmatched delimiters are rejected.",
       "Single numbered SAN ply per line; recursive opponent variations only; canonical LF/TAB wrapping; no arbitrary blank lines in movetext.",
-      "MAINLINE annotation replays from FEN and equals the unvaried move sequence; all numbers and SAN are canonical.",
+      "MAINLINE replays from FEN and equals the unvaried sequence, except a registered defensive-closure application or explicit preparation grouping may retain the frozen MAINLINE as an exact prefix of its extended unvaried analysis. All actual moves and numbers remain canonical.",
       "Result header and final result agree; Player/Defense headers are reciprocal; PIECES case convention follows Player.",
       "Root FEN and frozen Lichess mainline/final FEN match the source contract.",
       "Every leaf is END/CERT/acyclic JOIN or explicitly OPEN; OPEN cannot coexist with an accepted endpoint; closure precedes no continuation.",
       "The compiler obtains all acceptance from registered END/CERT applications or JOINs, never from prose, reasons, engine scores, UI evidence, or review-terminal side objects.",
       "Every capture has an observed attack by the actual capturer on the actual physical target. Its observation may be earlier on this branch only if the relation remains true on every intervening position; en passant is explicit.",
-      "Classes require identical accepted predicates or retained responses with matching continuation classes; empty OPEN leaves are unique.",
-      "All retained concrete class members replay legally; all expanded opponent positions retain every legal reply; original canonical child remains representative.",
+      "Only an explicit optional parent CLASS groups multiple defenses for storage. Its accepted signed recipe covers omitted continuations; a matching label or representative alone grants no acceptance. Ordinary stored children are raw even if their continuations look alike.",
+      "All retained concrete moves replay legally. At an expanded opposing parent, declared CLASS Members plus ungrouped direct children form a disjoint exact cover of the legal replies. With no CLASS, every legal reply is an ordinary stored child.",
       "Every build/export/workshop path uses this locked specification and the same conformity gate; deterministic regeneration is required.",
       "Every invoked Fork, Royal fork, Pin and Skewer has a previously OBSERVED bound geometry, continuously true through the entry position; a failed relation expires and cannot be revived without a new observation.",
       "A move may clear an OBSERVED friendly obstruction and establish or exploit the resulting attack/alignment in the same ply. The prerequisite is the obstructed line before that move, never a retroactive observation.",
@@ -879,15 +910,34 @@
       "Every JOIN matches an approved source board, source node/application and target binding. Existing valid targets alone do not authorize new JOINs.",
       "Every emitted mate_threat_in_2 predicate has a checked three-ply tree; every legal second-ply reply has an actual mating third ply. Threat projections never appear as null game moves.",
       "Every position has one unique NODE anchor; all puzzle content comes exclusively from PGN text.",
-      "Full-tree storage: every concrete member is an ordinary PGN variation. Expanded defender positions contain exactly the legal move set. Classes are derived from the parsed tree, not used to elide data.",
+      "A declared parent CLASS stores one representative child for at least two legal members. All defenses outside declared groups are ordinary children with their actual continuations. No grouped nonrepresentative subtree is stored.",
       "JOIN source and target records belong to the PGN; the definition file contains only the generic join contract. Workshop changes cannot invent/rebind an input JOIN.",
-      "USER sources resolve to this node or an ancestor in the same game; enum replies are opponent moves; selected/checked endpoints are existing named main certificate conjunctions and independently hold. No USER move lies on the frozen reference path."
+      "USER sources resolve to this node or an ancestor in the same game; enum replies are opponent moves; selected/checked endpoints are existing named main certificate conjunctions and independently hold. No USER move lies on the frozen reference path.",
+      "Legacy child-attached gross T38 category labels are not accepted CLASS syntax in v16. T38 chess categories remain unchanged dictionary data; an unsupported theorem entry or grouping adapter rejects explicitly.",
+      "capture_reply_tree(K,6) applications are always independently checked, including applications without USER metadata. No new predicates or certificates are learned on import.",
+      "Every optional CLASS declaration is on the actual defense parent and names one direct-child representative with at least two Members. Singleton defenses are ordinary children. Group Members plus ordinary replies exhaust the legal move set; no duplicate member, extra grouped child or entry alias is allowed.",
+      "Every theorem ENTRY is checked on its attached board and bound recorded move. Required template conditions cannot be omitted or replaced by unrelated true atoms; every printed atom must hold. Reject unsupported templates and predicates. T39 ENTRY and every CLASS name and signed condition are generated exactly from the dictionary.",
+      "DictionarySHA256 equals the hash of the exact loaded dictionary bytes. PositionsExplored always equals the actual physical NODE records, partitioned once into raw nodes and explicit class representatives. Every stored node costs one.",
+      "Explicit Take / exchange preparation groups apply only after an actual legal player capture whose current board satisfies every preparation entry condition. Scope follows from that capture and matching dictionary class names, without a DEFINITION marker or extra ENTRY. Valid inherited facts need not be repeated in OBSERVED.",
+      "For groups that omit continuations, bind prior checked fit provenance and its evidence hash to the parent FEN, prover, original material baseline, class key and complete signed recipe member set. Verify every legal reply's signed predicates and all stored ordinary and representative endings; omitted group members need no universal future-subtree expansion.",
+      "CLASS is optional and uses a three-word dictionary name followed by separate Representative, Members, positive and negative predicate lines. Place one or more groups on the parent application. Every group has at least two members, exactly one stored direct-child representative, correct generated signs and disjoint complete coverage together with ordinary children.",
+      "Every START and OBSERVED declaration is semantically true where declared. Inherit each physical binding down its branch only while continuously true; expire it immediately when false. The validator derives capture and motif provenance automatically. PRE and DEFINITION annotations are rejected.",
+      "Every invoked theorem has a canonical metatree; match all stored stages, physical bindings, intermediate predicates and explicit exits. A legacy sketch or a candidate fit alone rejects.",
+      "Validate dictionary graph structure before applications: reachability, references, cycles, actor alternation, actual-ply depth, typed move edges, zero-ply cases and explicit exits. Only the four named atomic theorems may establish a result in one ply.",
+      "Check every END/CERT independently, also in games without CLASS. A same-board theorem handoff validates its complete dependency and rejects cycles.",
+      "A checking queen that can be captured selects the capturable case regardless of whether the capture is a profitable win or an equal exchange. Capturing the checker does not bypass recapture settlement or the existing ending check.",
+      "A PGN move number must match its actual parent board turn and fullmove number. Abstract case edges consume no physical move or position.",
+      "MOTIF is historical candidate metadata only. Do not use its name or proposed atoms as observation provenance, theorem entry, metatree coverage, class authorization or ending acceptance; only a separately checked ENTRY produces a theorem overlay."
     ],
     "compatibility": {
       "removed": [
         "REASON annotation",
         "endpoint-specific reason semantics",
-        "NotesRevision header"
+        "NotesRevision header",
+        "PRE annotation",
+        "DEFINITION annotation",
+        "legacy child-attached CLASS labels and gross T38 category labels",
+        "next-move-only theorem acceptance; one-ply compound and opaque-continuation sketches are not executable theorem applications"
       ],
       "retained": [
         "approved move trees",
@@ -895,17 +945,22 @@
         "STOCKFISH provenance",
         "explicit OPEN frontiers",
         "numbered examples",
-        "source quiet definition without revision"
+        "source quiet definition without revision",
+        "All prior END/CERT definitions and accepted class recipe bindings; canonical metatrees change theorem validation, not terminal authority",
+        "Historical first-move candidate labels may be retained as nonauthoritative MOTIF annotations; all invoked ENTRY applications still require complete canonical trees."
       ]
     },
     "preconditionContract": {
       "scope": "all captures by both sides and all invoked tactical motifs; concrete members and PGN exports",
       "lifetime": "observe once, carry while continuously true; expire at first false on this branch",
       "capture": "exact physical capturer and target; attacks or explicit legal en-passant availability",
-      "line": "geometric target alignment; pin use may consume its front target; same-move clearance requires an obstructed BEFORE line",
+      "line": "Skewer entry requires the observed alignment of the same two opposing targets before the attacker joins. Check the attacker-front-rear line after joining and the same rear capture after the reply. Other inherited geometry rules are unchanged.",
       "fork": "piece-appropriate common attack geometry, not a forced straight line for knights or mixed slider rays",
       "promotion": "promotion_fork_pattern explicitly identifies the pawn, promoted type and target pair",
-      "noNewAcceptance": "END/CERT/JOIN semantics unchanged; provenance and evidence have no acceptance authority"
+      "noNewAcceptance": "END/CERT/JOIN semantics unchanged; provenance and evidence have no acceptance authority",
+      "inheritance": "Validate every START and OBSERVED atom on its attached board. Add its actual physical bindings to the current branch. Carry each binding down that branch only while it remains true at every intervening board; expire it at the first false board. A fresh OBSERVED may establish a new source. No sibling or expired source is inherited.",
+      "provenance": "The validator derives the ancestor source, physical piece identities and intervening board sequence. Captures and tactical motifs consume an appropriate live observed relation without a printed provenance annotation. Another piece of the same type cannot replace a bound piece.",
+      "unknown": "Reject unsupported START/OBSERVED predicates instead of treating an unimplemented fact as true."
     },
     "registry": {
       "schema": "human-approved-theorems/1",
@@ -1029,51 +1084,100 @@
           "group": "Change a relationship",
           "meaning": "An offer draws a named piece onto a square needed by the next theorem. A checking sacrifice is a particularly useful instance.",
           "entry": [
-            "legal(A@s)"
+            "legal_move(A)"
           ],
           "exit": [
-            "at(D,s)",
-            "captured(A)"
+            "captured(A)",
+            "moved(D)"
           ],
           "replies": "If D×A is the only legal reply, the destination is forced. Otherwise the theorem has an accepting branch and declining branches. They cannot be discarded just because the recorded line takes.",
-          "proof": "A legal capture places the capturing piece on the captured piece’s square, except for the pawn removed by en passant. The follow-up tests why that landing square matters.",
+          "proof": "The offer and accepting capture are two actual plies; the same offered physical piece is captured. Declining replies have explicit checked handoffs, not an assumed attraction result.",
           "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "compound",
+            "root": "entry",
+            "variables": {
+              "A": {
+                "side": "K"
+              },
+              "D": {
+                "side": "k"
+              }
+            },
+            "entryAtoms": [
+              "legal_move(A)"
+            ],
+            "coverage": "all-defenses",
+            "description": "Offer a physically bound piece, then classify every defense by accepting or declining the offer. A declining defense must enter another checked application or an accepted ending.",
             "nodes": [
               {
-                "id": "n0",
+                "id": "entry",
                 "predicates": [
-                  "legal(A@s)"
+                  "legal_move(A)"
                 ],
-                "kind": "root"
+                "turn": "player"
               },
               {
-                "id": "n1",
+                "id": "offer",
                 "predicates": [
-                  "attacks(D,A)"
+                  "attacked(A)"
                 ],
-                "kind": "position"
+                "turn": "defender"
               },
               {
-                "id": "n2",
+                "id": "accepted",
                 "predicates": [
-                  "at(D,s)",
+                  "captured(A)",
+                  "moved(D)"
+                ],
+                "exit": {
+                  "kind": "theorem"
+                }
+              },
+              {
+                "id": "declined",
+                "predicates": [],
+                "negative": [
                   "captured(A)"
                 ],
-                "kind": "position"
+                "exit": {
+                  "kind": "handoff"
+                }
               }
             ],
             "edges": [
               {
-                "source": "n0",
-                "target": "n1",
-                "move": "A@s",
-                "note": "offer the piece on s"
+                "id": "entry--offer",
+                "source": "entry",
+                "target": "offer",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "any",
+                  "piece": "A"
+                }
               },
               {
-                "source": "n1",
-                "target": "n2",
-                "move": "D×A",
-                "note": "accept the offer"
+                "id": "offer--accepted",
+                "source": "offer",
+                "target": "accepted",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "capture",
+                  "piece": "D",
+                  "target": "A"
+                }
+              },
+              {
+                "id": "offer--declined",
+                "source": "offer",
+                "target": "declined",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any"
+                }
               }
             ]
           },
@@ -1125,78 +1229,56 @@
           "group": "Direct the reply",
           "meaning": "A check sorts the legal replies into a small set of move types. It does not, by itself, win anything.",
           "entry": [
-            "legal(A@s+)"
+            "legal_check(A)"
           ],
           "exit": [
-            "¬check(K)"
+            "check(k)"
           ],
-          "replies": "First class: all king moves, including king captures. Second: non-king captures of the checker. Third: non-king blocks. For a single knight check there is no block class. Extra effects, including countercheck, stay on those branches.",
-          "proof": "Every legal reply must remove the attack on the king. Against a single checker, the king escapes, the checker is removed, or its sliding line is interrupted.",
+          "replies": "This atomic application ends after its one move. Any later legal defenses remain subject to the PGN coverage and ending checks.",
+          "proof": "Replay the actual legal move and check the declared result on its actual board. This atomic fact is not a substitute for END/CERT.",
           "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "atomic",
+            "root": "entry",
+            "variables": {
+              "A": {
+                "side": "K"
+              }
+            },
+            "entryAtoms": [
+              "legal_check(A)"
+            ],
+            "coverage": "all-defenses",
+            "description": "One legal ply establishes the declared atomic fact. Later defenses are checked by their own applications and endings.",
             "nodes": [
               {
-                "id": "n0",
+                "id": "entry",
                 "predicates": [
-                  "legal(A@s+)"
+                  "legal_check(A)"
                 ],
-                "kind": "root"
+                "turn": "player"
               },
               {
-                "id": "n1",
+                "id": "result",
                 "predicates": [
-                  "check(K)"
+                  "check(k)"
                 ],
-                "kind": "position"
-              },
-              {
-                "id": "n2",
-                "predicates": [
-                  "¬check(K)",
-                  "at(K,u)"
-                ],
-                "kind": "position"
-              },
-              {
-                "id": "n3",
-                "predicates": [
-                  "¬check(K)",
-                  "captured(A)"
-                ],
-                "kind": "position"
-              },
-              {
-                "id": "n4",
-                "predicates": [
-                  "¬check(K)",
-                  "between(E,A,K)"
-                ],
-                "kind": "position"
+                "exit": {
+                  "kind": "theorem"
+                }
               }
             ],
             "edges": [
               {
-                "source": "n0",
-                "target": "n1",
-                "move": "A@s+",
-                "note": "give check"
-              },
-              {
-                "source": "n1",
-                "target": "n2",
-                "move": "K@u",
-                "note": "including king captures"
-              },
-              {
-                "source": "n1",
-                "target": "n3",
-                "move": "E×A",
-                "note": "non-king capture"
-              },
-              {
-                "source": "n1",
-                "target": "n4",
-                "move": "E@t",
-                "note": "block a sliding check"
+                "id": "entry--result",
+                "source": "entry",
+                "target": "result",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "check",
+                  "piece": "A"
+                }
               }
             ]
           },
@@ -1471,38 +1553,56 @@
           "group": "Finish",
           "meaning": "A legal move checks the king and leaves no legal reply.",
           "entry": [
-            "legal(A@s+)"
+            "legal_mate(A)"
           ],
           "exit": [
-            "mate(K)"
+            "mate(k)"
           ],
-          "replies": "The reply set is empty. Stalemate does not qualify because the king must be checked.",
-          "proof": "Check together with an empty legal reply set is checkmate. This tree already reaches a mating objective.",
+          "replies": "This atomic application ends after its one move. Any later legal defenses remain subject to the PGN coverage and ending checks.",
+          "proof": "Replay the actual legal move and check the declared result on its actual board. This atomic fact is not a substitute for END/CERT.",
           "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "atomic",
+            "root": "entry",
+            "variables": {
+              "A": {
+                "side": "K"
+              }
+            },
+            "entryAtoms": [
+              "legal_mate(A)"
+            ],
+            "coverage": "all-defenses",
+            "description": "One legal ply establishes the declared atomic fact. Later defenses are checked by their own applications and endings.",
             "nodes": [
               {
-                "id": "n0",
+                "id": "entry",
                 "predicates": [
-                  "legal(A@s+)"
+                  "legal_mate(A)"
                 ],
-                "kind": "root"
+                "turn": "player"
               },
               {
-                "id": "n1",
+                "id": "result",
                 "predicates": [
-                  "check(K)",
-                  "legal_replies(0)",
-                  "mate(K)"
+                  "mate(k)"
                 ],
-                "kind": "position"
+                "exit": {
+                  "kind": "theorem"
+                }
               }
             ],
             "edges": [
               {
-                "source": "n0",
-                "target": "n1",
-                "move": "A@s#",
-                "note": "one legal move"
+                "id": "entry--result",
+                "source": "entry",
+                "target": "result",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "mate",
+                  "piece": "A"
+                }
               }
             ]
           },
@@ -1515,76 +1615,56 @@
           "group": "Direct the reply",
           "meaning": "Create a specific mate-in-one threat. Legal moves that ignore it are answered by mate; repairs enter another subtree.",
           "entry": [
-            "legal(A@s)"
+            "legal_move(A)"
           ],
           "exit": [
-            "mate_threat(t)"
+            "mate_in_1(K)"
           ],
-          "replies": "Split moves that leave t a legal mating move from moves that prevent it. The first class receives t#. Checks and other interruptions must be assessed in the actual reply position.",
-          "proof": "If the named mating move remains legal and mating after a reply, playing it ends that branch. The remaining replies are exactly the repairs that need another tree.",
+          "replies": "This atomic application ends after its one move. Any later legal defenses remain subject to the PGN coverage and ending checks.",
+          "proof": "Replay the actual legal move and check the declared result on its actual board. This atomic fact is not a substitute for END/CERT.",
           "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "atomic",
+            "root": "entry",
+            "variables": {
+              "A": {
+                "side": "K"
+              }
+            },
+            "entryAtoms": [
+              "legal_move(A)"
+            ],
+            "coverage": "all-defenses",
+            "description": "One legal ply establishes the declared atomic fact. Later defenses are checked by their own applications and endings.",
             "nodes": [
               {
-                "id": "n0",
+                "id": "entry",
                 "predicates": [
-                  "legal(A@s)"
+                  "legal_move(A)"
                 ],
-                "kind": "root"
+                "turn": "player"
               },
               {
-                "id": "n1",
+                "id": "result",
                 "predicates": [
-                  "mate_threat(t)"
+                  "mate_in_1(K)"
                 ],
-                "kind": "position"
-              },
-              {
-                "id": "n2",
-                "predicates": [
-                  "legal(t)",
-                  "mate_after(t)"
-                ],
-                "kind": "position"
-              },
-              {
-                "id": "n3",
-                "predicates": [
-                  "¬mate_after(t)"
-                ],
-                "kind": "position"
-              },
-              {
-                "id": "n4",
-                "predicates": [
-                  "mate(K)"
-                ],
-                "kind": "position"
+                "exit": {
+                  "kind": "theorem"
+                }
               }
             ],
             "edges": [
               {
-                "source": "n0",
-                "target": "n1",
-                "move": "A@s",
-                "note": "create the threat"
-              },
-              {
-                "source": "n1",
-                "target": "n2",
-                "move": "E@u",
-                "note": "threat survives"
-              },
-              {
-                "source": "n1",
-                "target": "n3",
-                "move": "E@v",
-                "note": "threat repaired: open exit"
-              },
-              {
-                "source": "n2",
-                "target": "n4",
-                "move": "t#",
-                "note": "play the mate"
+                "id": "entry--result",
+                "source": "entry",
+                "target": "result",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "any",
+                  "piece": "A"
+                }
               }
             ]
           },
@@ -1605,52 +1685,82 @@
           ],
           "replies": "Every legal reply is included, not just king moves. First-move mate belongs to Mate in one; the three-ply tree has at least one reply. Both checking and quiet keys are permitted.",
           "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "compound",
+            "root": "entry",
+            "variables": {
+              "A": {
+                "side": "K"
+              }
+            },
+            "entryAtoms": [
+              "mate_threat_in_2(K)"
+            ],
+            "coverage": "all-defenses",
+            "description": "One actual key, every legal opposing reply, and a legal mating move at each resulting board. The existing mate-in-two checker independently checks the entry claim.",
             "nodes": [
               {
                 "id": "entry",
-                "kind": "root",
                 "predicates": [
                   "mate_threat_in_2(K)"
-                ]
+                ],
+                "turn": "player"
               },
               {
                 "id": "key",
-                "kind": "position",
                 "predicates": [
                   "turn(k)"
-                ]
+                ],
+                "turn": "defender"
               },
               {
                 "id": "reply",
-                "kind": "position",
                 "predicates": [
-                  "turn(K)",
                   "mate_in_1(K)"
-                ]
+                ],
+                "turn": "player"
               },
               {
                 "id": "mate",
-                "kind": "position",
                 "predicates": [
                   "mate(k)"
-                ]
+                ],
+                "exit": {
+                  "kind": "theorem"
+                }
               }
             ],
             "edges": [
               {
+                "id": "entry--key",
                 "source": "entry",
                 "target": "key",
-                "move": "A plays a legal checking or quiet key"
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "any",
+                  "piece": "A"
+                }
               },
               {
+                "id": "key--reply",
                 "source": "key",
                 "target": "reply",
-                "move": "EVERY legal defender reply"
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any"
+                }
               },
               {
+                "id": "reply--mate",
                 "source": "reply",
                 "target": "mate",
-                "move": "A legal mate selected for this reply"
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "mate"
+                }
               }
             ]
           },
@@ -2315,67 +2425,140 @@
           "name": "Skewer along a line",
           "short": "Skewer",
           "group": "Attack two things",
-          "meaning": "A sliding attack reaches a valuable front piece before a rear target. Moving the front piece can expose the rear one.",
+          "meaning": "Start from an observed aligned pair of opposing targets. Join their line, require a reply that exposes the rear target, and capture that same rear target with the same slider.",
           "entry": [
-            "line(A,B,C)"
+            "aligned(B,C)",
+            "legal_move(A)"
           ],
           "exit": [
-            "attacks(A,B)"
+            "captured(C)",
+            "moved(A)"
           ],
-          "replies": "Group front-piece moves only when they preserve the open line and the required capture of C. Capturing A, blocking the line, or removing C needs a separate branch. A king skewer shares its first move with Check.",
-          "proof": "With B removed from the line and no new blocker, the same sliding ray reaches C. The capture is established when A×C is legal. Its net payoff belongs to Take / exchange.",
+          "replies": "A front-target move is successful only if it leaves the rear target legally capturable by the bound slider. Every other defense needs a checked theorem or accepted ending at its actual board.",
+          "proof": "Check live observed alignment at entry, line order and attack after joining, the exposed legal capture after the reply, and the same physical capture after the third ply. Material payoff remains an ending or exchange obligation.",
           "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "compound",
+            "root": "entry",
+            "variables": {
+              "A": {
+                "side": "K",
+                "types": [
+                  "r",
+                  "b",
+                  "q"
+                ]
+              },
+              "B": {
+                "side": "k"
+              },
+              "C": {
+                "side": "k"
+              }
+            },
+            "entryAtoms": [
+              "aligned(B,C)",
+              "legal_move(A)"
+            ],
+            "coverage": "all-defenses",
+            "description": "The targets are aligned before the attacker joins. The same attacker attacks the front target, a qualifying reply exposes the same rear target, and the attacker captures it.",
             "nodes": [
               {
-                "id": "n0",
+                "id": "entry",
                 "predicates": [
-                  "line(A,B,C)",
-                  "legal(A@s)"
+                  "aligned(B,C)",
+                  "legal_move(A)"
                 ],
-                "kind": "root"
+                "turn": "player"
               },
               {
-                "id": "n1",
+                "id": "joined",
                 "predicates": [
                   "line(A,B,C)",
                   "attacks(A,B)"
                 ],
-                "kind": "position"
+                "turn": "defender"
               },
               {
-                "id": "n2",
+                "id": "exposed",
                 "predicates": [
+                  "moved(B)",
                   "attacks(A,C)",
-                  "legal(A×C)"
+                  "legal_capture(A,C)"
                 ],
-                "kind": "position"
+                "turn": "player"
               },
               {
-                "id": "n3",
+                "id": "taken",
                 "predicates": [
-                  "captured(C)"
+                  "captured(C)",
+                  "moved(A)"
                 ],
-                "kind": "position"
+                "exit": {
+                  "kind": "theorem"
+                }
+              },
+              {
+                "id": "different-reply",
+                "predicates": [],
+                "negative": [
+                  {
+                    "all": [
+                      "moved(B)",
+                      "attacks(A,C)",
+                      "legal_capture(A,C)"
+                    ]
+                  }
+                ],
+                "exit": {
+                  "kind": "handoff"
+                }
               }
             ],
             "edges": [
               {
-                "source": "n0",
-                "target": "n1",
-                "move": "A@s",
-                "note": "enter the skewer line"
+                "id": "entry--joined",
+                "source": "entry",
+                "target": "joined",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "any",
+                  "piece": "A"
+                }
               },
               {
-                "source": "n1",
-                "target": "n2",
-                "move": "B@u",
-                "note": "line to C remains open"
+                "id": "joined--exposed",
+                "source": "joined",
+                "target": "exposed",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any",
+                  "piece": "B"
+                }
               },
               {
-                "source": "n2",
-                "target": "n3",
-                "move": "A×C",
-                "note": "take the rear target"
+                "id": "joined--different-reply",
+                "source": "joined",
+                "target": "different-reply",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any"
+                }
+              },
+              {
+                "id": "exposed--taken",
+                "source": "exposed",
+                "target": "taken",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "capture",
+                  "piece": "A",
+                  "target": "C"
+                }
               }
             ]
           },
@@ -2431,54 +2614,62 @@
           "name": "Capture and exchange",
           "short": "Take / exchange",
           "group": "Finish",
-          "meaning": "Take a named piece, then account for any recapture. The tree records the material change rather than assuming the captured piece is free.",
+          "meaning": "Take a named physical target. The one-ply capture fact does not assert that the piece was free or that the material result is settled.",
           "entry": [
-            "legal(A×B)"
+            "legal_capture(A,B)"
           ],
           "exit": [
-            "captured(B)",
-            "material(X,m)"
+            "captured(B)"
           ],
-          "replies": "Split captures of A from other replies. A further capture can attach another instance of this tree. Stop only at the stated material or quiet boundary.",
-          "proof": "Capturing B adds its value to X’s material balance. A reply capturing A subtracts A’s value. The sum is exact for the recorded exchange.",
+          "replies": "Retain necessary recaptures as ordinary or explicitly grouped defenses, or discharge them with an applicable existing ending.",
+          "proof": "Legality and physical identity establish the capture. Exact board material and the existing ending checker account for exchanges separately.",
           "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "atomic",
+            "root": "entry",
+            "variables": {
+              "A": {
+                "side": "K"
+              },
+              "B": {
+                "side": "k"
+              }
+            },
+            "entryAtoms": [
+              "legal_capture(A,B)"
+            ],
+            "coverage": "all-defenses",
+            "description": "Capture the same physically bound target in one ply. Recaptures and material settlement require later applications or an applicable ending.",
             "nodes": [
               {
-                "id": "n0",
+                "id": "entry",
                 "predicates": [
-                  "legal(A×B)"
+                  "legal_capture(A,B)"
                 ],
-                "kind": "root"
+                "turn": "player"
               },
               {
-                "id": "n1",
+                "id": "captured",
                 "predicates": [
-                  "captured(B)",
-                  "material(X,m+v(B))"
+                  "captured(B)"
                 ],
-                "kind": "position"
-              },
-              {
-                "id": "n2",
-                "predicates": [
-                  "captured(A)",
-                  "material(X,m+v(B)−v(A))"
-                ],
-                "kind": "position"
+                "exit": {
+                  "kind": "theorem"
+                }
               }
             ],
             "edges": [
               {
-                "source": "n0",
-                "target": "n1",
-                "move": "A×B",
-                "note": "take the target"
-              },
-              {
-                "source": "n1",
-                "target": "n2",
-                "move": "D×A",
-                "note": "recapture branch, if legal"
+                "id": "entry--captured",
+                "source": "entry",
+                "target": "captured",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "capture",
+                  "piece": "A",
+                  "target": "B"
+                }
               }
             ]
           },
@@ -2524,6 +2715,592 @@
           },
           "source": "Discussion Notes, revised: no generic interruption predicate.",
           "catalogueSection": "Endgame"
+        },
+        {
+          "id": "T38",
+          "short": "Constrain by mate threat",
+          "name": "Four classes of defense against a mating constraint",
+          "kind": "defense-partition",
+          "annotationSite": "legacy category representation; no v15 CLASS adapter",
+          "group": "Direct the reply",
+          "catalogueSection": "General",
+          "meaning": "A mating route constrains the defender. The four gross categories are routing classes, not equivalence classes or terminal certificates. Each concrete reply retains its actual continuation and accepted END/CERT leaves.",
+          "entry": [
+            "mating_route(K) OR guarded_mating_route(K,q)"
+          ],
+          "exit": [
+            "actual mate OR an applicable accepted END/CERT"
+          ],
+          "replies": "Check takes precedence; otherwise test the recorded queen key on the changed board; then test the same guard duty; otherwise classify as changed resources. Matching a category does not close a branch.",
+          "proof": "All legal defensive moves at an expanded node are partitioned once. Each class is checked against its actual board and exact registered predicate. Existing accepted leaves and a finite legal capture-reply ending close the continuations.",
+          "tree": {
+            "nodes": [
+              {
+                "id": "entry",
+                "kind": "root",
+                "predicates": [
+                  "mating_route(K) OR guarded_mating_route(K,q)"
+                ]
+              },
+              {
+                "id": "abandons",
+                "kind": "position",
+                "predicates": [
+                  "Abandons the mating defense without a forcing interruption"
+                ]
+              },
+              {
+                "id": "check",
+                "kind": "position",
+                "predicates": [
+                  "Gives an intermediate check"
+                ]
+              },
+              {
+                "id": "maintains",
+                "kind": "position",
+                "predicates": [
+                  "Maintains the mating defense"
+                ]
+              },
+              {
+                "id": "changes",
+                "kind": "position",
+                "predicates": [
+                  "Attacks the mating queen, blocks a supporting line, or creates another escape"
+                ]
+              },
+              {
+                "id": "ending",
+                "kind": "terminal",
+                "predicates": [
+                  "registered END/CERT"
+                ]
+              }
+            ],
+            "edges": [
+              {
+                "source": "entry",
+                "target": "abandons",
+                "move": "opponent reply",
+                "note": "The recorded queen key still reaches mate on the actual board. Use its concrete mating response."
+              },
+              {
+                "source": "entry",
+                "target": "check",
+                "move": "opponent reply",
+                "note": "Retain its actual legal answer, then reassess the same mating relationships."
+              },
+              {
+                "source": "entry",
+                "target": "maintains",
+                "move": "opponent reply",
+                "note": "The opposing queen remains needed to stop the same route; the mating queen is not attacked. Recognize the material gained, and explicitly check captures that could undo it."
+              },
+              {
+                "source": "entry",
+                "target": "changes",
+                "move": "opponent reply",
+                "note": "The old route is not sufficient, or the mating queen is attacked. This branch needs its own actual continuation."
+              },
+              {
+                "source": "abandons",
+                "target": "ending",
+                "move": "concrete continuation",
+                "note": "The recorded queen key still reaches mate on the actual board. Use its concrete mating response."
+              },
+              {
+                "source": "check",
+                "target": "ending",
+                "move": "concrete continuation",
+                "note": "Retain its actual legal answer, then reassess the same mating relationships."
+              },
+              {
+                "source": "maintains",
+                "target": "ending",
+                "move": "concrete continuation",
+                "note": "The opposing queen remains needed to stop the same route; the mating queen is not attacked. Recognize the material gained, and explicitly check captures that could undo it."
+              },
+              {
+                "source": "changes",
+                "target": "ending",
+                "move": "concrete continuation",
+                "note": "The old route is not sufficient, or the mating queen is attacked. This branch needs its own actual continuation."
+              }
+            ]
+          }
+        },
+        {
+          "id": "T39",
+          "short": "Single-queen defensive closure",
+          "name": "Single-queen defensive closure",
+          "kind": "defensive-closure",
+          "annotationSite": "ENTRY",
+          "group": "Defensive closure",
+          "catalogueSection": "Defensive closure",
+          "definitionSource": "specification.defensiveClosureContract",
+          "meaning": "When materially ahead against the sole checking queen, cover every legal defense. Capture a legally capturable checker or evade an uncapturable check; then check the actual resulting predicates and settle required recaptures. Close only at an applicable existing ending or a completely checked next theorem application.",
+          "entry": [
+            "turn(k)",
+            "material(K=m)",
+            "net_gain(K)>=2",
+            "piece_count(q=1)",
+            "piece_count(r=0)",
+            "piece_count(b=0)",
+            "piece_count(n=0)",
+            "has_checks(k)",
+            "no_captures(k)",
+            "not near_promotion(p)",
+            "no_mate_in_1(k)",
+            "sole_checking_piece(q)"
+          ],
+          "entryBinding": "m is the observed positive current material balance; instantiate material(K=m) with that integer.",
+          "exit": [
+            "applicable existing END/CERT or a fully checked next application"
+          ],
+          "replies": "Check every legal opposing reply against exactly one signed recipe. Optionally group two or more members with a parent CLASS and retain one representative; store every ungrouped reply ordinarily. Together they cover every legal reply exactly once.",
+          "proof": "Match the complete finite metatree, physical bindings, intermediate predicates and exits. Every omitted member has its immediate case checked and its future coverage explicitly attributed to the unchanged accepted recipe binding. No class label or unspecified continuation is a terminal proof.",
+          "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "compound",
+            "root": "entry",
+            "variables": {
+              "S": {
+                "side": "k",
+                "types": [
+                  "q"
+                ]
+              },
+              "A": {
+                "side": "K"
+              }
+            },
+            "entryAtoms": [
+              "turn(k)",
+              "material(K=m)",
+              "net_gain(K)>=2",
+              "piece_count(q=1)",
+              "piece_count(r=0)",
+              "piece_count(b=0)",
+              "piece_count(n=0)",
+              "has_checks(k)",
+              "no_captures(k)",
+              "not near_promotion(p)",
+              "no_mate_in_1(k)",
+              "sole_checking_piece(q)"
+            ],
+            "coverage": "all-defenses",
+            "description": "Finite spite-check defensive closure. Check actual entry, every reply and signed case, the next legal capture or evasion, recapture settlement when necessary, and exact same-board ending or theorem handoff. The accepted storage classes are independent of the zero-ply check cases.",
+            "nodes": [
+              {
+                "id": "entry",
+                "predicates": [
+                  "turn(k)",
+                  "material(K)>0",
+                  "net_gain(K)>=2",
+                  "piece_count(q=1)",
+                  "piece_count(r=0)",
+                  "piece_count(b=0)",
+                  "piece_count(n=0)",
+                  "has_checks(k)",
+                  "no_captures(k)",
+                  "not near_promotion(p)",
+                  "no_mate_in_1(k)",
+                  "sole_checking_piece(S)"
+                ],
+                "turn": "defender"
+              },
+              {
+                "id": "reply",
+                "predicates": [
+                  "turn(K)",
+                  "net_gain(K)>=2"
+                ],
+                "turn": "player"
+              },
+              {
+                "id": "capturable-check",
+                "predicates": [
+                  "check(K)",
+                  "checker(S,K)",
+                  "checker_capturable(S)"
+                ],
+                "negative": [],
+                "turn": "player"
+              },
+              {
+                "id": "uncapturable-check",
+                "predicates": [
+                  "check(K)",
+                  "checker(S,K)"
+                ],
+                "negative": [
+                  "checker_capturable(S)"
+                ],
+                "turn": "player"
+              },
+              {
+                "id": "quiet-loose-queen",
+                "predicates": [],
+                "negative": [
+                  "check(K)"
+                ],
+                "turn": "player",
+                "classDefinition": {
+                  "contract": "defensiveClosureContract",
+                  "key": "loose-queen"
+                }
+              },
+              {
+                "id": "promotion",
+                "predicates": [],
+                "classDefinition": {
+                  "contract": "defensiveClosureContract",
+                  "key": "promotion"
+                },
+                "exit": {
+                  "kind": "handoff"
+                }
+              },
+              {
+                "id": "nonforcing",
+                "predicates": [],
+                "classDefinition": {
+                  "contract": "defensiveClosureContract",
+                  "key": "nonforcing"
+                },
+                "exit": {
+                  "kind": "handoff"
+                }
+              },
+              {
+                "id": "checker-captured",
+                "predicates": [
+                  "captured(S)",
+                  "not check(K)",
+                  "material(K)>0",
+                  "net_gain(K)>=2"
+                ],
+                "turn": "defender"
+              },
+              {
+                "id": "check-evaded",
+                "predicates": [
+                  "not check(K)",
+                  "material(K)>0",
+                  "net_gain(K)>=2"
+                ],
+                "turn": "defender",
+                "exit": {
+                  "kind": "handoff"
+                }
+              },
+              {
+                "id": "capture-ending",
+                "predicates": [
+                  "accepted_ending"
+                ],
+                "exit": {
+                  "kind": "certificate"
+                }
+              },
+              {
+                "id": "capture-handoff",
+                "predicates": [
+                  "validated_entry"
+                ],
+                "exit": {
+                  "kind": "handoff"
+                }
+              },
+              {
+                "id": "recapture-needed",
+                "predicates": [],
+                "turn": "defender"
+              },
+              {
+                "id": "recaptured",
+                "predicates": [
+                  "captured(A)",
+                  "material(K)>0",
+                  "net_gain(K)>=2"
+                ],
+                "turn": "player"
+              },
+              {
+                "id": "recapture-declined",
+                "predicates": [
+                  "material(K)>0",
+                  "net_gain(K)>=2"
+                ],
+                "negative": [
+                  "captured(A)"
+                ],
+                "exit": {
+                  "kind": "handoff"
+                }
+              },
+              {
+                "id": "recapture-ending",
+                "predicates": [
+                  "accepted_ending"
+                ],
+                "exit": {
+                  "kind": "certificate"
+                }
+              },
+              {
+                "id": "recapture-handoff",
+                "predicates": [
+                  "validated_entry"
+                ],
+                "exit": {
+                  "kind": "handoff"
+                }
+              },
+              {
+                "id": "recapture-check",
+                "predicates": [
+                  "check(K)"
+                ],
+                "turn": "player"
+              },
+              {
+                "id": "settled",
+                "predicates": [
+                  "not check(K)",
+                  "material(K)>0",
+                  "net_gain(K)>=2"
+                ],
+                "turn": "defender",
+                "exit": {
+                  "kind": "handoff"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "id": "entry--reply",
+                "source": "entry",
+                "target": "reply",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any"
+                }
+              },
+              {
+                "id": "reply--capturable-check",
+                "source": "reply",
+                "target": "capturable-check",
+                "kind": "class",
+                "guard": {
+                  "positive": [
+                    "check(K)",
+                    "checker(S,K)",
+                    "checker_capturable(S)"
+                  ],
+                  "negative": []
+                }
+              },
+              {
+                "id": "reply--uncapturable-check",
+                "source": "reply",
+                "target": "uncapturable-check",
+                "kind": "class",
+                "guard": {
+                  "positive": [
+                    "check(K)",
+                    "checker(S,K)"
+                  ],
+                  "negative": [
+                    "checker_capturable(S)"
+                  ]
+                }
+              },
+              {
+                "id": "reply--quiet-loose-queen",
+                "source": "reply",
+                "target": "quiet-loose-queen",
+                "kind": "class",
+                "guard": {
+                  "positive": [],
+                  "negative": [
+                    "check(K)"
+                  ]
+                }
+              },
+              {
+                "id": "reply--promotion",
+                "source": "reply",
+                "target": "promotion",
+                "kind": "class",
+                "guard": {
+                  "positive": [],
+                  "negative": [
+                    "check(K)"
+                  ]
+                }
+              },
+              {
+                "id": "reply--nonforcing",
+                "source": "reply",
+                "target": "nonforcing",
+                "kind": "class",
+                "guard": {
+                  "positive": [],
+                  "negative": [
+                    "check(K)"
+                  ]
+                }
+              },
+              {
+                "id": "capturable-check--checker-captured",
+                "source": "capturable-check",
+                "target": "checker-captured",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "capture",
+                  "piece": "A",
+                  "target": "S"
+                }
+              },
+              {
+                "id": "uncapturable-check--check-evaded",
+                "source": "uncapturable-check",
+                "target": "check-evaded",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "any"
+                }
+              },
+              {
+                "id": "quiet-loose-queen--checker-captured",
+                "source": "quiet-loose-queen",
+                "target": "checker-captured",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "capture",
+                  "piece": "A",
+                  "target": "S"
+                }
+              },
+              {
+                "id": "checker-captured--capture-ending",
+                "source": "checker-captured",
+                "target": "capture-ending",
+                "kind": "class",
+                "guard": {
+                  "positive": [
+                    "accepted_ending"
+                  ],
+                  "negative": []
+                }
+              },
+              {
+                "id": "checker-captured--capture-handoff",
+                "source": "checker-captured",
+                "target": "capture-handoff",
+                "kind": "class",
+                "guard": {
+                  "positive": [
+                    "validated_entry"
+                  ],
+                  "negative": [
+                    "accepted_ending"
+                  ]
+                }
+              },
+              {
+                "id": "checker-captured--recapture-needed",
+                "source": "checker-captured",
+                "target": "recapture-needed",
+                "kind": "class",
+                "guard": {
+                  "positive": [],
+                  "negative": [
+                    "accepted_ending",
+                    "validated_entry"
+                  ]
+                }
+              },
+              {
+                "id": "recapture-needed--recaptured",
+                "source": "recapture-needed",
+                "target": "recaptured",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "capture",
+                  "target": "A"
+                }
+              },
+              {
+                "id": "recapture-needed--recapture-declined",
+                "source": "recapture-needed",
+                "target": "recapture-declined",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any"
+                }
+              },
+              {
+                "id": "recaptured--recapture-ending",
+                "source": "recaptured",
+                "target": "recapture-ending",
+                "kind": "class",
+                "guard": {
+                  "positive": [
+                    "accepted_ending"
+                  ],
+                  "negative": []
+                }
+              },
+              {
+                "id": "recaptured--recapture-handoff",
+                "source": "recaptured",
+                "target": "recapture-handoff",
+                "kind": "class",
+                "guard": {
+                  "positive": [
+                    "validated_entry"
+                  ],
+                  "negative": [
+                    "accepted_ending"
+                  ]
+                }
+              },
+              {
+                "id": "recaptured--recapture-check",
+                "source": "recaptured",
+                "target": "recapture-check",
+                "kind": "class",
+                "guard": {
+                  "positive": [
+                    "check(K)"
+                  ],
+                  "negative": [
+                    "accepted_ending",
+                    "validated_entry"
+                  ]
+                }
+              },
+              {
+                "id": "recapture-check--settled",
+                "source": "recapture-check",
+                "target": "settled",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "any"
+                }
+              }
+            ]
+          }
         }
       ],
       "expressions": [
@@ -3261,6 +4038,21 @@
             "T03"
           ],
           "mode": "existing ordered composition"
+        },
+        {
+          "label": "Constrain by mate threat",
+          "ids": [
+            "T38"
+          ],
+          "mode": "defense-partition",
+          "annotationSite": "legacy category representation; no v15 CLASS adapter"
+        },
+        {
+          "label": "Single-queen defensive closure",
+          "ids": [
+            "T39"
+          ],
+          "mode": "single"
         }
       ],
       "quarantinedLegacyNames": [
@@ -3299,11 +4091,11 @@
       "namedAnnotations": "ENTRY, END or CERT labelled Mate threat in 2 uses exactly the positive mate_threat_in_2(K) conjunction; unrelated or negated atoms cannot substitute."
     },
     "transportContract": {
-      "pgn": "The sole puzzle record: initial FEN, moves, all concrete defense branches, observations, preconditions, END/CERT applications, NODE anchors, and JOIN references. Plain text only.",
+      "pgn": "The sole puzzle record: initial FEN, moves, stored defense branches and complete grouped-member labels, observations, END/CERT applications, NODE anchors, and JOIN references. Plain text only.",
       "dictionary": "Generic theorem definitions, approved combinations, certificate conjunction definitions, predicate definitions, configuration, and grammar/specification. No puzzle identities, positions, application indexes, caches, audits, payloads, or executable code.",
       "html": "UI, Oracle, and independent grader code. All runtime indexes are reconstructed from the two supplied input files.",
-      "compression": "UI may group equal response trees, but the on-disk PGN retains every concrete member as an ordinary RAV. No binary or opaque encoded corpus data.",
-      "verification": "No importer may fill a missing branch or certificate from another file. Absence in PGN is absence; missing legal defender replies at an expanded position fail integrity."
+      "compression": "Use optional parent CLASS declarations only for multi-member defense groups. Store their representative once; other members remain legal move labels. Store every ungrouped defense and its continuation ordinarily. Never encode hidden member subtrees.",
+      "verification": "No importer fills missing moves or endings from another file. Check the exact legal cover of declared Members plus ordinary children. Each omitted-member group needs its complete accepted recipe binding and actual representative continuation; all stored positions and endings remain independently checked."
     },
     "certificateDictionaryContract": {
       "definitionFields": [
@@ -3369,8 +4161,781 @@
           "name": "Pawn won; minor-piece endgame",
           "label": "Pawn won; minor-piece endgame",
           "description": "The accepted four-versus-three, bishop-versus-knight pawn-won ending."
+        },
+        {
+          "name": "Material won; short capture replies",
+          "label": "Material won; short capture replies",
+          "description": "At most six plies: an opposing check must be met by taking the checking piece; an opposing capture by recapture, or a quiet holding move if the gain remains at least +2. Every resulting branch must reach an existing main certificate. The tree is shown, not assumed."
         }
       ]
+    },
+    "mateConstraintContract": {
+      "theorem": "T38",
+      "name": "Constrain by mate threat",
+      "categories": [
+        {
+          "key": "abandons",
+          "label": "Abandons the mating defense without a forcing interruption",
+          "meaning": "The recorded queen key still reaches mate on the actual board. Use its concrete mating response."
+        },
+        {
+          "key": "check",
+          "label": "Gives an intermediate check",
+          "meaning": "Retain its actual legal answer, then reassess the same mating relationships."
+        },
+        {
+          "key": "maintains",
+          "label": "Maintains the mating defense",
+          "meaning": "The opposing queen remains needed to stop the same route; the mating queen is not attacked. Recognize the material gained, and explicitly check captures that could undo it."
+        },
+        {
+          "key": "changes",
+          "label": "Attacks the mating queen, blocks a supporting line, or creates another escape",
+          "meaning": "The old route is not sufficient, or the mating queen is attacked. This branch needs its own actual continuation."
+        }
+      ],
+      "priority": [
+        "check",
+        "abandons",
+        "maintains",
+        "changes"
+      ],
+      "observations": [
+        "mating_route(K)",
+        "guarded_mating_route(K,q)"
+      ],
+      "categoryIsNotClosure": true,
+      "completePartition": true,
+      "guardProjection": "Removing a queen is a conditional observation only. Never encode it as an actual game ply.",
+      "sameReplyNotRequiredWithinGrossCategory": true,
+      "mainlineAndClassBindings": "All concrete PGN branches are retained unless stopped by an accepted certificate. Exact-response/equivalent-ending subgroups are separate from gross categories.",
+      "legacyAnnotation": "The earlier child-attached gross category labels are not accepted as CLASS annotations in grammar v15. T38 categories remain semantic dictionary data; this revision does not migrate their earlier PGN representations."
+    },
+    "captureReplyContract": {
+      "certificate": "Material won; short capture replies",
+      "predicate": "capture_reply_tree(K,6)",
+      "maxPlies": 6,
+      "root": "Defender to move; material gain >=2; neither king checked; no near-promoting enemy pawn or legal enemy promotion.",
+      "opponentMoves": "Every currently legal check or capture; at least one if the ordinary material certificate is not already enough.",
+      "responseToCheck": "The actual piece giving that check must be captured legally, unless the position already matches an existing main certificate. A quiet king escape is not inferred by this predicate.",
+      "responseToCapture": "Recapture the exact capturing piece. A nonchecking capture that leaves gain >=2 can instead be met by a recorded quiet holding move.",
+      "quietHoldingMove": "Legal, noncapturing, nonpromoting, nonchecking. Its resulting board must continue this same bounded tree or reach an existing main ending. It is not a legal pass.",
+      "allowedLeaves": [
+        "Mate",
+        "Checked mate in one",
+        "Material won",
+        "Material won with a safe check",
+        "Net +2 and quiet"
+      ],
+      "recursiveBudget": "Each opponent move and player reply consumes one ply; the six-ply budget never resets.",
+      "boardEvidence": "Tree is reconstructed from PGN position and fixed definitions; every move and physical capture prerequisite is independently replayable. No puzzle payload in the dictionary.",
+      "scope": "Declared bounded material certificate. No claim about arbitrary later positional moves, all future tactics, or game-theoretic victory."
+    },
+    "defensiveClosureContract": {
+      "schema": "predicate-chess-defensive-closure/5",
+      "theorem": "T39",
+      "name": "Single-queen defensive closure",
+      "category": "Defensive closure",
+      "shortDefinition": "When materially ahead against the sole checking queen, cover every legal defense. Capture a legally capturable checker or evade an uncapturable check; then check the actual resulting predicates and settle required recaptures. Close only at an applicable existing ending or a completely checked next theorem application.",
+      "entry": {
+        "atoms": [
+          "turn(k)",
+          "material(K={material})",
+          "net_gain(K)>=2",
+          "piece_count(q=1)",
+          "piece_count(r=0)",
+          "piece_count(b=0)",
+          "piece_count(n=0)",
+          "has_checks(k)",
+          "no_captures(k)",
+          "not near_promotion(p)",
+          "no_mate_in_1(k)",
+          "sole_checking_piece(q)"
+        ],
+        "bindings": {
+          "material": {
+            "predicate": "material",
+            "side": "K",
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "meaning": "Bind the current positive material balance at the entry board. Net gain remains measured from the original puzzle starting balance. No future escape position is an entry condition.",
+        "scope": "The opposing queen is the only opposing nonpawn piece other than the king and is the same sole checker across all currently legal checking replies. This restriction is checked at entry. Later pawn checks and newly created captures still require explicit responses or an applicable ending."
+      },
+      "classes": [
+        {
+          "key": "loose-queen",
+          "label": "Profitable queen capture",
+          "shortDefinition": "Take the queen for a material profit, settle the necessary recaptures, and reach an accepted material or mate ending.",
+          "positive": [
+            "net_gain(K)>=2",
+            "legal_capture(A,q)",
+            {
+              "any": [
+                "value(q)>value(A)",
+                "defenders(q=0)"
+              ]
+            }
+          ],
+          "negative": [],
+          "bindings": {
+            "A": "For the stored representative, the own piece making the first recorded response. For a member stored only as a move label, one legal physical own capturer jointly satisfying the capture and value terms."
+          },
+          "obligations": [
+            "The authorized recipe takes the same opposing queen with its jointly bound legal capturer; the representative records that capture.",
+            "The authorized capture settlement has positive material profit and leaves the player materially ahead. The stored representative verifies these conditions at each of its settlement leaves, including a mate ending.",
+            "Resolve necessary checking or material-restoring recaptures through the accepted recipe or an applicable existing certificate. Nonrepresentative continuation trees are not stored in the PGN.",
+            "The representative settlement ends with an existing accepted material certificate, Mate, or Checked mate in one, retaining its actual certificate name. A class label alone grants no acceptance."
+          ],
+          "allowedLeafNames": [
+            "Material won",
+            "Material won with a safe check",
+            "Net +2 and quiet",
+            "Material won; promotion controlled",
+            "Material won; short capture replies",
+            "Mate",
+            "Checked mate in one"
+          ],
+          "loosePredicateUnchanged": "This class name does not assert loose(q). The existing geometric loose predicate keeps its original definition."
+        },
+        {
+          "key": "live-check",
+          "label": "Check requires defense",
+          "shortDefinition": "Split by whether the checking queen can legally be captured. Record the required capture or evasion and check its resulting board, any necessary recaptures, and its exact existing ending or next application.",
+          "positive": [
+            "net_gain(K)>=2",
+            "check(K)"
+          ],
+          "negative": [
+            {
+              "all": [
+                "legal_capture(A,q)",
+                {
+                  "any": [
+                    "value(q)>value(A)",
+                    "defenders(q=0)"
+                  ]
+                }
+              ]
+            }
+          ],
+          "bindings": {
+            "A": "Negate the whole profitable-capture expression for every legal physical own capturer A, binding the capture and value atoms to that same piece."
+          },
+          "obligations": [
+            "The accepted recipe answers the actual check; the stored representative response legally removes every check on the player king.",
+            "The checking piece may be a pawn; moving the king can create pawn checks even though the queen is the only opposing nonpawn piece.",
+            "A queen-for-queen recapture is an equal exchange, not a profitable loose-queen capture. Its accepted recipe accounts for the recapture or an applicable existing ending without requiring another stored representative.",
+            "The actual checked board selects the capturable or uncapturable metatree case. Required responses and settlements map to actual legal plies; same-board class and ending handoffs consume zero plies.",
+            "The recorded representative continuation reaches an existing accepted ending. A mate-threat ending retains its actual certificate name and is not described as exhaustion of checks."
+          ]
+        },
+        {
+          "key": "promotion",
+          "label": "Promotion becomes imminent",
+          "shortDefinition": "Resolve the newly imminent promotion with a recorded continuation or an existing ending that applies to this board.",
+          "positive": [
+            "net_gain(K)>=2",
+            "near_promotion(p)"
+          ],
+          "negative": [
+            "check(K)",
+            {
+              "all": [
+                "legal_capture(A,q)",
+                {
+                  "any": [
+                    "value(q)>value(A)",
+                    "defenders(q=0)"
+                  ]
+                }
+              ]
+            }
+          ],
+          "bindings": {
+            "A": "Negate the whole profitable-capture expression for every legal physical own capturer A, binding the capture and value atoms to that same piece."
+          },
+          "obligations": [
+            "The pawn condition is rechecked after the actual opposing move.",
+            "The accepted recipe resolves the promotion issue; the recorded representative reaches an existing accepted ending whose own promotion conditions hold.",
+            "A mate-threat ending retains its actual certificate name; promotion control is not inferred from material alone."
+          ]
+        },
+        {
+          "key": "nonforcing",
+          "label": "Nonforcing material retention",
+          "shortDefinition": "Use the recorded continuation to an existing accepted ending; the reply gives no check, imminent promotion or profitable queen capture.",
+          "positive": [
+            "net_gain(K)>=2"
+          ],
+          "negative": [
+            "check(K)",
+            "near_promotion(p)",
+            {
+              "all": [
+                "legal_capture(A,q)",
+                {
+                  "any": [
+                    "value(q)>value(A)",
+                    "defenders(q=0)"
+                  ]
+                }
+              ]
+            }
+          ],
+          "bindings": {
+            "A": "Negate the whole profitable-capture expression for every legal physical own capturer A, binding the capture and value atoms to that same piece."
+          },
+          "obligations": [
+            "The signed predicates hold on this actual reply board.",
+            "The accepted recipe covers the listed members. The stored representative has an applicable existing ending or a recorded legal response to one; no extra member subtree or unrecorded representative move is assumed."
+          ]
+        }
+      ],
+      "classOrder": [
+        "loose-queen",
+        "live-check",
+        "promotion",
+        "nonforcing"
+      ],
+      "signedPredicates": {
+        "positive": "Every listed term is true on the actual reply board. A string is an existing atom; all and any objects are recursive conjunctions and disjunctions.",
+        "negative": "Every listed term is false on the actual reply board. A term containing A is existential over legal physical own capturers, with A bound jointly throughout that complete term; negate that existence as a whole.",
+        "binding": "For a stored representative, positive A is the actual recorded response piece. For a nonstored move-label member, positive A is existential over legal physical own capturers, bound jointly across the complete positive capture expression. Capture and value atoms always concern the same physical capturer and queen.",
+        "expressionForms": [
+          "existing atom string",
+          {
+            "all": "array of terms"
+          },
+          {
+            "any": "array of terms"
+          }
+        ],
+        "noNewPredicates": "All atoms use existing predicate definitions. Class authorization and representative-continuation checks are separate from primitive board facts; no new Oracle predicate is asserted."
+      },
+      "partition": {
+        "complete": true,
+        "exactlyOneClassPerReply": true,
+        "storage": "optional-parent-groups-plus-ordinary-children",
+        "members": "Members contains at least two unique legal SAN replies, including Representative exactly once. Check each immediate member board and its signed predicates. A grouped nonrepresentative is not a stored child. A remaining move from the same signed recipe may instead be an ordinary child.",
+        "classMeaning": "The complete signed recipe member set supplies the accepted authorization binding. An optional CLASS may group at least two of those members and stores only its representative; remaining members can be ordinary children. Fully expanded applications store every ordinary continuation.",
+        "representative": "Representative names exactly one actual direct child of the annotated parent. It is included once in Members. Count its board once as a class and never also as raw. Only this member has a stored continuation for that declared group.",
+        "classDoesNotClose": true,
+        "failure": "An omitted legal reply, duplicate or illegal label, false or ambiguous signed membership, missing required recipe authorization, extra stored grouped nonrepresentative, illegal response or unaccepted stored leaf invalidates the fit.",
+        "coverage": "At each parent, the union of declared Members and ungrouped direct-child moves is a disjoint exact cover of all legal defenses. Exclude representatives from the ordinary-child set to avoid double counting. Allow at most one declaration per dictionary class key. With no CLASS declarations, retain every legal defense as an ordinary child."
+      },
+      "classAuthorization": {
+        "mode": "accepted-recipe-with-representative",
+        "binding": "The game validation report binds prior checked fit provenance to the exact classified parent FEN, prover, original puzzle material baseline, class key and complete legal SAN member set, with the evidence hash. Keep that concrete binding outside the generic dictionary and compact PGN.",
+        "requires": [
+          "The actual parent satisfies the dictionary entry conditions; inherited facts need no repeated local OBSERVED declaration.",
+          "Every legal reply satisfies exactly one signed recipe with its required physical bindings, whether grouped or ordinary.",
+          "If any members are omitted from storage, prior checked fit provenance matches the exact parent, prover, material baseline, class key and complete signed recipe member set. A CLASS subset uses that same complete recipe binding.",
+          "Each declared group stores exactly one representative. Ordinary children are stored separately. Every retained continuation reaches an existing accepted ending.",
+          "The generic metatree matches all retained stages and every immediate omitted-member case. The report identifies accepted omitted continuation coverage separately from actual mapped plies."
+        ],
+        "effect": "The accepted recipe covers the listed members while its stored representative demonstrates the recorded continuation. This does not require an expanded future subtree for every member.",
+        "scope": "A fitted accepted finite cover, not a universal all-future-subtree theorem or a new primitive terminal certificate."
+      },
+      "finiteProof": {
+        "opponent": "At each parent, the union of declared Members and ungrouped direct-child moves is a disjoint exact cover of all legal defenses. Exclude representatives from the ordinary-child set to avoid double counting. Allow at most one declaration per dictionary class key. With no CLASS declarations, retain every legal defense as an ordinary child.",
+        "player": "One recorded legal player response per position. Every ordinary child retains its actual continuation; each declared group retains only its representative continuation. No duplicate supporting node is added.",
+        "leaves": "Existing registered END/CERT conjunctions and existing approved acyclic JOIN references retain their original acceptance semantics. Every newly supplied named main certificate is checked on its actual board.",
+        "continuations": "A ply edge matches exactly one recorded legal move. Class edges match the same board and count zero plies. Check-capture and check-evasion routes have an explicit response board; capture settlements have explicit recapture/evasion stages. A same-board handoff requires an independently checked ending or another complete theorem application. Reject cyclic application dependencies.",
+        "exhaustion": "Describe a stored exit as checks exhausted only when the opponent has no legal check on that actual board and an applicable existing material ending holds there. An accepted mate or mate-threat ending keeps its actual name. Neither material advantage, an immediate checker capture nor the class label proves checks have run out.",
+        "material": "A material result requires positive current material and the original objective net gain. The accepted recipe accounts for necessary captures, recaptures and promotion issues; check the recorded representative tree and its exact existing endings.",
+        "scope": "Fully map every stored ordinary and representative continuation to the dictionary stages. Check each omitted member only through its immediate reply-board cases, then report its future continuation as covered by its exact prior accepted recipe binding. Do not describe an omitted future as a concrete descendant of the stored representative."
+      },
+      "analysisContinuation": {
+        "scope": "A game using the registered defensive-closure application or its explicit capture-preparation groups may use this compact-analysis rule; ordinary workshop edit rules remain unchanged.",
+        "reference": "MAINLINE retains the exact frozen Lichess move sequence and its source final FEN. It must be an exact prefix of the unvaried recorded analysis, which may continue beyond that reference endpoint.",
+        "entry": "The theorem ENTRY attaches to its actual existing application node. The frozen reference endpoint must be one existing node on the unvaried continuation. No duplicate entry alias or DEFINITION marker is permitted.",
+        "previousEnding": "When that node is extended for the declared analysis, replace its stopping END/CERT annotations with their true atoms in OBSERVED. This does not reject or redefine the previously accepted certificates.",
+        "terminalRule": "A continuing node has no terminal END/CERT/JOIN annotation. Existing terminal rules and one-player-response restrictions remain unchanged."
+      },
+      "rendering": {
+        "entry": "ENTRY \"{name}\": {atoms}.",
+        "class": "CLASS: {label}. Representative: {representative}. Members: {members}. + {positive}. - {negative}.",
+        "atomSeparator": "; ",
+        "allSeparator": "; ",
+        "allPrefix": "(",
+        "andSeparator": " AND ",
+        "allSuffix": ")",
+        "anyPrefix": "(",
+        "anySeparator": " OR ",
+        "anySuffix": ")",
+        "emptySignedList": "none",
+        "representative": "{number} {san}",
+        "memberSeparator": ", ",
+        "member": "{san}"
+      },
+      "integrity": {
+        "dictionaryHeader": "DictionarySHA256",
+        "hash": "Lowercase SHA-256 of the exact loaded dictionary file bytes; the PGN header must equal it.",
+        "sourceOfText": "Theorem names, entry order, class names, signs and templates come only from this dictionary. PGN generation substitutes actual board bindings and class memberships. Descriptions and recipe obligations remain in the dictionary and are not printed as DEFINITION annotations. The checked tree and check-case definitions are also dictionary data; the explanatory theorem summary is generated from those exact fields.",
+        "validation": "Recompute all generated annotations from the dictionary, actual boards and declared memberships and compare their canonical text exactly. Reject missing, stale, edited or mismatched text even if a dictionary hash is present.",
+        "authority": "An accepted class recipe covers its authorized members after entry, complete signed membership and the representative proof are checked. Existing END/CERT/JOIN annotations retain their own terminal authority only on their attached stored boards; a class label alone is not a terminal certificate."
+      },
+      "checkCases": [
+        {
+          "key": "capturable-check",
+          "label": "Checking piece capturable",
+          "positive": [
+            "check(K)",
+            "checker(S,K)",
+            "checker_capturable(S)"
+          ],
+          "negative": [],
+          "response": "One legal capture of the bound checking queen S by A. The next board must have captured(S), not check(K), positive material and the original objective net gain. Required recaptures are still checked."
+        },
+        {
+          "key": "uncapturable-check",
+          "label": "Checking piece uncapturable",
+          "positive": [
+            "check(K)",
+            "checker(S,K)"
+          ],
+          "negative": [
+            "checker_capturable(S)"
+          ],
+          "response": "One legal king move or interposition removing every check. The next board must have not check(K), positive material and the original objective net gain; its ending or next application is checked there."
+        }
+      ],
+      "checkCaseSemantics": "These are zero-ply predicate cases on the actual checked board. They may split an existing accepted storage recipe internally. They do not create PGN nodes or CLASS representatives. Printed CLASS still requires at least two sibling members and one actual representative. Capturable means that some legal response captures the same checking physical piece, even if an equal exchange or a later recapture is necessary."
+    },
+    "capturePreparationContract": {
+      "schema": "predicate-chess-capture-preparation/4",
+      "theorem": "T02",
+      "name": "Take / exchange",
+      "category": "Defensive closure",
+      "shortDefinition": "After taking material, answer a restoring rook recapture, collect a loose queen, or retain the gain against a nonchecking reply. Every branch uses its actual accepted ending.",
+      "entry": {
+        "atoms": [
+          "turn(k)",
+          "material(K={material})",
+          "net_gain(K)>=2",
+          "piece_count(q=1)",
+          "piece_count(r=1)",
+          "piece_count(b=0)",
+          "piece_count(n=0)",
+          "has_checks(k)",
+          "has_captures(k)",
+          "not near_promotion(p)",
+          "no_mate_in_1(k)"
+        ],
+        "bindings": {
+          "material": {
+            "predicate": "material",
+            "side": "K",
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "meaning": "These are observations after the existing Take / exchange capture, not a replacement for that theorem's before-capture ENTRY.",
+        "incomingCapture": "The preceding recorded player move is a legal capture under the unchanged Take / exchange theorem and its physical attack precondition."
+      },
+      "classes": [
+        {
+          "key": "restoring-recapture",
+          "label": "Restoring rook recapture",
+          "shortDefinition": "Take the checking rook with the king, restore the material gain, and enter the recorded single-queen defensive closure.",
+          "positive": [
+            "check(K)",
+            "legal_capture(K,r)"
+          ],
+          "negative": [
+            "net_gain(K)>=2"
+          ],
+          "bindings": {},
+          "obligations": [
+            "The opposing reply is an actual material-restoring rook recapture of the piece that made the preceding player capture.",
+            "The recorded king response legally captures that same checking rook and restores positive material and the objective net gain.",
+            "The single resulting board satisfies the exact Single-queen defensive closure entry and reaches existing accepted endings through its optional groups and ordinary children under the complete legal-coverage rule."
+          ]
+        },
+        {
+          "key": "loose-queen",
+          "label": "Profitable queen capture",
+          "shortDefinition": "Take the queen for a material profit, settle the necessary recaptures, and reach an accepted material or mate ending.",
+          "positive": [
+            "net_gain(K)>=2",
+            "legal_capture(A,q)",
+            {
+              "any": [
+                "value(q)>value(A)",
+                "defenders(q=0)"
+              ]
+            }
+          ],
+          "negative": [],
+          "bindings": {
+            "A": "For the stored representative, the own piece making the first recorded response. For a member stored only as a move label, one legal physical own capturer jointly satisfying the capture and value terms."
+          },
+          "obligations": [
+            "The authorized recipe takes the same opposing queen with its jointly bound legal capturer; the representative records that capture.",
+            "The authorized capture settlement has positive material profit and leaves the player materially ahead. The stored representative verifies these conditions at each of its settlement leaves, including a mate ending.",
+            "Resolve necessary checking or material-restoring recaptures through the accepted recipe or an applicable existing certificate. Nonrepresentative continuation trees are not stored in the PGN.",
+            "The representative settlement ends with an existing accepted material certificate, Mate, or Checked mate in one, retaining its actual certificate name. A class label alone grants no acceptance."
+          ],
+          "allowedLeafNames": [
+            "Material won",
+            "Material won with a safe check",
+            "Net +2 and quiet",
+            "Material won; promotion controlled",
+            "Material won; short capture replies",
+            "Mate",
+            "Checked mate in one"
+          ],
+          "loosePredicateUnchanged": "This class name does not assert loose(q). The existing geometric loose predicate keeps its original definition."
+        },
+        {
+          "key": "nonchecking",
+          "label": "Nonchecking material retention",
+          "shortDefinition": "The material gain remains. Use an applicable existing ending or a recorded legal continuation to one; account for captures and promotion issues on the actual board.",
+          "positive": [
+            "net_gain(K)>=2"
+          ],
+          "negative": [
+            "check(K)",
+            {
+              "all": [
+                "legal_capture(A,q)",
+                {
+                  "any": [
+                    "value(q)>value(A)",
+                    "defenders(q=0)"
+                  ]
+                }
+              ]
+            }
+          ],
+          "bindings": {
+            "A": "Negate the whole profitable-capture expression for every legal physical own capturer A, binding the capture and value atoms to that same piece."
+          },
+          "obligations": [
+            "The opponent has neither checked the player king nor offered a profitable legal queen capture under the declared expression.",
+            "The accepted recipe covers the exact listed members. The physical representative has an applicable existing ending or a recorded legal continuation to one; the label alone is not authorization.",
+            "Recheck actual captures and imminent promotions under the chosen ending, including a pawn advance that creates a new promotion issue."
+          ]
+        }
+      ],
+      "classOrder": [
+        "restoring-recapture",
+        "loose-queen",
+        "nonchecking"
+      ],
+      "signedPredicates": {
+        "positive": "Every listed term is true on the actual reply board. A string is an existing atom; all and any objects are recursive conjunctions and disjunctions.",
+        "negative": "Every listed term is false on the actual reply board. A term containing A is existential over legal physical own capturers, with A bound jointly throughout that complete term; negate that existence as a whole.",
+        "binding": "For a stored representative, positive A is the actual recorded response piece. For a nonstored move-label member, positive A is existential over legal physical own capturers, bound jointly across the complete positive capture expression. Capture and value atoms always concern the same physical capturer and queen.",
+        "expressionForms": [
+          "existing atom string",
+          {
+            "all": "array of terms"
+          },
+          {
+            "any": "array of terms"
+          }
+        ],
+        "noNewPredicates": "All atoms use existing predicate definitions. Class authorization and representative-continuation checks are separate from primitive board facts; no new Oracle predicate is asserted."
+      },
+      "partition": {
+        "complete": true,
+        "exactlyOneClassPerReply": true,
+        "storage": "optional-parent-groups-plus-ordinary-children",
+        "members": "Members contains at least two unique legal SAN replies, including Representative exactly once. Check each immediate member board and its signed predicates. A grouped nonrepresentative is not a stored child. A remaining move from the same signed recipe may instead be an ordinary child.",
+        "classMeaning": "The complete signed recipe member set supplies the accepted authorization binding. An optional CLASS may group at least two of those members and stores only its representative; remaining members can be ordinary children. Fully expanded applications store every ordinary continuation.",
+        "representative": "Representative names exactly one actual direct child of the annotated parent. It is included once in Members. Count its board once as a class and never also as raw. Only this member has a stored continuation for that declared group.",
+        "classDoesNotClose": true,
+        "failure": "An omitted legal reply, duplicate or illegal label, false or ambiguous signed membership, missing required recipe authorization, extra stored grouped nonrepresentative, illegal response or unaccepted stored leaf invalidates the fit.",
+        "coverage": "At each parent, the union of declared Members and ungrouped direct-child moves is a disjoint exact cover of all legal defenses. Exclude representatives from the ordinary-child set to avoid double counting. Allow at most one declaration per dictionary class key. With no CLASS declarations, retain every legal defense as an ordinary child."
+      },
+      "classAuthorization": {
+        "mode": "accepted-recipe-with-representative",
+        "binding": "The game validation report binds prior checked fit provenance to the exact classified parent FEN, prover, original puzzle material baseline, class key and complete legal SAN member set, with the evidence hash. Keep that concrete binding outside the generic dictionary and compact PGN.",
+        "requires": [
+          "The actual parent satisfies the dictionary entry conditions; inherited facts need no repeated local OBSERVED declaration.",
+          "Every legal reply satisfies exactly one signed recipe with its required physical bindings, whether grouped or ordinary.",
+          "If any members are omitted from storage, prior checked fit provenance matches the exact parent, prover, material baseline, class key and complete signed recipe member set. A CLASS subset uses that same complete recipe binding.",
+          "Each declared group stores exactly one representative. Ordinary children are stored separately. Every retained continuation reaches an existing accepted ending."
+        ],
+        "effect": "The accepted recipe covers the listed members while its stored representative demonstrates the recorded continuation. This does not require an expanded future subtree for every member.",
+        "scope": "A fitted accepted finite cover, not a universal all-future-subtree theorem or a new primitive terminal certificate."
+      },
+      "finiteProof": {
+        "opponent": "At each parent, the union of declared Members and ungrouped direct-child moves is a disjoint exact cover of all legal defenses. Exclude representatives from the ordinary-child set to avoid double counting. Allow at most one declaration per dictionary class key. With no CLASS declarations, retain every legal defense as an ordinary child.",
+        "player": "One recorded legal player response per position. Every ordinary child retains its actual continuation; each declared group retains only its representative continuation. No duplicate supporting node is added.",
+        "leaves": "Existing registered END/CERT conjunctions and existing approved acyclic JOIN references retain their original acceptance semantics. Every newly supplied named main certificate is checked on its actual board.",
+        "continuations": "Actual captures, king evasions and interpositions are allowed. Every nonterminal edge reduces finite remaining depth. A repeated board alone is not an accepted leaf.",
+        "exhaustion": "Call the checks exhausted only when the authorized classes discharge every legal check through a profitable capture settlement, or no legal check remains and an existing accepted material ending applies. Retain the actual name of a mate-threat ending.",
+        "material": "A material result requires positive current material and the original objective net gain. The accepted recipe accounts for necessary captures, recaptures and promotion issues; check the recorded representative tree and its exact existing endings.",
+        "scope": "Finite stored continuations for ordinary children and declared group representatives. Accepted recipe bindings cover omitted group members; their future trees are not a storage requirement."
+      },
+      "rendering": {
+        "class": "CLASS: {label}. Representative: {representative}. Members: {members}. + {positive}. - {negative}.",
+        "atomSeparator": "; ",
+        "allSeparator": "; ",
+        "allPrefix": "(",
+        "andSeparator": " AND ",
+        "allSuffix": ")",
+        "anyPrefix": "(",
+        "anySeparator": " OR ",
+        "anySuffix": ")",
+        "emptySignedList": "none",
+        "representative": "{number} {san}",
+        "memberSeparator": ", ",
+        "member": "{san}",
+        "entry": "OBSERVED: {atoms}."
+      },
+      "integrity": {
+        "dictionaryHeader": "DictionarySHA256",
+        "hash": "Lowercase SHA-256 of the exact loaded dictionary file bytes; the PGN header must equal it.",
+        "sourceOfText": "Theorem names, entry order, class names, signs and templates come only from this dictionary. PGN generation substitutes actual board bindings and class memberships. Descriptions and recipe obligations remain in the dictionary and are not printed as DEFINITION annotations.",
+        "validation": "Recompute all generated annotations from the dictionary, actual boards and declared memberships and compare their canonical text exactly. Reject missing, stale, edited or mismatched text even if a dictionary hash is present.",
+        "authority": "An accepted class recipe covers its authorized members after entry, complete signed membership and the representative proof are checked. Existing END/CERT/JOIN annotations retain their own terminal authority only on their attached stored boards; a class label alone is not a terminal certificate."
+      },
+      "theoremUnchanged": "The existing T02 registry definition and its ENTRY/action semantics remain unchanged. This declaration classifies the actual opposing replies after its capture."
+    },
+    "positionAccountingContract": {
+      "schema": "predicate-chess-representative-position-count/3",
+      "header": "PositionsExplored",
+      "template": "positions explored = {raw} raw positions + {classes} classes = {total}",
+      "identity": "total = raw + classes",
+      "scope": "In grammar v15, count every physically stored NODE and board occurrence exactly once, whether CLASS is present or absent.",
+      "raw": "Count the root and every stored node that is not an explicit class representative as raw. Different stored path occurrences count separately even if their FENs match.",
+      "classes": "Each optional parent CLASS declaration identifies exactly one stored direct-child representative. Count that node once as a class and never also as raw. Singleton defenses and all other stored children are raw.",
+      "traversal": "Visit every physical node once. The total must equal the actual NODE-record count, including the root. There are no discounted aliases, hidden member RAVs or omitted stored descendants.",
+      "integrity": "Recompute raw + classes = physical NODE records = actual stored boards = total from the PGN. Require the header equation and all three integers to match exactly. A whole-game budget bounds this physical total.",
+      "metatree": "Count distinct physical PGN NODE records only. Several matched abstract stages may map the same board. Report abstract mappings and accepted omitted-continuation coverage separately; neither is an additional stored position."
+    },
+    "entryValidationContract": {
+      "schema": "predicate-chess-entry-validation/2",
+      "required": "Every ENTRY names an approved expression, supplies its required concrete entry conditions, and has a complete matched canonical metatree. Each additional printed atom must also hold on its board.",
+      "bindings": "Bind physical variables at their first required occurrence. Preserve them through all subsequent mapped positions on that branch. Sibling replies may bind a previously unbound response variable separately. Material and net-gain conventions are unchanged.",
+      "closure": "Instantiate every defensiveClosureContract.entry atom, in dictionary order, using its declared bindings. Check the binding limits and every atom before allowing theorem subclasses.",
+      "unknown": "Reject legacy or unsupported theorem trees, unknown predicate implementations, undefined physical variables, missing entry conditions, and failed intermediate or exit requirements.",
+      "implementedOrdinaryTheorems": [
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T06",
+        "T11",
+        "T37"
+      ],
+      "implementationScope": "The listed ordinary theorems and T39 use the canonical generic metatree matcher. Other registry records remain preserved sketches and are rejected on invocation. No old next-move candidate fitter can certify a complete theorem application.",
+      "authority": "A validated ENTRY permits an application to begin. It is not an END or CERT and cannot itself close a branch.",
+      "observations": "ENTRY checks required conditions on the attached current board and binds action predicates to the actual next move. Live inherited START/OBSERVED facts remain available for capture and motif prerequisites; do not require a duplicated local OBSERVED block or a PRE citation. An inherited fact never excuses a false current entry condition."
+    },
+    "classContract": {
+      "schema": "predicate-chess-explicit-subclass/2",
+      "scopes": [
+        {
+          "kind": "tree",
+          "definition": "capturePreparationContract"
+        },
+        {
+          "kind": "theorem",
+          "definition": "defensiveClosureContract"
+        }
+      ],
+      "meaning": "CLASS optionally groups at least two legal sibling defenses at a defense parent in a tree or theorem application. Its three-word dictionary name identifies one signed recipe in the applicable dictionary scope. Any number of ordinary children may coexist with these groups; a one-member case is an ordinary child.",
+      "exemplar": "Representative names exactly one actual direct child of the annotated parent. It is included once in Members. Count its board once as a class and never also as raw. Only this member has a stored continuation for that declared group.",
+      "members": "Members contains at least two unique legal SAN replies, including Representative exactly once. Check each immediate member board and its signed predicates. A grouped nonrepresentative is not a stored child. A remaining move from the same signed recipe may instead be an ordinary child.",
+      "partition": "At each parent, the union of declared Members and ungrouped direct-child moves is a disjoint exact cover of all legal defenses. Exclude representatives from the ordinary-child set to avoid double counting. Allow at most one declaration per dictionary class key. With no CLASS declarations, retain every legal defense as an ordinary child.",
+      "subclassing": "A theorem ENTRY supplies its scope. Otherwise explicit CLASS groups after an actual legal player capture may use the unique matching capture-preparation contract and its checked entry conditions. A later theorem application may have its own optional groups on the existing position; no extra scope marker or entry-alias node is needed. The canonical theorem can refine a storage recipe with zero-ply signed cases; these abstract cases do not create stored representatives or change the accepted Members binding.",
+      "acceptance": "Entry truth, signed membership, accepted recipe authorization for omitted continuations, and every stored continuation remain separate checks. CLASS is optional storage grouping. A fully expanded application needs no elision authorization but still checks its actual entries, legal coverage, signed recipes and retained endings.",
+      "textIntegrity": "Generate every class name and signed condition from the dictionary. The PGN supplies only board bindings, Representative and Members. Descriptions and recipes remain dictionary data, not DEFINITION annotations. Reject edited or stale class text.",
+      "fieldBreaks": [
+        "Representative:",
+        "Members:",
+        "+",
+        "-"
+      ],
+      "nameWords": 3,
+      "optional": true,
+      "minimumMembers": 2,
+      "attachment": "parent"
+    },
+    "theoremTreeContract": {
+      "schema": "predicate-chess-metatree/1",
+      "meaning": "A theorem is a finite abstract tree or shared-node DAG whose nodes require at least their listed predicates on matched actual positions. Extra true facts are allowed. Its abstract move constraints need no concrete SAN.",
+      "atomicExceptions": {
+        "T01": "Mate",
+        "T02": "Take / exchange",
+        "T03": "Check",
+        "T04": "Mate threat"
+      },
+      "canonicalTheorems": [
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T06",
+        "T11",
+        "T37",
+        "T39"
+      ],
+      "legacySketches": [
+        {
+          "id": "T13",
+          "name": "Attack / drive",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T23",
+          "name": "Attack route",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T25",
+          "name": "Breakthrough",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T08",
+          "name": "Clearance",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T10",
+          "name": "Deflection",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T05",
+          "name": "Fork",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T16",
+          "name": "King access",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T29",
+          "name": "Material assured by capture",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T17",
+          "name": "Opposition",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T15",
+          "name": "Passed pawn",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T22",
+          "name": "Pawn restraint / tempo",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T07",
+          "name": "Pin",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T18",
+          "name": "Promotion",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T33",
+          "name": "Promotion blockade",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T21",
+          "name": "Promotion control",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T26",
+          "name": "Protected base",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T09",
+          "name": "Remove defender",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T19",
+          "name": "Repair",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T36",
+          "name": "Royal fork",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T30",
+          "name": "Safe checking gain",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T27",
+          "name": "Secure escort",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T20",
+          "name": "Support",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T28",
+          "name": "Win the pawn race",
+          "status": "unsupported-on-invocation"
+        },
+        {
+          "id": "T38",
+          "name": "Constrain by mate threat",
+          "status": "unsupported-on-invocation"
+        }
+      ],
+      "nodeSemantics": "Conjoin predicates; negate each negative expression as a whole. Evaluate all atom implementations before Boolean short-circuiting. Recheck at each mapped board; inherited observations retain their physical identity and expiry rules.",
+      "edgeSemantics": {
+        "ply": "Exactly one adjacent legal move, with declared actor, optional physical mover and capture target, and a typed any/capture/check/mate constraint.",
+        "class": "Zero plies on the same physical board; exactly one signed case applies. A case may refer to an existing dictionary class definition. It cannot contain a move or inflate depth."
+      },
+      "depth": "Atomic exceptions have exactly one real ply. Compound templates have at least two real plies in their core; every successful theorem exit has at least two. Earlier certificate or theorem handoffs are explicit independent exits and do not claim completion of an unperformed ply.",
+      "graphChecks": [
+        "Unique node and edge IDs",
+        "Known endpoints and physical variables",
+        "Exactly one root; every node reachable",
+        "Acyclic graph and finite application dependencies",
+        "Consistent alternating actors across all paths",
+        "No mixed class/ply edges at one node",
+        "Explicit leaves and exits",
+        "No continuation/ledger pseudo-ply",
+        "No ambiguous or missing actual case",
+        "Every actual defense covered; omitted members require the existing checked CLASS binding"
+      ],
+      "exitSemantics": {
+        "theorem": "The declared local result holds here. It supplies no END/CERT authority by itself.",
+        "certificate": "An existing END/CERT on this same actual board is independently checked.",
+        "handoff": "An existing checked ending or another completely matched ENTRY on this same board. No skipped moves, implicit future ending, unsupported application, or cyclic dependency."
+      },
+      "derivedPredicateDefinitions": {
+        "sole_checking_piece(S)": "On this side-to-move board, enumerate legal checking replies and identify their actual checking physical pieces after each reply. Their nonempty union must be exactly the bound opposing piece S. The printed q form requires the unique opposing queen.",
+        "checker(S,K)": "The same still-present physical piece S currently attacks the player king.",
+        "checker_capturable(S)": "The same physical piece S is checking the player king and at least one currently legal player move captures it. Negation denies that entire existence; capture profitability is separate.",
+        "captured(A)": "The bound original physical identity has been captured on the mapped path and is absent from this board.",
+        "moved(A)": "The incoming actual move was made by the same bound physical identity A.",
+        "aligned(B,C)": "The two distinct physical targets lie on one file, rank or diagonal; this entry relation does not require A already on the line.",
+        "line(A,B,C)": "The same slider A has B in front of C on a compatible ray with no other blocker between A and C.",
+        "accepted_ending": "Validation service: an existing same-board END/CERT independently holds. This is not an Oracle board predicate or a new certificate.",
+        "validated_entry": "Validation service: a different same-board ENTRY has its whole tree checked without a dependency cycle. This is not an inherited board fact."
+      },
+      "provenance": "Skewer entry must use a live observed alignment of its same two target identities. Capture provenance is still checked by the existing inherited observation mechanism.",
+      "classesAndCounting": "Abstract cases map existing boards and are not PGN CLASS declarations. Only an actual printed multi-member CLASS has a stored representative; every stored NODE is counted exactly once. No future omitted member positions are inserted by the matcher.",
+      "implementationBoundary": "The standalone dictionary-PGN tools and the Atlas canonical importer use the same complete theorem matcher for the matching corpus and dictionary. Tree overlays use checked application mappings. Historical MOTIF candidates and legacy declarations never produce checked theorem overlays."
     }
   },
   "predicates": {
@@ -4009,6 +5574,24 @@
         "mate_threat_in_2"
       ],
       "meaning": "A concrete three-ply tree has one legal key, every legal defensive reply (at least one), and a legal checkmate after each reply. On defender-to-move boards, this is an explicitly labelled attacker-turn threat projection, not a played pass or unconditional win."
+    },
+    "mating_route": {
+      "signatures": [
+        "mating_route\\(K\\)"
+      ],
+      "meaning": "A queen-key mate in one or two exists on the explicit attacker-turn projection of this board. It is a threat observation only; an intervening defender move must be checked on its actual board."
+    },
+    "guarded_mating_route": {
+      "signatures": [
+        "guarded_mating_route\\(K,q\\)"
+      ],
+      "meaning": "The projected queen-key mating route is prevented by an opposing queen: removing that bound queen exposes a concrete mate in at most two. Queen removal is a conditional observation, never a played move or a winning certificate."
+    },
+    "capture_reply_tree": {
+      "signatures": [
+        "capture_reply_tree\\(K,6\\)"
+      ],
+      "meaning": "The exact six-ply template in captureReplyContract succeeds. All current legal opponent checks/captures are considered. A check is answered only by a legal capture of its checking piece, or an existing terminal on that board; a capture by a recapture or, only if the gain is still >=2 and it was not check, a quiet holding move. Every branch ends at a pre-existing main certificate. Nonforcing play is the declared material-boundary assumption, not a universal whole-game proof."
     }
   },
   "certificates": {
@@ -147451,6 +149034,21 @@
       "atoms": [
         "mate_threat_in_2(K)"
       ],
+      "workshopEligible": true
+    },
+    "end-material-capture-tree": {
+      "id": "end-material-capture-tree",
+      "name": "Material won; short capture replies",
+      "atoms": [
+        "net_gain(K)>=2",
+        "not in_check(K)",
+        "not in_check(k)",
+        "near_promotion(p=0)",
+        "promotion_moves(k=0)",
+        "turn(k)",
+        "capture_reply_tree(K,6)"
+      ],
+      "kind": "accepted-pattern",
       "workshopEligible": true
     }
   },
