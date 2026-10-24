@@ -224,7 +224,7 @@
       "SoWhatPlanUci": "[a-h][1-8][a-h][1-8][qrbn]?",
       "SoWhatExitId": "[A-Za-z][A-Za-z0-9_-]*",
       "SoWhatClassBody": "Main plan survives\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})+\\. Plan: ${SoWhatPlanUci}\\. Exit: ${SoWhatExitId}\\. \\+ turn\\(K\\); piece\\(A\\)\\. - none\\.",
-      "StaticTheoremName": "(?:Non-rook key promotion|Rook-pawn escort promotion|Clear promotion corridor|King corridor to key|Blocked-pawn shouldering|Safe major conversion|Pawn ending reduction|Queen pawn control|Guarded promotion region|Registered ending bridge)",
+      "StaticTheoremName": "(?:Non-rook key promotion|Rook-pawn escort promotion|Clear promotion corridor|King corridor to key|Blocked-pawn shouldering|Safe major conversion|Pawn ending reduction|Queen pawn control|Guarded promotion region|Registered ending bridge|Win the pawn race)",
       "StaticBody": "Bind (?:[PAKkp]=[a-h][1-8])(?:, [PAKkp]=[a-h][1-8])*; Entry [^{}\\r\\n]+; Output [^{}\\r\\n]+; Plan [^{}\\r\\n]+; Proof ${HASH}\\.",
       "P_theoretical_win": "theoretical_win\\(K\\)",
       "P_forces_accepted_ending": "forces_accepted_ending\\(K\\)"
@@ -8417,6 +8417,82 @@
             "edges": []
           },
           "metaPgn": "{ NODE current\n  KIND static\n  + checked_linked_ending_region(A); every_endpoint_has_registered_ending; same_strategy_and_bindings; recorded_history_guard\n  EXIT derive: forces_accepted_ending(K)\n}\n*"
+        },
+        {
+          "id": "S11",
+          "short": "Win the pawn race",
+          "checker": "pawn-race",
+          "entry": [
+            "legal_live_position",
+            "recorded_history_guard",
+            "clock_margin",
+            "pawn_only_position",
+            "bound_passed_pawn(P)",
+            "fixed_pawn_race_policy(P)",
+            "all_defender_effects_checked",
+            "every_race_finish_registered"
+          ],
+          "output": [
+            "forces_pawn_race_region(P)"
+          ],
+          "meaning": "A bound passed pawn follows one fixed promotion policy against every defense. Immediate checking pawns may be captured by the king before resuming the route. Every promotion response must reach an existing registered ending through checked queen control, a counterpromotion skewer, or a bounded pin and king-support plan. Promoting first by itself is not an exit.",
+          "entryExplanation": "Bind the same physical passed pawn, its clear file corridor, and both kings. Verify every legal intervening pawn and king effect, including double advances, checks, captures, interception, underpromotion, and stalemate. The producer pushes the bound pawn or captures the single checking pawn with the king; it does not search alternative pawn/king routes. Promotion endpoints use explicitly bounded shapes: registered queen placement, checking displacement and collection, promotion-square blockade, counterpromotion skewer, or a pawn-file/queen-pawn-king pin with deterministic adjacent king support. The support guard binds one critical sixth- or seventh-rank enemy pawn and requires the player king within two king steps of its kingward escort square. All selected moves and every defense are checked. After that bound enemy pawn has actually been captured, a remaining passer may be handled by a final queen-ray blockade of at most three own moves. Preserve the source material baseline, live status, clock, physical bindings and recorded history throughout. Unknown outcomes fail closed. Count all successful and failed hypothetical effect and endpoint attempts separately from the zero added concrete PGN nodes.",
+          "name": "Win the pawn race",
+          "kind": "static-endgame",
+          "annotationSite": "STATIC",
+          "group": "Static endgames",
+          "bindingNotes": {
+            "P": "The same physical passed pawn at the source node; its promoted queen retains this binding.",
+            "K": "The player king at the source node.",
+            "k": "The defending king at the source node."
+          },
+          "proofScope": "Sufficient zero-ply implication with at most eight own producer moves and at most eight own moves in its checked queen finish. The counterpromotion skewer uses at most three own moves. The adjacent-escort and pin-support policies use at most five own moves; only after the original critical pawn is captured may the pin policy compose a final blockade of at most three own moves. Existing terminal predicates perform their own bounded checks as well. No engine, tablebase, arbitrary depth parameter, or material-only inference supplies runtime authority. Every hypothetical attempt is counted; maxOverlayDepth is the maximum within an individual effect-verification fragment, not the sum across separately checked composition steps. Only the checked source node appears in the concrete PGN proof.",
+          "source": {
+            "work": "Predicate Chess pawn-race composition",
+            "attribution": "Project formalization of a clear passed-pawn race with explicitly checked promotion and counterpromotion outcomes; not attributed to a book theorem."
+          },
+          "tree": {
+            "schema": "predicate-chess-static-theorem/1",
+            "root": "current",
+            "variables": {
+              "P": {
+                "side": "K",
+                "type": "p"
+              },
+              "K": {
+                "side": "K",
+                "type": "k"
+              },
+              "k": {
+                "side": "k",
+                "type": "k"
+              }
+            },
+            "nodes": [
+              {
+                "id": "current",
+                "kind": "static",
+                "entry": [
+                  "legal_live_position",
+                  "recorded_history_guard",
+                  "clock_margin",
+                  "pawn_only_position",
+                  "bound_passed_pawn(P)",
+                  "fixed_pawn_race_policy(P)",
+                  "all_defender_effects_checked",
+                  "every_race_finish_registered"
+                ],
+                "exit": {
+                  "kind": "derive",
+                  "predicates": [
+                    "forces_pawn_race_region(P)"
+                  ]
+                }
+              }
+            ],
+            "edges": []
+          },
+          "metaPgn": "{ NODE current\n  KIND static\n  + legal_live_position; recorded_history_guard; clock_margin; pawn_only_position; bound_passed_pawn(P); fixed_pawn_race_policy(P); all_defender_effects_checked; every_race_finish_registered\n  EXIT derive: forces_pawn_race_region(P)\n}\n*"
         }
       ]
     },
@@ -9433,7 +9509,8 @@
         "pawn-ending-reduction",
         "queen-pawn-control",
         "guarded-promotion-region",
-        "registered-ending-bridge"
+        "registered-ending-bridge",
+        "pawn-race"
       ],
       "outputPredicates": {
         "forces_key_position(P)": "Universal future envelope with the same surviving pawn, exact player king square, possible defending-king region, side to move, and clock.",
@@ -9444,7 +9521,8 @@
         "forces_pawn_ending_region(P)": "One same-strategy universal pawn/king or promotion region, with piece-square masks, optional captures, side, clock, bindings and live-state guards. A guarded bare-king subprocedure may further establish safe major promotion.",
         "forces_queen_ending_region(A)": "One same-strategy universal region after checked queen control or collection, preserving every surviving opposing pawn and piece.",
         "forces_guarded_promotion_region(P)": "A promotion region whose full checking/nonchecking partition, legal continuations and material/draw bounds have been proved by the declared mask or bounded effect variant.",
-        "forces_accepted_ending(K)": "Every outcome of the linked checked region meets an explicitly declared registered ending. This is future strategy evidence, never an OBSERVED or START fact."
+        "forces_accepted_ending(K)": "Every outcome of the linked checked region meets an explicitly declared registered ending. This is future strategy evidence, never an OBSERVED or START fact.",
+        "forces_pawn_race_region(P)": "One fixed passed-pawn policy survives every legal defender effect, promotes the same physical pawn safely, and forces the explicitly checked registered ending union, including the admitted queen-control or counterpromotion continuation. It is future strategy evidence, not a current promotion or mate observation."
       },
       "rendering": {
         "template": "STATIC \"{name}\": Bind {bindings}; Entry {entry}; Output {output}; Plan {witness}; Proof {proof}.",
@@ -9470,7 +9548,8 @@
           "atom": "forces_accepted_ending(K)",
           "semantics": "A checked strategy forces one of the explicitly named registered puzzle endings. The boundary may be a material objective rather than a forced-mate theorem. It never supplies a current mate observation."
         }
-      ]
+      ],
+      "frozenMainlinePrefix": "checked-static-terminal"
     }
   },
   "predicates": {
