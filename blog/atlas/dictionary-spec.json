@@ -11,12 +11,30 @@
       "authorization": "User explicitly requested a broader attempt to solve the remaining 77 initially reported open endgame puzzles by composing zero-ply endgame knowledge.",
       "scope": "Add four same-node reduction/bridge families (ten total), with separately counted mask and bounded move-effect variants, one future accepted-ending terminal, explicit physical bindings and Plan rendering. Existing S01–S06 entries/outputs, all earlier terminal definitions, dynamic theorem trees and protected board/certificate foundations are retained.",
       "predecessorVersion": 20
+    },
+    "promotionControlRepair": {
+      "authorization": "User identified 06RT8: capture the bishop, return the knight to control the rook-pawn promotion square, and remove the unnecessary open branches.",
+      "scope": "Keep every registered predicate and certificate conjunction, theorem, grammar rule and class contract unchanged. Extend only the promotion-control checker with a bounded, explicitly recorded advance-and-hold reduction from one near pawn at distance two to its existing distance-one boundary. Preserve the complete Lichess mainline. Add regression tests for every legal first defense, all promotion choices, mirrors and rejected unsafe cases.",
+      "predecessorCheckpoint": "Atlas v31"
+    },
+    "pawnRacePreparation": {
+      "authorization": "User requested completion of the remaining 0qDMt pawn-race closures after the partial checkpoint.",
+      "scope": "Add S12 bounded preparation, retaining all S01-S11 definitions, existing predicates, certificates, grammar, CLASS recipes and position accounting unchanged."
+    },
+    "quantifiedSoWhatCorrection": {
+      "authorization": "On 2026-10-26 the user explicitly requested: verify that So what takes the requested form, correct it, and validate it across the corpus. The requested form is prescribed player moves interleaved with actual opponent wildcard replies over a declared class, followed by assertions that hold on every resulting leaf. A theorem entry is nonterminal; only an independently checked registered leaf certificate supplies closure.",
+      "predecessorCheckpoint": "Atlas 38",
+      "scope": "So what definition, finite plan grammar and verifier, class import/export, and matching corpus headers. Existing Oracle predicates, certificate conjunctions, other theorem definitions and physical accounting are retained."
+    },
+    "soWhatEntryPlanCorrection": {
+      "authorization": "The user explicitly requested that PLAN come immediately after ENTRY, including in the grammar. Each So what class therefore has its own typed ENTRY with the actual numbered plan; the generic turn/piece entry is removed.",
+      "predecessorCheckpoint": "Atlas 39"
     }
   },
   "specification": {
-    "id": "predicate-chess-readable-pgn/21",
+    "id": "predicate-chess-readable-pgn/23",
     "title": "Predicate Chess — authoritative full-tree PGN",
-    "version": 21,
+    "version": 23,
     "changeControl": {
       "instruction": "do not change without explicit user instruction; must use each time to verify pgn conformity with spec",
       "requiresExplicitUserInstruction": true,
@@ -42,7 +60,10 @@
       "variablePgnTheoremAuthorization": "User explicitly rejected MOTIF and required every meta tree to be a theorem, written as PGN with physical variables, observed entry requirements and binding guidance, actual main-line plies, optional defense classes, and explicit checked exits. Promote all 32 registered theorem definitions; render their tree shapes in the dictionary and as checked fits over concrete puzzle trees. Enumerate every dictionary change.",
       "orderedCompositionAuthorization": "The user requires all previously named meta trees to be real theorem applications. This finite list covers the exact co-located registered names in the accepted source; each emitted component must pass independently. It introduces no new theorem names, JOINs, or future automatic registry expansion. Only the individually enumerated co-located combinations in this migration are added. The existing no-auto-expression and no-new-JOIN policies remain unchanged.",
       "soWhatAuthorization": "User requested the So what defensive theorem: carry out a fixed main-line plan despite any opposing move in a proved class, permit partial classes such as sixteen of twenty defenses, implement it and apply it throughout the corpus. Add one checked two-ply theorem, dictionary-derived class text and exact per-member plan/certificate replay. Preserve every existing predicate, ending, certificate and theorem; enumerate every dictionary edit.",
-      "extendedStaticEndgamesAuthorization": "User explicitly requested a broader attempt to solve the remaining 77 initially reported open endgame puzzles by composing zero-ply endgame knowledge. Add four same-node reduction/bridge families (ten total), with separately counted mask and bounded move-effect variants, one future accepted-ending terminal, explicit physical bindings and Plan rendering. Existing S01–S06 entries/outputs, all earlier terminal definitions, dynamic theorem trees and protected board/certificate foundations are retained."
+      "extendedStaticEndgamesAuthorization": "User explicitly requested a broader attempt to solve the remaining 77 initially reported open endgame puzzles by composing zero-ply endgame knowledge. Add four same-node reduction/bridge families (ten total), with separately counted mask and bounded move-effect variants, one future accepted-ending terminal, explicit physical bindings and Plan rendering. Existing S01–S06 entries/outputs, all earlier terminal definitions, dynamic theorem trees and protected board/certificate foundations are retained.",
+      "fixedPlanCleanupAuthorization": "User requires explicit HTML / external PGN / external dictionary boundary; flag 3+ response cases especially below 2000, try one or two So what classes, and print their fixed own-move plan with wildcard opponent plies and exact certificate or verified ending-theorem entry. Revision 36 explicitly changes only So what plan notation/composition and adds advisory smell definitions; all existing predicate and certificate meanings are retained.",
+      "quantifiedSoWhatCorrectionAuthorization": "On 2026-10-26 the user explicitly requested: verify that So what takes the requested form, correct it, and validate it across the corpus. The requested form is prescribed player moves interleaved with actual opponent wildcard replies over a declared class, followed by assertions that hold on every resulting leaf. A theorem entry is nonterminal; only an independently checked registered leaf certificate supplies closure.",
+      "soWhatEntryPlanCorrectionAuthorization": "The user explicitly requested that PLAN come immediately after ENTRY, including in the grammar. Each So what class therefore has its own typed ENTRY with the actual numbered plan; the generic turn/piece entry is removed."
     },
     "start": "Document",
     "tokens": {
@@ -51,7 +72,7 @@
       "PIECES": "PIECES: (?:Uppercase = White; lowercase = Black|Uppercase = Black; lowercase = White)\\.",
       "START": "START: ${Facts}\\.",
       "OBSERVED": "OBSERVED: ${Facts}\\.",
-      "ENTRY": "ENTRY \"${TheoremNames}\": ${AtomList}\\.",
+      "ENTRY": "ENTRY \"(?!So what\")(?:${TheoremNames})\": ${AtomList}\\.",
       "CLASS": "CLASS: ${ClassBody}",
       "END": "END(?: \"${CertificateName}\")?: ${AtomList}\\.",
       "CERT": "CERT(?: \"${CertificateName}\")?: ${AtomList}\\.",
@@ -67,7 +88,9 @@
       "RBRACE": "\\}",
       "NODE": "NODE: ${NODE}\\.",
       "USER": "USER: Continuation from ${NODE}; move (?:supplied|enumerated|none); certificate (?:selected|checked|none)\\.",
-      "STATIC": "STATIC \"${StaticTheoremName}\": ${StaticBody}"
+      "STATIC": "STATIC \"${StaticTheoremName}\": ${StaticBody}",
+      "SO_WHAT_ENTRY": "${SoWhatEntryBody}",
+      "SO_WHAT_CLASS": "CLASS: ${SoWhatProgramBody}"
     },
     "macros": {
       "UINT": "(?:0|[1-9][0-9]*)",
@@ -196,14 +219,14 @@
       "AtomList": "${Atom}(?:; ${Atom})*",
       "Facts": "(?:none|${AtomList})",
       "TheoremName": "(?:Material\\ assured\\ by\\ capture|Pawn\\ restraint\\ /\\ tempo|Promotion\\ blockade|Safe\\ checking\\ gain|Promotion\\ control|Win\\ the\\ pawn\\ race|Mate\\ threat\\ in\\ 2|Remove\\ defender|Take\\ /\\ exchange|Attack\\ /\\ drive|Protected\\ base|Secure\\ escort|Attack\\ route|Breakthrough|King\\ access|Mate\\ threat|Passed\\ pawn|Attraction|Deflection|Opposition|Royal\\ fork|Clearance|Promotion|Support|Repair|Skewer|Check|Fork|Mate|Pin|Constrain\\ by\\ mate\\ threat|Single-queen defensive closure)",
-      "TheoremNames": "(?:Take / exchange \\+ Material assured by capture \\+ Promotion blockade|Take / exchange \\+ Material assured by capture \\+ Protected base|Mate threat \\+ Material assured by capture \\+ Take / exchange|Clearance \\+ Material assured by capture \\+ Take / exchange|Promotion \\+ Material assured by capture \\+ Take / exchange|Clearance \\+ Check \\+ Safe checking gain \\+ Take / exchange|Promotion \\+ Check \\+ Safe checking gain \\+ Take / exchange|Fork \\+ Material assured by capture \\+ Take / exchange|Fork \\+ Check \\+ Safe checking gain \\+ Take / exchange|Pin \\+ Material assured by capture \\+ Take / exchange|Take / exchange \\+ Breakthrough \\+ Protected base|Passed pawn \\+ Win the pawn race \\+ Breakthrough|Material assured by capture \\+ Take / exchange|Take / exchange \\+ Material assured by capture|Check \\+ Safe checking gain \\+ Take / exchange|Clearance \\+ Check \\+ Repair \\+ Take / exchange|Take / exchange \\+ Check \\+ Safe checking gain|Mate threat \\+ Material assured by capture|Remove defender \\+ Check \\+ Take / exchange|Repair \\+ Protected base \\+ Take / exchange|Take / exchange \\+ Repair \\+ Protected base|Clearance \\+ Material assured by capture|Promotion \\+ Material assured by capture|Clearance \\+ Check \\+ Safe checking gain|Mate threat \\+ Repair \\+ Take / exchange|Promotion \\+ Check \\+ Safe checking gain|Attraction \\+ Repair \\+ Take / exchange|Promotion \\+ Check \\+ Win the pawn race|Attraction \\+ Check \\+ Take / exchange|Chase \\+ Deflection \\+ Take / exchange|Clearance \\+ Repair \\+ Take / exchange|Deflection \\+ Check \\+ Take / exchange|Take / exchange \\+ Promotion blockade|Attack / drive \\+ Promotion blockade|Clearance \\+ Check \\+ Take / exchange|Promotion \\+ Check \\+ Take / exchange|Fork \\+ Material assured by capture|Clearance \\+ Pin \\+ Take / exchange|Deflection \\+ Check \\+ Breakthrough|Fork \\+ Check \\+ Safe checking gain|Pin \\+ Material assured by capture|Remove defender \\+ Take / exchange|Chase \\+ Repair \\+ Take / exchange|Chase \\+ Skewer \\+ Take / exchange|Check \\+ Repair \\+ Take / exchange|Mate threat \\+ Promotion blockade|Protected base \\+ Take / exchange|Repair \\+ Check \\+ Take / exchange|Take / exchange \\+ Check \\+ Repair|Take / exchange \\+ Protected base|Win the pawn race \\+ Breakthrough|Passed pawn \\+ Win the pawn race|Fork \\+ Check \\+ Take / exchange|Pin \\+ Repair \\+ Take / exchange|Single-queen defensive closure|Take / exchange \\+ Breakthrough|Attack / drive \\+ Breakthrough|Mate threat \\+ Take / exchange|Pin \\+ Check \\+ Take / exchange|Promotion \\+ Win the pawn race|Attraction \\+ Take / exchange|Deflection \\+ Take / exchange|King access \\+ Protected base|Support \\+ Promotion blockade|Clearance \\+ Take / exchange|King access \\+ Secure escort|Material assured by capture|Promotion \\+ Take / exchange|Repair \\+ Promotion blockade|Check \\+ Promotion blockade|Clearance \\+ Check \\+ Repair|Mate threat \\+ Breakthrough|Opposition \\+ Secure escort|Passed pawn \\+ Breakthrough|Repair \\+ Win the pawn race|Attraction \\+ Breakthrough|Check \\+ Win the pawn race|Constrain by mate threat|Pin \\+ Promotion blockade|Repair \\+ Take / exchange|Skewer \\+ Take / exchange|Take / exchange \\+ Repair|Chase \\+ Take / exchange|Check \\+ Take / exchange|Remove defender \\+ Check|Repair \\+ Protected base|Take / exchange \\+ Check|Fork \\+ Take / exchange|Pawn restraint / tempo|Repair \\+ Secure escort|Attack / drive \\+ Fork|Pin \\+ Take / exchange|Repair \\+ Breakthrough|Check \\+ Breakthrough|Mate threat \\+ Repair|Attraction \\+ Repair|Chase \\+ Passed pawn|Fork \\+ Breakthrough|Attraction \\+ Check|Clearance \\+ Repair|Deflection \\+ Check|Pin \\+ Breakthrough|Promotion blockade|Royal fork \\+ Check|Safe checking gain|Chase \\+ Clearance|Clearance \\+ Check|Promotion \\+ Check|Promotion control|Win the pawn race|Mate threat in 2|Clearance \\+ Pin|Remove defender|Take / exchange|Attack / drive|Chase \\+ Repair|Check \\+ Repair|Protected base|Repair \\+ Check|Skewer \\+ Check|Fork \\+ Repair|Mate \\+ Repair|Secure escort|Attack route|Breakthrough|Chase \\+ Fork|Fork \\+ Check|Pin \\+ Repair|King access|Mate threat|Passed pawn|Pin \\+ Check|Attraction|Deflection|Opposition|Royal fork|Clearance|Promotion|So what|Support|Repair|Skewer|Chase|Check|Fork|Mate|Pin)",
+      "TheoremNames": "(?:Take / exchange \\+ Material assured by capture \\+ Promotion blockade|Take / exchange \\+ Material assured by capture \\+ Protected base|Mate threat \\+ Material assured by capture \\+ Take / exchange|Clearance \\+ Material assured by capture \\+ Take / exchange|Promotion \\+ Material assured by capture \\+ Take / exchange|Clearance \\+ Check \\+ Safe checking gain \\+ Take / exchange|Promotion \\+ Check \\+ Safe checking gain \\+ Take / exchange|Fork \\+ Material assured by capture \\+ Take / exchange|Fork \\+ Check \\+ Safe checking gain \\+ Take / exchange|Pin \\+ Material assured by capture \\+ Take / exchange|Take / exchange \\+ Breakthrough \\+ Protected base|Passed pawn \\+ Win the pawn race \\+ Breakthrough|Material assured by capture \\+ Take / exchange|Take / exchange \\+ Material assured by capture|Check \\+ Safe checking gain \\+ Take / exchange|Clearance \\+ Check \\+ Repair \\+ Take / exchange|Take / exchange \\+ Check \\+ Safe checking gain|Mate threat \\+ Material assured by capture|Remove defender \\+ Check \\+ Take / exchange|Repair \\+ Protected base \\+ Take / exchange|Take / exchange \\+ Repair \\+ Protected base|Clearance \\+ Material assured by capture|Double attack by two pieces \\+ Clearance|Promotion \\+ Material assured by capture|Clearance \\+ Check \\+ Safe checking gain|Mate threat \\+ Repair \\+ Take / exchange|Promotion \\+ Check \\+ Safe checking gain|Attraction \\+ Repair \\+ Take / exchange|Promotion \\+ Check \\+ Win the pawn race|Attraction \\+ Check \\+ Take / exchange|Chase \\+ Deflection \\+ Take / exchange|Clearance \\+ Repair \\+ Take / exchange|Deflection \\+ Check \\+ Take / exchange|Take / exchange \\+ Promotion blockade|Attack / drive \\+ Promotion blockade|Clearance \\+ Check \\+ Take / exchange|Promotion \\+ Check \\+ Take / exchange|Fork \\+ Material assured by capture|Clearance \\+ Pin \\+ Take / exchange|Deflection \\+ Check \\+ Breakthrough|Fork \\+ Check \\+ Safe checking gain|Pin \\+ Material assured by capture|Remove defender \\+ Take / exchange|Chase \\+ Repair \\+ Take / exchange|Chase \\+ Skewer \\+ Take / exchange|Check \\+ Repair \\+ Take / exchange|Mate threat \\+ Promotion blockade|Protected base \\+ Take / exchange|Repair \\+ Check \\+ Take / exchange|Take / exchange \\+ Check \\+ Repair|Take / exchange \\+ Protected base|Win the pawn race \\+ Breakthrough|Passed pawn \\+ Win the pawn race|Fork \\+ Check \\+ Take / exchange|Pin \\+ Repair \\+ Take / exchange|Single-queen defensive closure|Take / exchange \\+ Breakthrough|Attack / drive \\+ Breakthrough|Mate threat \\+ Take / exchange|Pin \\+ Check \\+ Take / exchange|Promotion \\+ Win the pawn race|Attraction \\+ Take / exchange|Deflection \\+ Take / exchange|King access \\+ Protected base|Support \\+ Promotion blockade|Clearance \\+ Take / exchange|Double attack by two pieces|King access \\+ Secure escort|Material assured by capture|Promotion \\+ Take / exchange|Repair \\+ Promotion blockade|Check \\+ Promotion blockade|Clearance \\+ Check \\+ Repair|Mate threat \\+ Breakthrough|Opposition \\+ Secure escort|Passed pawn \\+ Breakthrough|Repair \\+ Win the pawn race|Attraction \\+ Breakthrough|Check \\+ Win the pawn race|Constrain by mate threat|Pin \\+ Promotion blockade|Repair \\+ Take / exchange|Skewer \\+ Take / exchange|Take / exchange \\+ Repair|Chase \\+ Take / exchange|Check \\+ Take / exchange|Remove defender \\+ Check|Repair \\+ Protected base|Take / exchange \\+ Check|Fork \\+ Take / exchange|Pawn restraint / tempo|Repair \\+ Secure escort|Attack / drive \\+ Fork|Pin \\+ Take / exchange|Repair \\+ Breakthrough|Check \\+ Breakthrough|Mate threat \\+ Repair|Attraction \\+ Repair|Chase \\+ Passed pawn|Fork \\+ Breakthrough|Repair then capture|Attraction \\+ Check|Clearance \\+ Repair|Deflection \\+ Check|Pin \\+ Breakthrough|Promotion blockade|Royal fork \\+ Check|Safe checking gain|Chase \\+ Clearance|Clearance \\+ Check|Promotion \\+ Check|Promotion control|Win the pawn race|Mate threat in 2|Clearance \\+ Pin|Remove defender|Take / exchange|Attack / drive|Chase \\+ Repair|Check \\+ Repair|Protected base|Repair \\+ Check|Skewer \\+ Check|Fork \\+ Repair|Mate \\+ Repair|Secure escort|Attack route|Breakthrough|Chase \\+ Fork|Fork \\+ Check|Pin \\+ Repair|King access|Mate threat|Passed pawn|Pin \\+ Check|Attraction|Deflection|Opposition|Royal fork|Clearance|Promotion|So what|Support|Repair|Skewer|Chase|Check|Fork|Mate|Pin)",
       "CertificateName": "(?:(?:(?:Material\\ won;\\ promotion\\ controlled|Pawn\\ race\\ won;\\ protected\\ promotion|Material\\ won\\ with\\ a\\ safe\\ check|Pawn\\ won;\\ minor\\-piece\\ endgame|Checked\\ net\\ \\+2\\ and\\ quiet|Checked\\ mate\\ in\\ one|Mate\\ threat\\ in\\ 2|Net\\ \\+2\\ and\\ quiet|Checked\\ mate|Material\\ won|Mate|Material\\ won;\\ short\\ capture\\ replies)|Static endgame win)|Static endgame reduction)",
       "MainlineBody": "(?:${NUMBER} ${SAN}(?: (?:${NUMBER} )?${SAN})*)?\\.",
-      "ClassBody": "(?:${DefensiveClosureClassBody}|${SoWhatClassBody})",
+      "ClassBody": "${DefensiveClosureClassBody}",
       "OpenMessage": "(?:Breakthrough\\ entry\\ fitted\\.\\ This\\ opposing\\ reply\\ still\\ needs\\ its\\ next\\ theorem\\ or\\ accepted\\ ending\\.|Ending\\ predicates\\ also\\ match\\ a\\ retained\\ continuing\\ position;\\ explicit\\ refinement\\ is\\ still\\ needed\\.|Other\\ legal\\ defense\\ —\\ still\\ not\\ sure\\.\\ Reply\\ enumerated\\ and\\ terminal\\-tested;\\ next\\ player\\ response\\ not\\ supplied\\.|Outside\\ passer\\ created;\\ king\\ escort\\ is\\ visible\\.\\ Enemy\\ rook\\ containment\\ remains\\ OPEN\\.|Short\\ composition\\ fitted\\ where\\ recorded;\\ no\\ quiet\\ or\\ mate\\ closure\\ at\\ this\\ boundary\\.|Still\\ not\\ sure:\\ material\\ won,\\ but\\ the\\ opponent\\ has\\ checks\\ or\\ captures;\\ no\\ quiet\\ terminal\\ fitted\\.|Stockfish\\ supplied\\ line\\ —\\ still\\ not\\ sure\\.\\ No\\ short\\ terminal\\ reason\\ at\\ the\\ \\+2\\-ply\\ review\\ horizon\\.)",
       "EngineFit": "(?:Not a fitted theorem|(?:Locally fitted|Now locally fitted|New local entry fit): ${TheoremNames})\\.",
       "EngineBody": "(?:(?:Our response|Opponent reply) supplied by Stockfish 11; best found, depth ${POSINT}, ${POSINT} nodes\\. ${EngineFit}|Stockfish 11 saved PV, locally fitted where shown; source ${NODE}, analysis ${UINT}, PV ply ${POSINT}\\. Not a new root search\\.|Stockfish 11 reported PV continuation, now locally fitted\\. Source ${NODE}, analysis ${UINT}, PV ply ${POSINT}; not a new root search\\.|Stockfish 11 best found: depth ${POSINT}, ${POSINT} nodes\\. Local theorem fit is separate from closure\\.|Stockfish 11 best found at this board: depth ${POSINT}, ${POSINT} nodes\\. Local theorem fit recorded separately\\.)",
-      "Header": "(?:\\[Event \"${EVENTID} - puzzle rating ${UINT}\"\\]|\\[Site \"https://lichess\\.org/training/${PUZZLE}\"\\]|\\[Date \"\\?\\?\\?\\?\\.\\?\\?\\.\\?\\?\"\\]|\\[Round \"-\"\\]|\\[White \"(?:Player|Defense)\"\\]|\\[Black \"(?:Player|Defense)\"\\]|\\[Result \"\\*\"\\]|\\[SetUp \"1\"\\]|\\[FEN \"${FEN}\"\\]|\\[LichessRating \"${UINT}\"\\]|\\[PGNGrammar \"predicate-chess-readable-pgn/21\"\\]|\\[MainlineSource \"Lichess snapshot 2026-09-10\"\\]|\\[Engine \"Stockfish 11 64\"\\]|\\[EngineLimit \"depth 18 or 250000 requested nodes; first limit reached\"\\]|\\[ReviewScope \"(?:Retained engine continuations; accepted END/CERT endings|Original defense CERT plus at most 2 plies)\"\\]|\\[Unresolved \"OPEN is not an accepted closure\"\\]|\\[Example \"${EXAMPLE}\"\\]|\\[ManualWork \"Checked defense continuation\"\\]|\\[OriginalPuzzleId \"${PUZZLE}\"\\]|\\[OriginalPuzzleFEN \"${FEN}\"\\]|\\[OriginalMaterialBalance \"${INT}\"\\]|\\[WorkSourceRevision \"${HASH}\"\\]|\\[ClassMember \"${NODE}\"\\]|\\[PositionsExplored \"positions explored = ${UINT} raw positions \\+ ${UINT} classes = ${UINT}\"\\]|\\[DictionarySHA256 \"${HASH}\"\\])",
+      "Header": "(?:\\[Event \"${EVENTID} - puzzle rating ${UINT}\"\\]|\\[Site \"https://lichess\\.org/training/${PUZZLE}\"\\]|\\[Date \"\\?\\?\\?\\?\\.\\?\\?\\.\\?\\?\"\\]|\\[Round \"-\"\\]|\\[White \"(?:Player|Defense)\"\\]|\\[Black \"(?:Player|Defense)\"\\]|\\[Result \"\\*\"\\]|\\[SetUp \"1\"\\]|\\[FEN \"${FEN}\"\\]|\\[LichessRating \"${UINT}\"\\]|\\[PGNGrammar \"predicate-chess-readable-pgn/23\"\\]|\\[MainlineSource \"Lichess snapshot 2026-09-10\"\\]|\\[Engine \"Stockfish 11 64\"\\]|\\[EngineLimit \"depth 18 or 250000 requested nodes; first limit reached\"\\]|\\[ReviewScope \"(?:Retained engine continuations; accepted END/CERT endings|Original defense CERT plus at most 2 plies)\"\\]|\\[Unresolved \"OPEN is not an accepted closure\"\\]|\\[Example \"${EXAMPLE}\"\\]|\\[ManualWork \"Checked defense continuation\"\\]|\\[OriginalPuzzleId \"${PUZZLE}\"\\]|\\[OriginalPuzzleFEN \"${FEN}\"\\]|\\[OriginalMaterialBalance \"${INT}\"\\]|\\[WorkSourceRevision \"${HASH}\"\\]|\\[ClassMember \"${NODE}\"\\]|\\[PositionsExplored \"positions explored = ${UINT} raw positions \\+ ${UINT} classes = ${UINT}\"\\]|\\[DictionarySHA256 \"${HASH}\"\\])",
       "P_obstructed_alignment": "(?:obstructed_alignment\\(${ROLE}>${ROLE}>${ROLE};${ROLE};${DIRECTION}\\))",
       "P_promotion_fork_pattern": "(?:promotion_fork_pattern\\(${PAWN};${PROMOTED};${ROLE}\\+${ROLE}\\))",
       "P_mate_threat_in_2": "(?:mate_threat_in_2\\(${SIDE}\\))",
@@ -221,13 +244,14 @@
       "P_mate_threat_in_": "(?:mate_threat_in_2\\(K\\))",
       "P_any": "(?:any\\(check\\(K\\);attacked\\(${ROLE}\\)\\))",
       "P_controls_promotion": "(?:controls_promotion\\(${ROLE},${ROLE}\\))",
-      "SoWhatPlanUci": "[a-h][1-8][a-h][1-8][qrbn]?",
-      "SoWhatExitId": "[A-Za-z][A-Za-z0-9_-]*",
-      "SoWhatClassBody": "Main plan survives\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})+\\. Plan: ${SoWhatPlanUci}\\. Exit: ${SoWhatExitId}\\. \\+ turn\\(K\\); piece\\(A\\)\\. - none\\.",
-      "StaticTheoremName": "(?:Non-rook key promotion|Rook-pawn escort promotion|Clear promotion corridor|King corridor to key|Blocked-pawn shouldering|Safe major conversion|Pawn ending reduction|Queen pawn control|Guarded promotion region|Registered ending bridge|Win the pawn race)",
+      "StaticTheoremName": "(?:Non-rook key promotion|Rook-pawn escort promotion|Clear promotion corridor|King corridor to key|Blocked-pawn shouldering|Safe major conversion|Pawn ending reduction|Queen pawn control|Guarded promotion region|Registered ending bridge|Win the pawn race|Prepare the pawn race)",
       "StaticBody": "Bind (?:[PAKkp]=[a-h][1-8])(?:, [PAKkp]=[a-h][1-8])*; Entry [^{}\\r\\n]+; Output [^{}\\r\\n]+; Plan [^{}\\r\\n]+; Proof ${HASH}\\.",
       "P_theoretical_win": "theoretical_win\\(K\\)",
-      "P_forces_accepted_ending": "forces_accepted_ending\\(K\\)"
+      "P_forces_accepted_ending": "forces_accepted_ending\\(K\\)",
+      "SoWhatPlanPly": "${NUMBER} (?:\\*|${SAN})",
+      "SoWhatProgramBody": "So what\\. Representative: ${NUMBER} ${SAN}\\. Members: ${SAN}(?:, ${SAN})*\\. (?:Bindings: ${SoWhatBindings}\\. )?(?:Predicates: ${AtomList}\\. )?Exit: (?:END \"${CertificateName}\": ${AtomList}|ENTRY \"(?:${TheoremNames}|${StaticTheoremName})\": [^{}\\r\\n]+|ASSERT: ${AtomList})\\.",
+      "SoWhatBindings": "[A-Z][A-Za-z0-9_]*=[a-h][1-8](?:, [A-Z][A-Za-z0-9_]*=[a-h][1-8])*",
+      "SoWhatEntryBody": "ENTRY \"So what\": Plan: ${SoWhatPlanPly}(?: ${SoWhatPlanPly})+\\."
     },
     "productions": {
       "Document": [
@@ -308,6 +332,9 @@
         ],
         [
           "USER"
+        ],
+        [
+          "SoWhatPair"
         ]
       ],
       "MoreTags": [
@@ -334,6 +361,12 @@
           "RBRACE"
         ],
         []
+      ],
+      "SoWhatPair": [
+        [
+          "SO_WHAT_ENTRY",
+          "SO_WHAT_CLASS"
+        ]
       ]
     },
     "headers": {
@@ -408,7 +441,7 @@
         "SetUp": "1",
         "FEN": "${FEN}",
         "LichessRating": "${UINT}",
-        "PGNGrammar": "predicate-chess-readable-pgn/21",
+        "PGNGrammar": "predicate-chess-readable-pgn/23",
         "MainlineSource": "Lichess snapshot 2026-09-10",
         "Engine": "Stockfish 11 64",
         "EngineLimit": "depth 18 or 250000 requested nodes; first limit reached",
@@ -484,8 +517,9 @@
       "closureRule": "An END or CERT is an accepted predicate-conjunction leaf; JOIN is an accepted acyclic reference. OPEN is unresolved, never an accepted closure. No other annotation changes acceptance. Multiple accepted certificates at one endpoint are allowed. A continuing position cannot carry a closure.",
       "nodeRule": "Every position in a checkpoint PGN has exactly one explicit NODE anchor, unique within its game. It has no chess or acceptance authority.",
       "userRule": "USER records user-supplied moves, legally enumerated replies, or a selected/checked certificate, anchored to a same-game ancestor NODE. It never gives acceptance. No STOCKFISH attribution is generated for a user move. Existing engine provenance is retained.",
-      "classRule": "CLASS optionally groups at least two legal sibling defenses at a defense parent in a tree or theorem application. Its three-word dictionary name identifies one signed recipe in the applicable dictionary scope. Any number of ordinary children may coexist with these groups; a one-member case is an ordinary child.",
-      "staticRule": "STATIC records a dictionary-generated, independently checked application. One to three ordered applications may close through exactly Static endgame win or Static endgame reduction. Derived future guarantees never become current observations."
+      "classRule": "CLASS optionally groups at least two legal sibling defenses at a defense parent in a tree or theorem application. Its three-word dictionary name identifies one signed recipe in the applicable dictionary scope. Any number of ordinary children may coexist with these groups; a one-member case is an ordinary child. The typed So what plan is an explicit exception to the ordinary at-least-two-member display rule: a literal opposing move is a scoped singleton and leaves other replies explicit.",
+      "staticRule": "STATIC records a dictionary-generated, independently checked application. One to three ordered applications may close through exactly Static endgame win or Static endgame reduction. Derived future guarantees never become current observations.",
+      "entryRule": "One adjacent ENTRY/CLASS pair per plan. No orphan, displaced, duplicate, generic or mismatched So what entry is accepted. Multiple classes at one board have separate entries; each entry is bound to only its own class."
     },
     "vocabulary": {
       "predicateSchemas": {
@@ -999,7 +1033,9 @@
       "Check every END/CERT independently, also in games without CLASS. A same-board theorem handoff validates its complete dependency and rejects cycles.",
       "A checking queen that can be captured selects the capturable case regardless of whether the capture is a profitable win or an equal exchange. Capturing the checker does not bypass recapture settlement or the existing ending check.",
       "A PGN move number must match its actual parent board turn and fullmove number. Abstract case edges consume no physical move or position.",
-      "Every registered meta tree is a theorem. Its authoritative variable PGN must compile to its exact graph cache, its physical entry bindings and all matched node/exit predicates must hold, and its actual ply depth must meet the theorem contract. MOTIF is prohibited."
+      "Every registered meta tree is a theorem. Its authoritative variable PGN must compile to its exact graph cache, its physical entry bindings and all matched node/exit predicates must hold, and its actual ply depth must meet the theorem contract. MOTIF is prohibited.",
+      "So what is a quantified finite plan with per-leaf exit assertions. Every first class member and every later wildcard reply is replayed. Entry-only success is nonterminal; explicit certificate authority is required before an omitted leaf can be accepted.",
+      "The grammar pairs each typed ENTRY/Plan immediately with its CLASS. Check its actual incoming move, numbered reference suffix, physical bindings, complete selected scope and exact exit. No generic entry or another class certificate can satisfy a mismatched plan."
     ],
     "compatibility": {
       "removed": [
@@ -6086,24 +6122,24 @@
           "group": "Defensive closure",
           "catalogueSection": "Defensive closure",
           "definitionSource": "specification.soWhatContract",
-          "meaning": "For every defense in this class, play the same physically bound move and check the same existing terminal certificate on the resulting board. Keep one concrete representative and its player continuation; handle every other defense separately.",
+          "meaning": "A prescribed player mainline with opponent wildcard replies guarantees the declared exit predicates on every included leaf. A leaf may satisfy another theorem entry, but it closes only with its own checked registered predicate certificate. Unselected replies remain explicit exceptions.",
           "entry": [
             "turn(k)",
             "piece(A)"
           ],
-          "entryBinding": "Instantiate the printed actor role from the fixed Plan source piece and bind A to its exact physical entry identity. All members share this one binding.",
+          "entryBinding": "ENTRY \"So what\": Plan: <actual numbered player/opponent program>. The entry is immediately followed by exactly one CLASS specifying its members and exit. When the annotation is after an actual player move, the entry starts with that exact incoming move and continues with the class program. At an opponent-to-move puzzle root, it starts with the first opposing choice. Every number, side, physical actor and stored reference continuation is checked.",
           "exit": [
-            "the same existing terminal certificate checked after the fixed Plan for every declared class member"
+            "every declared exit predicate holds on every included leaf; terminal closure requires a separately checked registered leaf certificate"
           ],
           "replies": "The declared class may be any proved subset of the legal defenses. Its members and all ungrouped direct-child defenses form a disjoint exact legal cover. A proved but unselected defense may remain ordinary. Exceptions receive no closure from T40. An empty class is invalid; a singleton is an ordinary child.",
-          "proof": "Check both actual plies and every declared node predicate for all members of the matching CLASS. Re-evaluate its exact registered Exit at each resulting board using the original puzzle anchors. The matching class supplies fixed plan and exit bindings, never proof by its label alone.",
-          "entryExplanation": "The opponent is to move and the player piece bound as A exists. Instantiate the printed piece role from Plan, then bind A to that exact physical entry identity. Check these board facts before either numbered ply.",
+          "proof": "Fix the numbered entry plan and exit assertion before checking branches. For every member of the first declared class, every legal reply at later stars, and the single scoped reply at each explicit opposing ply, every fixed player move is legal and every covered exit satisfies the assertion. A singleton claim gives no authority over unspecified replies. END closes only when its exact registered certificate independently holds at every covered leaf. ENTRY and ASSERT are guaranteed continuation boundaries, never terminal certificates. A separate continuation must eventually establish a correct registered certificate on each leaf.",
+          "entryExplanation": "ENTRY \"So what\": Plan: <actual numbered player/opponent program>. The entry is immediately followed by exactly one CLASS specifying its members and exit. When the annotation is after an actual player move, the entry starts with that exact incoming move and continues with the class program. At an opponent-to-move puzzle root, it starts with the first opposing choice. Every number, side, physical actor and stored reference continuation is checked.",
           "bindingNotes": {
-            "A": "The one physical player piece fixed by the parent Plan source square. Never rebind A to a different piece on another member.",
-            "Plan": "Fix one legal reference defense, one canonical UCI player move and one registered terminal certificate before testing membership. The Plan source, destination and promotion choice, physical actor and any physical captured target are fixed for the whole class.",
-            "Exit": "Exit is the exact ID of one existing registered main terminal certificate; its name, atoms and parameters are obtained from the dictionary and cannot be weakened or replaced while testing members."
+            "A": "The first prescribed player actor, fixed to its physical entry identity. Additional named physical bindings remain fixed throughout the plan.",
+            "Plan": "Choose the finite numbered player plan, class members, physical bindings and exit assertion before testing any branch. Bind each player move once from the stored representative continuation.",
+            "Exit": "Choose END with an exact registered certificate conjunction, ENTRY with the exact registered theorem entry conditions, or ASSERT with a nonempty conjunction of supported dictionary predicates. Optional Predicates adds requirements to any exit kind."
           },
-          "mainLine": "The opponent plays any listed class member; A performs the same fixed Plan; the exact registered certificate holds on that resulting board. Ordinary exceptions stay outside this meta tree.",
+          "mainLine": "ENTRY \"So what\": Plan: actual player move, opposing * or scoped singleton, prescribed player move, opposing *, then checked per-leaf exit predicates. Its immediately paired CLASS supplies Members and Exit.",
           "tree": {
             "schema": "predicate-chess-metatree/1",
             "kind": "compound",
@@ -6117,7 +6153,7 @@
               "turn(k)",
               "piece(A)"
             ],
-            "description": "Within the checked parent CLASS, any listed opposing move is followed by its one fixed physically bound Plan and the same registered certificate, replayed at each actual exit.",
+            "description": "A finite player-move / opponent-wildcard program followed by an assertion over every leaf. The variable-PGN diagram illustrates one opponent/player pair; its local moved(A) result is deliberately nonterminal.",
             "coverage": "class-members",
             "classScope": {
               "contract": "soWhatContract",
@@ -6147,13 +6183,12 @@
                 "kind": "exit",
                 "turn": "defender",
                 "predicates": [
-                  "moved(A)",
-                  "accepted_ending"
+                  "moved(A)"
                 ],
                 "exit": {
-                  "kind": "certificate",
+                  "kind": "theorem",
                   "predicates": [
-                    "accepted_ending"
+                    "moved(A)"
                   ]
                 }
               }
@@ -6182,7 +6217,8 @@
               }
             ]
           },
-          "metaPgn": "{ NODE entry\n  KIND root\n  TURN defender\n  + turn(k); piece(A)\n}\nx1... * ~ { NODE defense\n  EDGE entry--defense\n  KIND position\n  TURN player\n  + turn(K); piece(A)\n}\nx2. A ~ { NODE exit\n  EDGE defense--exit\n  KIND exit\n  TURN defender\n  + moved(A); accepted_ending\n  EXIT certificate: accepted_ending\n}\n*"
+          "metaPgn": "{ NODE entry\n  KIND root\n  TURN defender\n  + turn(k); piece(A)\n}\nx1... * ~ { NODE defense\n  EDGE entry--defense\n  KIND position\n  TURN player\n  + turn(K); piece(A)\n}\nx2. A ~ { NODE exit\n  EDGE defense--exit\n  KIND exit\n  TURN defender\n  + moved(A)\n  EXIT theorem: moved(A)\n}\n*",
+          "planProgramSource": "specification.soWhatContract.planProgram"
         },
         {
           "id": "T41",
@@ -6353,6 +6389,475 @@
               }
             ]
           }
+        },
+        {
+          "id": "T42",
+          "name": "Two-piece double attack",
+          "short": "Double attack by two pieces",
+          "group": "Attack two things",
+          "catalogueSection": "General",
+          "meaning": "One legal move establishes attacks on two distinct opposing non-king targets by two distinct friendly pieces. Each attacker is defended and worth less than its own target on the reached board. Follow the actual reply and return a surviving legal capture, explicit removal of both captures, or an independently accepted ending. Two attacks alone do not certify a win.",
+          "exit": [
+            "legal_capture(A,B) OR legal_capture(C,D), after two real plies",
+            "OR both legal captures absent after the actual reply",
+            "OR an independently accepted END/CERT after the actual reply"
+          ],
+          "replies": "Replay the actual adjacent defender reply. A repaired pair of attacks is an explicit non-winning result. Other legal defenses remain in the concrete puzzle tree and may be covered by a separate checked CLASS; this tree grants no implicit defense coverage.",
+          "proof": "Bind both physical attackers and both physical targets before moving. Check distinct identities, strict value orders and a legal route by A to the joint attack. On the actual first move recheck both attacks, both defenders and both value orders. Replay the actual reply, preserve all physical identities even when an attacker or target is captured, and check the stated exit. Only an independently accepted END/CERT grants terminal authority.",
+          "entryExplanation": "Bind A to the actual player mover and C to a different friendly attacker. Bind B and D to their distinct opposing non-king targets. Observe a legal A move establishing both attacks and observe that each target is more valuable than its own attacker. The reached board must additionally defend both attackers.",
+          "bindingNotes": {
+            "A": "The actual moving friendly pawn, knight, bishop or rook and first attacker.",
+            "C": "A distinct friendly pawn, knight, bishop or rook supplying the second attack.",
+            "B": "The opposing non-king target attacked by A; it must be worth more than A.",
+            "D": "A different opposing non-king target attacked by C; it must be worth more than C."
+          },
+          "mainLine": "A moves, leaving A and C defended while they attack the more valuable targets B and D. The opponent replies. Return the surviving legal capture, recognize that both captures were prevented, or consume an independently accepted terminal certificate.",
+          "entry": [
+            "distinct(A,C)",
+            "distinct(B,D)",
+            "value(B)>value(A)",
+            "value(D)>value(C)",
+            "route(A;all(attacks(A,B);attacks(C,D)))"
+          ],
+          "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "compound",
+            "variables": {
+              "A": {
+                "side": "K",
+                "types": [
+                  "p",
+                  "n",
+                  "b",
+                  "r"
+                ]
+              },
+              "C": {
+                "side": "K",
+                "types": [
+                  "p",
+                  "n",
+                  "b",
+                  "r"
+                ]
+              },
+              "B": {
+                "side": "k",
+                "types": [
+                  "n",
+                  "b",
+                  "r",
+                  "q"
+                ]
+              },
+              "D": {
+                "side": "k",
+                "types": [
+                  "n",
+                  "b",
+                  "r",
+                  "q"
+                ]
+              }
+            },
+            "entryAtoms": [
+              "distinct(A,C)",
+              "distinct(B,D)",
+              "value(B)>value(A)",
+              "value(D)>value(C)",
+              "route(A;all(attacks(A,B);attacks(C,D)))"
+            ],
+            "coverage": "mainline",
+            "description": "Establish two defended lower-value attackers against two distinct higher-value targets, then inspect the actual reply. Both possible theorem results are explicit; neither alone asserts a game win.",
+            "root": "entry",
+            "nodes": [
+              {
+                "id": "entry",
+                "turn": "player",
+                "predicates": [
+                  "distinct(A,C)",
+                  "distinct(B,D)",
+                  "value(B)>value(A)",
+                  "value(D)>value(C)",
+                  "route(A;all(attacks(A,B);attacks(C,D)))"
+                ]
+              },
+              {
+                "id": "paired-attacks",
+                "predicates": [
+                  "attacks(A,B)",
+                  "attacks(C,D)",
+                  "defended(A)",
+                  "defended(C)",
+                  "value(B)>value(A)",
+                  "value(D)>value(C)"
+                ]
+              },
+              {
+                "id": "capture-remains",
+                "predicates": [
+                  {
+                    "any": [
+                      "legal_capture(A,B)",
+                      "legal_capture(C,D)"
+                    ]
+                  }
+                ],
+                "negative": [
+                  "accepted_ending"
+                ],
+                "exit": {
+                  "kind": "theorem",
+                  "predicates": [
+                    {
+                      "any": [
+                        "legal_capture(A,B)",
+                        "legal_capture(C,D)"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "attacks-repaired",
+                "predicates": [
+                  "not legal_capture(A,B)",
+                  "not legal_capture(C,D)"
+                ],
+                "negative": [
+                  "accepted_ending"
+                ],
+                "exit": {
+                  "kind": "theorem",
+                  "predicates": [
+                    "not legal_capture(A,B)",
+                    "not legal_capture(C,D)"
+                  ]
+                }
+              },
+              {
+                "id": "reply-ending",
+                "predicates": [
+                  "accepted_ending"
+                ],
+                "exit": {
+                  "kind": "certificate",
+                  "predicates": [
+                    "accepted_ending"
+                  ]
+                }
+              }
+            ],
+            "edges": [
+              {
+                "id": "entry--paired-attacks",
+                "source": "entry",
+                "target": "paired-attacks",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "any",
+                  "piece": "A"
+                }
+              },
+              {
+                "id": "paired-attacks--capture-remains",
+                "source": "paired-attacks",
+                "target": "capture-remains",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any"
+                }
+              },
+              {
+                "id": "paired-attacks--attacks-repaired",
+                "source": "paired-attacks",
+                "target": "attacks-repaired",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any"
+                }
+              },
+              {
+                "id": "paired-attacks--reply-ending",
+                "source": "paired-attacks",
+                "target": "reply-ending",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "any"
+                }
+              }
+            ]
+          },
+          "metaPgn": "{ NODE entry\n  TURN player\n  + distinct(A,C); distinct(B,D); value(B)>value(A); value(D)>value(C); route(A;all(attacks(A,B);attacks(C,D)))\n}\nx1. A ~ { NODE paired-attacks\n  EDGE entry--paired-attacks\n  + attacks(A,B); attacks(C,D); defended(A); defended(C); value(B)>value(A); value(D)>value(C)\n}\nx1... * ~ { NODE capture-remains\n  EDGE paired-attacks--capture-remains\n  + any(legal_capture(A,B); legal_capture(C,D))\n  - accepted_ending\n  EXIT theorem: any(legal_capture(A,B); legal_capture(C,D))\n}\n(\nx1... * ~ { NODE attacks-repaired\n  EDGE paired-attacks--attacks-repaired\n  + not legal_capture(A,B); not legal_capture(C,D)\n  - accepted_ending\n  EXIT theorem: not legal_capture(A,B); not legal_capture(C,D)\n}\n)\n(\nx1... * ~ { NODE reply-ending\n  EDGE paired-attacks--reply-ending\n  + accepted_ending\n  EXIT certificate: accepted_ending\n}\n)\n*"
+        },
+        {
+          "id": "T43",
+          "name": "Checking repair before deferred capture",
+          "short": "Repair then capture",
+          "group": "Keep the plan alive",
+          "catalogueSection": "General",
+          "meaning": "An attacked valuable piece can answer its lower-value attacker with a checking capture, complete a second checking exchange after the actual recapture, and only then collect a different hanging target with another piece. The deferred target and its capturer must survive the whole recorded sequence. The final board must show at least two material points gained. This five-ply pattern verifies that exact continuation; it does not assert that every check evasion is the stated recapture.",
+          "exit": [
+            "captured(A); captured(U); captured(T); present(D); net_gain(K)>=2; not in_check(K), after five real plies"
+          ],
+          "replies": "Each recorded recapture is a real legal adjacent reply to check. Different evasions, including movement of the deferred target, remain separate concrete branches or separately checked classes. They are not silently assumed to preserve the deferred capture.",
+          "proof": "Bind A to the threatened valuable friendly piece, U to its lower-value opposing attacker, D to a different friendly capturer, and T to a different currently hanging opposing target. Check both available captures before the sequence. Bind the first enemy recapturer X, friendly second checker R, and second enemy recapturer Z only on their actual moves. Check every capture identity, each delivered check, and survival of D and T at every intermediate node. The fifth move must legally capture the original T with the original D and produce the stated material result. A separate accepted END/CERT is still required to close the puzzle.",
+          "entryExplanation": "Observe an attack by a lower-value opponent U on valuable A, plus a legal capture by a different friendly D of a hanging, more valuable target T. A can capture U and has a legal checking move. The actual first capture must give check; every subsequent exchange and the preserved deferred capture are checked on the concrete boards.",
+          "bindingNotes": {
+            "A": "The friendly threatened non-king piece; it is traded in the first checking exchange.",
+            "U": "The lower-value opposing piece attacking A and taken by A on the first ply.",
+            "D": "A different friendly piece, kept available to collect T after the checking exchanges.",
+            "T": "The distinct hanging opposing target legally capturable by D before the sequence; retain its original identity until the fifth-ply capture.",
+            "X": "The opponent piece bound by the actual first recapture of A.",
+            "R": "The friendly piece bound by the actual second checking capture of X.",
+            "Z": "The opponent piece bound by the actual second recapture of R."
+          },
+          "mainLine": "A captures U with check. X captures A. R captures X with check. Z captures R. D captures the original hanging target T; the checked board has a net material gain of at least two points.",
+          "entry": [
+            "distinct(A,D)",
+            "distinct(U,T)",
+            "attacks(U,A)",
+            "value(A)>value(U)",
+            "legal_capture(D,T)",
+            "value(T)>value(D)",
+            "hang(T)",
+            "legal_capture(A,U)",
+            "legal_check(A)"
+          ],
+          "tree": {
+            "schema": "predicate-chess-metatree/1",
+            "kind": "compound",
+            "variables": {
+              "A": {
+                "side": "K",
+                "types": [
+                  "n",
+                  "b",
+                  "r",
+                  "q"
+                ]
+              },
+              "U": {
+                "side": "k",
+                "types": [
+                  "p",
+                  "n",
+                  "b",
+                  "r"
+                ]
+              },
+              "D": {
+                "side": "K",
+                "types": [
+                  "p",
+                  "n",
+                  "b",
+                  "r"
+                ]
+              },
+              "T": {
+                "side": "k",
+                "types": [
+                  "n",
+                  "b",
+                  "r",
+                  "q"
+                ]
+              },
+              "X": {
+                "side": "k",
+                "types": [
+                  "p",
+                  "n",
+                  "b",
+                  "r",
+                  "q",
+                  "k"
+                ]
+              },
+              "R": {
+                "side": "K",
+                "types": [
+                  "p",
+                  "n",
+                  "b",
+                  "r",
+                  "q"
+                ]
+              },
+              "Z": {
+                "side": "k",
+                "types": [
+                  "p",
+                  "n",
+                  "b",
+                  "r",
+                  "q",
+                  "k"
+                ]
+              }
+            },
+            "entryAtoms": [
+              "distinct(A,D)",
+              "distinct(U,T)",
+              "attacks(U,A)",
+              "value(A)>value(U)",
+              "legal_capture(D,T)",
+              "value(T)>value(D)",
+              "hang(T)",
+              "legal_capture(A,U)",
+              "legal_check(A)"
+            ],
+            "coverage": "mainline",
+            "description": "A five-ply checking-exchange pattern resolves the original valuable-piece exposure before collecting a separately hanging target. Other check evasions require their own concrete proof.",
+            "root": "entry",
+            "nodes": [
+              {
+                "id": "entry",
+                "turn": "player",
+                "predicates": [
+                  "distinct(A,D)",
+                  "distinct(U,T)",
+                  "attacks(U,A)",
+                  "value(A)>value(U)",
+                  "legal_capture(D,T)",
+                  "value(T)>value(D)",
+                  "hang(T)",
+                  "legal_capture(A,U)",
+                  "legal_check(A)"
+                ]
+              },
+              {
+                "id": "first-check",
+                "predicates": [
+                  "captured(U)",
+                  "in_check(k)",
+                  "present(D)",
+                  "present(T)",
+                  "attacks(D,T)"
+                ]
+              },
+              {
+                "id": "first-recapture",
+                "predicates": [
+                  "captured(A)",
+                  "present(D)",
+                  "present(T)",
+                  "attacks(D,T)",
+                  "not in_check(K)"
+                ]
+              },
+              {
+                "id": "second-check",
+                "predicates": [
+                  "captured(X)",
+                  "in_check(k)",
+                  "present(D)",
+                  "present(T)",
+                  "attacks(D,T)"
+                ]
+              },
+              {
+                "id": "second-recapture",
+                "predicates": [
+                  "captured(R)",
+                  "present(D)",
+                  "present(T)",
+                  "legal_capture(D,T)",
+                  "not in_check(K)"
+                ]
+              },
+              {
+                "id": "deferred-capture",
+                "predicates": [
+                  "captured(A)",
+                  "captured(U)",
+                  "captured(T)",
+                  "present(D)",
+                  "net_gain(K)>=2",
+                  "not in_check(K)"
+                ],
+                "exit": {
+                  "kind": "theorem",
+                  "predicates": [
+                    "captured(A)",
+                    "captured(U)",
+                    "captured(T)",
+                    "present(D)",
+                    "net_gain(K)>=2",
+                    "not in_check(K)"
+                  ]
+                }
+              }
+            ],
+            "edges": [
+              {
+                "id": "entry--first-check",
+                "source": "entry",
+                "target": "first-check",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "capture",
+                  "piece": "A",
+                  "target": "U"
+                }
+              },
+              {
+                "id": "first-check--first-recapture",
+                "source": "first-check",
+                "target": "first-recapture",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "capture",
+                  "piece": "X",
+                  "target": "A"
+                }
+              },
+              {
+                "id": "first-recapture--second-check",
+                "source": "first-recapture",
+                "target": "second-check",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "capture",
+                  "piece": "R",
+                  "target": "X"
+                }
+              },
+              {
+                "id": "second-check--second-recapture",
+                "source": "second-check",
+                "target": "second-recapture",
+                "kind": "ply",
+                "actor": "defender",
+                "move": {
+                  "kind": "capture",
+                  "piece": "Z",
+                  "target": "R"
+                }
+              },
+              {
+                "id": "second-recapture--deferred-capture",
+                "source": "second-recapture",
+                "target": "deferred-capture",
+                "kind": "ply",
+                "actor": "player",
+                "move": {
+                  "kind": "capture",
+                  "piece": "D",
+                  "target": "T"
+                }
+              }
+            ]
+          },
+          "metaPgn": "{ NODE entry\n  TURN player\n  + distinct(A,D); distinct(U,T); attacks(U,A); value(A)>value(U); legal_capture(D,T); value(T)>value(D); hang(T); legal_capture(A,U); legal_check(A)\n}\nx1. A x U { NODE first-check\n  EDGE entry--first-check\n  + captured(U); in_check(k); present(D); present(T); attacks(D,T)\n}\nx1... X x A { NODE first-recapture\n  EDGE first-check--first-recapture\n  + captured(A); present(D); present(T); attacks(D,T); not in_check(K)\n}\nx2. R x X { NODE second-check\n  EDGE first-recapture--second-check\n  + captured(X); in_check(k); present(D); present(T); attacks(D,T)\n}\nx2... Z x R { NODE second-recapture\n  EDGE second-check--second-recapture\n  + captured(R); present(D); present(T); legal_capture(D,T); not in_check(K)\n}\nx3. D x T { NODE deferred-capture\n  EDGE second-recapture--deferred-capture\n  + captured(A); captured(U); captured(T); present(D); net_gain(K)>=2; not in_check(K)\n  EXIT theorem: captured(A); captured(U); captured(T); present(D); net_gain(K)>=2; not in_check(K)\n}\n*"
         }
       ],
       "expressions": [
@@ -7543,6 +8048,28 @@
             "T08"
           ],
           "mode": "composition"
+        },
+        {
+          "label": "Double attack by two pieces",
+          "ids": [
+            "T42"
+          ],
+          "mode": "single"
+        },
+        {
+          "label": "Repair then capture",
+          "ids": [
+            "T43"
+          ],
+          "mode": "single"
+        },
+        {
+          "label": "Double attack by two pieces + Clearance",
+          "ids": [
+            "T42",
+            "T08"
+          ],
+          "mode": "composition"
         }
       ],
       "quarantinedLegacyNames": [
@@ -8493,6 +9020,84 @@
             "edges": []
           },
           "metaPgn": "{ NODE current\n  KIND static\n  + legal_live_position; recorded_history_guard; clock_margin; pawn_only_position; bound_passed_pawn(P); fixed_pawn_race_policy(P); all_defender_effects_checked; every_race_finish_registered\n  EXIT derive: forces_pawn_race_region(P)\n}\n*"
+        },
+        {
+          "id": "S12",
+          "short": "Prepare the pawn race",
+          "checker": "pawn-race-preparation",
+          "entry": [
+            "legal_live_position",
+            "recorded_history_guard",
+            "clock_margin",
+            "pawn_only_position",
+            "bound_source_pawn(P)",
+            "rival_rook_pawn_corner",
+            "bounded_interception_or_majority_plan",
+            "every_legal_defense_checked",
+            "every_endpoint_registered_or_pawn_race"
+          ],
+          "output": [
+            "forces_prepared_pawn_ending(P)"
+          ],
+          "meaning": "A bounded king-interception or opposite-wing pawn-breakthrough plan reaches an existing registered ending or the existing Win the pawn race theorem against every legal defense. A rival promotion is not ignored, and promoting first is never itself a terminal condition.",
+          "entryExplanation": "Normalize the player to White and the rival rook pawn to the h-file. The rival rook pawn must be on relative rank two, three or four. Candidate preparations consist of a capture already reaching a registered ending, a legal king capture of a counterpromotion or rival pawn, captures by the opposite-wing majority, the explicit home-corner king interception or blockade pattern, and the explicit a3-a4, b4-b5, a4-a5, b5-b6, c5-c6 or g4-g5 pawn advances. Both color and file reflections are supported. At each player turn choose one of these candidates only after recursively checking all legal defenses; stop within eight player moves, otherwise fail. A king on f3 keeps protecting g4 against a black king on g5; a king on h3 maintains its h4 blockade if it cannot capture. Every competing pawn advance, capture, check, underpromotion, stalemate and draw guard is checked by the same legal move generator. Memoized subproofs may be reused only when none of their reachable position keys repeats an actual ancestor. All internal work is accounted separately from stored PGN nodes.",
+          "name": "Prepare the pawn race",
+          "kind": "static-endgame",
+          "annotationSite": "STATIC",
+          "group": "Static endgames",
+          "bindingNotes": {
+            "P": "A physical source pawn anchoring this pawn-ending strategy. The region is rooted at this source position; a helper pawn may promote and P is not asserted to survive a sacrifice.",
+            "K": "The player king at the source node.",
+            "k": "The defending king at the source node."
+          },
+          "proofScope": "Sufficient bounded preparation theorem, not an unbounded pawn-ending solver. At most eight own preparation moves and 20000 replay visits. Every leaf is independently accepted by an unchanged existing certificate or unchanged S11 pawn-race checker, whose own bounded verification also runs. No engine, tablebase, FEN allowlist or puzzle ID supplies acceptance. The concrete PGN stores the source node and checked STATIC composition; internal exploration and transposition work are reported explicitly.",
+          "source": {
+            "work": "Predicate Chess pawn-race preparation",
+            "attribution": "Project formalization of king interception, blockade and an opposite-wing three-pawn breakthrough; not attributed to a book theorem."
+          },
+          "tree": {
+            "schema": "predicate-chess-static-theorem/1",
+            "root": "current",
+            "variables": {
+              "P": {
+                "side": "K",
+                "type": "p"
+              },
+              "K": {
+                "side": "K",
+                "type": "k"
+              },
+              "k": {
+                "side": "k",
+                "type": "k"
+              }
+            },
+            "nodes": [
+              {
+                "id": "current",
+                "kind": "static",
+                "entry": [
+                  "legal_live_position",
+                  "recorded_history_guard",
+                  "clock_margin",
+                  "pawn_only_position",
+                  "bound_source_pawn(P)",
+                  "rival_rook_pawn_corner",
+                  "bounded_interception_or_majority_plan",
+                  "every_legal_defense_checked",
+                  "every_endpoint_registered_or_pawn_race"
+                ],
+                "exit": {
+                  "kind": "derive",
+                  "predicates": [
+                    "forces_prepared_pawn_ending(P)"
+                  ]
+                }
+              }
+            ],
+            "edges": []
+          },
+          "metaPgn": "{ NODE current\n  KIND static\n  + legal_live_position; recorded_history_guard; clock_margin; pawn_only_position; bound_source_pawn(P); rival_rook_pawn_corner; bounded_interception_or_majority_plan; every_legal_defense_checked; every_endpoint_registered_or_pawn_race\n  EXIT derive: forces_prepared_pawn_ending(P)\n}\n*"
         }
       ]
     },
@@ -8572,7 +9177,7 @@
         {
           "name": "Material won; promotion controlled",
           "label": "Material won; promotion controlled",
-          "description": "The existing blockade/promotion-capture conditions hold; any relevant promotion is explicitly checked. A pawn two steps from promotion may also have an empty controlled next square only when every legal advance of that pawn has a legal capture reaching the existing Material won conditions. All other promotion and guard replies remain checked."
+          "description": "The existing blockade/promotion-capture conditions hold; any relevant promotion is explicitly checked. A pawn two steps from promotion may advance when every legal advance either has a legal capture reaching Material won, or (for one controlled near pawn making a straight non-capturing push) has an actual quiet holding response reaching the complete existing one-step promotion-control boundary. The latter strictly decreases the distance from two to one, checks all promotion choices and guard replies, and rejects terminal draws. No mere pseudo-attack, null move, engine score, or puzzle-ID exception authorizes closure."
         },
         {
           "name": "Pawn race won; protected promotion",
@@ -9170,7 +9775,9 @@
         "T37",
         "T38",
         "T40",
-        "T41"
+        "T41",
+        "T42",
+        "T43"
       ],
       "implementationScope": "All registered theorem trees use the same canonical variable-PGN compiler and complete matcher. No candidate-label category or unsupported theorem tier exists. A one-move recognition result cannot substitute for the declared complete tree or explicit accepted certificate exit.",
       "authority": "A validated ENTRY permits an application to begin. It is not an END or CERT and cannot itself close a branch.",
@@ -9261,7 +9868,9 @@
         "T38",
         "T39",
         "T40",
-        "T41"
+        "T41",
+        "T42",
+        "T43"
       ],
       "nodeSemantics": "Conjoin predicates; negate each negative expression as a whole. Evaluate all atom implementations before Boolean short-circuiting. Recheck at each mapped board; inherited observations retain their physical identity and expiry rules.",
       "edgeSemantics": {
@@ -9285,7 +9894,7 @@
       ],
       "exitSemantics": {
         "theorem": "The declared local result holds here. It supplies no END/CERT authority by itself.",
-        "certificate": "An existing END/CERT on this same actual board is independently checked. For a matching checked So what CLASS, its fixed registered Exit may instead supply theorem-local certificate evidence: re-evaluate that same unchanged certificate at this actual second-ply board for every member, including when the stored main line continues.",
+        "certificate": "An existing END/CERT on the same actual board is independently checked. A matching So what CLASS can supply theorem-local evidence only from its explicit exact registered END assertion, replayed and checked at every actual final leaf. A bare ENTRY, ASSERT or the illustrative T40 tree supplies no terminal authority.",
         "handoff": "An existing checked ending or another completely matched ENTRY on this same board. No skipped moves, implicit future ending, unsupported application, or cyclic dependency."
       },
       "derivedPredicateDefinitions": {
@@ -9344,95 +9953,77 @@
       "staticException": "The explicitly separate static-endgame schema permits same-node derivations with zero consumed plies. This does not change atomic exceptions, compound depth, all-defenses coverage or CLASS accounting for any dynamic theorem."
     },
     "soWhatContract": {
-      "schema": "predicate-chess-so-what/1",
+      "schema": "predicate-chess-so-what/3",
       "theorem": "T40",
       "name": "So what",
       "category": "Defensive closure",
-      "shortDefinition": "For every defense in this class, play the same physically bound move and check the same existing terminal certificate on the resulting board. Keep one concrete representative and its player continuation; handle every other defense separately.",
+      "shortDefinition": "A prescribed player mainline with opponent wildcard replies guarantees the declared exit predicates on every included leaf. A leaf may satisfy another theorem entry, but it closes only with its own checked registered predicate certificate. Unselected replies remain explicit exceptions.",
       "entry": {
-        "atoms": [
-          "turn(k)",
-          "piece({actor})"
-        ],
-        "bindings": {
-          "actor": {
-            "predicate": "piece",
-            "side": "K",
-            "type": "role",
-            "values": [
-              "P",
-              "N",
-              "B",
-              "R",
-              "Q",
-              "K"
-            ],
-            "source": "The piece on the fixed Plan source square at this actual entry board."
-          }
-        },
-        "meaning": "The opponent is to move and the player piece bound as A exists. Instantiate the printed piece role from Plan, then bind A to that exact physical entry identity. Check these board facts before either numbered ply.",
-        "nonterminal": "Entry and the member defense board must permit the next actual legal ply. A game-ending defense cannot be ignored."
+        "kind": "numbered-plan",
+        "meaning": "ENTRY \"So what\": Plan: <actual numbered player/opponent program>. The entry is immediately followed by exactly one CLASS specifying its members and exit. When the annotation is after an actual player move, the entry starts with that exact incoming move and continues with the class program. At an opponent-to-move puzzle root, it starts with the first opposing choice. Every number, side, physical actor and stored reference continuation is checked.",
+        "nonterminal": "An entry plan carries no terminal authority. Every covered exit needs the declared predicate checks, and only a checked registered certificate closes a leaf.",
+        "pairing": "One adjacent ENTRY/CLASS pair per plan. No orphan, displaced, duplicate, generic or mismatched So what entry is accepted. Multiple classes at one board have separate entries; each entry is bound to only its own class."
       },
       "plan": {
-        "binding": "Fix one legal reference defense, one canonical UCI player move and one registered terminal certificate before testing membership. The Plan source, destination and promotion choice, physical actor and any physical captured target are fixed for the whole class.",
-        "physicalIdentity": "The actor and any captured target must already exist at entry and keep their identities through the defense. The same destination occupied by a different target does not satisfy the plan. Canonical SAN may gain or lose a check suffix; the fixed UCI and physical bindings remain unchanged.",
-        "validation": "After every selected legal defense, the same bound player move must be legal, including all king-safety and promotion requirements. It must answer an actual check if the defense checks. Re-evaluate all declared intermediate and exit predicates on that member's actual boards.",
-        "scope": "This first implementation supports exactly one player move after the wildcard defense. A longer plan needs a fully checked strategy subtree including every newly available opposing reply; principal-variation survival alone is insufficient."
+        "binding": "Choose the finite numbered player plan, class members, physical bindings and exit assertion before testing any branch. Bind each player move once from the stored representative continuation.",
+        "physicalIdentity": "Every branch uses the same physical player actors, source/destination squares and promotion choices. A capture may occur on one branch and a quiet move on another; actual effects and all requested predicates are checked on each branch. A specified target binding cannot be silently replaced by another piece.",
+        "validation": "Replay every first member, every later wildcard reply, every fixed player move, and each explicit singleton opposing reply. Check every declared exit predicate and selected registered certificate independently on every covered leaf. A later singleton never grants authority to omit the excluded opposing branches.",
+        "scope": "The numbered ENTRY/Plan is authoritative. Its actual incoming player move anchors the class suffix to the stored board. Stars are actual opposing plies over the first declared class or all later legal replies. A literal opposing move restricts that ply to one actual reply; all other replies remain explicitly stored unresolved exceptions unless independently certified."
       },
       "classes": [
         {
           "key": "main-plan",
           "label": "Main plan survives",
-          "shortDefinition": "Whatever listed defense is played, the same fixed player move remains legal and reaches the same checked terminal certificate.",
+          "shortDefinition": "All selected opponent replies permit the same prescribed player plan and establish the declared exit assertion on every resulting leaf.",
           "positive": [
             "turn(K)",
             "piece(A)"
           ],
           "negative": [],
           "bindings": {
-            "A": "The one physical player piece fixed by the parent Plan source square. Never rebind A to a different piece on another member."
+            "A": "The first prescribed player actor, fixed to its physical entry identity. Additional named physical bindings remain fixed throughout the plan."
           },
           "obligations": [
-            "Members contains at least two distinct legal sibling defenses and includes the one stored Representative exactly once.",
-            "For each listed member, replay the actual defense and the exact fixed Plan with the same physical actor, target if captured, and promotion choice. Check the signed predicates on the immediate defense board.",
-            "Re-evaluate the exact existing certificate selected by Exit at every resulting second-ply board. Its original conjunction, original puzzle material baseline and relevant actual history remain unchanged.",
-            "Check the complete declared variable-PGN graph, including all intermediate predicates and its explicit certificate exit, for the representative and every replayed member.",
-            "A legal Plan without the required certificate is a continuation-only result and cannot authorize this terminal CLASS. Any failed or unproved defense stays outside the class.",
-            "Store only one defense representative and its actual player continuation for this group. Keep every exception as an ordinary child or a separately authorized class; count every stored board exactly once."
+            "Members is nonempty, distinct, legal, and includes its stored representative exactly once. An explicit first opposing move has exactly that one member.",
+            "Replay every first member, every later wildcard reply, every fixed player move, and each explicit singleton opposing reply. Check every declared exit predicate and selected registered certificate independently on every covered leaf. A later singleton never grants authority to omit the excluded opposing branches.",
+            "Re-evaluate every explicit Predicates conjunction at every leaf. END additionally requires the exact unchanged registered certificate; ENTRY requires the named entry facts; ASSERT returns only its stated predicates.",
+            "ENTRY or ASSERT success is nonterminal. Every concrete branch remains stored unless a separate checked terminal continuation justifies omission. OPEN obligations remain explicit.",
+            "Only leaves with independently checked registered certificates grant ending authority. Preserve the original puzzle player, material baseline and complete actual history.",
+            "Classes are disjoint. Retain all unselected replies as ordinary children or another separately proved class. Count every stored board under the existing accounting contract."
           ]
         }
       ],
       "classOrder": [
         "main-plan"
       ],
-      "signedPredicates": "Positive and negative expressions are checked on each immediate defense board with the same physically bound A. These visible board signs are necessary conditions, not a substitute for the two-ply plan and terminal certificate obligations.",
-      "partition": "The declared class may be any proved subset of the legal defenses. Its members and all ungrouped direct-child defenses form a disjoint exact legal cover. A proved but unselected defense may remain ordinary. Exceptions receive no closure from T40. An empty class is invalid; a singleton is an ordinary child.",
-      "quantifiers": "Choose the bound Plan and exact Exit first. For every defense d in the declared Members, d is legal at entry, Plan is legal after d with the same physical bindings, and Exit holds after d followed by Plan. Do not choose a different plan or exit independently for each defense.",
-      "classAuthorization": "Derive authority by replaying every actual member with the fixed plan and unchanged certificate at validation time. No accepted-position list, matching label, successful representative alone or newly invented plan-success predicate grants elision.",
+      "signedPredicates": "The entry contains the actual plan. Physical root facts are checked internally; generic turn/piece facts are not a substitute for its typed plan. Final exit assertions retain their dictionary meanings.",
+      "partition": "Declared first classes are disjoint and together with ordinary children exactly cover the legal replies. A literal first opposing move has one member and remains a scoped singleton; it does not prove anything about other replies. A star is a declared nonempty class. Every excluded reply remains explicit.",
+      "quantifiers": "Fix the numbered entry plan and exit assertion before checking branches. For every member of the first declared class, every legal reply at later stars, and the single scoped reply at each explicit opposing ply, every fixed player move is legal and every covered exit satisfies the assertion. A singleton claim gives no authority over unspecified replies.",
+      "classAuthorization": "Replay all actual members and later wildcard branches at validation time. An accepted position list, class label, single representative, engine score or previously saved success report grants no omission or closure.",
       "exit": {
-        "selection": "Exit is the exact ID of one existing registered main terminal certificate; its name, atoms and parameters are obtained from the dictionary and cannot be weakened or replaced while testing members.",
+        "selection": "Choose END with an exact registered certificate conjunction, ENTRY with the exact registered theorem entry conditions, or ASSERT with a nonempty conjunction of supported dictionary predicates. Optional Predicates adds requirements to any exit kind.",
         "anchors": "Use the original puzzle root and its actual root-to-entry move history for every replay. Preserve its player, material baseline, physical identities and any history-sensitive chess state. Reject terminal draws under the current chess rules.",
-        "local": "The certificate is checked at the actual second-ply board. It may be theorem-local evidence supplied by CLASS Exit when the stored main line continues. It does not insert a fictitious END, skip any later stored moves, remove their OPEN obligations or claim the surrounding puzzle complete.",
-        "existingSemantics": "This theorem adds no terminal certificate and changes no condition of an existing ending. Checking the same registered conjunction for every member is mandatory."
+        "local": "Each assertion is evaluated at its actual final leaf, after all printed plan plies. The same assertion is checked independently at every leaf; statements about a representative do not transfer without replay.",
+        "closure": "END closes only when its exact registered certificate independently holds at every covered leaf. ENTRY and ASSERT are guaranteed continuation boundaries, never terminal certificates. A separate continuation must eventually establish a correct registered certificate on each leaf.",
+        "existingSemantics": "No new terminal certificate is introduced and no existing certificate conjunction is weakened. Future-win certificates retain their existing explicit dictionary meaning and independent checker."
       },
       "tree": {
         "coverage": "class-members",
         "classKey": "main-plan",
         "minimumActualPlies": 2,
-        "shape": "One wildcard opposing ply, then the fixed player Plan, then the explicitly checked certificate exit.",
-        "scope": "Only the declared members are mapped by this theorem application. The parent's full legal coverage and all ordinary exceptions are validated independently."
+        "shape": "A finite player-move / opponent-wildcard program followed by an assertion over every leaf. The variable-PGN diagram illustrates one opponent/player pair; its local moved(A) result is deliberately nonterminal.",
+        "scope": "The full instance is the supplied numbered planProgram, with all of its actual plies and exit requirements. The parent legal coverage and ordinary exceptions are checked independently."
       },
       "accounting": "A CLASS consumes zero plies and has one stored defense representative. Its actual player response is another stored position; ordinary exceptions and any later stored continuations also count. Report membership replays and certificate-internal work separately from stored positions; compression does not imply only one board was checked.",
       "rendering": {
-        "entry": "ENTRY \"{name}\": {atoms}.",
-        "class": "CLASS: {label}. Representative: {representative}. Members: {members}. Plan: {plan}. Exit: {certificate}. + {positive}. - {negative}.",
+        "entry": "ENTRY \"{name}\": Plan: {plan}.",
+        "class": "CLASS: So what. Representative: {representative}. Members: {members}. {bindings}{predicates}Exit: {exit}.",
         "fieldBreaks": [
           "Representative:",
           "Members:",
-          "Plan:",
-          "Exit:",
-          "+",
-          "-"
+          "Bindings:",
+          "Predicates:",
+          "Exit:"
         ],
         "atomSeparator": "; ",
         "allSeparator": "; ",
@@ -9449,7 +10040,38 @@
       },
       "integrity": {
         "dictionaryHeader": "DictionarySHA256",
-        "text": "Render the name, definitions, class signs and field layout from this dictionary. The PGN supplies only concrete entry/plan/exit bindings, Representative and Members. Reject stale or edited explanatory class text."
+        "text": "The grammar pairs each typed ENTRY/Plan immediately with its CLASS. Check its actual incoming move, numbered reference suffix, physical bindings, complete selected scope and exact exit. No generic entry or another class certificate can satisfy a mismatched plan."
+      },
+      "planProgram": {
+        "schema": "predicate-chess-fixed-plan/3",
+        "maximumClasses": 2,
+        "maximumPlayerMoves": 4,
+        "maximumReplayPositions": 20000,
+        "fieldBreaks": [
+          "Representative:",
+          "Members:",
+          "Bindings:",
+          "Predicates:",
+          "Exit:"
+        ],
+        "endingTheoremCheckers": [
+          "pawn-race"
+        ],
+        "definition": "Fix the numbered entry plan and exit assertion before checking branches. For every member of the first declared class, every legal reply at later stars, and the single scoped reply at each explicit opposing ply, every fixed player move is legal and every covered exit satisfies the assertion. A singleton claim gives no authority over unspecified replies.",
+        "notation": "ENTRY \"So what\": Plan: <full actual numbered program>. CLASS: So what. Representative: <numbered first opposing reply>. Members: <explicit replies>. Optional Bindings: A=e2, B=d5. Optional Predicates: <leaf assertions>. Exit: END \"<certificate>\": <exact atoms>, ENTRY \"<theorem>\": <exact entry atoms>, or ASSERT: <conjunction>. ENTRY and its CLASS are adjacent clauses in the same PGN comment; no nested comment delimiters.",
+        "composition": "ENTRY \"So what\": Plan: <actual numbered player/opponent program>. The entry is immediately followed by exactly one CLASS specifying its members and exit. When the annotation is after an actual player move, the entry starts with that exact incoming move and continues with the class program. At an opponent-to-move puzzle root, it starts with the first opposing choice. Every number, side, physical actor and stored reference continuation is checked.",
+        "coverage": "At most two disjoint declared classes. A first explicit opposing move is a singleton. Every unselected first reply remains ordinary or belongs to another independently checked class. A later explicit opposing move requires all excluded replies and every included branch to remain concretely stored; it cannot authorize compaction of an earlier branch.",
+        "reference": "Every numbered plan ply matches the actual board and stored representative continuation. Include the exact incoming player move when available. Bind each subsequent player move to its physical actor and UCI once. An explicit opposing move is also a fixed physical singleton. Capture effects may differ only when every branch remains legal and all assertions hold.",
+        "limits": "All limits fail closed. No wildcard skips a legal check, capture, promotion, draw or game-ending defense. Retained ordinary exceptions receive no authority from another class.",
+        "implementation": "so-what-plans.cjs",
+        "legacy": "This grammar replaces the former generic ENTRY plus Plan inside CLASS. Atlas 39 is preserved as a separate checkpoint. Migration moves each existing suffix into its own typed ENTRY and prepends its actual incoming player move without changing any board, predicate or certificate.",
+        "optionalFields": [
+          "Bindings:",
+          "Predicates:"
+        ],
+        "exitAuthority": "END closes only when its exact registered certificate independently holds at every covered leaf. ENTRY and ASSERT are guaranteed continuation boundaries, never terminal certificates. A separate continuation must eventually establish a correct registered certificate on each leaf.",
+        "nonterminalStorage": "An ENTRY or ASSERT class must retain every concrete quantified branch and its unresolved OPEN/continuation frontier. It cannot elide a branch merely because its entry predicates hold. Terminal omission requires separate checked registered certificates on all omitted leaves. The same retention rule applies to terminal scoped plans with later explicit opposing moves: all excluded replies remain stored and receive no certificate from the covered plan.",
+        "pairing": "One adjacent ENTRY/CLASS pair per plan. No orphan, displaced, duplicate, generic or mismatched So what entry is accepted. Multiple classes at one board have separate entries; each entry is bound to only its own class."
       }
     },
     "staticTheoremContract": {
@@ -9550,6 +10172,22 @@
         }
       ],
       "frozenMainlinePrefix": "checked-static-terminal"
+    },
+    "reviewHeuristics": {
+      "schema": "predicate-chess-review-heuristics/1",
+      "advisoryOnly": true,
+      "rules": [
+        {
+          "id": "opponent-response-fanout",
+          "name": "Three or more distinct response cases",
+          "threshold": 3,
+          "preferredMaximum": 2,
+          "priorityRatingExclusive": 2000,
+          "definition": "Count each stored ordinary defense once and each declared CLASS once. Do not count legal members of a checked class as unique responses. Flag every defender-to-move node at or above threshold; lower-rated puzzles are higher priority.",
+          "repair": "Try the current main plan first, then at most one alternative fixed plan; preserve every unproved exception and exact legal coverage."
+        }
+      ],
+      "accounting": "Warnings never alter proof acceptance, OPEN status, material baselines or position accounting."
     }
   },
   "predicates": {
